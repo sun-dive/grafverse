@@ -1,0 +1,8 @@
+---
+# cPanel Git™ Version Control deployment for grafverse.com — the placeholder landing.
+# In cPanel → Git Version Control: "Update from Remote" then "Deploy HEAD Commit".
+# DEPLOYPATH = the grafverse.com document root, relative to $HOME. Confirm in cPanel → Domains.
+deployment:
+  tasks:
+    - export DEPLOYPATH="$HOME/grafverse.com/"
+    - /bin/cp index.html "$DEPLOYPATH"          # the coming-soon landing
