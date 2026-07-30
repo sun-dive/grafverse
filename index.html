@@ -137,7 +137,7 @@
   const MACHINE_POS = new THREE.Vector3(3, 0, -26);    // the glowing box in the (nearer) distance
   const MACHINE_STOCK = 6;                             // cans behind the glass (set 0 for an empty machine)
   const MOBILE = window.matchMedia('(pointer: coarse)').matches;  // touch-primary device
-  let joy = {x:0, y:0};                                // analog joystick input (mobile)
+  let mWalk = false;                                   // mobile: touch-and-hold = walk forward
   if(MOBILE){ const _go=document.querySelector('#splash .go'); if(_go) _go.textContent='Tap to begin'; }
 
   // ---------- renderer / scene / camera ----------
@@ -428,7 +428,7 @@
       firstStart=false;
       $('splash').classList.add('hidden');
       reticle.style.opacity=1;
-      showHint(MOBILE ? 'left stick to move  ·  drag to look' : 'WASD to move  ·  move mouse to look');
+      showHint(MOBILE ? 'touch & hold to walk  ·  drag to steer' : 'WASD to move  ·  move mouse to look');
     }
   }
 
@@ -506,25 +506,22 @@
     else if(e.code==='Escape'){ leaveTalk(true); }
   });
 
-  // ---------- mobile controls (joystick + look-drag + buttons) ----------
+  // ---------- mobile controls (touch-hold to walk forward, drag to steer) ----------
   if(MOBILE){
-    const joyBase=$('joyBase'), joyKnob=$('joyKnob'), sprayBtn=$('sprayBtn'), talkBtn=$('talkBtn'), JR=55;
-    let joyId=null, jcx=0, jcy=0, lookId=null, lx=0, ly=0;
-    const setJoy=(x,y)=>{ let dx=x-jcx, dy=y-jcy; const d=Math.hypot(dx,dy); if(d>JR){dx=dx/d*JR;dy=dy/d*JR;}
-      joyKnob.style.transform=`translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`; joy.x=dx/JR; joy.y=-dy/JR; };
-    joyBase.addEventListener('touchstart', e=>{ e.preventDefault(); const t=e.changedTouches[0]; joyId=t.identifier;
-      const r=joyBase.getBoundingClientRect(); jcx=r.left+r.width/2; jcy=r.top+r.height/2; setJoy(t.clientX,t.clientY); }, {passive:false});
+    const joyBase=$('joyBase'), sprayBtn=$('sprayBtn'), talkBtn=$('talkBtn');
+    joyBase.style.display='none';                 // joystick removed — you walk toward where you look
+    let lookId=null, lx=0, ly=0;
     sprayBtn.addEventListener('touchstart', e=>{ e.preventDefault(); if(hasCan) spraying=true; sprayBtn.classList.add('down'); }, {passive:false});
     sprayBtn.addEventListener('touchend', e=>{ e.preventDefault(); spraying=false; sprayBtn.classList.remove('down'); });
     talkBtn.addEventListener('touchstart', e=>{ e.preventDefault(); if(talking) leaveTalk(false); else if(nearMachine) enterTalk(); }, {passive:false});
-    el.addEventListener('touchstart', e=>{ if(!locked||talking) return; const t=e.changedTouches[0]; if(lookId===null){ lookId=t.identifier; lx=t.clientX; ly=t.clientY; } }, {passive:false});
+    el.addEventListener('touchstart', e=>{ if(!locked||talking) return; const t=e.changedTouches[0]; if(lookId===null){ lookId=t.identifier; lx=t.clientX; ly=t.clientY; mWalk=true; } }, {passive:false});
     window.addEventListener('touchmove', e=>{
-      for(const t of e.changedTouches){
-        if(t.identifier===joyId){ setJoy(t.clientX,t.clientY); e.preventDefault(); }
-        else if(t.identifier===lookId){ yaw-=(t.clientX-lx)*0.005; pitch-=(t.clientY-ly)*0.005; pitch=Math.max(-PITCH_MAX,Math.min(PITCH_MAX,pitch)); lx=t.clientX; ly=t.clientY; e.preventDefault(); }
-      }
+      if(lookId===null) return;
+      for(const t of e.changedTouches){ if(t.identifier===lookId){
+        yaw-=(t.clientX-lx)*0.005; pitch-=(t.clientY-ly)*0.005; pitch=Math.max(-PITCH_MAX,Math.min(PITCH_MAX,pitch));
+        lx=t.clientX; ly=t.clientY; e.preventDefault(); } }
     }, {passive:false});
-    const endTouch=e=>{ for(const t of e.changedTouches){ if(t.identifier===joyId){ joyId=null; joy.x=0; joy.y=0; joyKnob.style.transform='translate(-50%,-50%)'; } if(t.identifier===lookId) lookId=null; } };
+    const endTouch=e=>{ for(const t of e.changedTouches){ if(t.identifier===lookId){ lookId=null; mWalk=false; } } };
     window.addEventListener('touchend', endTouch); window.addEventListener('touchcancel', endTouch);
   }
 
@@ -550,7 +547,7 @@
       if(keys.KeyS) iz-=1;
       if(keys.KeyD) ix+=1;
       if(keys.KeyA) ix-=1;
-      if(MOBILE){ ix-=joy.x; iz+=joy.y; }   // left/right flipped, forward/back straight — matches on-device feel
+      if(MOBILE && mWalk) iz+=1;   // touch-and-hold walks forward, toward where you look
       const mag=Math.hypot(ix,iz); if(mag>1){ ix/=mag; iz/=mag; }
       tx=(fx*iz + rx*ix)*SPEED;
       tz=(fz*iz + rz*ix)*SPEED;
