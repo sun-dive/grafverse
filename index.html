@@ -124,7 +124,7 @@
   const TEX = 2048;            // paint canvas resolution
   const PAINT_DRAIN = 0.22;    // per frame while spraying
   const CAN_POS = new THREE.Vector3(0, 0.35, -9);      // first can, a few steps ahead
-  const MACHINE_POS = new THREE.Vector3(14, 0, -72);   // the glowing box in the distance
+  const MACHINE_POS = new THREE.Vector3(3, 0, -26);    // the glowing box in the (nearer) distance
   const MACHINE_STOCK = 6;                             // cans behind the glass (set 0 for an empty machine)
   const MOBILE = window.matchMedia('(pointer: coarse)').matches;  // touch-primary device
   let joy = {x:0, y:0};                                // analog joystick input (mobile)
@@ -467,8 +467,10 @@
     return {reply:spin(FALLBACK), bye:false};
   }
   function enterTalk(){
-    if(talking) return; talking=true; if(!MOBILE) document.exitPointerLock();
-    chatInput.style.display='block'; chatInput.value=''; setTimeout(()=>chatInput.focus(),40);
+    if(talking) return; talking=true;
+    chatInput.style.display='block'; chatInput.value='';
+    if(MOBILE){ chatInput.focus(); }                       // sync focus in the tap gesture → opens the keyboard
+    else { document.exitPointerLock(); setTimeout(()=>chatInput.focus(),40); }
     showHint(MOBILE ? 'type — tap Leave when done' : 'type to the machine  ·  Enter to send  ·  Esc to leave');
   }
   function leaveTalk(relock){
@@ -570,9 +572,9 @@
     // vending machine: greet on approach, then offer chat while near
     const md = planarDist(MACHINE_POS);
     nearMachine = md < 7;
-    if(!greeted && md < 6.5){
+    if(!greeted && md < 7){
       greeted=true;
-      speak("Hello young gentlebot, what can I do you for today sir?", "▸ Press T to talk to me.");
+      speak("Hello young gentlebot, what can I do you for today sir?", MOBILE ? "▸ Tap Talk to chat with me." : "▸ Press T to talk to me.");
     }
     if(MOBILE){
       const tb=$('talkBtn'); tb.style.display=(nearMachine||talking)?'block':'none'; tb.textContent=talking?'Leave':'Talk';
