@@ -550,7 +550,7 @@
       if(keys.KeyS) iz-=1;
       if(keys.KeyD) ix+=1;
       if(keys.KeyA) ix-=1;
-      if(MOBILE){ ix+=joy.x; iz+=joy.y; }
+      if(MOBILE){ ix-=joy.x; iz-=joy.y; }   // joystick axes flipped to match on-device feel
       const mag=Math.hypot(ix,iz); if(mag>1){ ix/=mag; iz/=mag; }
       tx=(fx*iz + rx*ix)*SPEED;
       tz=(fz*iz + rz*ix)*SPEED;
