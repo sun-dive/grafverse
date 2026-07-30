@@ -550,7 +550,7 @@
       if(keys.KeyS) iz-=1;
       if(keys.KeyD) ix+=1;
       if(keys.KeyA) ix-=1;
-      if(MOBILE){ ix-=joy.x; iz-=joy.y; }   // joystick axes flipped to match on-device feel
+      if(MOBILE){ ix-=joy.x; iz+=joy.y; }   // left/right flipped, forward/back straight — matches on-device feel
       const mag=Math.hypot(ix,iz); if(mag>1){ ix/=mag; iz/=mag; }
       tx=(fx*iz + rx*ix)*SPEED;
       tz=(fz*iz + rz*ix)*SPEED;
@@ -571,8 +571,8 @@
         hasCan=true; paint=100;
         scene.remove(canPickup); scene.remove(ring);
         viewCan = makeCan(0.5); viewCan.position.set(0.42,-0.34,-0.9); viewCan.rotation.z=-0.15; camera.add(viewCan);
-        meterWrap.style.opacity=1; swWrap.style.opacity=1; if(MOBILE) swWrap.style.pointerEvents='auto';
-        showHint('Hold  CLICK  to spray  ·  1–5 change color');
+        meterWrap.style.opacity=1;   // color picker hidden for now — one can, one color
+        showHint(MOBILE ? 'Hold the Spray button to paint' : 'Hold  CLICK  to spray');
       }
     }
 
