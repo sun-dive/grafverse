@@ -66,6 +66,15 @@
     padding:12px 26px;border-radius:24px;background:rgba(8,16,30,.85);border:1px solid rgba(120,170,255,.55);
     color:#eaf6ff;font:600 14px system-ui;letter-spacing:.14em;text-transform:uppercase;pointer-events:auto;
     user-select:none;-webkit-user-select:none;}
+  #chips{position:fixed;left:10px;right:10px;bottom:14px;display:none;flex-wrap:wrap;gap:9px;
+    justify-content:center;align-content:flex-end;max-height:46vh;overflow-y:auto;z-index:7;pointer-events:auto;}
+  .chip{padding:11px 16px;border-radius:22px;background:rgba(18,36,68,.92);border:1px solid rgba(120,170,255,.5);
+    color:#eaf6ff;font:600 14px system-ui;white-space:nowrap;user-select:none;-webkit-user-select:none;}
+  .chip:active{background:rgba(56,120,210,.95);}
+  body.mtalk #chips{display:flex;}
+  body.mtalk #dialogue{top:64px;bottom:auto;}
+  body.mtalk #joyBase, body.mtalk #sprayBtn{display:none!important;}
+  body.mtalk #talkBtn{top:14px;bottom:auto;left:auto;right:14px;transform:none;}
 
   /* --- splash --- */
   #splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -102,6 +111,7 @@
   <div id="sprayBtn">Spray</div>
   <div id="talkBtn">Talk</div>
 </div>
+<div id="chips"></div>
 
 <div id="splash">
   <h1>grafverse</h1>
@@ -466,16 +476,28 @@
     for(const rule of RULES){ if(rule.k.some(hit)) return {reply:spin(rule.r), bye:!!rule.bye}; }
     return {reply:spin(FALLBACK), bye:false};
   }
+  // mobile: tap-to-ask chips instead of the keyboard
+  let chipsBuilt=false;
+  function buildChips(){
+    if(chipsBuilt) return; chipsBuilt=true;
+    const box=$('chips');
+    ['Hello','Got any paint?','WD40?','How much?','Too expensive','Who are you?','Where am I?','What is my mission?','The covenant?','Is it round?','How long have you been here?','Bye'].forEach(q=>{
+      const b=document.createElement('div'); b.className='chip'; b.textContent=q;
+      b.addEventListener('touchstart', e=>{ e.preventDefault(); e.stopPropagation();
+        const res=respond(q); speak(res.reply,''); if(res.bye) setTimeout(()=>leaveTalk(false),1400); }, {passive:false});
+      box.appendChild(b);
+    });
+  }
   function enterTalk(){
     if(talking) return; talking=true;
-    chatInput.style.display='block'; chatInput.value='';
-    if(MOBILE){ chatInput.focus(); }                       // sync focus in the tap gesture → opens the keyboard
-    else { document.exitPointerLock(); setTimeout(()=>chatInput.focus(),40); }
-    showHint(MOBILE ? 'type — tap Leave when done' : 'type to the machine  ·  Enter to send  ·  Esc to leave');
+    if(MOBILE){ buildChips(); document.body.classList.add('mtalk'); showHint(''); return; }
+    document.exitPointerLock(); chatInput.style.display='block'; chatInput.value=''; setTimeout(()=>chatInput.focus(),40);
+    showHint('type to the machine  ·  Enter to send  ·  Esc to leave');
   }
   function leaveTalk(relock){
-    talking=false; chatInput.style.display='none'; chatInput.blur();
-    if(MOBILE){ showHint(''); return; }
+    talking=false;
+    if(MOBILE){ document.body.classList.remove('mtalk'); showHint(''); return; }
+    chatInput.style.display='none'; chatInput.blur();
     if(relock){ el.requestPointerLock(); showHint(''); } else showHint('click to look around');
   }
   chatInput.addEventListener('keydown', e=>{
