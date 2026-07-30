@@ -1,11 +1,22 @@
-# Grafverse
+# grafverse — teaser
 
-**A 3D graffiti multiverse.** Tag a wall, own your piece — forever. No landlord, no buff.
+A single, self-contained, fully-offline playable teaser for **grafverse.com**.
 
-Collaborative, owned, forkable street art in 3D: walls you spray, rooms you build,
-doors to other worlds. Every tag an owned on-chain atom; the whole space composed
-from the same building blocks as [nft.gift](https://nft.gift) and
-[popstoria.com](https://popstoria.com), enforced by covenant, not by a landlord.
+You spawn floating in a black starfield, find a spray can, and paint a dead moon into
+existence — while a weary, contract-bound vending machine (Unit 21) natters at you about
+paint, WD40, the covenant, and whether the world is flat.
 
-This repo holds the **coming-soon placeholder** (`index.html`) — a self-contained
-concrete-wall parallax scene. Deployed via cPanel Git (`.cpanel.yml`).
+## What's here
+- `index.html` — the whole thing (Three.js scene + Canvas paint + spintext NPC dialogue).
+- `vendor/three.min.js` — Three.js, vendored locally. **No CDN, no build step, no server** —
+  runs from `file://` or any static host. Power- and net-proof; cartless by design.
+
+## Controls
+- **Desktop:** click to begin · WASD move · mouse look · hold Click to spray · 1–5 colors · **T** to talk.
+- **Mobile:** tap to begin · left-stick move · drag to look · Spray button · Talk button.
+
+## Deploy (cPanel Git → grafverse.com)
+`.cpanel.yml` copies `index.html` + `vendor/` to the grafverse.com document root.
+In cPanel → Git Version Control: **Update from Remote**, then **Deploy HEAD Commit**.
+
+Owned, not claimed.

@@ -1,8 +1,11 @@
 ---
-# cPanel Git™ Version Control deployment for grafverse.com — the placeholder landing.
+# cPanel Git™ Version Control deployment for grafverse.com — the playable teaser.
 # In cPanel → Git Version Control: "Update from Remote" then "Deploy HEAD Commit".
-# DEPLOYPATH = the grafverse.com document root, relative to $HOME. Confirm in cPanel → Domains.
+# DEPLOYPATH = the grafverse.com document root, relative to $HOME.
+# ⚠ CONFIRM the path in cPanel → Domains (mirrors bitgraf.com → $HOME/bitgraf.com/).
 deployment:
   tasks:
     - export DEPLOYPATH="$HOME/grafverse.com/"
-    - /bin/cp index.html "$DEPLOYPATH"          # the coming-soon landing
+    - /bin/cp index.html "$DEPLOYPATH"          # the playable teaser (the whole page)
+    - /bin/cp og.jpg "$DEPLOYPATH"              # social / link-preview card
+    - /bin/cp -r vendor "$DEPLOYPATH"            # vendored three.min.js (offline, no CDN)

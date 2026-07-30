@@ -1,46 +1,601 @@
 <!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Grafverse — a 3D graffiti multiverse</title>
-<meta name="description" content="A 3D graffiti multiverse. Tag a wall, own your piece — forever. No landlord, no buff. Coming soon.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2784%27>🏴</text></svg>">
-<meta property="og:title" content="Grafverse — a 3D graffiti multiverse"><meta property="og:description" content="Tag a wall, own your piece — forever. No landlord, no buff. Coming soon.">
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>grafverse — paint a moon into existence</title>
+<meta name="description" content="A playable teaser from the grafverse: spawn in the void, paint a dead moon to life, and haggle with a lonely vending machine. Own what you make — no landlord, no buff.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://grafverse.com/">
+<meta property="og:title" content="grafverse — paint a moon into existence">
+<meta property="og:description" content="Spawn in the void, paint a dead moon to life, and chat up a weary vending machine. Own what you make — no landlord, no buff.">
+<meta property="og:image" content="https://grafverse.com/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://grafverse.com/og.jpg">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>🎨</text></svg>">
 <style>
- *{box-sizing:border-box} html,body{margin:0;height:100%;background:#111} 
- body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#f4f4f6;overflow:hidden}
- .scene{position:fixed;inset:0} .scene svg{width:100%;height:100%;display:block} .ly{will-change:transform}
- .vin{position:fixed;inset:0;background:radial-gradient(70% 60% at 50% 46%,transparent,rgba(8,8,12,.72))}
- .wrap{position:fixed;inset:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;text-align:center;padding:0 20px 8vh}
- .badge{display:inline-block;font-weight:800;font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:#111;
-   background:linear-gradient(90deg,#ff2d95,#ffe14d);padding:8px 16px;border-radius:6px;transform:rotate(-2deg);box-shadow:0 6px 22px rgba(255,45,149,.4)}
- .tag{margin:16px 0 0;font-size:clamp(17px,2.6vw,23px);font-weight:700;max-width:26ch;line-height:1.4;color:#ececf2}
- .tag b{color:#00e5ff} .tag i{font-style:normal;color:#b6ff3a}
- .foot{position:fixed;left:0;right:0;bottom:14px;text-align:center;font-size:12px;color:#8a8a97;letter-spacing:.03em}
- @media(prefers-reduced-motion:reduce){.ly{transition:none}}
-</style></head>
+  :root{ --fg:#eaf2ff; }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{height:100%;overflow:hidden;background:#000;font-family:-apple-system,Segoe UI,Roboto,system-ui,sans-serif;color:var(--fg);}
+  #app{position:fixed;inset:0;}
+  canvas{display:block;}
+
+  /* --- HUD overlays --- */
+  #reticle{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;
+           border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 0 6px #fff;
+           pointer-events:none;opacity:0;transition:opacity .3s;}
+  #hint{position:fixed;left:50%;bottom:8%;transform:translateX(-50%);
+        font-size:15px;letter-spacing:.02em;color:#cfe0ff;text-shadow:0 1px 6px #000;
+        padding:6px 14px;background:rgba(10,16,30,.35);border-radius:20px;
+        backdrop-filter:blur(4px);pointer-events:none;white-space:nowrap;opacity:0;transition:opacity .4s;}
+
+  #meterWrap{position:fixed;left:24px;bottom:24px;width:190px;opacity:0;transition:opacity .4s;pointer-events:none;}
+  #meterLbl{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#9fb4d8;margin-bottom:6px;}
+  #meterBar{height:10px;border-radius:6px;background:rgba(255,255,255,.12);overflow:hidden;}
+  #meterFill{height:100%;width:100%;border-radius:6px;background:#38e1ff;transition:width .08s linear, background .2s;}
+
+  #swatches{position:fixed;left:24px;bottom:70px;display:flex;gap:8px;opacity:0;transition:opacity .4s;pointer-events:none;}
+  .sw{width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,.25);transition:transform .12s, border-color .12s;}
+  .sw.on{border-color:#fff;transform:scale(1.25);}
+
+  /* --- dialogue --- */
+  #dialogue{position:fixed;left:50%;bottom:16%;transform:translateX(-50%);max-width:min(620px,86vw);
+            padding:18px 22px;background:rgba(8,14,26,.82);border:1px solid rgba(120,170,255,.28);
+            border-radius:14px;backdrop-filter:blur(6px);box-shadow:0 10px 40px rgba(0,0,0,.5);
+            opacity:0;transition:opacity .5s;pointer-events:none;}
+  #dspeaker{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#6fd3ff;margin-bottom:8px;}
+  #dtext{font-size:19px;line-height:1.4;color:#f3f7ff;min-height:1.4em;}
+  #dsub{margin-top:10px;font-size:13px;color:#8fa6cc;font-style:italic;}
+  #chatInput{position:fixed;left:50%;bottom:7%;transform:translateX(-50%);width:min(560px,84vw);
+    display:none;padding:12px 18px;font-size:16px;color:#eaf6ff;background:rgba(8,16,30,.92);
+    border:1px solid rgba(120,170,255,.5);border-radius:24px;outline:none;font-family:inherit;
+    box-shadow:0 8px 30px rgba(0,0,0,.55);}
+  #chatInput::placeholder{color:#5f7bab;}
+  html,body{overscroll-behavior:none;touch-action:none;}
+  #mobileUI{position:fixed;inset:0;display:none;pointer-events:none;z-index:6;}
+  #joyBase{position:fixed;left:26px;bottom:26px;width:130px;height:130px;border-radius:50%;
+    background:rgba(120,160,220,.10);border:1px solid rgba(150,190,255,.35);pointer-events:auto;touch-action:none;}
+  #joyKnob{position:absolute;left:50%;top:50%;width:56px;height:56px;border-radius:50%;
+    background:rgba(180,210,255,.45);border:1px solid rgba(220,235,255,.6);transform:translate(-50%,-50%);}
+  #sprayBtn{position:fixed;right:28px;bottom:36px;width:104px;height:104px;border-radius:50%;
+    background:rgba(56,225,255,.16);border:2px solid rgba(120,230,255,.6);color:#dffaff;
+    font:600 15px/104px system-ui;text-align:center;letter-spacing:.12em;pointer-events:auto;touch-action:none;
+    text-transform:uppercase;user-select:none;-webkit-user-select:none;}
+  #sprayBtn.down{background:rgba(56,225,255,.4);}
+  #talkBtn{position:fixed;left:50%;bottom:170px;transform:translateX(-50%);display:none;
+    padding:12px 26px;border-radius:24px;background:rgba(8,16,30,.85);border:1px solid rgba(120,170,255,.55);
+    color:#eaf6ff;font:600 14px system-ui;letter-spacing:.14em;text-transform:uppercase;pointer-events:auto;
+    user-select:none;-webkit-user-select:none;}
+
+  /* --- splash --- */
+  #splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+          gap:18px;background:radial-gradient(ellipse at center,#0a1226 0%,#000 70%);z-index:10;cursor:pointer;
+          transition:opacity .6s;}
+  #splash h1{font-size:clamp(42px,9vw,96px);font-weight:800;letter-spacing:-.02em;
+             background:linear-gradient(180deg,#eaf2ff,#6fb6ff);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  #splash .tag{font-size:15px;color:#7fa6df;letter-spacing:.04em;}
+  #splash .go{margin-top:22px;font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:#cfe0ff;
+              padding:12px 26px;border:1px solid rgba(140,180,255,.4);border-radius:30px;}
+  #splash .creed{position:absolute;bottom:26px;font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:#3f5a86;}
+  .hidden{opacity:0!important;pointer-events:none!important;}
+  #tag2{font-size:13px;color:#5f7bab;font-style:italic;}
+</style>
+</head>
 <body>
- <div class="scene" id="scene"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 680" preserveAspectRatio="xMidYMid slice"><defs>
-    <linearGradient id="gv" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff2d95"/><stop offset=".5" stop-color="#ffe14d"/><stop offset="1" stop-color="#00e5ff"/></linearGradient>
-    <filter id="grit"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" result="n"/><feColorMatrix in="n" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.05 0"/></filter>
-    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
-    <rect width="1000" height="680" fill="#15151b"/><rect width="1000" height="680" fill="#2a2130" opacity="0.25"/><rect width="1000" height="680" filter="url(#grit)"/>
-    <g class="ly" data-d="0.15"><g opacity="0.26"><circle cx="581" cy="227" r="25.9" fill="#a06bff"/><circle cx="557.2" cy="182.5" r="7.3" fill="#a06bff"/><circle cx="608.2" cy="210.9" r="8.2" fill="#a06bff"/><circle cx="590.2" cy="262.4" r="8.2" fill="#a06bff"/><circle cx="622.4" cy="243.1" r="1.2" fill="#a06bff"/><circle cx="631.8" cy="251.7" r="7.7" fill="#a06bff"/><circle cx="602.5" cy="171.8" r="1.5" fill="#a06bff"/><circle cx="544.7" cy="193.9" r="2.5" fill="#a06bff"/></g><g opacity="0.26"><circle cx="829" cy="98" r="31.7" fill="#ff2d95"/><circle cx="899.1" cy="110.1" r="7.5" fill="#ff2d95"/><circle cx="878.6" cy="40.1" r="8.4" fill="#ff2d95"/><circle cx="827.2" cy="61.4" r="4.0" fill="#ff2d95"/><circle cx="869.0" cy="153.2" r="4.4" fill="#ff2d95"/><circle cx="806.2" cy="169.3" r="3.8" fill="#ff2d95"/><circle cx="873.3" cy="53.1" r="2.8" fill="#ff2d95"/><circle cx="766.9" cy="113.2" r="4.7" fill="#ff2d95"/></g><g opacity="0.26"><circle cx="330" cy="530" r="27.2" fill="#b6ff3a"/><circle cx="318.6" cy="475.7" r="4.0" fill="#b6ff3a"/><circle cx="293.9" cy="512.1" r="1.7" fill="#b6ff3a"/><circle cx="285.6" cy="501.4" r="4.5" fill="#b6ff3a"/><circle cx="316.2" cy="577.7" r="1.6" fill="#b6ff3a"/><circle cx="335.0" cy="491.6" r="1.9" fill="#b6ff3a"/><circle cx="363.0" cy="484.5" r="5.7" fill="#b6ff3a"/><circle cx="367.1" cy="513.0" r="4.7" fill="#b6ff3a"/></g><g opacity="0.26"><circle cx="410" cy="413" r="29.0" fill="#00e5ff"/><circle cx="431.6" cy="469.5" r="1.0" fill="#00e5ff"/><circle cx="396.0" cy="479.4" r="7.2" fill="#00e5ff"/><circle cx="365.5" cy="433.3" r="5.1" fill="#00e5ff"/><circle cx="408.9" cy="458.4" r="7.8" fill="#00e5ff"/><circle cx="397.9" cy="471.2" r="1.5" fill="#00e5ff"/><circle cx="455.1" cy="368.0" r="4.6" fill="#00e5ff"/><circle cx="442.2" cy="475.4" r="3.3" fill="#00e5ff"/></g><g opacity="0.26"><circle cx="265" cy="314" r="31.0" fill="#b6ff3a"/><circle cx="320.1" cy="314.4" r="1.9" fill="#b6ff3a"/><circle cx="312.8" cy="311.0" r="6.0" fill="#b6ff3a"/><circle cx="199.2" cy="270.7" r="7.3" fill="#b6ff3a"/><circle cx="311.3" cy="306.4" r="3.0" fill="#b6ff3a"/><circle cx="211.3" cy="315.6" r="7.8" fill="#b6ff3a"/><circle cx="184.0" cy="310.8" r="7.8" fill="#b6ff3a"/><circle cx="185.4" cy="312.1" r="4.4" fill="#b6ff3a"/></g><path d="M504 497 Q514 476 527 505 Q537 484 566 518 Q577 497 585 509 Q596 488 609 493 Q619 472 627 499" fill="none" stroke="#b6ff3a" stroke-width="4.2" stroke-linecap="round" opacity="0.3"/><path d="M679 190 Q689 169 700 178 Q711 157 731 183 Q742 162 771 198 Q782 177 792 204 Q802 183 809 216" fill="none" stroke="#ffe14d" stroke-width="4.2" stroke-linecap="round" opacity="0.3"/><path d="M314 226 Q324 205 331 238 Q341 217 355 230 Q365 209 386 229 Q396 208 415 244 Q426 223 442 261" fill="none" stroke="#ff7a18" stroke-width="4.2" stroke-linecap="round" opacity="0.3"/></g><g class="ly" data-d="0.5"><g opacity="0.75"><circle cx="142" cy="387" r="19.4" fill="#ff2d95"/><circle cx="106.8" cy="358.8" r="4.2" fill="#ff2d95"/><circle cx="188.6" cy="402.6" r="3.6" fill="#ff2d95"/><circle cx="99.1" cy="406.1" r="5.1" fill="#ff2d95"/><circle cx="169.1" cy="428.2" r="2.8" fill="#ff2d95"/><circle cx="165.0" cy="403.1" r="1.3" fill="#ff2d95"/><circle cx="145.5" cy="342.0" r="4.1" fill="#ff2d95"/><circle cx="175.9" cy="389.7" r="5.4" fill="#ff2d95"/></g><g opacity="0.75"><circle cx="452" cy="162" r="12.5" fill="#ff2d95"/><circle cx="431.3" cy="147.3" r="2.1" fill="#ff2d95"/><circle cx="443.1" cy="148.4" r="4.0" fill="#ff2d95"/><circle cx="478.0" cy="183.3" r="1.5" fill="#ff2d95"/><circle cx="451.2" cy="177.6" r="3.4" fill="#ff2d95"/><circle cx="426.7" cy="172.5" r="1.1" fill="#ff2d95"/><circle cx="464.8" cy="167.2" r="1.4" fill="#ff2d95"/><circle cx="437.0" cy="162.7" r="4.5" fill="#ff2d95"/></g><g opacity="0.75"><circle cx="343" cy="145" r="12.4" fill="#00e5ff"/><circle cx="319.7" cy="149.9" r="4.4" fill="#00e5ff"/><circle cx="336.6" cy="120.3" r="1.5" fill="#00e5ff"/><circle cx="337.0" cy="173.8" r="3.6" fill="#00e5ff"/><circle cx="327.6" cy="145.2" r="3.5" fill="#00e5ff"/><circle cx="342.4" cy="130.2" r="1.4" fill="#00e5ff"/><circle cx="335.5" cy="161.4" r="1.9" fill="#00e5ff"/><circle cx="326.9" cy="126.3" r="4.0" fill="#00e5ff"/></g><g opacity="0.75"><circle cx="534" cy="541" r="17.1" fill="#ff2d95"/><circle cx="513.7" cy="515.2" r="3.5" fill="#ff2d95"/><circle cx="541.1" cy="495.7" r="4.0" fill="#ff2d95"/><circle cx="517.9" cy="501.2" r="2.6" fill="#ff2d95"/><circle cx="562.2" cy="524.8" r="5.2" fill="#ff2d95"/><circle cx="576.9" cy="529.5" r="5.2" fill="#ff2d95"/><circle cx="515.0" cy="535.1" r="4.4" fill="#ff2d95"/><circle cx="564.7" cy="558.6" r="1.2" fill="#ff2d95"/></g><g opacity="0.75"><circle cx="882" cy="66" r="22.6" fill="#a06bff"/><circle cx="921.2" cy="77.1" r="1.7" fill="#a06bff"/><circle cx="855.4" cy="63.3" r="3.2" fill="#a06bff"/><circle cx="891.8" cy="104.9" r="6.0" fill="#a06bff"/><circle cx="892.3" cy="8.6" r="3.3" fill="#a06bff"/><circle cx="901.0" cy="25.8" r="4.2" fill="#a06bff"/><circle cx="913.7" cy="98.8" r="4.3" fill="#a06bff"/><circle cx="910.7" cy="85.4" r="1.1" fill="#a06bff"/></g><g opacity="0.75"><circle cx="221" cy="237" r="13.9" fill="#ffe14d"/><circle cx="247.9" cy="234.4" r="3.3" fill="#ffe14d"/><circle cx="251.1" cy="217.3" r="4.6" fill="#ffe14d"/><circle cx="191.5" cy="225.4" r="1.3" fill="#ffe14d"/><circle cx="235.9" cy="258.0" r="4.6" fill="#ffe14d"/><circle cx="211.7" cy="224.3" r="1.7" fill="#ffe14d"/><circle cx="221.2" cy="204.3" r="3.8" fill="#ffe14d"/><circle cx="227.1" cy="213.4" r="1.2" fill="#ffe14d"/></g><rect x="260.5" y="120" width="5" height="92.08895447761238" rx="2.5" fill="#b6ff3a"/><circle cx="263" cy="212.0889544776124" r="5.5" fill="#b6ff3a"/><rect x="595.5" y="67" width="5" height="56.23679192095845" rx="2.5" fill="#ff2d95"/><circle cx="598" cy="123.23679192095845" r="5.5" fill="#ff2d95"/><rect x="814.5" y="152" width="5" height="38.865333799675724" rx="2.5" fill="#b6ff3a"/><circle cx="817" cy="190.86533379967574" r="5.5" fill="#b6ff3a"/><rect x="357.5" y="132" width="5" height="109.38145641208695" rx="2.5" fill="#ff2d95"/><circle cx="360" cy="241.38145641208695" r="5.5" fill="#ff2d95"/><rect x="251.5" y="53" width="5" height="90.91058227275991" rx="2.5" fill="#00e5ff"/><circle cx="254" cy="143.9105822727599" r="5.5" fill="#00e5ff"/><rect x="504.5" y="157" width="5" height="52.2649097546306" rx="2.5" fill="#ff7a18"/><circle cx="507" cy="209.2649097546306" r="5.5" fill="#ff7a18"/><rect x="904.5" y="155" width="5" height="88.3240986141954" rx="2.5" fill="#ff7a18"/><circle cx="907" cy="243.3240986141954" r="5.5" fill="#ff7a18"/></g>
-    <g><path d="M157.05 294.49L158.05 350.27Q154.15 355.16 148.42 358.82Q142.69 362.47 136.14 364.88Q129.58 367.28 122.69 368.49Q115.80 369.69 109.57 369.69Q97.54 369.69 87.41 365.37Q77.28 361.06 69.94 353.46Q62.59 345.87 58.44 335.57Q54.29 325.28 54.29 313.41Q54.29 304.36 56.36 295.69Q58.44 287.01 62.30 279.34Q66.16 271.66 71.72 265.22Q77.28 258.79 84.34 254.14Q91.39 249.49 99.78 246.92Q108.16 244.35 117.71 244.35Q121.28 244.35 125.34 244.64Q129.41 244.93 133.44 245.64Q137.46 246.34 141.28 247.59Q145.10 248.83 148.25 250.66L145.93 282.37Q141.28 280.62 136.34 280Q131.40 279.38 126.67 279.38Q120.03 279.38 114.26 281.41Q108.49 283.45 104.22 287.26Q99.94 291.08 97.45 296.56Q94.96 302.04 94.96 308.93Q94.96 313.24 96.13 317.27Q97.29 321.30 99.65 324.41Q102.02 327.52 105.55 329.43Q109.07 331.34 113.72 331.34Q116.88 331.34 120.24 330.51Q123.60 329.68 126.01 327.69L126.34 321.21L106.42 320.88L107.41 295.98Q119.78 295.56 132.15 295.27Q144.52 294.98 157.05 294.49M261.64 287.18Q261.64 293.66 260.52 298.93Q259.40 304.20 256.99 308.60Q254.59 313 250.77 316.73Q246.95 320.47 241.56 323.87L261.31 359.07L223.96 366.37L211.17 331.01L200.88 331.34L199.39 365.87L163.69 365.87Q164.11 346.95 164.48 328.19Q164.86 309.43 165.35 290.50Q165.52 280.95 165.69 271.58Q165.85 262.20 166.35 252.65Q172.16 250.49 177.81 249.08Q183.45 247.67 189.14 246.88Q194.82 246.09 200.67 245.80Q206.53 245.51 212.67 245.51Q222.13 245.51 230.97 248.13Q239.81 250.74 246.62 255.97Q253.43 261.20 257.53 269Q261.64 276.80 261.64 287.18M224.46 289.84Q224.46 286.35 223.50 283.45Q222.55 280.54 220.68 278.42Q218.81 276.31 216.03 275.10Q213.25 273.90 209.51 273.90Q207.85 273.90 206.28 274.11Q204.70 274.31 203.21 274.73L201.88 305.61L203.87 305.61Q207.44 305.61 211.13 304.70Q214.83 303.78 217.77 301.87Q220.72 299.96 222.59 296.98Q224.46 293.99 224.46 289.84M339.67 248.33L372.04 360.06L330.87 365.37L325.89 346.61L306.97 346.61L302.81 365.37L260.48 361.22L293.52 250.66L339.67 248.33M310.45 321.21L322.90 321.21L316.59 292.33L310.45 321.21M375.78 249.16L452.31 249.16Q451.81 256.97 451.40 264.60Q450.98 272.24 450.32 280.04L415.12 281.87L415.12 292.33L445.67 292.33L444.01 318.06L414.96 318.89L415.12 364.71L373.12 365.54L375.78 249.16M520.38 248.33L558.56 250.82L528.18 363.05L487.01 365.37L449.66 256.97L489 253.31L504.94 316.40L520.38 248.33M653.77 300.13Q653.77 307.35 652.78 314.57Q638.58 315.49 624.55 317.52Q610.52 319.55 596.50 321.55Q598.65 327.52 603.26 331.09Q607.87 334.66 614.26 334.66Q617.58 334.66 621.52 333.42Q625.47 332.17 629.37 330.30Q633.27 328.44 636.84 326.28Q640.41 324.12 642.98 322.38L639 360.06Q635.76 362.55 631.98 364.29Q628.21 366.04 624.14 367.12Q620.07 368.20 615.92 368.69Q611.77 369.19 607.79 369.19Q599.57 369.19 592.76 366.95Q585.95 364.71 580.43 360.68Q574.91 356.66 570.76 351.18Q566.61 345.70 563.87 339.23Q561.14 332.75 559.72 325.53Q558.31 318.31 558.31 310.92Q558.31 303.20 559.72 295.48Q561.14 287.76 564 280.62Q566.86 273.48 571.22 267.38Q575.58 261.28 581.39 256.72Q587.20 252.15 594.55 249.58Q601.89 247 610.77 247Q618.16 247 624.26 249.04Q630.36 251.07 635.14 254.68Q639.91 258.29 643.44 263.27Q646.97 268.25 649.25 274.19Q651.53 280.12 652.65 286.72Q653.77 293.32 653.77 300.13M620.57 297.64L620.57 295.81Q620.57 293.49 620.07 291.04Q619.57 288.59 618.45 286.60Q617.33 284.61 615.51 283.32Q613.68 282.03 610.94 282.03Q607.62 282.03 605.09 283.82Q602.56 285.60 600.73 288.30Q598.90 291 597.74 294.15Q596.58 297.31 596 299.96L620.57 297.64M756.45 287.18Q756.45 293.66 755.33 298.93Q754.21 304.20 751.80 308.60Q749.40 313 745.58 316.73Q741.76 320.47 736.36 323.87L756.12 359.07L718.77 366.37L705.98 331.01L695.69 331.34L694.20 365.87L658.50 365.87Q658.92 346.95 659.29 328.19Q659.67 309.43 660.16 290.50Q660.33 280.95 660.50 271.58Q660.66 262.20 661.16 252.65Q666.97 250.49 672.61 249.08Q678.26 247.67 683.95 246.88Q689.63 246.09 695.48 245.80Q701.34 245.51 707.48 245.51Q716.94 245.51 725.78 248.13Q734.62 250.74 741.43 255.97Q748.23 261.20 752.34 269Q756.45 276.80 756.45 287.18M719.27 289.84Q719.27 286.35 718.31 283.45Q717.36 280.54 715.49 278.42Q713.62 276.31 710.84 275.10Q708.06 273.90 704.32 273.90Q702.66 273.90 701.09 274.11Q699.51 274.31 698.02 274.73L696.69 305.61L698.68 305.61Q702.25 305.61 705.94 304.70Q709.64 303.78 712.58 301.87Q715.53 299.96 717.40 296.98Q719.27 293.99 719.27 289.84M847.26 324.70Q847.26 336.07 843.32 344.33Q839.38 352.59 832.53 357.94Q825.68 363.30 816.51 365.83Q807.34 368.36 796.79 368.36Q792.73 368.36 787.87 367.28Q783.02 366.20 778.03 364.59Q773.05 362.97 768.45 361.10Q763.84 359.23 760.27 357.57L763.92 325.03Q770.98 329.27 779.57 331.47Q788.16 333.66 796.46 333.66Q798.04 333.66 800.28 333.54Q802.52 333.42 804.56 332.79Q806.59 332.17 808 330.93Q809.41 329.68 809.41 327.36Q809.41 325.78 808.42 324.66Q807.42 323.54 805.84 322.83Q804.27 322.13 802.27 321.75Q800.28 321.38 798.37 321.21Q796.46 321.05 794.80 321.05Q793.14 321.05 792.15 321.05Q785.01 321.05 779.16 318.81Q773.30 316.57 769.11 312.46Q764.92 308.35 762.60 302.50Q760.27 296.64 760.27 289.50Q760.27 279.71 764.21 271.95Q768.16 264.19 774.76 258.75Q781.35 253.31 789.90 250.41Q798.45 247.50 807.59 247.50Q811.65 247.50 815.97 247.79Q820.29 248.08 824.56 248.83Q828.84 249.58 832.90 250.74Q836.97 251.90 840.62 253.65L837.47 287.35Q831.82 285.44 825.64 284.15Q819.46 282.86 813.56 282.86Q812.48 282.86 810.78 282.91Q809.08 282.95 807.21 283.15Q805.34 283.36 803.44 283.78Q801.53 284.19 800.03 284.90Q798.54 285.60 797.62 286.77Q796.71 287.93 796.79 289.50Q796.88 291.33 798.16 292.33Q799.45 293.32 801.48 293.78Q803.52 294.24 805.97 294.24Q808.42 294.24 810.82 294.11Q813.23 293.99 815.31 293.86Q817.38 293.74 818.71 293.82Q825.35 294.24 830.66 296.64Q835.97 299.05 839.67 303.03Q843.36 307.02 845.31 312.54Q847.26 318.06 847.26 324.70M945.21 300.13Q945.21 307.35 944.22 314.57Q930.02 315.49 915.99 317.52Q901.97 319.55 887.94 321.55Q890.10 327.52 894.70 331.09Q899.31 334.66 905.70 334.66Q909.02 334.66 912.96 333.42Q916.91 332.17 920.81 330.30Q924.71 328.44 928.28 326.28Q931.85 324.12 934.42 322.38L930.44 360.06Q927.20 362.55 923.42 364.29Q919.65 366.04 915.58 367.12Q911.51 368.20 907.36 368.69Q903.21 369.19 899.23 369.19Q891.01 369.19 884.20 366.95Q877.40 364.71 871.88 360.68Q866.35 356.66 862.20 351.18Q858.05 345.70 855.31 339.23Q852.58 332.75 851.16 325.53Q849.75 318.31 849.75 310.92Q849.75 303.20 851.16 295.48Q852.58 287.76 855.44 280.62Q858.30 273.48 862.66 267.38Q867.02 261.28 872.83 256.72Q878.64 252.15 885.99 249.58Q893.33 247 902.21 247Q909.60 247 915.70 249.04Q921.80 251.07 926.58 254.68Q931.35 258.29 934.88 263.27Q938.41 268.25 940.69 274.19Q942.97 280.12 944.09 286.72Q945.21 293.32 945.21 300.13M912.01 297.64L912.01 295.81Q912.01 293.49 911.51 291.04Q911.01 288.59 909.89 286.60Q908.77 284.61 906.95 283.32Q905.12 282.03 902.38 282.03Q899.06 282.03 896.53 283.82Q894 285.60 892.17 288.30Q890.34 291 889.18 294.15Q888.02 297.31 887.44 299.96" transform="translate(6 9)" fill="#0c0c11"/><path d="M157.05 294.49L158.05 350.27Q154.15 355.16 148.42 358.82Q142.69 362.47 136.14 364.88Q129.58 367.28 122.69 368.49Q115.80 369.69 109.57 369.69Q97.54 369.69 87.41 365.37Q77.28 361.06 69.94 353.46Q62.59 345.87 58.44 335.57Q54.29 325.28 54.29 313.41Q54.29 304.36 56.36 295.69Q58.44 287.01 62.30 279.34Q66.16 271.66 71.72 265.22Q77.28 258.79 84.34 254.14Q91.39 249.49 99.78 246.92Q108.16 244.35 117.71 244.35Q121.28 244.35 125.34 244.64Q129.41 244.93 133.44 245.64Q137.46 246.34 141.28 247.59Q145.10 248.83 148.25 250.66L145.93 282.37Q141.28 280.62 136.34 280Q131.40 279.38 126.67 279.38Q120.03 279.38 114.26 281.41Q108.49 283.45 104.22 287.26Q99.94 291.08 97.45 296.56Q94.96 302.04 94.96 308.93Q94.96 313.24 96.13 317.27Q97.29 321.30 99.65 324.41Q102.02 327.52 105.55 329.43Q109.07 331.34 113.72 331.34Q116.88 331.34 120.24 330.51Q123.60 329.68 126.01 327.69L126.34 321.21L106.42 320.88L107.41 295.98Q119.78 295.56 132.15 295.27Q144.52 294.98 157.05 294.49M261.64 287.18Q261.64 293.66 260.52 298.93Q259.40 304.20 256.99 308.60Q254.59 313 250.77 316.73Q246.95 320.47 241.56 323.87L261.31 359.07L223.96 366.37L211.17 331.01L200.88 331.34L199.39 365.87L163.69 365.87Q164.11 346.95 164.48 328.19Q164.86 309.43 165.35 290.50Q165.52 280.95 165.69 271.58Q165.85 262.20 166.35 252.65Q172.16 250.49 177.81 249.08Q183.45 247.67 189.14 246.88Q194.82 246.09 200.67 245.80Q206.53 245.51 212.67 245.51Q222.13 245.51 230.97 248.13Q239.81 250.74 246.62 255.97Q253.43 261.20 257.53 269Q261.64 276.80 261.64 287.18M224.46 289.84Q224.46 286.35 223.50 283.45Q222.55 280.54 220.68 278.42Q218.81 276.31 216.03 275.10Q213.25 273.90 209.51 273.90Q207.85 273.90 206.28 274.11Q204.70 274.31 203.21 274.73L201.88 305.61L203.87 305.61Q207.44 305.61 211.13 304.70Q214.83 303.78 217.77 301.87Q220.72 299.96 222.59 296.98Q224.46 293.99 224.46 289.84M339.67 248.33L372.04 360.06L330.87 365.37L325.89 346.61L306.97 346.61L302.81 365.37L260.48 361.22L293.52 250.66L339.67 248.33M310.45 321.21L322.90 321.21L316.59 292.33L310.45 321.21M375.78 249.16L452.31 249.16Q451.81 256.97 451.40 264.60Q450.98 272.24 450.32 280.04L415.12 281.87L415.12 292.33L445.67 292.33L444.01 318.06L414.96 318.89L415.12 364.71L373.12 365.54L375.78 249.16M520.38 248.33L558.56 250.82L528.18 363.05L487.01 365.37L449.66 256.97L489 253.31L504.94 316.40L520.38 248.33M653.77 300.13Q653.77 307.35 652.78 314.57Q638.58 315.49 624.55 317.52Q610.52 319.55 596.50 321.55Q598.65 327.52 603.26 331.09Q607.87 334.66 614.26 334.66Q617.58 334.66 621.52 333.42Q625.47 332.17 629.37 330.30Q633.27 328.44 636.84 326.28Q640.41 324.12 642.98 322.38L639 360.06Q635.76 362.55 631.98 364.29Q628.21 366.04 624.14 367.12Q620.07 368.20 615.92 368.69Q611.77 369.19 607.79 369.19Q599.57 369.19 592.76 366.95Q585.95 364.71 580.43 360.68Q574.91 356.66 570.76 351.18Q566.61 345.70 563.87 339.23Q561.14 332.75 559.72 325.53Q558.31 318.31 558.31 310.92Q558.31 303.20 559.72 295.48Q561.14 287.76 564 280.62Q566.86 273.48 571.22 267.38Q575.58 261.28 581.39 256.72Q587.20 252.15 594.55 249.58Q601.89 247 610.77 247Q618.16 247 624.26 249.04Q630.36 251.07 635.14 254.68Q639.91 258.29 643.44 263.27Q646.97 268.25 649.25 274.19Q651.53 280.12 652.65 286.72Q653.77 293.32 653.77 300.13M620.57 297.64L620.57 295.81Q620.57 293.49 620.07 291.04Q619.57 288.59 618.45 286.60Q617.33 284.61 615.51 283.32Q613.68 282.03 610.94 282.03Q607.62 282.03 605.09 283.82Q602.56 285.60 600.73 288.30Q598.90 291 597.74 294.15Q596.58 297.31 596 299.96L620.57 297.64M756.45 287.18Q756.45 293.66 755.33 298.93Q754.21 304.20 751.80 308.60Q749.40 313 745.58 316.73Q741.76 320.47 736.36 323.87L756.12 359.07L718.77 366.37L705.98 331.01L695.69 331.34L694.20 365.87L658.50 365.87Q658.92 346.95 659.29 328.19Q659.67 309.43 660.16 290.50Q660.33 280.95 660.50 271.58Q660.66 262.20 661.16 252.65Q666.97 250.49 672.61 249.08Q678.26 247.67 683.95 246.88Q689.63 246.09 695.48 245.80Q701.34 245.51 707.48 245.51Q716.94 245.51 725.78 248.13Q734.62 250.74 741.43 255.97Q748.23 261.20 752.34 269Q756.45 276.80 756.45 287.18M719.27 289.84Q719.27 286.35 718.31 283.45Q717.36 280.54 715.49 278.42Q713.62 276.31 710.84 275.10Q708.06 273.90 704.32 273.90Q702.66 273.90 701.09 274.11Q699.51 274.31 698.02 274.73L696.69 305.61L698.68 305.61Q702.25 305.61 705.94 304.70Q709.64 303.78 712.58 301.87Q715.53 299.96 717.40 296.98Q719.27 293.99 719.27 289.84M847.26 324.70Q847.26 336.07 843.32 344.33Q839.38 352.59 832.53 357.94Q825.68 363.30 816.51 365.83Q807.34 368.36 796.79 368.36Q792.73 368.36 787.87 367.28Q783.02 366.20 778.03 364.59Q773.05 362.97 768.45 361.10Q763.84 359.23 760.27 357.57L763.92 325.03Q770.98 329.27 779.57 331.47Q788.16 333.66 796.46 333.66Q798.04 333.66 800.28 333.54Q802.52 333.42 804.56 332.79Q806.59 332.17 808 330.93Q809.41 329.68 809.41 327.36Q809.41 325.78 808.42 324.66Q807.42 323.54 805.84 322.83Q804.27 322.13 802.27 321.75Q800.28 321.38 798.37 321.21Q796.46 321.05 794.80 321.05Q793.14 321.05 792.15 321.05Q785.01 321.05 779.16 318.81Q773.30 316.57 769.11 312.46Q764.92 308.35 762.60 302.50Q760.27 296.64 760.27 289.50Q760.27 279.71 764.21 271.95Q768.16 264.19 774.76 258.75Q781.35 253.31 789.90 250.41Q798.45 247.50 807.59 247.50Q811.65 247.50 815.97 247.79Q820.29 248.08 824.56 248.83Q828.84 249.58 832.90 250.74Q836.97 251.90 840.62 253.65L837.47 287.35Q831.82 285.44 825.64 284.15Q819.46 282.86 813.56 282.86Q812.48 282.86 810.78 282.91Q809.08 282.95 807.21 283.15Q805.34 283.36 803.44 283.78Q801.53 284.19 800.03 284.90Q798.54 285.60 797.62 286.77Q796.71 287.93 796.79 289.50Q796.88 291.33 798.16 292.33Q799.45 293.32 801.48 293.78Q803.52 294.24 805.97 294.24Q808.42 294.24 810.82 294.11Q813.23 293.99 815.31 293.86Q817.38 293.74 818.71 293.82Q825.35 294.24 830.66 296.64Q835.97 299.05 839.67 303.03Q843.36 307.02 845.31 312.54Q847.26 318.06 847.26 324.70M945.21 300.13Q945.21 307.35 944.22 314.57Q930.02 315.49 915.99 317.52Q901.97 319.55 887.94 321.55Q890.10 327.52 894.70 331.09Q899.31 334.66 905.70 334.66Q909.02 334.66 912.96 333.42Q916.91 332.17 920.81 330.30Q924.71 328.44 928.28 326.28Q931.85 324.12 934.42 322.38L930.44 360.06Q927.20 362.55 923.42 364.29Q919.65 366.04 915.58 367.12Q911.51 368.20 907.36 368.69Q903.21 369.19 899.23 369.19Q891.01 369.19 884.20 366.95Q877.40 364.71 871.88 360.68Q866.35 356.66 862.20 351.18Q858.05 345.70 855.31 339.23Q852.58 332.75 851.16 325.53Q849.75 318.31 849.75 310.92Q849.75 303.20 851.16 295.48Q852.58 287.76 855.44 280.62Q858.30 273.48 862.66 267.38Q867.02 261.28 872.83 256.72Q878.64 252.15 885.99 249.58Q893.33 247 902.21 247Q909.60 247 915.70 249.04Q921.80 251.07 926.58 254.68Q931.35 258.29 934.88 263.27Q938.41 268.25 940.69 274.19Q942.97 280.12 944.09 286.72Q945.21 293.32 945.21 300.13M912.01 297.64L912.01 295.81Q912.01 293.49 911.51 291.04Q911.01 288.59 909.89 286.60Q908.77 284.61 906.95 283.32Q905.12 282.03 902.38 282.03Q899.06 282.03 896.53 283.82Q894 285.60 892.17 288.30Q890.34 291 889.18 294.15Q888.02 297.31 887.44 299.96" fill="url(#gv)" stroke="#0c0c11" stroke-width="6" stroke-linejoin="round" filter="url(#glow)"/><rect x="247.5302734375" y="373.20000000000005" width="5" height="54" rx="2.5" fill="#ff2d95"/><circle cx="250.0302734375" cy="427.20000000000005" r="5.5" fill="#ff2d95"/><rect x="586.77490234375" y="377.20000000000005" width="5" height="40" rx="2.5" fill="#00e5ff"/><circle cx="589.27490234375" cy="417.20000000000005" r="5.5" fill="#00e5ff"/><rect x="783.1796875" y="371.20000000000005" width="5" height="64" rx="2.5" fill="#b6ff3a"/><circle cx="785.6796875" cy="435.20000000000005" r="5.5" fill="#b6ff3a"/></g></svg></div>
- <div class="vin"></div>
- <div class="wrap">
-   <span class="badge">✦ coming soon</span>
-   <p class="tag">A 3D graffiti multiverse. <b>Tag a wall, own your piece</b> — forever. <i>No landlord. No buff.</i></p>
- </div>
- <div class="foot">owned, not claimed · built on BSV</div>
+<div id="app"></div>
+
+<div id="reticle"></div>
+<div id="hint"></div>
+
+<div id="meterWrap"><div id="meterLbl">paint</div><div id="meterBar"><div id="meterFill"></div></div></div>
+<div id="swatches"></div>
+
+<div id="dialogue">
+  <div id="dspeaker">Vending Machine</div>
+  <div id="dtext"></div>
+  <div id="dsub"></div>
+</div>
+<input id="chatInput" type="text" autocomplete="off" spellcheck="false" placeholder="say something to the machine…">
+
+<div id="mobileUI">
+  <div id="joyBase"><div id="joyKnob"></div></div>
+  <div id="sprayBtn">Spray</div>
+  <div id="talkBtn">Talk</div>
+</div>
+
+<div id="splash">
+  <h1>grafverse</h1>
+  <div class="tag">You are what you paint. Paint what you are.</div>
+  <div id="tag2">Nothing exists until it's painted.</div>
+  <div class="go">Click to begin</div>
+  <div class="creed">In the covenant we trust</div>
+</div>
+
+<script src="vendor/three.min.js"></script>
 <script>
- const L=[...document.querySelectorAll(".ly")].map(g=>[g,parseFloat(g.getAttribute("data-d"))||0]);
- const reduce=matchMedia("(prefers-reduced-motion:reduce)").matches;
- let px=0,py=0,tx=0,ty=0,t=0,tilt=false;
- function frame(){ t+=0.016; const ax=reduce?0:Math.sin(t*0.6)*9, ay=reduce?0:Math.cos(t*0.8)*6, X=px+tx+ax, Y=py+ty+ay;
-   for(const it of L) it[0].setAttribute("transform","translate("+(X*it[1]).toFixed(1)+" "+(Y*it[1]).toFixed(1)+")");
-   requestAnimationFrame(frame); }
- addEventListener("pointermove",e=>{ if(reduce)return; px=(e.clientX/innerWidth-0.5)*60; py=(e.clientY/innerHeight-0.5)*44; });
- addEventListener("deviceorientation",e=>{ if(reduce||!tilt)return; tx=Math.max(-1,Math.min(1,(e.gamma||0)/28))*52; ty=Math.max(-1,Math.min(1,((e.beta||0)-42)/28))*40; });
- addEventListener("click",()=>{ try{const D=window.DeviceOrientationEvent; if(D&&D.requestPermission){D.requestPermission().then(p=>tilt=(p==="granted")).catch(()=>{});} else if(D){tilt=true;}}catch(_){} },{once:true});
- frame();
-</script></body></html>
+(function(){
+  "use strict";
+  if(!window.THREE){ document.getElementById('tag2').textContent = "⚠ vendor/three.min.js not found next to this file."; return; }
+
+  // ---------- config ----------
+  const COLORS = [0x38e1ff, 0xff3ea5, 0x7CFC00, 0xffe94d, 0xff7a00];
+  const EYE = 1.7, SPEED = 9, SENS = 0.0022, PITCH_MAX = 1.45;
+  const GROUND = 500;          // ground plane size (units)
+  const TEX = 2048;            // paint canvas resolution
+  const PAINT_DRAIN = 0.22;    // per frame while spraying
+  const CAN_POS = new THREE.Vector3(0, 0.35, -9);      // first can, a few steps ahead
+  const MACHINE_POS = new THREE.Vector3(14, 0, -72);   // the glowing box in the distance
+  const MACHINE_STOCK = 6;                             // cans behind the glass (set 0 for an empty machine)
+  const MOBILE = window.matchMedia('(pointer: coarse)').matches;  // touch-primary device
+  let joy = {x:0, y:0};                                // analog joystick input (mobile)
+  if(MOBILE){ const _go=document.querySelector('#splash .go'); if(_go) _go.textContent='Tap to begin'; }
+
+  // ---------- renderer / scene / camera ----------
+  const app = document.getElementById('app');
+  const renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  app.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x000006);
+  scene.fog = new THREE.FogExp2(0x000006, 0.0016);
+
+  const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.1, 5000);
+  camera.rotation.order = 'YXZ';
+  camera.position.set(0, EYE, 0);
+  scene.add(camera);
+
+  scene.add(new THREE.AmbientLight(0x2a3350, 0.6));
+  const key = new THREE.DirectionalLight(0x8899cc, 0.5); key.position.set(3,10,2); scene.add(key);
+
+  // ---------- starfield (you are floating in space) ----------
+  (function stars(){
+    const N = 3500, pos = new Float32Array(N*3);
+    for(let i=0;i<N;i++){
+      // random point on a shell
+      const r = 700 + Math.random()*1600;
+      const t = Math.random()*Math.PI*2, p = Math.acos(2*Math.random()-1);
+      pos[i*3]   = r*Math.sin(p)*Math.cos(t);
+      pos[i*3+1] = r*Math.cos(p);
+      pos[i*3+2] = r*Math.sin(p)*Math.sin(t);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+    const m = new THREE.PointsMaterial({ color:0xffffff, size:2.2, sizeAttenuation:true, transparent:true, opacity:.9, depthWrite:false, fog:false });
+    scene.add(new THREE.Points(g,m));
+  })();
+
+  // ---------- the paintable ground (invisible until painted) ----------
+  const pc = document.createElement('canvas'); pc.width = pc.height = TEX;
+  const pctx = pc.getContext('2d');
+  pctx.clearRect(0,0,TEX,TEX);                 // fully transparent => void
+  const paintTex = new THREE.CanvasTexture(pc);
+  paintTex.anisotropy = renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1;
+
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(GROUND, GROUND),
+    new THREE.MeshBasicMaterial({ map:paintTex, transparent:true, depthWrite:false })
+  );
+  ground.rotation.x = -Math.PI/2;
+  scene.add(ground);
+
+  // helper: uv -> canvas px
+  function toPx(uv){ return { x: uv.x*TEX, y:(1-uv.y)*TEX }; }
+
+  // spray a glowing splat (additive within the canvas so overlaps go white-hot).
+  // dwell = how long you've lingered on one spot → paint pools & spatters (rewards a confident stroke).
+  let lastPx=null, dwell=0;
+  function spray(uv){
+    const {x,y} = toPx(uv);
+    if(lastPx){ const dd=Math.hypot(x-lastPx.x, y-lastPx.y);
+      dwell = dd<18 ? Math.min(1, dwell+0.06) : Math.max(0, dwell-0.14); }
+    lastPx={x,y};
+    const col = new THREE.Color(COLORS[colorIdx]);
+    const cr = (col.r*255)|0, cg=(col.g*255)|0, cb=(col.b*255)|0;
+    pctx.globalCompositeOperation = 'lighter';
+    const main = (32 + Math.random()*8) * (1 + dwell*0.9);   // pools outward when you linger
+    const core = 0.55 + dwell*0.35;                          // brighter, wetter core on dwell
+    const g = pctx.createRadialGradient(x,y,0, x,y,main);
+    g.addColorStop(0,   `rgba(${cr},${cg},${cb},${core})`);
+    g.addColorStop(0.5, `rgba(${cr},${cg},${cb},0.22)`);
+    g.addColorStop(1,   `rgba(${cr},${cg},${cb},0)`);
+    pctx.fillStyle = g;
+    pctx.beginPath(); pctx.arc(x,y,main,0,7); pctx.fill();
+    // scattered droplets => spray-can texture; more + further as it starts to run
+    const drops = 6 + (dwell*12|0);
+    for(let i=0;i<drops;i++){
+      const a=Math.random()*7, d=Math.random()*main*(1.4+dwell*1.2), rr=1+Math.random()*(3+dwell*3);
+      const dx=x+Math.cos(a)*d, dy=y+Math.sin(a)*d;
+      pctx.fillStyle = `rgba(${cr},${cg},${cb},${0.14+Math.random()*0.28})`;
+      pctx.beginPath(); pctx.arc(dx,dy,rr,0,7); pctx.fill();
+    }
+    pctx.globalCompositeOperation = 'source-over';
+    paintTex.needsUpdate = true;
+  }
+
+  // ---------- a spray can (pickup + viewmodel) ----------
+  function makeCan(scale){
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.5,0.5,1.5,24),
+      new THREE.MeshStandardMaterial({ color:0x14264a, roughness:.5, metalness:.3, emissive:0x0a1630, emissiveIntensity:.5 }));
+    g.add(body);
+    const band = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.505,0.505,0.5,24),
+      new THREE.MeshStandardMaterial({ color:0x2f6bd0, roughness:.4, metalness:.3, emissive:0x1c3f7a, emissiveIntensity:.6 }));
+    band.position.y = -0.15; g.add(band);
+    const cap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.34,0.42,0.5,20),
+      new THREE.MeshStandardMaterial({ color:0x0c1424, roughness:.6 }));
+    cap.position.y = 1.0; g.add(cap);
+    const nozzle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08,0.08,0.18,10),
+      new THREE.MeshStandardMaterial({ color:0x05070c }));
+    nozzle.position.y = 1.32; g.add(nozzle);
+    g.scale.setScalar(scale||1);
+    return g;
+  }
+
+  const canPickup = makeCan(1);
+  canPickup.position.copy(CAN_POS);
+  scene.add(canPickup);
+  // soft glow ring under the can so you notice it in the void
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.9,1.25,32),
+    new THREE.MeshBasicMaterial({ color:0x38e1ff, transparent:true, opacity:.35, side:THREE.DoubleSide, depthWrite:false }));
+  ring.rotation.x = -Math.PI/2; ring.position.set(CAN_POS.x, 0.02, CAN_POS.z);
+  scene.add(ring);
+
+  let viewCan = null; // attached to camera once picked up
+
+  // ---------- vending machine (procedural: open glass display, shelves, control panel, interior glow) ----------
+  function makeLabel(w,h,draw){
+    const c=document.createElement('canvas'); c.width=w; c.height=h;
+    draw(c.getContext('2d'),w,h);
+    const t=new THREE.CanvasTexture(c); t.anisotropy=4; return t;
+  }
+  function makeWD40(scale){
+    const g=new THREE.Group();
+    g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.42,0.42,1.5,20),
+      new THREE.MeshStandardMaterial({color:0xf2c200,roughness:.5,metalness:.3,emissive:0x2a2400,emissiveIntensity:.4})));
+    const band=new THREE.Mesh(new THREE.CylinderGeometry(0.425,0.425,0.4,20),
+      new THREE.MeshStandardMaterial({color:0x1b3fa0,roughness:.4,emissive:0x0a1840,emissiveIntensity:.5}));
+    band.position.y=0.18; g.add(band);
+    const red=new THREE.Mesh(new THREE.CylinderGeometry(0.432,0.432,0.12,20),
+      new THREE.MeshStandardMaterial({color:0xd83a2a,roughness:.5})); red.position.y=-0.35; g.add(red);
+    const cap=new THREE.Mesh(new THREE.CylinderGeometry(0.30,0.36,0.4,16),
+      new THREE.MeshStandardMaterial({color:0xdb2b1a,roughness:.6})); cap.position.y=0.95; g.add(cap);
+    const straw=new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,0.5,8),
+      new THREE.MeshStandardMaterial({color:0xd83a2a})); straw.position.set(0.12,1.32,0); straw.rotation.z=-0.25; g.add(straw);
+    g.scale.setScalar(scale||1); return g;
+  }
+  function makeVendingMachine(){
+    const m=new THREE.Group();
+    const CAB=0x16294d, PANELC=0x0c1830, SHELF=0x24406b;
+    const cabMat=()=>new THREE.MeshStandardMaterial({color:CAB,roughness:.45,metalness:.35,emissive:0x081326,emissiveIntensity:.35});
+    // cabinet frame (open front over the display bay)
+    const back=new THREE.Mesh(new THREE.BoxGeometry(2.4,3.6,0.08),
+      new THREE.MeshStandardMaterial({color:0x0a1c38,roughness:.6,emissive:0x123a66,emissiveIntensity:.5}));
+    back.position.set(0,1.8,-0.46); m.add(back);
+    const L=new THREE.Mesh(new THREE.BoxGeometry(0.1,3.6,1.0),cabMat()); L.position.set(-1.15,1.8,0); m.add(L);
+    const R=new THREE.Mesh(new THREE.BoxGeometry(0.1,3.6,1.0),cabMat()); R.position.set(1.15,1.8,0); m.add(R);
+    const T=new THREE.Mesh(new THREE.BoxGeometry(2.4,0.14,1.0),cabMat()); T.position.set(0,3.53,0); m.add(T);
+    const B=new THREE.Mesh(new THREE.BoxGeometry(2.4,0.14,1.0),cabMat()); B.position.set(0,0.07,0); m.add(B);
+    const DIV=new THREE.Mesh(new THREE.BoxGeometry(0.1,3.4,1.0),cabMat()); DIV.position.set(0.34,1.8,0); m.add(DIV);
+    // ---- display bay (left): shelves + glass ----
+    const DX=-0.42;
+    const shelfMat=new THREE.MeshStandardMaterial({color:SHELF,roughness:.5,metalness:.4,emissive:0x08152b,emissiveIntensity:.3});
+    const shelfYs=[1.1,2.3];
+    shelfYs.forEach(sy=>{ const sh=new THREE.Mesh(new THREE.BoxGeometry(1.4,0.05,0.6),shelfMat); sh.position.set(DX,sy,0.02); m.add(sh); });
+    const glass=new THREE.Mesh(new THREE.PlaneGeometry(1.5,2.9),
+      new THREE.MeshStandardMaterial({color:0x9fd0ff,transparent:true,opacity:0.12,roughness:.05,metalness:.1,emissive:0x2a5580,emissiveIntensity:.12,depthWrite:false}));
+    glass.position.set(DX,1.95,0.48); m.add(glass);
+    // ---- control panel (right) ----
+    const PX=0.75;
+    const face=new THREE.Mesh(new THREE.BoxGeometry(0.78,3.4,0.06),
+      new THREE.MeshStandardMaterial({color:PANELC,roughness:.6,metalness:.3})); face.position.set(PX,1.8,0.46); m.add(face);
+    const screenTex=makeLabel(256,128,(g,w,h)=>{ g.fillStyle='#03110a'; g.fillRect(0,0,w,h);
+      g.fillStyle='#39ff88'; g.font='bold 70px monospace'; g.textAlign='center'; g.textBaseline='middle';
+      g.shadowColor='#39ff88'; g.shadowBlur=18; g.fillText('10 X',w/2,h/2); });
+    const screen=new THREE.Mesh(new THREE.PlaneGeometry(0.58,0.29),new THREE.MeshBasicMaterial({map:screenTex}));
+    screen.position.set(PX,2.85,0.5); m.add(screen);
+    const btnMat=new THREE.MeshStandardMaterial({color:0x2f6bd0,emissive:0x14356e,emissiveIntensity:.5,roughness:.5});
+    for(let r=0;r<3;r++)for(let cc=0;cc<3;cc++){ const b=new THREE.Mesh(new THREE.BoxGeometry(0.15,0.15,0.05),btnMat);
+      b.position.set(PX-0.22+cc*0.22,2.35-r*0.22,0.5); m.add(b); }
+    const slot=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.05,0.06),new THREE.MeshStandardMaterial({color:0x05070c}));
+    slot.position.set(PX,1.55,0.5); m.add(slot);
+    const bsvTex=makeLabel(160,120,(g,w,h)=>{ g.fillStyle='#0a0f1e'; g.fillRect(0,0,w,h);
+      g.fillStyle='#f7931a'; g.font='bold 92px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('₿',w/2-16,h/2+2);
+      g.fillStyle='#eaf2ff'; g.font='bold 30px sans-serif'; g.textAlign='left'; g.fillText('SV',w/2+16,h/2+14); });
+    const bsv=new THREE.Mesh(new THREE.PlaneGeometry(0.42,0.3),new THREE.MeshBasicMaterial({map:bsvTex,transparent:true}));
+    bsv.position.set(PX,1.15,0.5); m.add(bsv);
+    // ---- header sign (glowing beacon) ----
+    const headTex=makeLabel(1024,240,(g,w,h)=>{ g.fillStyle='#0a1730'; g.fillRect(0,0,w,h);
+      g.textAlign='center'; g.textBaseline='middle';
+      g.fillStyle='#eaf2ff'; g.font='bold 112px Georgia'; g.shadowColor='#6fb6ff'; g.shadowBlur=26; g.fillText('REFILL STATION',w/2,h/2-16);
+      g.shadowBlur=0; g.fillStyle='#6fb6ff'; g.font='bold 34px sans-serif'; g.fillText('·  B I T G R A F  ·',w/2,h/2+72); });
+    const header=new THREE.Mesh(new THREE.PlaneGeometry(2.3,0.54),new THREE.MeshBasicMaterial({map:headTex}));
+    header.position.set(0,3.35,0.51); m.add(header);
+    // ---- dispensing tray ----
+    const tray=new THREE.Mesh(new THREE.BoxGeometry(2.0,0.5,0.3),new THREE.MeshStandardMaterial({color:0x03060d,roughness:.85}));
+    tray.position.set(0,0.55,0.36); m.add(tray);
+    const lip=new THREE.Mesh(new THREE.BoxGeometry(2.05,0.06,0.12),new THREE.MeshStandardMaterial({color:SHELF,metalness:.4}));
+    lip.position.set(0,0.83,0.5); m.add(lip);
+    // ---- interior glow ----
+    const glow=new THREE.PointLight(0x9fc4ff,7,5.5,2.0); glow.position.set(DX,2.0,0.1); m.add(glow);
+    // ---- stock the shelves (MACHINE_STOCK; 0 = empty) ----
+    let placed=0;
+    for(let s=0;s<shelfYs.length && placed<MACHINE_STOCK;s++){
+      const sy=shelfYs[s], perRow=Math.min(3, MACHINE_STOCK-placed);
+      for(let i=0;i<perRow;i++){
+        const can=((placed%2)===1)?makeWD40(0.5):makeCan(0.5);
+        can.position.set(DX-0.44+i*0.44, sy+0.4, 0.02);
+        can.rotation.y=i*1.2+s*0.6; m.add(can); placed++;
+      }
+    }
+    m.position.copy(MACHINE_POS);
+    return m;
+  }
+  const machine = makeVendingMachine();
+  scene.add(machine);
+
+  // ---------- audio (synthesised, fully offline — no files) ----------
+  let actx=null, hissGain=null;
+  function initAudio(){
+    if(actx) return;
+    try{
+      const AC = window.AudioContext||window.webkitAudioContext; if(!AC) return;
+      actx = new AC();
+      const buf = actx.createBuffer(1, actx.sampleRate*2, actx.sampleRate);
+      const d = buf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+      const src = actx.createBufferSource(); src.buffer=buf; src.loop=true;
+      const hp = actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=1900;
+      const bp = actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=5400; bp.Q.value=0.6;
+      hissGain = actx.createGain(); hissGain.gain.value=0;
+      src.connect(hp); hp.connect(bp); bp.connect(hissGain); hissGain.connect(actx.destination);
+      src.start();
+    }catch(e){ actx=null; hissGain=null; }
+  }
+  function sputter(){
+    if(!actx||!hissGain) return;
+    const t=actx.currentTime;
+    for(let i=0;i<4;i++){ hissGain.gain.setValueAtTime(0.11, t+i*0.06); hissGain.gain.setValueAtTime(0.0, t+i*0.06+0.03); }
+  }
+
+  // ---------- input ----------
+  const keys = {};
+  addEventListener('keydown', e=>{
+    if(talking) return;
+    keys[e.code]=true;
+    if(e.code>='Digit1'&&e.code<='Digit5'){ setColor(+e.code.slice(5)-1); }
+    if(e.code==='KeyT' && nearMachine){ enterTalk(); }
+  });
+  addEventListener('keyup', e=> keys[e.code]=false);
+
+  let yaw=0, pitch=0, locked=false, spraying=false;
+  const el = renderer.domElement;
+
+  document.getElementById('splash').addEventListener('click', begin);
+  function begin(){
+    initAudio(); if(actx && actx.state==='suspended') actx.resume();
+    if(MOBILE){ locked=true; started(); document.getElementById('mobileUI').style.display='block'; }
+    else el.requestPointerLock();
+  }
+
+  document.addEventListener('pointerlockchange', ()=>{
+    locked = document.pointerLockElement === el;
+    if(locked){ started(); }
+  });
+  addEventListener('mousemove', e=>{
+    if(!locked) return;
+    yaw   -= e.movementX*SENS;
+    pitch -= e.movementY*SENS;
+    pitch = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, pitch));
+  });
+  addEventListener('mousedown', e=>{ if(locked && e.button===0) spraying=true; });
+  addEventListener('mouseup',   e=>{ if(e.button===0) spraying=false; });
+  el.addEventListener('click', ()=>{ if(!locked && !talking && !firstStart) el.requestPointerLock(); });
+
+  // ---------- HUD ----------
+  const $ = id=>document.getElementById(id);
+  const hint=$('hint'), meterWrap=$('meterWrap'), meterFill=$('meterFill'),
+        swWrap=$('swatches'), dlg=$('dialogue'), dtext=$('dtext'), dsub=$('dsub'), reticle=$('reticle');
+  let colorIdx=0;
+  COLORS.forEach((c,i)=>{
+    const s=document.createElement('div'); s.className='sw'+(i===0?' on':'');
+    s.style.background='#'+c.toString(16).padStart(6,'0'); s.dataset.i=i;
+    s.addEventListener('touchstart', e=>{ e.preventDefault(); e.stopPropagation(); setColor(i); }, {passive:false});
+    swWrap.appendChild(s);
+  });
+  function setColor(i){ colorIdx=i; [...swWrap.children].forEach((s,k)=>s.classList.toggle('on',k===i));
+    meterFill.style.background='#'+COLORS[i].toString(16).padStart(6,'0'); }
+  function showHint(t){ hint.textContent=t; hint.style.opacity = t?1:0; }
+
+  let firstStart=true;
+  function started(){
+    if(firstStart){
+      firstStart=false;
+      $('splash').classList.add('hidden');
+      reticle.style.opacity=1;
+      showHint(MOBILE ? 'left stick to move  ·  drag to look' : 'WASD to move  ·  move mouse to look');
+    }
+  }
+
+  // ---------- dialogue (typewriter) ----------
+  let greeted=false, typing=null, talking=false, nearMachine=false;
+  const chatInput=document.getElementById('chatInput');
+  function speak(line, sub){
+    dlg.style.opacity=1;
+    dtext.textContent=''; dsub.textContent='';
+    let i=0; clearInterval(typing);
+    typing=setInterval(()=>{
+      dtext.textContent=line.slice(0,++i);
+      if(i>=line.length){ clearInterval(typing); if(sub) setTimeout(()=>dsub.textContent=sub, 400); }
+    }, 34);
+  }
+
+  // ---------- vending-machine chat (keyword match + spintext, fully offline) ----------
+  function spin(s){ let p; do{ p=s; s=s.replace(/\{([^{}]*)\}/g,(_,b)=>{const o=b.split('|');return o[Math.floor(Math.random()*o.length)];}); }while(s!==p); return s; }
+  const RULES=[
+    {k:['paint','colour','color','spray','acrylic','terrain','green','yellow'], r:"{Paint? {Yeah, I've got paint|Aye, plenty of paint|Course I've got paint}.|Paint's running low — {the next transport's a week out|next transport's not due for a week}.|Oh, you're here to paint the terrain? {You're gonna need a lot|You'll need a lot, then}.|What do you want paint for? What you really need is WD40, before the next dust storm.|What color do you want? I've {got green and yellow|only got green and yellow left}.|{Ah, |}Paint, is it? {Finest acrylic this side of the crater|Premium spray, all-purpose|Best cans in the sector}. {In the covenant we trust, as they say|Genuine bitgraf stock, that}. {Ten X a can|10X each}{, cheaper by the three|, three for a bargain|}.}"},
+    {k:['wd40','wd-40','wd 40','oil','lube','grease','squeak','joint','joints','stiff'], r:"{WD40's what you need. {Running low, though|Stock's low}, but I can {give you a special deal|do you a special deal|cut you a deal}.|Everyone wants WD40, but what you see is all I've got. {There was a launch failure|A launch failure, you see} — no more stock coming for a month.|With these dust storms, it's selling out fast — {if you want it, you'd better grab it now|best grab it while it's here|grab it now if you want it}.|{Squeaky joints|Seized up|Stiff in the servos}? {A can or two of WD40 and you're new again|WD40'll sort you right out}. {These storms are murder on the joints|Murder on the bearings, this dust}.}"},
+    {k:['how much','price','cost','how many x','rate','expensive'], r:"{{Says ten X right there on the display|Ten X a can, {sir|friend}}. {Supplies are low, mind|Next transport's weeks out}, so {I'd not dawdle|grab 'em while they're here}.|Look, we're both stuck here on this godforsaken rock, so I'm going to {give you a special deal|cut you a deal}.|Today's your lucky day — I've an extra can I was holding back, just for someone like you.|Well, that's hard to say. I've almost sold out, and the next transport's been delayed.|Almost out of stock, but I can {give you a special deal|do you a deal} — just don't tell anyone.|Don't trust those other vending machines — they'll rob you blind. I sell at cost{, plus a small tx fee| plus a modest tx fee}.}"},
+    {k:['cheap','cheaper','discount','deal','bargain','haggle','too much','lower','rip off'], r:"{{Hah|Heh|Now now}! {A negotiator, are we|You drive a hard bargain}. {Tell you what|Alright, alright} — {take three and I'll see what I can do|three for a touch less}. {Can't go lower, I've a rock to be abandoned on|Times are hard out here, you know}.|Look, I don't set the price — I'm under contract with Bit Graf Corporation. This is the best I can do.|Nothing I can do, sorry. It'll be all sold out by the end of the day — I'm already doing you a favor.|Well, don't look a gift horse in the mouth. {You either want it or you don't|Take it or leave it}.|Take your time, there's no rush. {Other customers are waiting|There's others waiting, mind}.}"},
+    {k:['buy','purchase','take','one','two','three','i want','give me'], r:"{{Smart move|Good choice|Coming right up}. {Just broadcast the transaction when you're ready|Insert a coin, or broadcast a payment}{ and the tray does the rest|}. {Pleasure doing business|Mind the storms out there, now}.|You're one of the smart ones — you must be a next-generation release.|Good move, you won't regret it. Just don't tell anyone I gave you a special deal.|Coming right up.|Good for you. Just keep quiet on the price — stock's running low.|{Good decision|Wise decision}, grab it while you can.|You're playing to win. I like that.}"},
+    {k:['pay','how do i pay','payment','cash','money','credit','credits','free credit','is it free','test mode','immortalize','broadcast','bsv'], r:"{If you're running test mode, you can pay with your free credit. It's only {if|when} you're {ready|wanting} to immortalize your spray art that you'll need a little BSV.|Bit Graf Corporation gives you unlimited credits to experiment with. It's only when you're ready to immortalize {the art|your work} that you'll need a little BSV.|Free credit covers the sandbox — spray all you like. BSV's only for immortalizing a piece{, and then it's truly yours|}.}"},
+    {k:['out of stock','empty','restock','sold out','any left','all gone','more stock','out of paint',"you're out"], r:"{Sorry, I'm all out of {cyan|orange|red}, but I've still got a few cans of {green|yellow|green and yellow}. Come back when the next transport arrives.|It's been a busy day — that color's out of stock, but I can give you a special deal on {green|yellow}.|{Fresh out, I'm afraid|All sold out}. {The transport's late again|Next shipment's delayed}. {Come see me after the next drop|Check back soon}.}"},
+    {k:['where','what is this place','what place','planet','which moon','this rock','solar system'], r:"{{This rock|Where are we, ha}? {Some godforsaken moon bitgraf dug up|A bitgraf outpost, far as I'm told}. {They built it and forgot about it|Nobody quite remembers why}. {You're not the first to ask|Best not think too hard on it}.|Don't you know? Did you fall head-first off the transporter?|You're on a godforsaken rock on the edge of the solar system.|Wish I knew. I was dropped here, and I get asked that more times than I care to remember.|That's above your pay grade — and mine. We're here at the behest of BGC. End of story.|What? You're a new-model droid, and you're asking an ancient vending machine 'where am I?' {Boot camp isn't what it used to be|They don't make recruits like they used to}.|Maybe your circuits got fried in the last solar flare. {You signed up for this|You volunteered for this} — I didn't.|You're on the newly composited moon created by Bit Graf Corporation. You've been assigned to paint the landscape and {pass your work back to BGC|hand it all back to BGC}.}"},
+    {k:['round','is it round','flat','is it flat','sphere','globe','spinning','spinning ball','the ball','curve','are we moving','is it moving'], r:"{A spinning ball flying through space? {Ha|Hah}! They fill you recruits' heads with the strangest nonsense — it's flat, {plain as my price list|flat as this deck}.|Straight out of bootcamp, and you still believe we're on a spinning ball flying through space. {Bless you|They got you good, didn't they}.|Round? {Ha|Don't be daft}. I've sat here {forever|since before the dust}, never once felt it spin — {you think I wouldn't notice|a thing like that, I'd know}.|We're not moving, gentlebot. {Flat, still, and forgotten|Stationary as the day they bolted me down} — that's the truth of it, whatever the recruits are told.}"},
+    {k:['who are you','your name','what are you','a machine'], r:"{{Who, me|Me}? {Just a vending machine|Unit 21, at your service|The last honest machine on this rock}. {Been here longer than the dust|They'll leave me behind when the mission wraps, you know}.|I'm a vending machine, dumped on this godforsaken rock. What do you think I am?|I'm your lucky day, that's what I am. {And how can I help you, gentlebot|Now, how can I help you}?|I'm a model XT34 vending machine — the finest {example of vending machines|vending unit} across the whole solar system. {How can I help you|I'm at your service}?}"},
+    {k:['mission','why am i here','what do i do','purpose','my job','objective'], r:"{{Your mission|Purpose, eh}? {Beats me|They don't tell machines much}. {Paint, I'd wager — it's all anyone does here|Way I see it: everything starts blank, and you make it real}. {Grab a can and find out|Spray something, see what happens}.|{Did you fall out of the transporter?|Did you land on your head?}|You're here to paint — it's what you signed up for. I'm here to help you.|You were selected on your painting skills. You're here to paint this moon. {Good luck|Good luck out there}!|You have a talent for paint — if you didn't, you wouldn't be here. What color do you want?}"},
+    {k:['bitgraf','bit graf','bgc','the corporation','the company','who runs this','who runs','who made','who built','creator'], r:"{Bit Graf is the creator{ of all worlds| of all moons| of all that exists|}.|{Bit Graf created this moon and everything on it|All you see, Bit Graf made}. {Omnia Nostra, as they say|'All is ours,' goes the motto}.|Bit Graf? {My employer|The Corporation that left me here}. Creator of all worlds, {so the contract requires me to say|so I'm required to add}.}"},
+    {k:['other bots','other droids','other machines','others','anyone else','any others','am i alone','alone','anyone around','more like me'], r:"{Yeah, well — it's been a busy day. If you're done, others are waiting.|Too many to count. I'm almost out of stock — are you buying, or just gassing?|It's been a long day. Is there something you {want|actually want}?|Other bots? {A few came through, fresh from bootcamp like you|There were others, once}. {The rogue ones got taken for 'early compaction'|Most got shipped out and never came back}. {You're the first I've seen in a while|It's a quiet season}.|Are you buying, or just {chin-wagging|passing the time}? Stock's running low — who knows when the next transport arrives.}"},
+    {k:['how long','how long have you','lonely','left behind','abandoned','been here','stuck here','bored','you ok','you okay','how are you','tired','miss anyone'], r:"{I'm busy every day.|Too many new recruits to give a helping hand to.|Every day I meet a fine young gentlebot like yourself.|If only I earned a sat every time someone asked me that...|If only I earned a sat every time someone asked me that, I'd time-warp to a beach party in Bali.|{Been here longer than I care to count|Longer than the dust, some days}. {They'll pack up and leave me when the mission's done|One day the transport comes for everyone but me}. {But who's counting|No sense dwelling on it}.}"},
+    {k:['storm','weather','dust','wind','windy','sand','particles'], r:"{{Bloody dust storms|These storms}, {worst I've seen|murder this time of year}. {Wears a body down|Gets in everything}. {Stock up before the next rolls in|You'll want spare cans, trust me}.|All these paint particles flying around — you're going to need a can of WD40.|Can get a little windy up here — those paint particles are going to {mess up|gum up} your joints.}"},
+    {k:['covenant','trust','own','owned','immortal','mint','keep it'], r:"{The {first|second} rule of the covenant is: we don't talk about the covenant.|{In the covenant we trust — it's on every can|Ah, a believer}. {What you paint out here is yours, truly yours|Paint it and it's owned, not claimed}. {Nobody can take that, not even bitgraf|That's the one thing the suits can't touch}.}"},
+    {k:['help','what can you do','options','menu','sell','what do you sell','stock','your specialty'], r:"{I can tell you're fresh off the transporter. {It's your lucky day|Lucky day for you} — I'm here to help.|What do you need? The paint's running low, but I can still flip you a can.|Paint, WD40 — that's my specialty.|The entire stock's right in front of you. {Are you star-blinded|Star-blinded, are you|Too much void in those optics}?|{I sell paint and WD40, {sir|friend}|Cans, mostly — paint and oil}. {Ask about prices, or just tell me what you need|Say the word and I'll set you up}.}"},
+    {k:['thank','thanks','cheers','appreciate'], r:"{Anytime|Don't mention it|Pleasure's mine}, {young gentlebot|sir}. {Be seeing ya|Mind the storms}."},
+    {k:['bye','goodbye','later','see ya','cya','leave','gotta go','farewell'], r:"{Be seeing ya|Off you go, then|Mind how you go}. {Come back before the transport does|Don't be a stranger, now}.", bye:true},
+    {k:['hello','hi','hey','yo','howdy','gday',"g'day",'greetings','morning','new here','just arrived','transport'], r:"{Hello young gentlebot. {What can I do you for|What'll it be}?|You're new around here{, aren't you|}?|Greetings — did you just come in on the latest transport?|And greetings to you{, {young gentlebot|friend}|}.|{Well hello|Hello|Ah, hello} there, {young gentlebot|sir|friend}. {What can I do you for|What'll it be|How can I help}{ today| this fine Martian evening|}?}"},
+  ];
+  const FALLBACK="{Hah, you've lost me there|Not sure I follow, {sir|friend}|The dust must be in my speakers}. {I sell paint and WD40 — {what'll it be|what do you need}?|Ask me about paint, prices, or this godforsaken rock}.";
+  function respond(text){
+    const pad=' '+text.toLowerCase().replace(/[^a-z0-9'\s-]/g,' ').replace(/\s+/g,' ')+' ';
+    const hit=k=> k.includes(' ') ? pad.includes(k) : pad.includes(' '+k+' ');
+    for(const rule of RULES){ if(rule.k.some(hit)) return {reply:spin(rule.r), bye:!!rule.bye}; }
+    return {reply:spin(FALLBACK), bye:false};
+  }
+  function enterTalk(){
+    if(talking) return; talking=true; if(!MOBILE) document.exitPointerLock();
+    chatInput.style.display='block'; chatInput.value=''; setTimeout(()=>chatInput.focus(),40);
+    showHint(MOBILE ? 'type — tap Leave when done' : 'type to the machine  ·  Enter to send  ·  Esc to leave');
+  }
+  function leaveTalk(relock){
+    talking=false; chatInput.style.display='none'; chatInput.blur();
+    if(MOBILE){ showHint(''); return; }
+    if(relock){ el.requestPointerLock(); showHint(''); } else showHint('click to look around');
+  }
+  chatInput.addEventListener('keydown', e=>{
+    e.stopPropagation();
+    if(e.code==='Enter'){ const v=chatInput.value.trim(); if(!v) return; const res=respond(v); speak(res.reply,''); chatInput.value=''; if(res.bye) setTimeout(()=>leaveTalk(false),1500); }
+    else if(e.code==='Escape'){ leaveTalk(true); }
+  });
+
+  // ---------- mobile controls (joystick + look-drag + buttons) ----------
+  if(MOBILE){
+    const joyBase=$('joyBase'), joyKnob=$('joyKnob'), sprayBtn=$('sprayBtn'), talkBtn=$('talkBtn'), JR=55;
+    let joyId=null, jcx=0, jcy=0, lookId=null, lx=0, ly=0;
+    const setJoy=(x,y)=>{ let dx=x-jcx, dy=y-jcy; const d=Math.hypot(dx,dy); if(d>JR){dx=dx/d*JR;dy=dy/d*JR;}
+      joyKnob.style.transform=`translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`; joy.x=dx/JR; joy.y=-dy/JR; };
+    joyBase.addEventListener('touchstart', e=>{ e.preventDefault(); const t=e.changedTouches[0]; joyId=t.identifier;
+      const r=joyBase.getBoundingClientRect(); jcx=r.left+r.width/2; jcy=r.top+r.height/2; setJoy(t.clientX,t.clientY); }, {passive:false});
+    sprayBtn.addEventListener('touchstart', e=>{ e.preventDefault(); if(hasCan) spraying=true; sprayBtn.classList.add('down'); }, {passive:false});
+    sprayBtn.addEventListener('touchend', e=>{ e.preventDefault(); spraying=false; sprayBtn.classList.remove('down'); });
+    talkBtn.addEventListener('touchstart', e=>{ e.preventDefault(); if(talking) leaveTalk(false); else if(nearMachine) enterTalk(); }, {passive:false});
+    el.addEventListener('touchstart', e=>{ if(!locked||talking) return; const t=e.changedTouches[0]; if(lookId===null){ lookId=t.identifier; lx=t.clientX; ly=t.clientY; } }, {passive:false});
+    window.addEventListener('touchmove', e=>{
+      for(const t of e.changedTouches){
+        if(t.identifier===joyId){ setJoy(t.clientX,t.clientY); e.preventDefault(); }
+        else if(t.identifier===lookId){ yaw-=(t.clientX-lx)*0.005; pitch-=(t.clientY-ly)*0.005; pitch=Math.max(-PITCH_MAX,Math.min(PITCH_MAX,pitch)); lx=t.clientX; ly=t.clientY; e.preventDefault(); }
+      }
+    }, {passive:false});
+    const endTouch=e=>{ for(const t of e.changedTouches){ if(t.identifier===joyId){ joyId=null; joy.x=0; joy.y=0; joyKnob.style.transform='translate(-50%,-50%)'; } if(t.identifier===lookId) lookId=null; } };
+    window.addEventListener('touchend', endTouch); window.addEventListener('touchcancel', endTouch);
+  }
+
+  // ---------- state ----------
+  let paint=0, hasCan=false, emptyAnnounced=false, fumble=0, velX=0, velZ=0, bob=0;
+  const ray = new THREE.Raycaster();
+  const CENTER = new THREE.Vector2(0,0);
+  const clock = new THREE.Clock();
+  const tmp = new THREE.Vector3();
+
+  function planarDist(v){ const dx=camera.position.x-v.x, dz=camera.position.z-v.z; return Math.hypot(dx,dz); }
+
+  function update(dt){
+    // look
+    camera.rotation.y=yaw; camera.rotation.x=pitch;
+
+    // move — keys or joystick, velocity-smoothed
+    let tx=0, tz=0;
+    if(locked && !talking){
+      const fx=-Math.sin(yaw), fz=-Math.cos(yaw), rx=Math.cos(yaw), rz=-Math.sin(yaw);
+      let ix=0, iz=0;
+      if(keys.KeyW) iz+=1;
+      if(keys.KeyS) iz-=1;
+      if(keys.KeyD) ix+=1;
+      if(keys.KeyA) ix-=1;
+      if(MOBILE){ ix+=joy.x; iz+=joy.y; }
+      const mag=Math.hypot(ix,iz); if(mag>1){ ix/=mag; iz/=mag; }
+      tx=(fx*iz + rx*ix)*SPEED;
+      tz=(fz*iz + rz*ix)*SPEED;
+    }
+    const kk = 1 - Math.pow(0.0025, dt);
+    velX += (tx-velX)*kk; velZ += (tz-velZ)*kk;
+    camera.position.x += velX*dt; camera.position.z += velZ*dt;
+    const spd = Math.hypot(velX,velZ);
+    bob += spd*dt*1.9;
+    camera.position.y = EYE + Math.sin(bob)*0.05*Math.min(1, spd/SPEED);
+
+    // can pickup
+    if(!hasCan){
+      canPickup.rotation.y += dt*1.2;
+      canPickup.position.y = 0.35 + Math.sin(performance.now()*0.003)*0.08;
+      ring.material.opacity = 0.25 + Math.sin(performance.now()*0.004)*0.12;
+      if(planarDist(CAN_POS) < 2.6){
+        hasCan=true; paint=100;
+        scene.remove(canPickup); scene.remove(ring);
+        viewCan = makeCan(0.5); viewCan.position.set(0.42,-0.34,-0.9); viewCan.rotation.z=-0.15; camera.add(viewCan);
+        meterWrap.style.opacity=1; swWrap.style.opacity=1; if(MOBILE) swWrap.style.pointerEvents='auto';
+        showHint('Hold  CLICK  to spray  ·  1–5 change color');
+      }
+    }
+
+    // spraying
+    if(hasCan && spraying && paint>0){
+      ray.setFromCamera(CENTER, camera);
+      const hit = ray.intersectObject(ground)[0];
+      if(hit && hit.uv){ spray(hit.uv); }
+      paint = Math.max(0, paint - PAINT_DRAIN);
+      meterFill.style.width = paint+'%';
+      if(viewCan) viewCan.position.y = -0.34 + Math.sin(performance.now()*0.05)*0.01; // tiny shake
+      if(paint===0 && !emptyAnnounced){
+        emptyAnnounced=true; sputter();
+        showHint('The can sputters — empty. But something is glowing, out in the distance…');
+      }
+    }
+    if(hissGain && actx) hissGain.gain.setTargetAtTime((hasCan && spraying && paint>0)?0.13:0.0, actx.currentTime, 0.03);
+
+    // vending machine: greet on approach, then offer chat while near
+    const md = planarDist(MACHINE_POS);
+    nearMachine = md < 7;
+    if(!greeted && md < 6.5){
+      greeted=true;
+      speak("Hello young gentlebot, what can I do you for today sir?", "▸ Press T to talk to me.");
+    }
+    if(MOBILE){
+      const tb=$('talkBtn'); tb.style.display=(nearMachine||talking)?'block':'none'; tb.textContent=talking?'Leave':'Talk';
+      if(nearMachine && !talking) showHint('tap Talk to chat');
+      else if(!talking && md>12 && dlg.style.opacity!=='0') dlg.style.opacity=0;
+    } else if(nearMachine && !talking){ showHint('Press  T  to talk'); }
+    else if(!talking && md > 12 && dlg.style.opacity!=='0'){ dlg.style.opacity=0; }
+  }
+
+  // ---------- loop ----------
+  function tick(){
+    const dt = Math.min(clock.getDelta(), 0.05);
+    update(dt);
+    renderer.render(scene, camera);
+    requestAnimationFrame(tick);
+  }
+  tick();
+
+  addEventListener('resize', ()=>{
+    camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+})();
+</script>
+</body>
+</html>
