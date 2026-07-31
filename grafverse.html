@@ -90,6 +90,11 @@
     font:600 15px/104px system-ui;text-align:center;letter-spacing:.12em;pointer-events:auto;touch-action:none;
     text-transform:uppercase;user-select:none;-webkit-user-select:none;}
   #sprayBtn.down{background:rgba(56,225,255,.4);}
+  #backBtn{position:fixed;left:28px;bottom:36px;width:90px;height:90px;border-radius:50%;
+    background:rgba(120,150,220,.14);border:2px solid rgba(150,180,255,.55);color:#dfe8ff;
+    font:600 14px/90px system-ui;text-align:center;letter-spacing:.1em;pointer-events:auto;touch-action:none;
+    text-transform:uppercase;user-select:none;-webkit-user-select:none;}
+  #backBtn.down{background:rgba(120,150,220,.4);}
   #talkBtn{position:fixed;left:50%;bottom:170px;transform:translateX(-50%);display:none;
     padding:12px 26px;border-radius:24px;background:rgba(8,16,30,.85);border:1px solid rgba(120,170,255,.55);
     color:#eaf6ff;font:600 14px system-ui;letter-spacing:.14em;text-transform:uppercase;pointer-events:auto;
@@ -103,7 +108,7 @@
   .chip:active{background:rgba(56,120,210,.95);}
   body.mtalk #chips{display:flex;}
   body.mtalk #dialogue{top:54px;bottom:auto;max-height:44vh;overflow-y:auto;touch-action:pan-y;pointer-events:auto;}
-  body.mtalk #joyBase, body.mtalk #sprayBtn{display:none!important;}
+  body.mtalk #joyBase, body.mtalk #sprayBtn, body.mtalk #backBtn{display:none!important;}
   body.mtalk #talkBtn{top:14px;bottom:auto;left:auto;right:14px;transform:none;}
 
   /* --- splash --- */
@@ -145,6 +150,7 @@
 <div id="mobileUI">
   <div id="joyBase"><div id="joyKnob"></div></div>
   <div id="sprayBtn">Spray</div>
+  <div id="backBtn">Back</div>
   <div id="talkBtn">Talk</div>
 </div>
 <div id="chips"></div>
@@ -175,6 +181,7 @@
   const MACHINE_STOCK = 6;                             // cans behind the glass (set 0 for an empty machine)
   const MOBILE = window.matchMedia('(pointer: coarse)').matches;  // touch-primary device
   let mWalk = false;                                   // mobile: touch-and-hold = walk forward
+  let mBack = false;                                   // mobile: hold the Back button = walk backward
   if(MOBILE){ const _go=document.querySelector('#splash .go'); if(_go) _go.textContent='Tap to begin'; }
 
   // ---------- renderer / scene / camera ----------
@@ -690,6 +697,10 @@
     let lookId=null, lx=0, ly=0;
     sprayBtn.addEventListener('touchstart', e=>{ e.preventDefault(); if(hasCan) spraying=true; sprayBtn.classList.add('down'); }, {passive:false});
     sprayBtn.addEventListener('touchend', e=>{ e.preventDefault(); spraying=false; sprayBtn.classList.remove('down'); });
+    const backBtn=$('backBtn');
+    backBtn.addEventListener('touchstart', e=>{ e.preventDefault(); e.stopPropagation(); mBack=true; backBtn.classList.add('down'); }, {passive:false});
+    backBtn.addEventListener('touchend', e=>{ e.preventDefault(); mBack=false; backBtn.classList.remove('down'); });
+    backBtn.addEventListener('touchcancel', ()=>{ mBack=false; backBtn.classList.remove('down'); });
     talkBtn.addEventListener('touchstart', e=>{ e.preventDefault(); if(talking) leaveTalk(false); else if(nearMachine) enterTalk(); }, {passive:false});
     el.addEventListener('touchstart', e=>{ if(!locked||talking) return; const t=e.changedTouches[0]; if(lookId===null){ lookId=t.identifier; lx=t.clientX; ly=t.clientY; mWalk=true; } }, {passive:false});
     window.addEventListener('touchmove', e=>{
@@ -725,6 +736,7 @@
       if(keys.KeyD) ix+=1;
       if(keys.KeyA) ix-=1;
       if(MOBILE && mWalk) iz+=1;   // touch-and-hold walks forward, toward where you look
+      if(MOBILE && mBack) iz-=1;   // hold the Back button to walk backward
       const mag=Math.hypot(ix,iz); if(mag>1){ ix/=mag; iz/=mag; }
       tx=(fx*iz + rx*ix)*SPEED;
       tz=(fz*iz + rz*ix)*SPEED;
