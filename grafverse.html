@@ -64,6 +64,25 @@
   .ibar{width:120px;height:10px;border-radius:6px;background:rgba(255,255,255,.14);overflow:hidden;}
   .ifill{height:100%;border-radius:6px;transition:width .08s linear;}
   .iamt{font:600 11px system-ui;color:#cfe0ff;width:36px;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px #000;}
+  /* --- shape panel (pop-in side HUD) --- */
+  #shapeTab{position:fixed;right:0;top:50%;transform:translateY(-50%);display:none;z-index:8;
+    padding:14px 9px;border-radius:12px 0 0 12px;background:rgba(20,40,74,.92);border:1px solid rgba(120,170,255,.4);border-right:none;
+    color:#cfe0ff;font:600 12px system-ui;writing-mode:vertical-rl;letter-spacing:.14em;cursor:pointer;pointer-events:auto;}
+  body.holding #shapeTab{display:block;}
+  body.shaping #shapeTab{display:none;}
+  #shapePanel{position:fixed;right:-260px;top:50%;transform:translateY(-50%);width:206px;z-index:9;
+    background:rgba(8,14,26,.94);border:1px solid rgba(120,170,255,.35);border-radius:14px 0 0 14px;border-right:none;
+    padding:14px 12px;transition:right .22s ease;pointer-events:none;}
+  body.shaping #shapePanel{right:0;pointer-events:auto;}
+  #shapeTools{display:flex;flex-direction:column;gap:7px;}
+  .srow{display:flex;gap:6px;align-items:center;justify-content:center;}
+  .srow span{font:700 12px system-ui;color:#bcd0f0;width:30px;text-align:center;}
+  .sb{min-width:40px;height:38px;padding:0 8px;border-radius:10px;background:rgba(24,46,82,.95);border:1px solid rgba(120,170,255,.45);
+    color:#eaf6ff;font:700 18px system-ui;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;}
+  .sb.wide{flex:1;font-size:13px;letter-spacing:.05em;}
+  .sb.done{flex:1;font-size:14px;background:rgba(30,90,70,.95);border-color:rgba(120,255,190,.5);}
+  .sb:active{background:rgba(56,120,210,.95);}
+  body.mtalk #shapeTab, body.mtalk #shapePanel{display:none!important;}
 
   /* --- dialogue --- */
   #dialogue{position:fixed;left:50%;bottom:16%;transform:translateX(-50%);max-width:min(680px,92vw);
@@ -95,6 +114,12 @@
     font:600 14px/90px system-ui;text-align:center;letter-spacing:.1em;pointer-events:auto;touch-action:none;
     text-transform:uppercase;user-select:none;-webkit-user-select:none;}
   #backBtn.down{background:rgba(120,150,220,.4);}
+  #grabBtn{position:fixed;left:28px;bottom:140px;display:none;padding:12px 18px;border-radius:22px;
+    background:rgba(20,40,74,.9);border:1px solid rgba(120,170,255,.5);color:#dfe8ff;font:600 13px system-ui;
+    letter-spacing:.1em;text-transform:uppercase;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;}
+  body.building #grabBtn{display:block;}
+  body.mtalk #grabBtn, body.shaping #grabBtn{display:none!important;}
+  body.shaping #sprayBtn, body.shaping #backBtn{display:none!important;}   /* no firing / walking while shaping */
   #talkBtn{position:fixed;left:50%;bottom:170px;transform:translateX(-50%);display:none;
     padding:12px 26px;border-radius:24px;background:rgba(8,16,30,.85);border:1px solid rgba(120,170,255,.55);
     color:#eaf6ff;font:600 14px system-ui;letter-spacing:.14em;text-transform:uppercase;pointer-events:auto;
@@ -151,10 +176,13 @@
   <div id="joyBase"><div id="joyKnob"></div></div>
   <div id="sprayBtn">Spray</div>
   <div id="backBtn">Back</div>
+  <div id="grabBtn">Hold</div>
   <div id="talkBtn">Talk</div>
 </div>
 <div id="chips"></div>
 <div id="palette"></div>
+<div id="shapeTab">✎ shape</div>
+<div id="shapePanel"><div id="shapeTools"></div></div>
 
 <div id="splash">
   <h1>grafverse</h1>
@@ -248,7 +276,7 @@
     const col = new THREE.Color(COLORS[colorIdx]);
     const cr = (col.r*255)|0, cg=(col.g*255)|0, cb=(col.b*255)|0;
     pctx.globalCompositeOperation = 'lighter';
-    const main = (32 + Math.random()*8) * (1 + dwell*0.9);   // pools outward when you linger
+    const main = (32 + rnd()*8) * (1 + dwell*0.9);   // pools outward when you linger
     const core = 0.55 + dwell*0.35;                          // brighter, wetter core on dwell
     const g = pctx.createRadialGradient(x,y,0, x,y,main);
     g.addColorStop(0,   `rgba(${cr},${cg},${cb},${core})`);
@@ -259,9 +287,9 @@
     // scattered droplets => spray-can texture; more + further as it starts to run
     const drops = 6 + (dwell*12|0);
     for(let i=0;i<drops;i++){
-      const a=Math.random()*7, d=Math.random()*main*(1.4+dwell*1.2), rr=1+Math.random()*(3+dwell*3);
+      const a=rnd()*7, d=rnd()*main*(1.4+dwell*1.2), rr=1+rnd()*(3+dwell*3);
       const dx=x+Math.cos(a)*d, dy=y+Math.sin(a)*d;
-      pctx.fillStyle = `rgba(${cr},${cg},${cb},${0.14+Math.random()*0.28})`;
+      pctx.fillStyle = `rgba(${cr},${cg},${cb},${0.14+rnd()*0.28})`;
       pctx.beginPath(); pctx.arc(dx,dy,rr,0,7); pctx.fill();
     }
     pctx.globalCompositeOperation = 'source-over';
@@ -498,7 +526,7 @@
   });
   addEventListener('mousedown', e=>{ if(locked && e.button===0) spraying=true; });
   addEventListener('mouseup',   e=>{ if(e.button===0) spraying=false; });
-  el.addEventListener('click', ()=>{ if(!locked && !talking && !firstStart) el.requestPointerLock(); });
+  el.addEventListener('click', ()=>{ if(!locked && !talking && !firstStart && !shaping) el.requestPointerLock(); });
 
   // ---------- HUD ----------
   const $ = id=>document.getElementById(id);
@@ -697,6 +725,7 @@
     let lookId=null, lx=0, ly=0;
     sprayBtn.addEventListener('touchstart', e=>{ e.preventDefault(); if(hasCan) spraying=true; sprayBtn.classList.add('down'); }, {passive:false});
     sprayBtn.addEventListener('touchend', e=>{ e.preventDefault(); spraying=false; sprayBtn.classList.remove('down'); });
+    const grabBtn=$('grabBtn'); grabBtn.addEventListener('touchstart', e=>{ e.preventDefault(); dropGrab(); }, {passive:false});
     const backBtn=$('backBtn');
     backBtn.addEventListener('touchstart', e=>{ e.preventDefault(); e.stopPropagation(); mBack=true; backBtn.classList.add('down'); }, {passive:false});
     backBtn.addEventListener('touchend', e=>{ e.preventDefault(); mBack=false; backBtn.classList.remove('down'); });
@@ -728,7 +757,7 @@
 
     // move — keys or joystick, velocity-smoothed (movement no longer needs pointer-lock, only mouse-LOOK does)
     let tx=0, tz=0;
-    if(!talking && !firstStart){
+    if(!talking && !firstStart && !shaping){
       const fx=-Math.sin(yaw), fz=-Math.cos(yaw), rx=Math.cos(yaw), rz=-Math.sin(yaw);
       let ix=0, iz=0;
       if(keys.KeyW) iz+=1;
@@ -780,12 +809,18 @@
 
     // spraying
     if(hasCan && spraying && paint>0){
+      if(heldGhost){ heldGhost=null; document.body.classList.remove('holding'); }   // first spray locks the held ghost in place, then paints it
       ray.setFromCamera(CENTER, camera);
       const shot = bShapes.length ? ray.intersectObjects(bShapes,false)[0] : null;
       if(shot && shot.uv){                                 // crosshair on a manifested shape → paint & solidify it
         const o=shot.object; solidify(o);
         const si=(shot.face && shot.face.materialIndex)||0, surf=o.userData.surfaces[si];
-        if(surf){ sprayShape(surf, shot); materializeShape(o); hasPainted=true;
+        if(surf){
+          const dist=camera.position.distanceTo(shot.point), dn=Math.max(0,Math.min(1,(dist-2.2)/(9-2.2)));
+          const key=targetKey(o,si);
+          if(curKey!==key){ endStroke(); beginStroke(o,si); }
+          if(addDab(shot.uv.x, shot.uv.y, dn)) sprayShapeAt(surf, shot.uv.x, shot.uv.y, dn);   // record + spray on each dab
+          materializeShape(o); hasPainted=true;
           o.userData.paintAmt=(o.userData.paintAmt||0)+PAINT_DRAIN;                 // paint-to-earn: ~half-cover a solid shape → a can's pay
           if(!o.userData.paid && o.userData.paintAmt>=(o.userData.earnAt||45)){
             o.userData.paid=true; custodial+=EARN_PAY; renderWallet();
@@ -794,7 +829,11 @@
         }
       } else {
         const hit = ray.intersectObject(ground)[0];        // otherwise → paint the ground
-        if(hit && hit.uv){ spray(hit.uv); hasPainted=true; }
+        if(hit && hit.uv){
+          if(curKey!=='g'){ endStroke(); beginStroke('ground',0); }
+          if(addDab(hit.uv.x, hit.uv.y, 0)) spray(hit.uv);
+          hasPainted=true;
+        }
       }
       paint = Math.max(0, paint - PAINT_DRAIN);
       if(inv[activeSlot]){ inv[activeSlot].amt=paint; updateInvActive(); }
@@ -804,7 +843,7 @@
         if(inv[other] && inv[other].amt>0){ activeSlot=other; syncActive(); renderInv(); }   // auto-switch to your other colour
         else if(!emptyAnnounced){ emptyAnnounced=true; sputter(); showHint('Both dry — go find another can out behind the machine.'); }
       }
-    }
+    } else if(curStroke){ endStroke(); }                   // released spray → finalise the stroke
     if(hissGain && actx) hissGain.gain.setTargetAtTime((hasCan && spraying && paint>0)?0.13:0.0, actx.currentTime, 0.03);
 
     // vending machine: greet on approach, then offer chat while near
@@ -842,13 +881,69 @@
   function ghostMesh(type){ const geo=bgeomFor(type);
     const m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:0x13203a,transparent:true,opacity:0.5,roughness:.7,metalness:.1,emissive:0x1a2c50,emissiveIntensity:.6,side:THREE.DoubleSide,fog:false}));
     m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo,32),new THREE.LineBasicMaterial({color:0x5fa0e0,transparent:true,opacity:0.65,fog:false})));
-    m.userData={type,grow:0}; return m; }
-  const bShapes=[]; const _fwd=new THREE.Vector3(), _brc=new THREE.Raycaster();
+    m.userData={type,grow:0,target:new THREE.Vector3(1,1,1)}; return m; }
+  const bShapes=[]; let heldGhost=null; const _fwd=new THREE.Vector3(), _brc=new THREE.Raycaster();
   function placePoint(){ _fwd.set(0,0,-1).applyQuaternion(camera.quaternion); _brc.set(camera.position,_fwd);
     const h=_brc.intersectObject(ground)[0];
     if(h && h.distance<44) return h.point.clone();
     return camera.position.clone().addScaledVector(_fwd,6).setY(0); }
-  function conjure(type){ const m=ghostMesh(type); const p=placePoint(); m.position.set(p.x,0,p.z); m.scale.setScalar(0.12); scene.add(m); bShapes.push(m); }
+  const _vsc=new THREE.Vector3();
+  function conjure(type){ heldGhost=null;               // lock any previously-held ghost where it is
+    const m=ghostMesh(type); const p=placePoint(); m.position.set(p.x,0,p.z); m.scale.setScalar(0.12);
+    scene.add(m); bShapes.push(m); heldGhost=m; document.body.classList.add('holding');
+    showHint(MOBILE?'look to place · ✎ shape · spray to make it real':'look to place · scroll to resize · E to shape · spray to make it real'); }
+
+  // ---------- full shape control (per-axis / uniform / rotate) over the HELD ghost ----------
+  const AXES={ box:[['W','x'],['H','y'],['D','z']], wall:[['W','x'],['H','y'],['T','z']],
+    plane:[['W','x'],['D','z']], cylinder:[['R','xz'],['H','y']],
+    cone:[['R','xz'],['H','y']], pyramid:[['R','xz'],['H','y']], sphere:[['Size','xyz']] };
+  function scaleAxis(axis,f){ const t=heldGhost&&heldGhost.userData.target; if(!t)return;
+    if(axis.indexOf('x')>=0) t.x=Math.max(0.25,Math.min(6,t.x*f));
+    if(axis.indexOf('y')>=0) t.y=Math.max(0.25,Math.min(6,t.y*f));
+    if(axis.indexOf('z')>=0) t.z=Math.max(0.25,Math.min(6,t.z*f)); }
+  function scaleAll(f){ const t=heldGhost&&heldGhost.userData.target; if(!t)return;
+    const mx=Math.max(t.x,t.y,t.z), mn=Math.min(t.x,t.y,t.z);
+    if(f>1) f=Math.min(f,6/mx); else f=Math.max(f,0.25/mn); t.multiplyScalar(f); }
+  function rotY(d){ if(heldGhost) heldGhost.rotation.y+=d; }
+  function lean(d){ if(heldGhost) heldGhost.rotation.x+=d; }
+  function resetShape(){ if(!heldGhost)return; heldGhost.userData.target.set(1,1,1); heldGhost.rotation.set(0,0,0); }
+  el.addEventListener('wheel', e=>{ if(heldGhost){ e.preventDefault(); scaleAll(e.deltaY<0?1.1:1/1.1); } }, {passive:false});   // scroll = quick uniform resize
+
+  // the pop-in side panel
+  let shaping=false;
+  function sbtn(txt,fn,cls){ const b=document.createElement('div'); b.className='sb'+(cls?' '+cls:''); b.textContent=txt; b.addEventListener('click',fn); return b; }
+  function buildShapeTools(type){
+    const box=document.getElementById('shapeTools'); box.innerHTML='';
+    (AXES[type]||[]).forEach(([label,axis])=>{ const row=document.createElement('div'); row.className='srow';
+      row.appendChild(sbtn('−',()=>scaleAxis(axis,1/1.12)));
+      const s=document.createElement('span'); s.textContent=label; row.appendChild(s);
+      row.appendChild(sbtn('+',()=>scaleAxis(axis,1.12))); box.appendChild(row); });
+    const u=document.createElement('div'); u.className='srow';
+    u.appendChild(sbtn('⊖',()=>scaleAll(1/1.12)));
+    const us=document.createElement('span'); us.textContent='size'; us.style.width='auto'; u.appendChild(us);
+    u.appendChild(sbtn('⊕',()=>scaleAll(1.12))); box.appendChild(u);
+    const r=document.createElement('div'); r.className='srow';
+    r.appendChild(sbtn('↺',()=>rotY(-Math.PI/12))); r.appendChild(sbtn('↻',()=>rotY(Math.PI/12)));
+    r.appendChild(sbtn('◣',()=>lean(Math.PI/12)));  r.appendChild(sbtn('◢',()=>lean(-Math.PI/12))); box.appendChild(r);
+    const d=document.createElement('div'); d.className='srow'; d.appendChild(sbtn('⎌ reset',resetShape,'wide')); box.appendChild(d);
+    const done=document.createElement('div'); done.className='srow'; done.appendChild(sbtn('✓ done',closeShape,'done')); box.appendChild(done);
+  }
+  function openShape(){ if(!heldGhost)return; shaping=true; document.body.classList.add('shaping'); buildShapeTools(heldGhost.userData.type);
+    if(viewCan) viewCan.visible=false;                    // put the can away — you're shaping, not painting
+    if(!MOBILE) document.exitPointerLock(); }
+  function closeShape(){ shaping=false; document.body.classList.remove('shaping');
+    if(viewCan) viewCan.visible=true;                     // can's back out — a spray will now make it solid
+    if(!MOBILE) el.requestPointerLock(); }
+  addEventListener('keydown', e=>{ if(e.code==='KeyE' && heldGhost && !talking){ e.preventDefault(); shaping?closeShape():openShape(); } });
+  document.getElementById('shapeTab').addEventListener('click', ()=>{ if(heldGhost) openShape(); });
+  function dropGrab(){                                    // unfocus: drop the held ghost, OR grab the unpainted one under the crosshair
+    if(heldGhost){ heldGhost=null; document.body.classList.remove('holding');
+      showHint(MOBILE?'dropped — aim at it, tap Hold to move/reshape · spray to make it real':'dropped — walk around · aim + G to move/reshape · spray to make it real'); }
+    else { ray.setFromCamera(CENTER,camera); const h=ray.intersectObjects(bShapes,false)[0];
+      if(h && h.object && !h.object.userData.painted){ heldGhost=h.object; document.body.classList.add('holding'); openShape(); } }   // grab AND open the shape HUD
+    const gb=document.getElementById('grabBtn'); if(gb) gb.textContent = heldGhost ? 'Drop' : 'Hold';
+  }
+  addEventListener('keydown', e=>{ if(e.code==='KeyG' && buildUnlocked && !talking && !shaping){ e.preventDefault(); dropGrab(); } });
 
   // ---------- paint onto a manifested shape (aim the crosshair at it + spray = it solidifies) ----------
   const TEXS=1024, EARN_PAY=111;   // paint a solidified shape ~halfway → earn a can's worth (111 sats)
@@ -869,10 +964,8 @@
   }
   function materializeShape(mesh){ if(mesh.userData.painted)return; mesh.userData.painted=true;   // first fleck: ghost → solid & committed
     (Array.isArray(mesh.material)?mesh.material:[mesh.material]).forEach(mt=>{ mt.transparent=false; mt.opacity=1; mt.needsUpdate=true; }); }
-  function sprayShape(surface, h){
-    const ctx=surface.ctx, uv=h.uv, x=uv.x*TEXS, y=(1-uv.y)*TEXS;
-    const dist=camera.position.distanceTo(h.point);
-    const dn=Math.max(0,Math.min(1,(dist-2.2)/(9-2.2)));            // near = tight, far = splatter
+  function sprayShapeAt(surface, u, v, dn){                          // explicit u,v,dn so it replays without a camera; rnd() = seeded splatter
+    const ctx=surface.ctx, x=u*TEXS, y=(1-v)*TEXS;
     const R=24*(0.6+dn*2.2), core=0.6*(1-dn*0.5);
     const c=new THREE.Color(COLORS[colorIdx]), cr=c.r*255|0, cg=c.g*255|0, cb=c.b*255|0;
     ctx.globalCompositeOperation='lighter';
@@ -880,12 +973,42 @@
     g.addColorStop(0,'rgba('+cr+','+cg+','+cb+','+core+')'); g.addColorStop(0.5,'rgba('+cr+','+cg+','+cb+','+(core*0.35)+')'); g.addColorStop(1,'rgba('+cr+','+cg+','+cb+',0)');
     ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,R,0,7); ctx.fill();
     const drops=4+(dn*40|0);
-    for(let i=0;i<drops;i++){ const a=Math.random()*7, base=Math.random()*R*(1.1+dn*1.5), rr=1+Math.random()*(2+dn*4);
-      ctx.fillStyle='rgba('+cr+','+cg+','+cb+','+(0.1+Math.random()*0.2)+')';
+    for(let i=0;i<drops;i++){ const a=rnd()*7, base=rnd()*R*(1.1+dn*1.5), rr=1+rnd()*(2+dn*4);
+      ctx.fillStyle='rgba('+cr+','+cg+','+cb+','+(0.1+rnd()*0.2)+')';
       ctx.beginPath(); ctx.arc(x+Math.cos(a)*base, y+Math.sin(a)*base, rr,0,7); ctx.fill(); }
     ctx.globalCompositeOperation='source-over';
     surface.tex.needsUpdate=true;
   }
+
+  // ---------- seeded RNG + stroke recording (save/resume + mint-faithful replay) ----------
+  function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+  let _rng = Math.random;
+  function seedRand(s){ _rng = mulberry32(s>>>0); }
+  function rnd(){ return _rng(); }
+  const groundStrokes = [];
+  let curStroke=null, curKey=null, _lu=-9, _lv=-9;
+  function targetKey(t,si){ return t==='ground' ? 'g' : (t.uuid+':'+(si||0)); }
+  function beginStroke(target, si){
+    const seed=(Math.random()*4294967296)>>>0;
+    seedRand(seed); lastPx=null; dwell=0; _lu=_lv=-9;
+    curStroke={ target, si:(si||0), c:colorIdx, seed, dabs:[] };
+    curKey=targetKey(target, si);
+  }
+  function addDab(u,v,dn){                                           // decimate; spray only on a recorded dab so live == replay
+    if(!curStroke) return false;
+    const moved = curStroke.dabs.length ? Math.hypot(u-_lu, v-_lv) : 1;
+    if(curStroke.dabs.length && moved<0.006) return false;
+    curStroke.dabs.push([+u.toFixed(4), +v.toFixed(4), +dn.toFixed(3)]); _lu=u; _lv=v; return true;
+  }
+  function endStroke(){
+    if(curStroke && curStroke.dabs.length){
+      if(curStroke.target==='ground') groundStrokes.push({c:curStroke.c, seed:curStroke.seed, dabs:curStroke.dabs});
+      else (curStroke.target.userData.strokes || (curStroke.target.userData.strokes=[])).push({si:curStroke.si, c:curStroke.c, seed:curStroke.seed, dabs:curStroke.dabs});
+      scheduleSave();
+    }
+    curStroke=null; curKey=null;
+  }
+  // scheduleSave() + the save/load system live with world-storage, below.
   function buildPalette(){ const pal=document.getElementById('palette');
     BSHAPES.forEach((s,i)=>{ const d=document.createElement('div'); d.className='pbtn'; d.innerHTML='<b>'+(i+1)+'</b>'+s;
       d.addEventListener('click',()=>{ conjure(s); if(!MOBILE && !locked) el.requestPointerLock(); }); pal.appendChild(d); }); }
@@ -895,7 +1018,52 @@
     document.body.classList.add('building'); buildPalette();   // the manifest display
     showHint(MOBILE?'tap a shape to manifest it ahead of you':'press 1–7 to manifest a shape ahead of you'); }
   addEventListener('keydown',e=>{ if(!buildUnlocked||talking)return; const n=e.code.match(/^Digit([1-7])$/); if(n) conjure(BSHAPES[+n[1]-1]); });
-  function bTick(){ for(const m of bShapes){ const u=m.userData; if(u.grow<1){ u.grow=Math.min(1,u.grow+0.09); const e=1-Math.pow(1-u.grow,3); m.scale.setScalar(0.12+0.88*e); } } }
+  function bTick(){
+    if(heldGhost && !shaping){ const p=placePoint(); heldGhost.position.x=p.x; heldGhost.position.z=p.z; }   // follows gaze (frozen while shaping)
+    for(const m of bShapes){ const u=m.userData; const t=u.target;
+      if(u.grow<1){ u.grow=Math.min(1,u.grow+0.09); const e=1-Math.pow(1-u.grow,3); _vsc.copy(t).multiplyScalar(0.12+0.88*e); m.scale.copy(_vsc); }
+      else m.scale.copy(t); } }
+
+  // ---------- world storage & recall (strokes → localStorage; the WORLD persists, the droid wakes fresh) ----------
+  const SAVE_KEY='grafverse-world-v1';
+  function serializeWorld(){
+    const shapes=[];
+    for(const m of bShapes){ const st=m.userData.strokes; if(!st||!st.length) continue;   // only painted (owned) shapes
+      shapes.push({ t:m.userData.type,
+        p:[+m.position.x.toFixed(3),+m.position.y.toFixed(3),+m.position.z.toFixed(3)],
+        r:[+m.rotation.x.toFixed(4),+m.rotation.y.toFixed(4),+m.rotation.z.toFixed(4)],
+        s:[+m.userData.target.x.toFixed(3),+m.userData.target.y.toFixed(3),+m.userData.target.z.toFixed(3)],
+        paid:!!m.userData.paid, st }); }
+    return { v:1, ground:groundStrokes, shapes };
+  }
+  function saveWorld(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(serializeWorld())); }catch(e){} }
+  let _saveT=null;
+  function scheduleSave(){ if(_saveT) clearTimeout(_saveT); _saveT=setTimeout(saveWorld, 1200); }
+  addEventListener('beforeunload', saveWorld);
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) saveWorld(); });
+  function loadWorld(){
+    let data; try{ data=JSON.parse(localStorage.getItem(SAVE_KEY)||'null'); }catch(e){ data=null; }
+    if(!data) return;
+    (data.shapes||[]).forEach(sd=>{
+      const m=ghostMesh(sd.t);
+      m.position.set(sd.p[0],sd.p[1],sd.p[2]);
+      m.rotation.set(sd.r[0],sd.r[1],sd.r[2]);
+      m.userData.target.set(sd.s[0],sd.s[1],sd.s[2]); m.scale.copy(m.userData.target); m.userData.grow=1;   // already real — skip grow-in
+      solidify(m);
+      (sd.st||[]).forEach(stroke=>{ const surf=m.userData.surfaces[stroke.si]; if(!surf) return;
+        colorIdx=stroke.c; seedRand(stroke.seed>>>0);                 // deterministic replay
+        for(const d of stroke.dabs) sprayShapeAt(surf, d[0], d[1], d[2]); });
+      materializeShape(m);
+      m.userData.painted=true; m.userData.paid=!!sd.paid; m.userData.strokes=sd.st||[];
+      scene.add(m); bShapes.push(m);
+    });
+    (data.ground||[]).forEach(stroke=>{
+      colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0;
+      for(const d of stroke.dabs) spray({x:d[0], y:d[1]});
+      groundStrokes.push(stroke);
+    });
+  }
+  loadWorld();
 
   // ---------- loop ----------
   function tick(){
