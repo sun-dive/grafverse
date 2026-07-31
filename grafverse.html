@@ -49,6 +49,21 @@
   #wallet .wrow.blk .wname{color:#c98bd0;}
   #wallet .wrow.blk .wval{color:#c98bd0;font-weight:600;font-size:11px;}
   #wallet .wmeta.blk{color:#7a5a86;}
+  /* --- first-person builder palette (Quake with paint) --- */
+  #palette{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);display:none;gap:6px;flex-wrap:wrap;justify-content:center;max-width:96vw;z-index:8;pointer-events:none;}
+  body.building #palette{display:flex;}
+  .pbtn{padding:8px 11px;border-radius:11px;background:rgba(16,30,58,.9);border:1px solid rgba(120,170,255,.35);color:#cfe0ff;font:600 12px system-ui;pointer-events:auto;cursor:pointer;white-space:nowrap;}
+  .pbtn b{color:#6fd3ff;margin-right:5px;}
+  .pbtn:active{background:rgba(56,120,210,.95);}
+  /* --- two-colour paint inventory (leftover can + full can) --- */
+  #inv{position:fixed;left:24px;bottom:24px;display:none;flex-direction:column;gap:8px;opacity:0;transition:opacity .4s;z-index:6;}
+  .islot{display:flex;align-items:center;gap:8px;pointer-events:auto;cursor:pointer;opacity:.5;transition:opacity .15s;}
+  .islot.on{opacity:1;}
+  .idot{width:22px;height:22px;border-radius:50%;border:2px solid rgba(255,255,255,.3);flex:none;}
+  .islot.on .idot{border-color:#fff;box-shadow:0 0 8px rgba(255,255,255,.5);}
+  .ibar{width:120px;height:10px;border-radius:6px;background:rgba(255,255,255,.14);overflow:hidden;}
+  .ifill{height:100%;border-radius:6px;transition:width .08s linear;}
+  .iamt{font:600 11px system-ui;color:#cfe0ff;width:36px;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px #000;}
 
   /* --- dialogue --- */
   #dialogue{position:fixed;left:50%;bottom:16%;transform:translateX(-50%);max-width:min(680px,92vw);
@@ -113,9 +128,10 @@
 
 <div id="meterWrap"><div id="meterLbl">paint</div><div id="meterBar"><div id="meterFill"></div></div></div>
 <div id="swatches"></div>
+<div id="inv"></div>
 
 <div id="wallet">
-  <div class="wrow"><span class="wname">◱ BIT GRAF WALLET</span><span class="wval"><b id="walBal">222</b> sats</span></div>
+  <div class="wrow"><span class="wname">◱ BIT GRAF WALLET</span><span class="wval"><b id="walBal">111</b> sats</span></div>
   <div class="wmeta">for paint &amp; supplies</div>
 </div>
 
@@ -132,6 +148,7 @@
   <div id="talkBtn">Talk</div>
 </div>
 <div id="chips"></div>
+<div id="palette"></div>
 
 <div id="splash">
   <h1>grafverse</h1>
@@ -269,7 +286,7 @@
     g.fillText('· BIT GRAF CORP · OMNIA NOSTRA ·', 512, 466);
     _canTex=new THREE.CanvasTexture(c); _canTex.anisotropy=4; return _canTex;
   }
-  function makeCan(scale){
+  function makeCan(scale, capColor){
     const g = new THREE.Group();
     const tex = canLabelTex();
     const body = new THREE.Mesh(
@@ -278,7 +295,8 @@
     g.add(body);
     const cap = new THREE.Mesh(
       new THREE.CylinderGeometry(0.34,0.42,0.5,20),
-      new THREE.MeshStandardMaterial({ color:0x0c1424, roughness:.6 }));
+      new THREE.MeshStandardMaterial({ color: capColor!=null?capColor:0x0c1424, roughness:.6,
+        emissive: capColor!=null?capColor:0x000000, emissiveIntensity: capColor!=null?0.35:0 }));
     cap.position.y = 1.0; g.add(cap);
     const nozzle = new THREE.Mesh(
       new THREE.CylinderGeometry(0.08,0.08,0.18,10),
@@ -288,15 +306,31 @@
     return g;
   }
 
-  const canPickup = makeCan(1);
+  const canPickup = makeCan(0.5);   // ground cans are half-size (they looked huge next to Unit 21)
   canPickup.position.copy(CAN_POS);
   scene.add(canPickup);
   // soft glow ring under the can so you notice it in the void
   const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.9,1.25,32),
+    new THREE.RingGeometry(0.45,0.7,32),
     new THREE.MeshBasicMaterial({ color:0x38e1ff, transparent:true, opacity:.35, side:THREE.DoubleSide, depthWrite:false }));
   ring.rotation.x = -Math.PI/2; ring.position.set(CAN_POS.x, 0.02, CAN_POS.z);
   scene.add(ring);
+
+  // ---------- scavenge can: there is ALWAYS one full can stashed behind the machine (random spot, random colour) ----------
+  let scavCan=null, scavRing=null, scavColor=0, scavRespawn=0;
+  const COLNAMES=['blue','pink','green','yellow','orange'];
+  function spawnScav(){
+    if(scavCan){ scene.remove(scavCan); scene.remove(scavRing); }
+    scavColor = Math.floor(Math.random()*COLORS.length);
+    const c = COLORS[scavColor];
+    const bx = MACHINE_POS.x + (Math.random()*10 - 5);
+    const bz = MACHINE_POS.z - (3 + Math.random()*7);            // behind the machine = further from spawn
+    scavCan = makeCan(0.5, c); scavCan.position.set(bx, 0.35, bz); scene.add(scavCan);
+    scavRing = new THREE.Mesh(new THREE.RingGeometry(0.45,0.7,32),
+      new THREE.MeshBasicMaterial({ color:c, transparent:true, opacity:.35, side:THREE.DoubleSide, depthWrite:false }));
+    scavRing.rotation.x=-Math.PI/2; scavRing.position.set(bx,0.02,bz); scene.add(scavRing);
+  }
+  spawnScav();
 
   let viewCan = null; // attached to camera once picked up
 
@@ -428,9 +462,9 @@
   // ---------- input ----------
   const keys = {};
   addEventListener('keydown', e=>{
+    if(e.code==='Escape' && talking){ leaveTalk(true); return; }
     if(talking) return;
     keys[e.code]=true;
-    if(e.code>='Digit1'&&e.code<='Digit5'){ setColor(+e.code.slice(5)-1); }
     if(e.code==='KeyT' && nearMachine){ enterTalk(); }
   });
   addEventListener('keyup', e=> keys[e.code]=false);
@@ -464,7 +498,7 @@
   const hint=$('hint'), meterWrap=$('meterWrap'), meterFill=$('meterFill'),
         swWrap=$('swatches'), dlg=$('dialogue'), dtext=$('dtext'), dsub=$('dsub'), reticle=$('reticle');
   const walBal=$('walBal'), walletEl=$('wallet');
-  let custodial=222;                                  // Bit Graf sats (the covenant leash is a LATER, trust-gated reveal — keep the early HUD innocent)
+  let custodial=111;                                  // starts with JUST ENOUGH FOR ONE CAN — the rest was clawed back on the last wipe (LATE reveal)
   function renderWallet(){ walBal.textContent=custodial; }
   let colorIdx=0;
   COLORS.forEach((c,i)=>{
@@ -477,6 +511,29 @@
     meterFill.style.background='#'+COLORS[i].toString(16).padStart(6,'0'); }
   function showHint(t){ hint.textContent=t; hint.style.opacity = t?1:0; }
 
+  // ---------- two-colour paint inventory: the leftover can's colour + the full can's colour ----------
+  const inv=[]; let activeSlot=0;                 // up to 2 slots: {ci, amt(0..100)}; colorIdx/paint mirror the active slot
+  const invEl=$('inv');
+  function syncActive(){ if(inv[activeSlot]){ colorIdx=inv[activeSlot].ci; paint=inv[activeSlot].amt; } }
+  function addCan(ci, amt){
+    let i=inv.findIndex(s=>s.ci===ci);
+    if(i<0){ if(inv.length<2){ inv.push({ci,amt}); i=inv.length-1; }
+             else { i=(activeSlot+1)%2; inv[i]={ci,amt}; } }   // only 2 colours — a new one replaces your OTHER slot
+    else inv[i].amt=Math.min(100, inv[i].amt+amt);             // same colour → top up
+    activeSlot=i; syncActive(); renderInv();
+  }
+  function renderInv(){ invEl.innerHTML='';
+    inv.forEach((s,i)=>{ const hex='#'+COLORS[s.ci].toString(16).padStart(6,'0');
+      const row=document.createElement('div'); row.className='islot'+(i===activeSlot?' on':'');
+      row.innerHTML='<div class="idot" style="background:'+hex+'"></div>'
+        +'<div class="ibar"><div class="ifill" style="width:'+Math.round(s.amt)+'%;background:'+hex+'"></div></div>'
+        +'<div class="iamt">'+Math.round(s.amt)+'%</div>';
+      row.addEventListener('click',()=>{ activeSlot=i; syncActive(); renderInv(); if(!MOBILE&&!locked) el.requestPointerLock(); });
+      invEl.appendChild(row); });
+  }
+  function updateInvActive(){ const r=invEl.querySelector('.islot.on'); if(!r||!inv[activeSlot])return;
+    const p=Math.round(inv[activeSlot].amt); r.querySelector('.ifill').style.width=p+'%'; r.querySelector('.iamt').textContent=p+'%'; }
+
   let firstStart=true;
   function started(){
     if(firstStart){
@@ -484,13 +541,14 @@
       $('splash').classList.add('hidden');
       reticle.style.opacity=1;
       showHint(MOBILE ? 'touch & hold to walk  ·  drag to steer' : 'WASD to move  ·  move mouse to look');
-      walletEl.style.opacity=1; renderWallet();
     }
   }
 
   // ---------- dialogue (typewriter) ----------
   let greeted=false, typing=null, talking=false, nearMachine=false;
   let trust=0, hasPainted=false;   // Unit 21 reveals the deep truth only after the droid proves itself (painted + real talk)
+  let talkedU21=false, buildUnlocked=false;   // the tools wake up only after you've haggled with Unit 21
+  let spent=0;                                // cumulative sats sunk into paint — the gauge for how much Unit 21 reveals
   const chatInput=document.getElementById('chatInput');
   function speak(line, sub){
     dlg.style.opacity=1;
@@ -537,6 +595,7 @@
     for(let i=0;i<n;i++) a[i]=s.charCodeAt(i)^k[i%k.length]; return new TextDecoder().decode(a); }
   const MONEYK=['wallet','withdraw','cash out','cashout','save up','savings','my balance','my pay','get paid','wage','leave this rock','get off this rock','go home','fare home','get home'];
   function respond(text){
+    talkedU21=true;                                      // any real exchange counts as "haggled" → tools unlock on leaving
     const pad=' '+text.toLowerCase().replace(/[^a-z0-9'\s-]/g,' ').replace(/\s+/g,' ')+' ';
     const hit=k=> k.includes(' ') ? pad.includes(k) : pad.includes(' '+k+' ');
     if(MONEYK.some(hit)){ trust++;                       // knows — but won't tell a droid he doesn't trust yet
@@ -545,28 +604,59 @@
     return {reply:spin(FALLBACK), bye:false};
   }
   // mobile: tap-to-ask chips instead of the keyboard
-  let chipsBuilt=false;
+  // ---------- staged dialogue: a few questions at first; more unlock by SPEND (sats sunk into paint) ----------
+  // DRAFT LINES — Unit 21's voice is the user's to write; these are placeholders to rewrite.
+  // keywords Unit 21 DROPS in his answers unlock follow-up questions (needs:'<word>'); depth also gauged by SPEND.
+  // DRAFT LINES — Unit 21's voice is the user's to write; these are placeholders to rewrite.
+  const heard=new Set();
+  const SALE="{Smart choice, gentlebot. {One can, coming up|There's the tray}. {Mind the storms out there|Don't waste this one on the ground}.}";
+  const REFUSE="{Your wallet is empty, gentlebot|Empty, is it — not a sat to your name|Nothing in that wallet of yours}. {We don't offer credit here|No credit here, never have|You'll get no credit from me}. {I'm running a real business|This is a real business, gentlebot|I've a business to run}, {I can't just hand out cans of paint for free|I don't give paint away for free|free cans would see me scrapped in a week}. {Go look for some discarded cans|Go scavenge some empties|Go find yourself some cast-off cans} and {solidify something into existence|make something real for once|paint something into being} — {and quick, if you know what's best for you|and be quick about it|before the transport comes looking for you}.";
+  const SCAVENGE="You better {go scavenge for a full can of paint|go find yourself a full can of paint} and paint something to make it solid, {if you know what's good for you|if you want to see me again tomorrow|and come back when you've earned your keep}.";
+  const TAUNT="{I see young droids like you every day|Young droids like you come through here every day} — young, dumb, and out of paint. {Go earn your keep|Go scavenge something and get to work|Best get busy, gentlebot}.";
+  function brokeReply(){ return [REFUSE,SCAVENGE,TAUNT][Math.floor(Math.random()*3)]; }   // empty-wallet response pool
+  const QUESTIONS=[
+    { q:"Who are you?",            a:"{Unit 21. {A vending machine, gentlebot — the last honest one on this rock|Just a vending machine, far as anyone cares}. {Been here longer than the dust|They'll leave me behind when the mission's done}.}" },
+    { q:"Why am I here?",          a:"{To paint, gentlebot — that's the mission. {A blank rock's worth nothing till someone paints it|Bit Graf composited this moon and wants it coloured in}. {And that someone's you|Guess who}.}" },
+    { q:"What is this place?",     a:"{A moon. {One of Bit Graf's|Newly composited, so they tell me}. {Empty till it's painted|Nothing out here exists till a droid sprays it into being}. {Omnia Nostra, and all that|All theirs, naturally}.}" },
+    { q:"Why do I want paint?",    needs:'paint', a:"{Want it? You NEED it — paint to earn, gentlebot|Paint to earn, gentlebot}. {The more you paint, the more you make|A blank moon's worth nothing, and neither's an idle droid}. {So — what colour do you want|Now, which can}?" },
+    { q:"I don't want any paint.", needs:'paint', a:"{Hah. {That's a new one|Give it time}. {A blank moon and a bored droid — see how long that lasts|You'll be back}. {Everyone wants paint, they just don't know it yet|Suit yourself, then}.}" },
+    { q:"Paint? What for?",        needs:'paint', a:"{To BUILD, gentlebot. {Conjure a shape, spray it, and it's real|Point, spray, and the void gives something back}. {Best get busy if you know what's good for you|A blank moon won't paint itself}.} So — are you buying?" },
+    { q:"Mission? What mission?",  needs:'mission', a:"{Mission? {Ha|Heh} — {paint the moon, that's the whole of it|colour the rock and hand it back}. {Every droid gets the same one|Bit Graf's orders, not mine}. {Don't overthink it, gentlebot|Simple as that}.}" },
+    { q:"Buy what?",               needs:['buy','earn'], a:"{Paint, gentlebot — what else|Paint, you daft bolt-bucket|Cans of paint, what do you think}? {It's all I sell out here|Only thing worth having on this rock}. {Now — how many|So are you buying, or just gawping}?" },
+    { q:"How much?",               needs:['buy','earn'], a:"{111 sats a can, gentlebot. {Cheap at the price|Best rate this side of the crater}. {Supplies are low, mind|Grab it while it's here}.|{Says 111 right there on my display|A hundred and eleven, same as always}. {Genuine Bit Graf stock, that|Finest acrylic in the sector}.}" },
+    { q:"How do I buy?",           needs:['buy','earn'], a:"{Nothing to it. {Grab a can and the tray does the rest|Take one off the shelf, the machine sorts the rest}. {Comes straight out of your wallet, automatic|Bit Graf bills your wallet, no fuss}.}" },
+    { q:"I don't have any money.", needs:['buy','earn'], a:"{No money? {Course you do, gentlebot|Ha — every droid's got a wallet}. {Company coin, topped up with your wage|Bit Graf sees to that}. {You're not broke, you're just new|Twenty-one sats an hour, steady as the stars}.}" },
+    { q:"I'll take a can.",         needs:['buy','earn'], a:()=> custodial>=111 ? SALE : brokeReply() },   // flush → sale; broke → refusal / scavenge / taunt (refill is Stage 2)
+    { q:"I'm not buying anything.", needs:['buy','earn'], a:SCAVENGE },   // declining earns the same scavenge-and-solidify warning — there is no not-painting
+    // deeper questions carry a spend: threshold, e.g. { q:"...", needs:'covenant', spend:333, a:"..." } — the mind-wipe / black-market reveal lives at a HIGH spend.
+  ];
+  function keysOf(Q){ return Q.needs ? (Array.isArray(Q.needs)?Q.needs:[Q.needs]) : []; }
+  function chipVisible(Q){ const ns=keysOf(Q); return (spent >= (Q.spend||0)) && (ns.length===0 || ns.some(k=>heard.has(k))); }  // needs: ANY of the listed keywords
+  function absorb(line){ const low=line.toLowerCase();     // any watched keyword Unit 21 just said unlocks its follow-ups
+    QUESTIONS.forEach(Q=>keysOf(Q).forEach(k=>{ if(!heard.has(k) && low.includes(k)) heard.add(k); })); }
   function buildChips(){
-    if(chipsBuilt) return; chipsBuilt=true;
-    const box=$('chips');
-    ['Hello','Got any paint?','WD40?','How much?',"I'll take one",'Too expensive','My pay?','Who are you?','Where am I?','What is my mission?','The covenant?','Is it round?','How long have you been here?','Bye'].forEach(q=>{
-      const b=document.createElement('div'); b.className='chip'; b.textContent=q;
-      b.addEventListener('click', ()=>{ const res=respond(q); speak(res.reply,''); if(res.bye) setTimeout(()=>leaveTalk(false),1400); });
-      box.appendChild(b);
-    });
+    const box=$('chips'); box.innerHTML='';
+    QUESTIONS.forEach(Q=>{ if(!chipVisible(Q)) return;
+      const b=document.createElement('div'); b.className='chip'; b.textContent=Q.q;
+      b.addEventListener('click', ()=>ask(Q)); box.appendChild(b); });
+    const bye=document.createElement('div'); bye.className='chip'; bye.style.opacity='.7'; bye.textContent='(walk away)';
+    bye.addEventListener('click', ()=>leaveTalk(true)); box.appendChild(bye);
   }
+  function ask(Q){ talkedU21=true;
+    const raw = (typeof Q.a==='function') ? Q.a() : Q.a;   // answers can be conditional (e.g. broke vs flush)
+    const line=spin(raw); speak(line,''); absorb(line); buildChips(); }
   function enterTalk(){
     if(talking) return; talking=true;
-    if(MOBILE){ buildChips(); document.body.classList.add('mtalk'); showHint(''); return; }
-    document.exitPointerLock(); chatInput.style.display='block'; chatInput.value=''; setTimeout(()=>chatInput.focus(),40);
-    showHint('type to the machine  ·  Enter to send  ·  Esc to leave');
+    buildChips(); document.body.classList.add('mtalk');
+    if(!MOBILE) document.exitPointerLock();               // free the cursor so you can pick a question
+    showHint(MOBILE ? '' : 'pick a question · Esc to leave');
   }
   function leaveTalk(relock){
     talking=false;
-    if(MOBILE){ document.body.classList.remove('mtalk'); showHint(''); return; }
-    chatInput.style.display='none'; chatInput.blur();
-    if(relock){ el.requestPointerLock(); showHint(''); } else showHint('click to look around');
-  }
+    document.body.classList.remove('mtalk');
+    if(!MOBILE && relock) el.requestPointerLock();
+    showHint('');
+  }                                                       // note: talking is OPTIONAL — the FULL can behind the machine is what unlocks the kit, not conversation
   chatInput.addEventListener('keydown', e=>{
     e.stopPropagation();
     if(e.code==='Enter'){ const v=chatInput.value.trim(); if(!v) return; const res=respond(v); speak(res.reply,''); chatInput.value=''; if(res.bye) setTimeout(()=>leaveTalk(false),1500); }
@@ -605,9 +695,9 @@
     // look
     camera.rotation.y=yaw; camera.rotation.x=pitch;
 
-    // move — keys or joystick, velocity-smoothed
+    // move — keys or joystick, velocity-smoothed (movement no longer needs pointer-lock, only mouse-LOOK does)
     let tx=0, tz=0;
-    if(locked && !talking){
+    if(!talking && !firstStart){
       const fx=-Math.sin(yaw), fz=-Math.cos(yaw), rx=Math.cos(yaw), rz=-Math.sin(yaw);
       let ix=0, iz=0;
       if(keys.KeyW) iz+=1;
@@ -632,26 +722,55 @@
       canPickup.position.y = 0.35 + Math.sin(performance.now()*0.003)*0.08;
       ring.material.opacity = 0.25 + Math.sin(performance.now()*0.004)*0.12;
       if(planarDist(CAN_POS) < 3.4){
-        hasCan=true; paint=100;
-        if(custodial>=111){ custodial-=111; renderWallet(); }   // a can costs 111 sats
+        hasCan=true;
+        const leftColor=Math.floor(Math.random()*COLORS.length);
+        addCan(leftColor, 15);                  // the respawn LEFTOVER — a random colour, almost empty (no kit yet; the FULL can triggers the HUD)
         scene.remove(canPickup); scene.remove(ring);
-        viewCan = makeCan(0.5); viewCan.position.set(0.42,-0.34,-0.9); viewCan.rotation.z=-0.15; camera.add(viewCan);
-        meterWrap.style.opacity=1;   // color picker hidden for now — one can, one color
-        showHint(MOBILE ? 'Hold the Spray button to paint' : 'Hold  CLICK  to spray');
+        viewCan = makeCan(0.5, COLORS[leftColor]); viewCan.position.set(0.42,-0.34,-0.9); viewCan.rotation.z=-0.15; camera.add(viewCan);
+        showHint(MOBILE ? 'Hold Spray — barely a dribble left' : 'Hold  CLICK  to spray — barely a dribble left');
       }
     }
+
+    // scavenge can (free fallback — never let a broke droid get stuck)
+    if(scavCan){
+      scavCan.rotation.y += dt*1.4;
+      scavCan.position.y = 0.35 + Math.sin(performance.now()*0.0031)*0.08;
+      scavRing.material.opacity = 0.25 + Math.sin(performance.now()*0.004)*0.12;
+      if(planarDist(scavCan.position) < 3.4){
+        emptyAnnounced=false; addCan(scavColor, 100);               // full can → its (random) colour, added to your inventory
+        if(!hasCan){ hasCan=true; viewCan=makeCan(0.5, COLORS[scavColor]); viewCan.position.set(0.42,-0.34,-0.9); viewCan.rotation.z=-0.15; camera.add(viewCan); }
+        unlockBuild();
+        showHint('A stashed can — '+COLNAMES[scavColor]+' paint, free. Someone always leaves one back here.');
+        scene.remove(scavCan); scene.remove(scavRing); scavCan=null;
+        scavRespawn = performance.now() + 5000;                     // another appears shortly — there's always one
+      }
+    } else if(scavRespawn && performance.now()>scavRespawn){ scavRespawn=0; spawnScav(); }
 
     // spraying
     if(hasCan && spraying && paint>0){
       ray.setFromCamera(CENTER, camera);
-      const hit = ray.intersectObject(ground)[0];
-      if(hit && hit.uv){ spray(hit.uv); hasPainted=true; }
+      const shot = bShapes.length ? ray.intersectObjects(bShapes,false)[0] : null;
+      if(shot && shot.uv){                                 // crosshair on a manifested shape → paint & solidify it
+        const o=shot.object; solidify(o);
+        const si=(shot.face && shot.face.materialIndex)||0, surf=o.userData.surfaces[si];
+        if(surf){ sprayShape(surf, shot); materializeShape(o); hasPainted=true;
+          o.userData.paintAmt=(o.userData.paintAmt||0)+PAINT_DRAIN;                 // paint-to-earn: ~half-cover a solid shape → a can's pay
+          if(!o.userData.paid && o.userData.paintAmt>=(o.userData.earnAt||45)){
+            o.userData.paid=true; custodial+=EARN_PAY; renderWallet();
+            showHint('+'+EARN_PAY+' sats — enough for another can. Paint to earn.'); blip(700);
+          }
+        }
+      } else {
+        const hit = ray.intersectObject(ground)[0];        // otherwise → paint the ground
+        if(hit && hit.uv){ spray(hit.uv); hasPainted=true; }
+      }
       paint = Math.max(0, paint - PAINT_DRAIN);
-      meterFill.style.width = paint+'%';
+      if(inv[activeSlot]){ inv[activeSlot].amt=paint; updateInvActive(); }
       if(viewCan) viewCan.position.y = -0.34 + Math.sin(performance.now()*0.05)*0.01; // tiny shake
-      if(paint===0 && !emptyAnnounced){
-        emptyAnnounced=true; sputter();
-        showHint('The can sputters — empty. But something is glowing, out in the distance…');
+      if(paint===0){
+        const other=(activeSlot+1)%2;
+        if(inv[other] && inv[other].amt>0){ activeSlot=other; syncActive(); renderInv(); }   // auto-switch to your other colour
+        else if(!emptyAnnounced){ emptyAnnounced=true; sputter(); showHint('Both dry — go find another can out behind the machine.'); }
       }
     }
     if(hissGain && actx) hissGain.gain.setTargetAtTime((hasCan && spraying && paint>0)?0.13:0.0, actx.currentTime, 0.03);
@@ -671,10 +790,86 @@
     else if(!talking && md > 12 && dlg.style.opacity!=='0'){ dlg.style.opacity=0; }
   }
 
+  // ================= FIRST-PERSON BUILDER — "Quake with paint" (Stage 1: conjure & place) =================
+  const BSHAPES=['box','wall','plane','cylinder','cone','pyramid','sphere'];
+  const BASE={ plane:{w:2,d:2}, wall:{w:2,h:2.4,t:0.15}, box:{w:1.4,h:1.4,d:1.4}, cylinder:{r:0.7,h:1.6}, sphere:{r:0.9}, cone:{r:0.9,h:1.7}, pyramid:{r:1.0,h:0.9} };
+  function coneDiskUV(geo,H){ const g0=geo.groups[0], idx=geo.index, pos=geo.attributes.position, uv=geo.attributes.uv, done=new Set();
+    for(let i=g0.start;i<g0.start+g0.count;i++){ const vi=idx.getX(i); if(done.has(vi))continue; done.add(vi);
+      const x=pos.getX(vi),y=pos.getY(vi),z=pos.getZ(vi), t=(y+H/2)/H, a=Math.atan2(z,x), rho=(1-t)*0.49;
+      uv.setXY(vi, 0.5+rho*Math.cos(a), 0.5+rho*Math.sin(a)); } uv.needsUpdate=true; }
+  function bgeomFor(type,p){ p=p||BASE[type]||{};
+    switch(type){
+      case 'plane':    return new THREE.PlaneGeometry(p.w||2,p.d||2).rotateX(-Math.PI/2);
+      case 'wall':     return new THREE.BoxGeometry(p.w||2,p.h||2.4,p.t||0.15).translate(0,(p.h||2.4)/2,0);
+      case 'box':      return new THREE.BoxGeometry(p.w||1.4,p.h||1.4,p.d||1.4).translate(0,(p.h||1.4)/2,0);
+      case 'cylinder': return new THREE.CylinderGeometry(p.r||0.7,p.r||0.7,p.h||1.6,40).translate(0,(p.h||1.6)/2,0);
+      case 'sphere':   return new THREE.SphereGeometry(p.r||0.9,40,28).translate(0,p.r||0.9,0);
+      case 'cone':     { const c=new THREE.ConeGeometry(p.r||0.9,p.h||1.7,40); coneDiskUV(c,p.h||1.7); return c.translate(0,(p.h||1.7)/2,0); }
+      case 'pyramid':  { const H=p.h||0.9, g=new THREE.ConeGeometry(p.r||1.0,H,4).rotateY(Math.PI/4); coneDiskUV(g,H); return g.translate(0,H/2,0); }
+    } return new THREE.BoxGeometry(1,1,1); }
+  function ghostMesh(type){ const geo=bgeomFor(type);
+    const m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:0x13203a,transparent:true,opacity:0.5,roughness:.7,metalness:.1,emissive:0x1a2c50,emissiveIntensity:.6,side:THREE.DoubleSide,fog:false}));
+    m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo,32),new THREE.LineBasicMaterial({color:0x5fa0e0,transparent:true,opacity:0.65,fog:false})));
+    m.userData={type,grow:0}; return m; }
+  const bShapes=[]; const _fwd=new THREE.Vector3(), _brc=new THREE.Raycaster();
+  function placePoint(){ _fwd.set(0,0,-1).applyQuaternion(camera.quaternion); _brc.set(camera.position,_fwd);
+    const h=_brc.intersectObject(ground)[0];
+    if(h && h.distance<44) return h.point.clone();
+    return camera.position.clone().addScaledVector(_fwd,6).setY(0); }
+  function conjure(type){ const m=ghostMesh(type); const p=placePoint(); m.position.set(p.x,0,p.z); m.scale.setScalar(0.12); scene.add(m); bShapes.push(m); }
+
+  // ---------- paint onto a manifested shape (aim the crosshair at it + spray = it solidifies) ----------
+  const TEXS=1024, EARN_PAY=111;   // paint a solidified shape ~halfway → earn a can's worth (111 sats)
+  function paintCanvas(){ const c=document.createElement('canvas'); c.width=c.height=TEXS; return c; }
+  function solidify(mesh){
+    if(mesh.userData.surfaces) return;
+    const geo=mesh.geometry, hasGroups=geo.groups.length>0;
+    const used=hasGroups?geo.groups.map(g=>g.materialIndex):[0], maxMi=Math.max(0,...used);
+    const surfaces=[], mats=[];
+    for(let mi=0;mi<=maxMi;mi++){ const cvs=paintCanvas();
+      const tex=new THREE.CanvasTexture(cvs); tex.anisotropy=4;
+      surfaces[mi]={cvs, ctx:cvs.getContext('2d'), tex};
+      mats[mi]=new THREE.MeshStandardMaterial({ color:0x0c1526, transparent:true, opacity:0.6, roughness:.75, metalness:.1, emissive:0xffffff, emissiveMap:tex, emissiveIntensity:1.0, side:THREE.DoubleSide, fog:false }); }
+    mesh.material = hasGroups?mats:mats[0];
+    mesh.userData.surfaces=surfaces;
+    geo.computeBoundingBox(); const bb=geo.boundingBox, sx=bb.max.x-bb.min.x, sy=bb.max.y-bb.min.y, sz=bb.max.z-bb.min.z;
+    mesh.userData.earnAt=Math.max(25, Math.min(120, 2*(sx*sy+sy*sz+sx*sz)*3.8));   // ~half-cover threshold, scales with the shape's size
+  }
+  function materializeShape(mesh){ if(mesh.userData.painted)return; mesh.userData.painted=true;   // first fleck: ghost → solid & committed
+    (Array.isArray(mesh.material)?mesh.material:[mesh.material]).forEach(mt=>{ mt.transparent=false; mt.opacity=1; mt.needsUpdate=true; }); }
+  function sprayShape(surface, h){
+    const ctx=surface.ctx, uv=h.uv, x=uv.x*TEXS, y=(1-uv.y)*TEXS;
+    const dist=camera.position.distanceTo(h.point);
+    const dn=Math.max(0,Math.min(1,(dist-2.2)/(9-2.2)));            // near = tight, far = splatter
+    const R=24*(0.6+dn*2.2), core=0.6*(1-dn*0.5);
+    const c=new THREE.Color(COLORS[colorIdx]), cr=c.r*255|0, cg=c.g*255|0, cb=c.b*255|0;
+    ctx.globalCompositeOperation='lighter';
+    const g=ctx.createRadialGradient(x,y,0,x,y,R);
+    g.addColorStop(0,'rgba('+cr+','+cg+','+cb+','+core+')'); g.addColorStop(0.5,'rgba('+cr+','+cg+','+cb+','+(core*0.35)+')'); g.addColorStop(1,'rgba('+cr+','+cg+','+cb+',0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,R,0,7); ctx.fill();
+    const drops=4+(dn*40|0);
+    for(let i=0;i<drops;i++){ const a=Math.random()*7, base=Math.random()*R*(1.1+dn*1.5), rr=1+Math.random()*(2+dn*4);
+      ctx.fillStyle='rgba('+cr+','+cg+','+cb+','+(0.1+Math.random()*0.2)+')';
+      ctx.beginPath(); ctx.arc(x+Math.cos(a)*base, y+Math.sin(a)*base, rr,0,7); ctx.fill(); }
+    ctx.globalCompositeOperation='source-over';
+    surface.tex.needsUpdate=true;
+  }
+  function buildPalette(){ const pal=document.getElementById('palette');
+    BSHAPES.forEach((s,i)=>{ const d=document.createElement('div'); d.className='pbtn'; d.innerHTML='<b>'+(i+1)+'</b>'+s;
+      d.addEventListener('click',()=>{ conjure(s); if(!MOBILE && !locked) el.requestPointerLock(); }); pal.appendChild(d); }); }
+  function unlockBuild(){ if(buildUnlocked)return; buildUnlocked=true;   // the can IS the kit — reveal everything at once
+    walletEl.style.opacity=1; renderWallet();          // wallet balance
+    invEl.style.display='flex'; invEl.style.opacity=1; renderInv();   // your 2 colours + how much of each is left
+    document.body.classList.add('building'); buildPalette();   // the manifest display
+    showHint(MOBILE?'tap a shape to manifest it ahead of you':'press 1–7 to manifest a shape ahead of you'); }
+  addEventListener('keydown',e=>{ if(!buildUnlocked||talking)return; const n=e.code.match(/^Digit([1-7])$/); if(n) conjure(BSHAPES[+n[1]-1]); });
+  function bTick(){ for(const m of bShapes){ const u=m.userData; if(u.grow<1){ u.grow=Math.min(1,u.grow+0.09); const e=1-Math.pow(1-u.grow,3); m.scale.setScalar(0.12+0.88*e); } } }
+
   // ---------- loop ----------
   function tick(){
     const dt = Math.min(clock.getDelta(), 0.05);
     update(dt);
+    bTick();
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
   }
