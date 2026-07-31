@@ -39,12 +39,12 @@
   .sw.on{border-color:#fff;transform:scale(1.25);}
 
   /* --- dialogue --- */
-  #dialogue{position:fixed;left:50%;bottom:16%;transform:translateX(-50%);max-width:min(620px,86vw);
+  #dialogue{position:fixed;left:50%;bottom:16%;transform:translateX(-50%);max-width:min(680px,92vw);
             padding:18px 22px;background:rgba(8,14,26,.82);border:1px solid rgba(120,170,255,.28);
             border-radius:14px;backdrop-filter:blur(6px);box-shadow:0 10px 40px rgba(0,0,0,.5);
             opacity:0;transition:opacity .5s;pointer-events:none;}
   #dspeaker{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#6fd3ff;margin-bottom:8px;}
-  #dtext{font-size:19px;line-height:1.4;color:#f3f7ff;min-height:1.4em;}
+  #dtext{font-size:17px;line-height:1.45;color:#f3f7ff;min-height:1.4em;}
   #dsub{margin-top:10px;font-size:13px;color:#8fa6cc;font-style:italic;}
   #chatInput{position:fixed;left:50%;bottom:7%;transform:translateX(-50%);width:min(560px,84vw);
     display:none;padding:12px 18px;font-size:16px;color:#eaf6ff;background:rgba(8,16,30,.92);
@@ -75,7 +75,7 @@
     font:600 15px system-ui;white-space:normal;user-select:none;-webkit-user-select:none;}
   .chip:active{background:rgba(56,120,210,.95);}
   body.mtalk #chips{display:flex;}
-  body.mtalk #dialogue{top:64px;bottom:auto;}
+  body.mtalk #dialogue{top:54px;bottom:auto;max-height:44vh;overflow-y:auto;touch-action:pan-y;pointer-events:auto;}
   body.mtalk #joyBase, body.mtalk #sprayBtn{display:none!important;}
   body.mtalk #talkBtn{top:14px;bottom:auto;left:auto;right:14px;transform:none;}
 
@@ -375,6 +375,16 @@
     const t=actx.currentTime;
     for(let i=0;i<4;i++){ hissGain.gain.setValueAtTime(0.11, t+i*0.06); hissGain.gain.setValueAtTime(0.0, t+i*0.06+0.03); }
   }
+  // chirpy "speech" blip — one per spoken character, so it sounds like the machine is talking (text = translation)
+  function blip(base){
+    if(!actx) return;
+    const o=actx.createOscillator(), g=actx.createGain(), t=actx.currentTime;
+    o.type='square'; o.frequency.value=(base||440)+Math.random()*380;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.04, t+0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+0.05);
+    o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t+0.06);
+  }
 
   // ---------- input ----------
   const keys = {};
@@ -443,7 +453,8 @@
     dtext.textContent=''; dsub.textContent='';
     let i=0; clearInterval(typing);
     typing=setInterval(()=>{
-      dtext.textContent=line.slice(0,++i);
+      const ch=line[i]; dtext.textContent=line.slice(0,++i);
+      if(ch && ch!==' ' && (i&1)) blip();          // chirp per spoken character
       if(i>=line.length){ clearInterval(typing); if(sub) setTimeout(()=>dsub.textContent=sub, 400); }
     }, 34);
   }
