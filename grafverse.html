@@ -614,6 +614,8 @@
   const SCAVENGE="You better {go scavenge for a full can of paint|go find yourself a full can of paint} and paint something to make it solid, {if you know what's good for you|if you want to see me again tomorrow|and come back when you've earned your keep}.";
   const TAUNT="{I see young droids like you every day|Young droids like you come through here every day} — young, dumb, and out of paint. {Go earn your keep|Go scavenge something and get to work|Best get busy, gentlebot}.";
   function brokeReply(){ return [REFUSE,SCAVENGE,TAUNT][Math.floor(Math.random()*3)]; }   // empty-wallet response pool
+  const WHATCOLOUR="{What colour, gentlebot|Name your shade|Which'll it be}? {Take your pick off the rack|I've every colour going|Pick one and it's yours}.";
+  const COMINGUP="{Coming right up|There you are, gentlebot|One can, coming up}. {Mind you don't waste it on the ground|Spend it wise|Pleasure doing business, as always}.";
   const QUESTIONS=[
     { q:"Who are you?",            a:"{Unit 21. {A vending machine, gentlebot — the last honest one on this rock|Just a vending machine, far as anyone cares}. {Been here longer than the dust|They'll leave me behind when the mission's done}.}" },
     { q:"Why am I here?",          a:"{To paint, gentlebot — that's the mission. {A blank rock's worth nothing till someone paints it|Bit Graf composited this moon and wants it coloured in}. {And that someone's you|Guess who}.}" },
@@ -626,7 +628,7 @@
     { q:"How much?",               needs:['buy','earn'], a:"{111 sats a can, gentlebot. {Cheap at the price|Best rate this side of the crater}. {Supplies are low, mind|Grab it while it's here}.|{Says 111 right there on my display|A hundred and eleven, same as always}. {Genuine Bit Graf stock, that|Finest acrylic in the sector}.}" },
     { q:"How do I buy?",           needs:['buy','earn'], a:"{Nothing to it. {Grab a can and the tray does the rest|Take one off the shelf, the machine sorts the rest}. {Comes straight out of your wallet, automatic|Bit Graf bills your wallet, no fuss}.}" },
     { q:"I don't have any money.", needs:['buy','earn'], a:"{No money? {Course you do, gentlebot|Ha — every droid's got a wallet}. {Company coin, topped up with your wage|Bit Graf sees to that}. {You're not broke, you're just new|Twenty-one sats an hour, steady as the stars}.}" },
-    { q:"I'll take a can.",         needs:['buy','earn'], a:()=> custodial>=111 ? SALE : brokeReply() },   // flush → sale; broke → refusal / scavenge / taunt (refill is Stage 2)
+    { q:"I'll take a can.",         needs:['buy','earn'], buy:true, a:SALE },   // buy flow: What colour? → pick → deduct 111 + add can; broke → refusal/scavenge/taunt
     { q:"I'm not buying anything.", needs:['buy','earn'], a:SCAVENGE },   // declining earns the same scavenge-and-solidify warning — there is no not-painting
     // deeper questions carry a spend: threshold, e.g. { q:"...", needs:'covenant', spend:333, a:"..." } — the mind-wipe / black-market reveal lives at a HIGH spend.
   ];
@@ -643,8 +645,26 @@
     bye.addEventListener('click', ()=>leaveTalk(true)); box.appendChild(bye);
   }
   function ask(Q){ talkedU21=true;
+    if(Q.buy){                                             // buying a can → colour sub-menu (or the broke brush-off)
+      if(custodial < 111){ speak(spin(brokeReply()),''); buildChips(); return; }
+      speak(spin(WHATCOLOUR),''); buildColourChips(); return;
+    }
     const raw = (typeof Q.a==='function') ? Q.a() : Q.a;   // answers can be conditional (e.g. broke vs flush)
     const line=spin(raw); speak(line,''); absorb(line); buildChips(); }
+  function buildColourChips(){                             // the "What colour?" sub-menu
+    const box=$('chips'); box.innerHTML='';
+    COLORS.forEach((c,i)=>{ const b=document.createElement('div'); b.className='chip';
+      b.innerHTML='<span style="display:inline-block;width:13px;height:13px;border-radius:50%;vertical-align:middle;margin-right:9px;background:#'+c.toString(16).padStart(6,'0')+'"></span>'+COLNAMES[i];
+      b.addEventListener('click', ()=>buyCan(i)); box.appendChild(b); });
+    const back=document.createElement('div'); back.className='chip'; back.style.opacity='.7'; back.textContent='(never mind)';
+    back.addEventListener('click', ()=>buildChips()); box.appendChild(back);
+  }
+  function buyCan(ci){
+    if(custodial < 111){ speak(spin(brokeReply()),''); buildChips(); return; }
+    custodial -= 111; spent += 111; renderWallet();        // 111 sats — and SPENDING is what turns Unit 21's reveal-gauge
+    addCan(ci, 100);                                        // full can of the chosen colour → inventory (becomes active)
+    speak(spin(COMINGUP),''); buildChips();
+  }
   function enterTalk(){
     if(talking) return; talking=true;
     buildChips(); document.body.classList.add('mtalk');
