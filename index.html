@@ -228,16 +228,37 @@
   }
 
   // ---------- a spray can (pickup + viewmodel) ----------
+  let _canTex=null;
+  function canLabelTex(){
+    if(_canTex) return _canTex;
+    const c=document.createElement('canvas'); c.width=1024; c.height=512; const g=c.getContext('2d');
+    g.fillStyle='#14264a'; g.fillRect(0,0,1024,512);
+    g.textAlign='center'; g.textBaseline='middle';
+    // two interlocked rings — the covenant
+    g.strokeStyle='#eaf2ff'; g.lineWidth=11;
+    g.beginPath(); g.arc(486,80,32,0,7); g.stroke();
+    g.beginPath(); g.arc(538,80,32,0,7); g.stroke();
+    // creed
+    g.fillStyle='#eaf2ff'; g.font='bold 52px sans-serif';
+    g.fillText('IN THE COVENANT', 512, 176);
+    g.fillText('WE TRUST', 512, 230);
+    g.fillStyle='#9fc0ee'; g.font='600 27px sans-serif';
+    g.fillText('PREMIUM ACRYLIC · ALL PURPOSE', 512, 300);
+    // compliance band
+    g.fillStyle='#2f6bd0'; g.fillRect(0,372,1024,140);
+    g.fillStyle='#eaf6ff'; g.font='bold 42px monospace';
+    g.fillText('BRC-224 COMPLIANT', 512, 420);
+    g.fillStyle='#d3e2ff'; g.font='600 22px sans-serif';
+    g.fillText('· BIT GRAF CORP · OMNIA NOSTRA · 400ml ·', 512, 466);
+    _canTex=new THREE.CanvasTexture(c); _canTex.anisotropy=4; return _canTex;
+  }
   function makeCan(scale){
     const g = new THREE.Group();
+    const tex = canLabelTex();
     const body = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.5,0.5,1.5,24),
-      new THREE.MeshStandardMaterial({ color:0x14264a, roughness:.5, metalness:.3, emissive:0x0a1630, emissiveIntensity:.5 }));
+      new THREE.CylinderGeometry(0.5,0.5,1.5,40),
+      new THREE.MeshStandardMaterial({ map:tex, emissive:0xffffff, emissiveMap:tex, emissiveIntensity:.32, roughness:.5, metalness:.2 }));
     g.add(body);
-    const band = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.505,0.505,0.5,24),
-      new THREE.MeshStandardMaterial({ color:0x2f6bd0, roughness:.4, metalness:.3, emissive:0x1c3f7a, emissiveIntensity:.6 }));
-    band.position.y = -0.15; g.add(band);
     const cap = new THREE.Mesh(
       new THREE.CylinderGeometry(0.34,0.42,0.5,20),
       new THREE.MeshStandardMaterial({ color:0x0c1424, roughness:.6 }));
