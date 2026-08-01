@@ -50,6 +50,9 @@
   .note b{color:#ffe9b0;}
   .seedwords{background:rgba(8,14,26,.8);border:1px dashed var(--line2);border-radius:10px;padding:12px;
              font-family:ui-monospace,monospace;font-size:13px;line-height:1.9;word-spacing:6px;margin-top:8px;}
+  .secret{background:rgba(8,14,26,.8);border:1px dashed var(--line2);border-radius:10px;padding:11px 12px;margin-top:2px;
+          font-family:ui-monospace,monospace;font-size:13px;line-height:1.7;word-break:break-all;color:#dfe8ff;}
+  .secret.words{word-break:normal;word-spacing:6px;line-height:1.95;}
   #status{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);max-width:92vw;padding:10px 16px;
           border-radius:12px;background:rgba(14,24,44,.96);border:1px solid var(--line2);font-size:13px;
           box-shadow:0 10px 40px rgba(0,0,0,.5);opacity:0;transition:opacity .3s;pointer-events:none;z-index:9;}
@@ -88,17 +91,25 @@
       <button class="gold" id="fundBtn">＋ Buy BSV to fund</button>
     </div>
 
-    <div class="note warn-box hidden" id="backupBanner">
-      ⚠️ <b>Back up your recovery phrase.</b> These 12 words are the only way back into this wallet — no one can recover them for you. Write them on paper, in order.
-      <div class="btnrow" style="margin-top:10px"><button class="sm" id="showSeed">Show my 12 words</button></div>
-      <div id="seedReveal" class="hidden">
-        <div class="seedwords mono" id="seedWords"></div>
-        <div class="btnrow" style="margin-top:8px">
-          <button class="sm" id="copySeed">Copy</button>
-          <button class="sm cyan" id="seedDone">✓ I've written it down</button>
-        </div>
-      </div>
+    <div class="note warn-box hidden" id="backupNote">
+      ⚠️ <b>Not backed up yet.</b> Reveal your 12 words below and write them on paper, in order — they're the only way back into this wallet.
     </div>
+
+    <label>Recovery phrase — 12 words</label>
+    <div class="secret" id="seedField">•••• •••• •••• •••• •••• ••••</div>
+    <div class="btnrow" style="margin-top:6px">
+      <button class="sm" id="seedReveal">👁 Reveal</button>
+      <button class="sm" id="seedCopy">Copy</button>
+      <button class="sm cyan hidden" id="seedAck">✓ Written down</button>
+    </div>
+
+    <label>Private key (WIF)</label>
+    <div class="secret" id="wifField">••••••••••••••••••••••••••••</div>
+    <div class="btnrow" style="margin-top:6px">
+      <button class="sm" id="wifReveal">👁 Reveal</button>
+      <button class="sm" id="wifCopy">Copy</button>
+    </div>
+    <div class="hint">⚠️ Anyone with these can open your wallet — never share them or paste them anywhere but your own wallet. We can't recover them for you; that's what makes it truly yours.</div>
 
     <details>
       <summary>Advanced — restore, watch-only, export</summary>
@@ -172,14 +183,34 @@
   if(!G){ status('Wallet core failed to load (grafmint.js).','error'); return; }
 
   // ── wallet ──
-  let wallet, provider;
+  let wallet, provider, realSeed='', realWif='';
   function loadWallet(){
     wallet = G.loadOrCreateWallet();
     provider = new G.WalletProvider(wallet.address);
     $('addr').textContent = wallet.address;
     $('watchPill').hidden = !wallet.watchOnly;
-    $('backupBanner').classList.toggle('hidden', wallet.watchOnly || !G.needsSeedBackup());
+    // recovery secrets: real values kept in memory, always shown MASKED, re-masked on every (re)load
+    realSeed = wallet.watchOnly ? '' : (G.savedMnemonic() || '');
+    realWif  = (!wallet.watchOnly && wallet.key) ? wallet.key.toWif() : '';
+    setSecret('seed', realSeed, '— no recovery phrase (WIF-only wallet) —', wallet.watchOnly ? '— watch-only: no phrase on this device —' : null);
+    setSecret('wif',  realWif,  null, wallet.watchOnly ? '— watch-only: no private key on this device —' : null);
+    const needs = !wallet.watchOnly && G.needsSeedBackup();
+    $('backupNote').classList.toggle('hidden', !needs);
+    $('seedAck').classList.toggle('hidden', !needs);
     refreshBalance();
+  }
+  function setSecret(which, val, emptyMsg, overrideMsg){         // (re)mask a secret field
+    const f=$(which+'Field'), btn=$(which+'Reveal');
+    f.dataset.shown='0'; btn.textContent='👁 Reveal'; f.classList.remove('words');
+    if(overrideMsg){ f.textContent=overrideMsg; return; }
+    if(!val){ f.textContent=emptyMsg||'—'; return; }
+    f.textContent = which==='seed' ? '•••• •••• •••• •••• •••• ••••' : '•'.repeat(Math.min(52, val.length));
+  }
+  function toggleSecret(which, val){                             // reveal ⇄ re-mask
+    if(!val) return;
+    const f=$(which+'Field'), btn=$(which+'Reveal');
+    if(f.dataset.shown==='1'){ setSecret(which, val); }
+    else { f.textContent=val; if(which==='seed') f.classList.add('words'); f.dataset.shown='1'; btn.textContent='🙈 Hide'; }
   }
   async function refreshBalance(){
     $('bal').textContent='…';
@@ -190,10 +221,12 @@
   $('refreshBal').onclick = refreshBalance;
   $('fundBtn').onclick = ()=>window.open(G.buyBsvUrl(),'_blank','noopener,noreferrer');
 
-  // seed backup
-  $('showSeed').onclick = ()=>{ $('seedWords').textContent = G.savedMnemonic()||'(no phrase — this is a WIF-only wallet)'; $('seedReveal').classList.remove('hidden'); $('showSeed').classList.add('hidden'); };
-  $('copySeed').onclick = ()=>copy(G.savedMnemonic()||'', 'Phrase copied');
-  $('seedDone').onclick = ()=>{ G.markBackedUp(); $('backupBanner').classList.add('hidden'); status('Backed up ✓','ok'); };
+  // recovery: reveal/copy the seed + WIF (masked by default), acknowledge backup
+  $('seedReveal').onclick = ()=>toggleSecret('seed', realSeed);
+  $('wifReveal').onclick  = ()=>toggleSecret('wif', realWif);
+  $('seedCopy').onclick   = ()=> realSeed ? copy(realSeed,'Recovery phrase copied') : status('No phrase to copy.','error');
+  $('wifCopy').onclick    = ()=> realWif ? copy(realWif,'Private key copied') : status('Nothing to copy.','error');
+  $('seedAck').onclick    = ()=>{ G.markBackedUp(); $('backupNote').classList.add('hidden'); $('seedAck').classList.add('hidden'); status('Marked as backed up ✓','ok'); };
 
   // restore
   $('restoreBtn').onclick = ()=>{
