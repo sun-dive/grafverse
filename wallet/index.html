@@ -148,8 +148,11 @@
 
       <details>
         <summary>Advanced — royalties &amp; privacy</summary>
-        <label for="mPubFee">Your royalty per resale (sats) — 0 for a free open unit</label>
-        <input id="mPubFee" type="number" min="0" step="1" value="0">
+        <label for="mPubFee">Your royalty per resale (sats) — minimum 1</label>
+        <input id="mPubFee" type="number" min="1" step="1" value="1">
+        <label for="mHolderFee">Reseller's reward per resale (sats) — minimum 1</label>
+        <input id="mHolderFee" type="number" min="1" step="1" value="1">
+        <div class="hint">On-chain royalties baked into the token. Both are <b>at least 1 sat</b> — that floor is the basis of the messaging/sale signalling and of a burnable token. <b>"Free" is the licence above, not the fees.</b></div>
         <label style="display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--ink)">
           <input type="checkbox" id="mEncrypt" style="width:auto"> Keep private (encrypt the content)
         </label>
@@ -305,8 +308,8 @@
         description: $('mDesc').value.trim(),
         license: $('mLicense').value,
         encrypt: !open && $('mEncrypt').checked,
-        publisherFeeSats: Math.max(0, parseInt($('mPubFee').value,10)||0),
-        holderFeeSats: 0,
+        publisherFeeSats: Math.max(1, parseInt($('mPubFee').value,10)||1),
+        holderFeeSats: Math.max(1, parseInt($('mHolderFee').value,10)||1),
         confirmSpend: (sats)=> confirm('Mint “'+name+'” on-chain for '+sats.toLocaleString()+' sats?\n\nThis is permanent — you’ll own it, and it can’t be un-minted.'),
       });
       showResult(res, name);

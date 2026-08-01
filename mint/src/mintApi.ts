@@ -16,8 +16,11 @@ export interface MintAtomOpts {
   /** Optional 64-hex txid pointing at the full licence text on-chain. */
   licenseRef?: string
   cover?: { mimeType: string; fileName: string; bytes: number[] }
-  /** Royalty on replication (sats). 0 for free / open-licensed public assets. */
+  /** Publisher royalty per resale (sats). MINIMUM 1 — the 1-sat covenant outputs are the basis of the
+   *  messaging system, and 0 is invalid. "Free" comes from an open LICENCE (public, unencrypted chain-pull),
+   *  NOT from zero fees. */
   publisherFeeSats?: number
+  /** Reseller/holder award per resale (sats). MINIMUM 1 (same reason). */
   holderFeeSats?: number
   mintCount?: number
   /** Encrypt the content. FALSE for free/public atoms so anyone can pull them from chain (default false). */
@@ -33,7 +36,8 @@ export async function mintAtom(provider: WalletProvider, wallet: WalletIdentity,
   const publisherPubKeyHash = Hash.hash160(Utils.toArray(wallet.pubKeyHex, 'hex'))
   return createEdition(provider, wallet.key, {
     tokenName: o.tokenName,
-    terms: { publisherPubKeyHash, publisherFeeSats: o.publisherFeeSats ?? 0, holderFeeSats: o.holderFeeSats ?? 0 },
+    // fees + bond are ≥1 (messaging basis + burnability). tokenSats (the bond) defaults to 1 inside createEdition.
+    terms: { publisherPubKeyHash, publisherFeeSats: Math.max(1, o.publisherFeeSats ?? 1), holderFeeSats: Math.max(1, o.holderFeeSats ?? 1) },
     mintCount: o.mintCount ?? 1,
     file: { mimeType: o.mimeType ?? 'application/bmf', fileName: o.fileName ?? 'atom.bmf', bytes: o.bytes },
     encrypt: o.encrypt === true,
