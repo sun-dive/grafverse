@@ -10,3 +10,4 @@ deployment:
     - /bin/cp -r vendor "$DEPLOYPATH"                     # vendored three.min.js + grafmint.js (offline, no CDN)
     - /bin/cp -r wallet "$DEPLOYPATH"                     # wallet/immortalize app — TESTING at /wallet/ for now;
                                                           # real home is the wallet.grafverse.com SUBDOMAIN (key isolation)
+    - /bin/cp handoff.php "$DEPLOYPATH"                   # transient game→wallet atom bridge (POST bytes → id → GET)
