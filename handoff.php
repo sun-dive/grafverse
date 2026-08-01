@@ -26,13 +26,15 @@ header('Content-Type: application/json; charset=utf-8');
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 if ($method === 'POST') {
-  // Body = the raw packed BMF bytes. Optional ?name= is a suggested title (the wallet can override it).
-  $raw = file_get_contents('php://input');
-  $len = strlen($raw);
-  if ($len < 4 || $len > 2000000) { http_response_code(413); echo '{"error":"size"}'; exit; } // ~2MB cap
+  // Body = BASE64 of the packed BMF bytes (base64 TEXT, not raw binary — raw-binary POSTs trip shared-host
+  // WAFs / ModSecurity with a 403). Optional ?name= is a suggested title (the wallet can override it).
+  $b64 = trim(file_get_contents('php://input'));
+  $len = strlen($b64);
+  if ($len < 4 || $len > 3000000) { http_response_code(413); echo '{"error":"size"}'; exit; } // base64 ≈ 1.33× bytes
+  if (!preg_match('#^[A-Za-z0-9+/=\s]+$#', $b64) || base64_decode($b64, true) === false) { http_response_code(400); echo '{"error":"bad payload"}'; exit; }
   $name = isset($_GET['name']) ? substr(preg_replace('/[\x00-\x1f\x7f]/', '', (string)$_GET['name']), 0, 80) : '';
   $id = substr(bin2hex(random_bytes(8)), 0, 12);
-  $rec = json_encode(['name' => $name, 'b64' => base64_encode($raw), 'ts' => time()]);
+  $rec = json_encode(['name' => $name, 'b64' => $b64, 'ts' => time()]);
   if (@file_put_contents($dir . '/' . $id . '.json', $rec, LOCK_EX) === false) { http_response_code(500); echo '{"error":"store"}'; exit; }
   echo json_encode(['id' => $id]);
   exit;

@@ -1093,8 +1093,11 @@
     if(!(world.shapes||[]).length && !(world.ground||[]).length){ _kNote().textContent='Paint something first — there’s nothing to immortalize yet.'; return; }
     let bytes; try{ bytes = BMF.scene.pack(world); }catch(e){ _kNote().textContent='Could not pack the scene.'; return; }
     _kNote().textContent='Packed '+bytes.length.toLocaleString()+' bytes — handing to your wallet…';
+    // POST as base64 TEXT — raw-binary POST bodies get 403'd by shared-host WAFs (text passes, like nft.gift).
+    let b64=''; for(let i=0;i<bytes.length;i+=0x8000) b64+=String.fromCharCode.apply(null, bytes.slice(i,i+0x8000));
+    b64 = btoa(b64);
     try{
-      const res = await fetch(HANDOFF_URL, { method:'POST', headers:{'Content-Type':'application/octet-stream'}, body:new Uint8Array(bytes) });
+      const res = await fetch(HANDOFF_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:b64 });
       const data = await res.json().catch(()=>({}));
       if(!res.ok || !data.id) throw new Error(data.error || ('HTTP '+res.status));
       const ret = location.origin + location.pathname;
