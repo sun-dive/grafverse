@@ -835,8 +835,11 @@
     } else if(scavRespawn && performance.now()>scavRespawn){ scavRespawn=0; spawnScav(); }
 
     // spraying
-    if(hasCan && spraying && paint>0){
-      if(heldGhost){ heldGhost=null; document.body.classList.remove('holding'); }   // first spray locks the held ghost in place, then paints it
+    if(hasCan && spraying && heldGhost){                    // carrying a fresh shape → the trigger SETS IT DOWN (no paint yet)
+      heldGhost=null; document.body.classList.remove('holding'); spraying=false;   // set down in place; release & press again to paint
+      const gb=document.getElementById('grabBtn'); if(gb) gb.textContent='Hold';
+      showHint(MOBILE?'set down — walk around it · Hold to move/reshape · spray to paint it solid':'set down — walk around it · aim + G to move/reshape · spray to paint it solid');
+    } else if(hasCan && spraying && paint>0){
       ray.setFromCamera(CENTER, camera);
       const shot = bShapes.length ? ray.intersectObjects(bShapes,false)[0] : null;
       if(shot && shot.uv){                                 // crosshair on a manifested shape → paint & solidify it
@@ -872,6 +875,7 @@
       }
     } else if(curStroke){ endStroke(); }                   // released spray → finalise the stroke
     if(hissGain && actx) hissGain.gain.setTargetAtTime((hasCan && spraying && paint>0)?0.13:0.0, actx.currentTime, 0.03);
+    if(viewCan) viewCan.visible = hasCan && !heldGhost && !shaping && !keepOpen;   // can only shows when you're set to paint — not carrying, not in a panel
 
     // vending machine: greet on approach, then offer chat while near
     const md = planarDist(MACHINE_POS);
@@ -919,7 +923,7 @@
     const m=ghostMesh(type); const p=placePoint(); m.position.set(p.x,0,p.z); m.scale.setScalar(0.12);
     scene.add(m); bShapes.push(m); heldGhost=m; document.body.classList.add('holding');
     if(shaping){ buildShapeTools(type); return; }         // panel's open — just refresh its controls for the new shape
-    showHint(MOBILE?'look to place · ◆ make to reshape · spray to make it real':'look to place · scroll to resize · E to reshape · spray to make it real'); }
+    showHint(MOBILE?'aim to place · tap to set it down · walk round it · spray to paint':'aim to place · scroll to resize · click to set it down · then spray to paint'); }
 
   // ---------- full shape control (per-axis / uniform / rotate) over the HELD ghost ----------
   const AXES={ box:[['W','x'],['H','y'],['D','z']], wall:[['W','x'],['H','y'],['T','z']],
@@ -968,10 +972,8 @@
     done.appendChild(sbtn(heldGhost?'✓ done':'✕ close',closeShape,'done')); box.appendChild(done);
   }
   function openShape(){ shaping=true; document.body.classList.add('shaping'); buildShapeTools(heldGhost?heldGhost.userData.type:null);
-    if(viewCan) viewCan.visible=false;                    // put the can away — you're making/shaping, not painting
-    if(!MOBILE) document.exitPointerLock(); }
+    if(!MOBILE) document.exitPointerLock(); }             // can visibility handled per-frame (away while shaping / carrying)
   function closeShape(){ shaping=false; document.body.classList.remove('shaping');
-    if(viewCan) viewCan.visible=true;                     // can's back out — a spray will now make it solid
     if(!MOBILE) el.requestPointerLock(); }
   addEventListener('keydown', e=>{ if(e.code==='KeyE' && buildUnlocked && !talking && !keepOpen){ e.preventDefault(); shaping?closeShape():openShape(); } });
   document.getElementById('shapeTab').addEventListener('click', openShape);
@@ -988,9 +990,9 @@
   let keepOpen=false;
   const _kNote=()=>document.getElementById('kNote');
   function openKeep(){ keepOpen=true; document.body.classList.add('keep'); _kNote().textContent='';
-    if(viewCan) viewCan.visible=false; if(!MOBILE) document.exitPointerLock(); }
+    if(!MOBILE) document.exitPointerLock(); }
   function closeKeep(){ keepOpen=false; document.body.classList.remove('keep');
-    if(viewCan) viewCan.visible=true; if(!MOBILE) el.requestPointerLock(); }
+    if(!MOBILE) el.requestPointerLock(); }
   document.getElementById('keepTab').addEventListener('click', openKeep);
   document.getElementById('kDone').addEventListener('click', closeKeep);
   document.getElementById('kSave').addEventListener('click', ()=>{ saveWorld(); _kNote().textContent='Saved to this device.'; });
