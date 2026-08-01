@@ -226,6 +226,7 @@
 </div>
 
 <script src="vendor/three.min.js"></script>
+<script src="bmf-codec.js"></script>
 <script>
 (function(){
   "use strict";
@@ -1082,8 +1083,24 @@
   document.getElementById('kDone').addEventListener('click', closeKeep);
   document.getElementById('kSave').addEventListener('click', ()=>{ saveWorld(); _kNote().textContent='Saved to this device.'; });
   document.getElementById('kReload').addEventListener('click', ()=>{ saveWorld(); location.reload(); });
-  document.getElementById('kMint').addEventListener('click', ()=>{
-    _kNote().textContent='Your world is already yours — saved right here. Making it immortal on-chain, where no one can claw it back, is coming next.'; });
+  // ── immortalize: pack the world (binary BMF) → hand off to the wallet to mint (the key never touches the game) ──
+  const HANDOFF_URL = 'handoff.php';   // same-origin bridge: POST packed bytes → { id }
+  const WALLET_URL  = 'wallet/';        // TODO: switch to https://wallet.grafverse.com/ once the subdomain is live
+  document.getElementById('kMint').addEventListener('click', async ()=>{
+    if(!window.BMF){ _kNote().textContent='Codec missing (bmf-codec.js didn’t load).'; return; }
+    saveWorld();
+    const world = serializeWorld();
+    if(!(world.shapes||[]).length && !(world.ground||[]).length){ _kNote().textContent='Paint something first — there’s nothing to immortalize yet.'; return; }
+    let bytes; try{ bytes = BMF.scene.pack(world); }catch(e){ _kNote().textContent='Could not pack the scene.'; return; }
+    _kNote().textContent='Packed '+bytes.length.toLocaleString()+' bytes — handing to your wallet…';
+    try{
+      const res = await fetch(HANDOFF_URL, { method:'POST', headers:{'Content-Type':'application/octet-stream'}, body:new Uint8Array(bytes) });
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok || !data.id) throw new Error(data.error || ('HTTP '+res.status));
+      const ret = location.origin + location.pathname;
+      location.href = WALLET_URL + '?id=' + encodeURIComponent(data.id) + '&return=' + encodeURIComponent(ret);
+    }catch(e){ _kNote().textContent='Handoff failed: '+(e.message||e)+'. (Is handoff.php deployed?)'; }
+  });
 
   // ---------- paint onto a manifested shape (aim the crosshair at it + spray = it solidifies) ----------
   const TEXS=1024, EARN_PAY=111;   // paint a solidified shape ~halfway → earn a can's worth (111 sats)
@@ -1208,6 +1225,8 @@
     });
   }
   loadWorld();
+  { const _minted = new URLSearchParams(location.search).get('minted');   // came back from the wallet after a mint
+    if(_minted){ showHint('✦ Immortalized on-chain — '+_minted.slice(0,8)+'… It’s yours forever.'); try{ history.replaceState(null,'',location.pathname); }catch(_){} } }
 
   // ---------- loop ----------
   function tick(){
