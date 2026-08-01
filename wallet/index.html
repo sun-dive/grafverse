@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>grafspace wallet — immortalize</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>🔑</text></svg>">
+<style>
+  :root{ --bg:#080d1a; --card:#0e1626; --line:rgba(120,170,255,.18); --line2:rgba(120,170,255,.35);
+         --ink:#eaf2ff; --dim:#8ba3c9; --cyan:#38e1ff; --gold:#f7c65a; --good:#3fe0a0; --bad:#ff6b6b; --violet:#b58bff; }
+  *{margin:0;box-sizing:border-box}
+  body{background:radial-gradient(120% 90% at 50% -10%, #10203c 0%, #0a1020 55%, #06090f 100%);
+       color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       min-height:100vh;padding:24px 16px 60px;display:flex;justify-content:center;}
+  .wrap{width:100%;max-width:540px;display:flex;flex-direction:column;gap:16px;}
+  header{text-align:center;margin:6px 0 2px;}
+  header h1{font-size:22px;font-weight:700;letter-spacing:.02em;}
+  header h1 span{color:var(--cyan);}
+  header p{color:var(--dim);font-size:12.5px;margin-top:4px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 16px 18px;}
+  .card h2{font:600 11px system-ui;letter-spacing:.18em;text-transform:uppercase;color:#9fb4d8;margin-bottom:12px;
+           display:flex;align-items:center;gap:8px;}
+  .row{display:flex;align-items:center;gap:10px;justify-content:space-between;margin:8px 0;}
+  .row .k{color:var(--dim);font-size:12.5px;}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;word-break:break-all;}
+  .addr{background:rgba(120,170,255,.07);border:1px solid var(--line);border-radius:10px;padding:9px 11px;
+        display:flex;gap:8px;align-items:center;justify-content:space-between;}
+  .bal{font-size:22px;font-weight:700;color:var(--gold);font-variant-numeric:tabular-nums;}
+  button,select,input,textarea{font:inherit;color:var(--ink);}
+  button{background:rgba(24,46,82,.9);border:1px solid var(--line2);border-radius:11px;padding:11px 14px;
+         cursor:pointer;font-weight:600;transition:background .12s;}
+  button:hover{background:rgba(40,74,130,.95);}
+  button:active{background:rgba(56,120,210,.95);}
+  button:disabled{opacity:.5;cursor:not-allowed;}
+  button.primary{background:linear-gradient(180deg,#1f6fd8,#1857b0);border-color:#3a7fd8;color:#fff;}
+  button.cyan{background:rgba(56,225,255,.14);border-color:rgba(120,230,255,.5);color:#dffaff;}
+  button.gold{background:rgba(247,198,90,.14);border-color:rgba(247,198,90,.5);color:#ffe9b0;}
+  button.ghost{background:transparent;}
+  button.sm{padding:7px 10px;font-size:12.5px;border-radius:9px;}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap;}
+  .btnrow button{flex:1;min-width:120px;}
+  label{display:block;color:var(--dim);font-size:12px;margin:12px 0 5px;letter-spacing:.02em;}
+  input,select,textarea{width:100%;background:rgba(8,14,26,.7);border:1px solid var(--line);border-radius:10px;
+                        padding:10px 12px;outline:none;}
+  input:focus,select:focus,textarea:focus{border-color:var(--line2);}
+  textarea{resize:vertical;min-height:56px;}
+  .hint{color:var(--dim);font-size:12px;margin-top:6px;line-height:1.45;}
+  .note{background:rgba(247,198,90,.09);border:1px solid rgba(247,198,90,.35);border-radius:10px;padding:10px 12px;
+        font-size:12.5px;color:#f3d493;margin-top:10px;}
+  .note b{color:#ffe9b0;}
+  .seedwords{background:rgba(8,14,26,.8);border:1px dashed var(--line2);border-radius:10px;padding:12px;
+             font-family:ui-monospace,monospace;font-size:13px;line-height:1.9;word-spacing:6px;margin-top:8px;}
+  #status{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);max-width:92vw;padding:10px 16px;
+          border-radius:12px;background:rgba(14,24,44,.96);border:1px solid var(--line2);font-size:13px;
+          box-shadow:0 10px 40px rgba(0,0,0,.5);opacity:0;transition:opacity .3s;pointer-events:none;z-index:9;}
+  #status.show{opacity:1;}
+  #status.error{border-color:var(--bad);color:#ffd4d4;}
+  #status.ok{border-color:var(--good);color:#c8ffe8;}
+  details{margin-top:10px;}
+  details summary{cursor:pointer;color:var(--dim);font-size:12.5px;list-style:none;}
+  details summary::-webkit-details-marker{display:none;}
+  details summary::before{content:'▸ ';color:var(--cyan);}
+  details[open] summary::before{content:'▾ ';}
+  .lic-open{color:var(--good);} .lic-closed{color:var(--violet);}
+  .result{background:rgba(63,224,160,.08);border:1px solid rgba(63,224,160,.35);border-radius:12px;padding:14px;}
+  .result h3{color:var(--good);font-size:14px;margin-bottom:8px;}
+  .pill{display:inline-block;background:rgba(120,170,255,.12);border:1px solid var(--line);border-radius:999px;
+        padding:2px 10px;font-size:11px;color:var(--dim);}
+  .hidden{display:none!important;}
+  .warn-box{border-color:rgba(255,107,107,.4);background:rgba(255,107,107,.07);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>graf<span>space</span> wallet</h1>
+    <p>Your key lives here, on its own origin — never on the game or ad pages. <span class="pill">self-custody</span></p>
+  </header>
+
+  <!-- ── WALLET ─────────────────────────────────────────── -->
+  <section class="card" id="walletCard">
+    <h2>🔑 Wallet</h2>
+    <div class="row"><span class="k">Your address</span><span class="pill" id="watchPill" hidden>watch-only</span></div>
+    <div class="addr"><span class="mono" id="addr">…</span><button class="sm ghost" id="copyAddr">copy</button></div>
+    <div class="row" style="margin-top:14px"><span class="k">Balance</span>
+      <span><span class="bal" id="bal">—</span> <button class="sm ghost" id="refreshBal">↻</button></span></div>
+    <div class="btnrow" style="margin-top:8px">
+      <button class="gold" id="fundBtn">＋ Buy BSV to fund</button>
+    </div>
+
+    <div class="note warn-box hidden" id="backupBanner">
+      ⚠️ <b>Back up your recovery phrase.</b> These 12 words are the only way back into this wallet — no one can recover them for you. Write them on paper, in order.
+      <div class="btnrow" style="margin-top:10px"><button class="sm" id="showSeed">Show my 12 words</button></div>
+      <div id="seedReveal" class="hidden">
+        <div class="seedwords mono" id="seedWords"></div>
+        <div class="btnrow" style="margin-top:8px">
+          <button class="sm" id="copySeed">Copy</button>
+          <button class="sm cyan" id="seedDone">✓ I've written it down</button>
+        </div>
+      </div>
+    </div>
+
+    <details>
+      <summary>Advanced — restore, watch-only, export</summary>
+      <label for="restoreIn">Restore from 12-word phrase or a WIF key</label>
+      <textarea id="restoreIn" placeholder="twelve words …  — or —  L1a2b3c… (WIF)"></textarea>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="sm" id="restoreBtn">Restore wallet</button>
+        <button class="sm ghost" id="watchBtn">Watch-only (pubkey)</button>
+      </div>
+      <div class="hint">Restoring replaces the wallet on this device. Your current one is only recoverable from its own phrase — make sure it's backed up first.</div>
+    </details>
+  </section>
+
+  <!-- ── IMMORTALIZE / MINT ─────────────────────────────── -->
+  <section class="card" id="mintCard">
+    <h2>✦ Immortalize</h2>
+    <div id="payloadStatus" class="hint">No creation loaded yet.</div>
+    <div class="btnrow" style="margin-top:8px" id="testRow">
+      <button class="sm ghost" id="testPayload">Load a test creation</button>
+    </div>
+
+    <div id="mintForm" class="hidden">
+      <label for="mName">Name</label>
+      <input id="mName" placeholder="e.g. Neon Spray Bot" maxlength="80">
+      <label for="mDesc">Description (optional)</label>
+      <textarea id="mDesc" placeholder="A short blurb shown on the listing." maxlength="300"></textarea>
+
+      <label for="mLicense">Licence <span class="hint" style="display:inline">— fixed forever at mint</span></label>
+      <select id="mLicense">
+        <option value="OPEN-BSV" data-open="1">Open BSV License — free to use &amp; remix (default)</option>
+        <option value="CC0" data-open="1">CC0 / Public Domain — no rights reserved</option>
+        <option value="CC-BY-4.0" data-open="1">CC BY 4.0 — free, credit required</option>
+        <option value="ARR" data-open="0">All Rights Reserved — an owned copy</option>
+      </select>
+      <div class="hint" id="licNote"></div>
+
+      <details>
+        <summary>Advanced — royalties &amp; privacy</summary>
+        <label for="mPubFee">Your royalty per resale (sats) — 0 for a free open unit</label>
+        <input id="mPubFee" type="number" min="0" step="1" value="0">
+        <label style="display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--ink)">
+          <input type="checkbox" id="mEncrypt" style="width:auto"> Keep private (encrypt the content)
+        </label>
+        <div class="hint">Only for owned/private atoms. An <b>open licence needs to stay unencrypted</b> so anyone can pull it from chain for free — the checkbox is ignored for open licences.</div>
+      </details>
+
+      <div class="btnrow" style="margin-top:16px">
+        <button class="primary" id="mintBtn">✦ Mint on-chain — make it immortal</button>
+      </div>
+      <div class="hint" id="mintCost"></div>
+    </div>
+
+    <div id="mintResult" class="result hidden" style="margin-top:14px"></div>
+  </section>
+
+  <p style="text-align:center;color:var(--dim);font-size:11px">grafspace · on the Bitcoin SV blockchain</p>
+</div>
+
+<div id="status"></div>
+
+<script src="../vendor/grafmint.js"></script>
+<script>
+(function(){
+  const G = window.GrafMint;
+  const $ = id => document.getElementById(id);
+  let statusT;
+  function status(msg, kind){ const el=$('status'); el.textContent=msg; el.className='show'+(kind?' '+kind:'');
+    clearTimeout(statusT); statusT=setTimeout(()=>el.classList.remove('show'), kind==='error'?6000:3500); }
+  function copy(text, label){ (navigator.clipboard?.writeText(text)||Promise.reject()).then(()=>status((label||'Copied')+' ✓','ok'),()=>{}); }
+
+  if(!G){ status('Wallet core failed to load (grafmint.js).','error'); return; }
+
+  // ── wallet ──
+  let wallet, provider;
+  function loadWallet(){
+    wallet = G.loadOrCreateWallet();
+    provider = new G.WalletProvider(wallet.address);
+    $('addr').textContent = wallet.address;
+    $('watchPill').hidden = !wallet.watchOnly;
+    $('backupBanner').classList.toggle('hidden', wallet.watchOnly || !G.needsSeedBackup());
+    refreshBalance();
+  }
+  async function refreshBalance(){
+    $('bal').textContent='…';
+    try{ const sats = await provider.getBalance(); $('bal').textContent = sats.toLocaleString(); updateMintCost(sats); }
+    catch(e){ $('bal').textContent='offline'; }
+  }
+  $('copyAddr').onclick = ()=>copy(wallet.address,'Address copied');
+  $('refreshBal').onclick = refreshBalance;
+  $('fundBtn').onclick = ()=>window.open(G.buyBsvUrl(),'_blank','noopener,noreferrer');
+
+  // seed backup
+  $('showSeed').onclick = ()=>{ $('seedWords').textContent = G.savedMnemonic()||'(no phrase — this is a WIF-only wallet)'; $('seedReveal').classList.remove('hidden'); $('showSeed').classList.add('hidden'); };
+  $('copySeed').onclick = ()=>copy(G.savedMnemonic()||'', 'Phrase copied');
+  $('seedDone').onclick = ()=>{ G.markBackedUp(); $('backupBanner').classList.add('hidden'); status('Backed up ✓','ok'); };
+
+  // restore
+  $('restoreBtn').onclick = ()=>{
+    const raw = $('restoreIn').value.trim(); if(!raw){ status('Paste a phrase or WIF first.','error'); return; }
+    try{
+      let key, mnem;
+      if(/\s/.test(raw)){ key = G.keyFromMnemonic(raw); mnem = raw.replace(/\s+/g,' ').trim(); }
+      else { key = G.importWif(raw); }
+      G.saveKey(key, mnem);
+      $('restoreIn').value=''; loadWallet(); status('Wallet restored ✓','ok');
+    }catch(e){ status('Couldn’t restore that — check the phrase/key. ('+(e.message||e)+')','error'); }
+  };
+  $('watchBtn').onclick = ()=>{
+    const raw = $('restoreIn').value.trim(); if(!raw){ status('Paste a public key (hex) first.','error'); return; }
+    try{ G.saveWatch(raw); $('restoreIn').value=''; loadWallet(); status('Watch-only wallet loaded.','ok'); }
+    catch(e){ status('Not a valid public key.','error'); }
+  };
+
+  // ── payload (the creation to mint) ──
+  let payload = null; // { bytes:number[], name?, description? }
+  function setPayload(p){
+    payload = p;
+    $('payloadStatus').innerHTML = '<b style="color:var(--cyan)">'+(p.name||'Creation')+'</b> — '+p.bytes.length.toLocaleString()+' bytes ready to immortalize.';
+    $('testRow').classList.add('hidden');
+    $('mintForm').classList.remove('hidden');
+    if(p.name) $('mName').value = p.name;
+    if(p.description) $('mDesc').value = p.description;
+  }
+  // A creation handed off from the game arrives by id (?id=…) via the handoff endpoint; else offer a test one.
+  const params = new URLSearchParams(location.search);
+  const handoffId = params.get('id');
+  const returnUrl = params.get('return');
+  if(params.get('aff')) G.setIncomingAff(params.get('aff'));
+  if(handoffId){
+    $('payloadStatus').textContent = 'Loading your creation…';
+    fetch('../handoff.php?id='+encodeURIComponent(handoffId))
+      .then(r=>r.ok?r.json():Promise.reject())
+      .then(d=>{ if(!Array.isArray(d.bytes)) throw 0; setPayload({bytes:d.bytes, name:d.name, description:d.description}); })
+      .catch(()=>{ $('payloadStatus').innerHTML = 'Couldn’t load that creation (the handoff may have expired). <br>You can still test below.'; });
+  }
+  $('testPayload').onclick = ()=>{
+    const bytes = []; for(let i=0;i<800;i++) bytes.push((i*37+13)&255); // deterministic dummy atom
+    setPayload({bytes, name:'Test creation'});
+    status('Test creation loaded — not a real world, just bytes to exercise the mint.','ok');
+  };
+
+  // ── licence UI ──
+  function licOpen(){ return $('mLicense').selectedOptions[0].dataset.open==='1'; }
+  function updateLicNote(){
+    const open = licOpen();
+    $('licNote').innerHTML = open
+      ? '<span class="lic-open">Open licence — anyone can pull this from chain and use it in the game <b>for free</b>. Great for starter units. (Content stays unencrypted.)</span>'
+      : '<span class="lic-closed">Owned/private — a copy others buy or claim. You can encrypt the content below.</span>';
+    $('mEncrypt').disabled = open;
+  }
+  $('mLicense').onchange = updateLicNote; updateLicNote();
+
+  function updateMintCost(balSats){
+    if(!payload) return;
+    const est = Math.max(200, Math.ceil(payload.bytes.length/1000)*20 + 300); // rough sats estimate (real total confirmed before broadcast)
+    $('mintCost').textContent = 'Roughly ~'+est.toLocaleString()+' sats to mint (exact amount is confirmed before anything is spent).'
+      + (typeof balSats==='number' && balSats<est ? '  ⚠ Your balance looks low — fund the wallet first.' : '');
+  }
+
+  // ── mint ──
+  $('mintBtn').onclick = async ()=>{
+    if(!payload){ status('Load a creation first.','error'); return; }
+    if(wallet.watchOnly){ status('This is a watch-only wallet — restore your key to mint.','error'); return; }
+    const name = ($('mName').value.trim()||'grafspace creation').slice(0,80);
+    const open = licOpen();
+    $('mintBtn').disabled = true; status('Building the mint transaction…');
+    try{
+      const res = await G.mintAtom(provider, wallet, {
+        tokenName: name,
+        bytes: payload.bytes,
+        description: $('mDesc').value.trim(),
+        license: $('mLicense').value,
+        encrypt: !open && $('mEncrypt').checked,
+        publisherFeeSats: Math.max(0, parseInt($('mPubFee').value,10)||0),
+        holderFeeSats: 0,
+        confirmSpend: (sats)=> confirm('Mint “'+name+'” on-chain for '+sats.toLocaleString()+' sats?\n\nThis is permanent — you’ll own it, and it can’t be un-minted.'),
+      });
+      showResult(res, name);
+      status('Minted ✓','ok'); refreshBalance();
+    }catch(e){
+      const m = e && e.message || String(e);
+      status(/insufficient/i.test(m) ? 'Not enough BSV to mint — fund the wallet and try again.' : ('Mint failed: '+m), 'error');
+      if(/insufficient/i.test(m)) $('fundBtn').scrollIntoView({behavior:'smooth'});
+    }finally{ $('mintBtn').disabled = false; }
+  };
+
+  function showResult(res, name){
+    const el = $('mintResult'); el.classList.remove('hidden');
+    const oc = res.collectionId;
+    el.innerHTML = '<h3>✦ It’s immortal.</h3>'
+      + '<div class="row"><span class="k">Collection id</span><span class="mono">'+oc.slice(0,10)+'…'+oc.slice(-10)+'</span></div>'
+      + '<div class="row"><span class="k">TX1 / TX2</span><span class="mono">'+res.tx1Id.slice(0,8)+'… / '+res.tx2Id.slice(0,8)+'…</span></div>'
+      + '<div class="btnrow" style="margin-top:10px">'
+      +   '<button class="sm" id="copyId">Copy collection id</button>'
+      +   '<a href="https://whatsonchain.com/tx/'+oc+'" target="_blank" rel="noopener"><button class="sm ghost">View on chain ↗</button></a>'
+      + (returnUrl ? '<button class="sm cyan" id="backGame">← Back to the game</button>' : '')
+      + '</div>';
+    $('copyId').onclick = ()=>copy(oc,'Collection id copied');
+    const bg = $('backGame'); if(bg) bg.onclick = ()=>{ location.href = returnUrl + (returnUrl.includes('?')?'&':'?') + 'minted=' + oc; };
+  }
+
+  loadWallet();
+})();
+</script>
+</body>
+</html>

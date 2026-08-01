@@ -16,7 +16,10 @@ export {
 // ── network (dual-relay WoC + BananaBlocks; broadcast + awaitInMempool gate) ──
 export { WalletProvider } from './walletProvider.ts'
 
-// ── mint / editions / gift-voucher free units ──
+// ── high-level mint (grafspace-friendly wrapper) ──
+export { mintAtom } from './mintApi.ts'
+
+// ── mint / editions / gift-voucher free units (low-level) ──
 export {
   createEdition, createEditionV2, replicateEdition, replicateEditionV2,
   transferEdition, burnEdition,
