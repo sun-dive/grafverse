@@ -135,10 +135,11 @@
   #grabBtn{position:fixed;left:28px;bottom:140px;display:none;padding:12px 18px;border-radius:22px;
     background:rgba(20,40,74,.9);border:1px solid rgba(120,170,255,.5);color:#dfe8ff;font:600 13px system-ui;
     letter-spacing:.1em;text-transform:uppercase;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;}
-  body.building #grabBtn{display:block;}
-  body.mtalk #grabBtn, body.shaping #grabBtn, body.keep #grabBtn{display:none!important;}
-  body.shaping #sprayBtn, body.shaping #backBtn,
-  body.keep #sprayBtn, body.keep #backBtn{display:none!important;}   /* no firing / walking while shaping or keeping */
+  #grabBtn.down{background:rgba(56,120,210,.85);border-color:#8fd0ff;}
+  body.building #grabBtn{display:block;}                             /* Grab stays available in the manifest editor (to move shapes) */
+  body.mtalk #grabBtn, body.keep #grabBtn{display:none!important;}
+  body.shaping #sprayBtn,                                            /* no painting inside the editor */
+  body.keep #sprayBtn, body.keep #backBtn{display:none!important;}   /* no firing / walking while keeping */
   #talkBtn{position:fixed;left:50%;bottom:170px;transform:translateX(-50%);display:none;
     padding:12px 26px;border-radius:24px;background:rgba(8,16,30,.85);border:1px solid rgba(120,170,255,.55);
     color:#eaf6ff;font:600 14px system-ui;letter-spacing:.14em;text-transform:uppercase;pointer-events:auto;
@@ -195,7 +196,7 @@
   <div id="joyBase"><div id="joyKnob"></div></div>
   <div id="sprayBtn">Spray</div>
   <div id="backBtn">Back</div>
-  <div id="grabBtn">Hold</div>
+  <div id="grabBtn">Grab</div>
   <div id="talkBtn">Talk</div>
 </div>
 <div id="chips"></div>
@@ -551,7 +552,7 @@
     pitch -= e.movementY*SENS;
     pitch = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, pitch));
   });
-  addEventListener('mousedown', e=>{ if(locked && e.button===0) spraying=true; });
+  addEventListener('mousedown', e=>{ if(locked && e.button===0) spraying=true; });   // pointer-locked = PAINT mode → hold to spray
   addEventListener('mouseup',   e=>{ if(e.button===0) spraying=false; });
   el.addEventListener('click', ()=>{ if(!locked && !talking && !firstStart && !shaping && !keepOpen) el.requestPointerLock(); });
 
@@ -752,7 +753,8 @@
     let lookId=null, lx=0, ly=0;
     sprayBtn.addEventListener('touchstart', e=>{ e.preventDefault(); if(hasCan) spraying=true; sprayBtn.classList.add('down'); }, {passive:false});
     sprayBtn.addEventListener('touchend', e=>{ e.preventDefault(); spraying=false; sprayBtn.classList.remove('down'); });
-    const grabBtn=$('grabBtn'); grabBtn.addEventListener('touchstart', e=>{ e.preventDefault(); dropGrab(); }, {passive:false});
+    const grabBtn=$('grabBtn');                            // tap to pick up the shape under the crosshair (then look to drag it), tap again to drop
+    grabBtn.addEventListener('touchstart', e=>{ e.preventDefault(); if(heldGhost){ heldGhost=null; setMode(); } else tryGrab(); }, {passive:false});
     const backBtn=$('backBtn');
     backBtn.addEventListener('touchstart', e=>{ e.preventDefault(); e.stopPropagation(); mBack=true; backBtn.classList.add('down'); }, {passive:false});
     backBtn.addEventListener('touchend', e=>{ e.preventDefault(); mBack=false; backBtn.classList.remove('down'); });
@@ -784,7 +786,7 @@
 
     // move — keys or joystick, velocity-smoothed (movement no longer needs pointer-lock, only mouse-LOOK does)
     let tx=0, tz=0;
-    if(!talking && !firstStart && !shaping && !keepOpen){
+    if(!talking && !firstStart && !keepOpen){              // you can walk even with the manifest HUD open
       const fx=-Math.sin(yaw), fz=-Math.cos(yaw), rx=Math.cos(yaw), rz=-Math.sin(yaw);
       let ix=0, iz=0;
       if(keys.KeyW) iz+=1;
@@ -834,12 +836,8 @@
       }
     } else if(scavRespawn && performance.now()>scavRespawn){ scavRespawn=0; spawnScav(); }
 
-    // spraying
-    if(hasCan && spraying && heldGhost){                    // carrying a fresh shape → the trigger SETS IT DOWN (no paint yet)
-      heldGhost=null; document.body.classList.remove('holding'); spraying=false;   // set down in place; release & press again to paint
-      const gb=document.getElementById('grabBtn'); if(gb) gb.textContent='Hold';
-      showHint(MOBILE?'set down — walk around it · Hold to move/reshape · spray to paint it solid':'set down — walk around it · aim + G to move/reshape · spray to paint it solid');
-    } else if(hasCan && spraying && paint>0){
+    // spraying — only ever active in PAINT mode (arrange grabs, it doesn't spray)
+    if(hasCan && spraying && paint>0 && !activeShape){
       ray.setFromCamera(CENTER, camera);
       const shot = bShapes.length ? ray.intersectObjects(bShapes,false)[0] : null;
       if(shot && shot.uv){                                 // crosshair on a manifested shape → paint & solidify it
@@ -875,7 +873,7 @@
       }
     } else if(curStroke){ endStroke(); }                   // released spray → finalise the stroke
     if(hissGain && actx) hissGain.gain.setTargetAtTime((hasCan && spraying && paint>0)?0.13:0.0, actx.currentTime, 0.03);
-    if(viewCan) viewCan.visible = hasCan && !heldGhost && !shaping && !keepOpen;   // can only shows when you're set to paint — not carrying, not in a panel
+    if(viewCan) viewCan.visible = hasCan && !activeShape && !shaping && !keepOpen;   // can shows only in PAINT mode — stowed while you arrange a shape
 
     // vending machine: greet on approach, then offer chat while near
     const md = planarDist(MACHINE_POS);
@@ -913,33 +911,37 @@
     const m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:0x13203a,transparent:true,opacity:0.5,roughness:.7,metalness:.1,emissive:0x1a2c50,emissiveIntensity:.6,side:THREE.DoubleSide,fog:false}));
     m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo,32),new THREE.LineBasicMaterial({color:0x5fa0e0,transparent:true,opacity:0.65,fog:false})));
     m.userData={type,grow:0,target:new THREE.Vector3(1,1,1)}; return m; }
-  const bShapes=[]; let heldGhost=null; const _fwd=new THREE.Vector3(), _brc=new THREE.Raycaster();
+  const bShapes=[]; let heldGhost=null, activeShape=null; const _fwd=new THREE.Vector3(), _brc=new THREE.Raycaster();
+  // activeShape = the un-painted shape you're building (arrange mode = can stowed, no painting).
+  // heldGhost   = activeShape while it follows your gaze (being carried). null once set down.
+  function setMode(){ const gb=document.getElementById('grabBtn'); if(gb){ gb.textContent = heldGhost ? 'Drop' : 'Grab'; gb.classList.toggle('down', !!heldGhost); } }
   function placePoint(){ _fwd.set(0,0,-1).applyQuaternion(camera.quaternion); _brc.set(camera.position,_fwd);
     const h=_brc.intersectObject(ground)[0];
     if(h && h.distance<44) return h.point.clone();
     return camera.position.clone().addScaledVector(_fwd,6).setY(0); }
   const _vsc=new THREE.Vector3();
-  function conjure(type){ heldGhost=null;               // lock any previously-held ghost where it is
-    const m=ghostMesh(type); const p=placePoint(); m.position.set(p.x,0,p.z); m.scale.setScalar(0.12);
-    scene.add(m); bShapes.push(m); heldGhost=m; document.body.classList.add('holding');
-    if(shaping){ buildShapeTools(type); return; }         // panel's open — just refresh its controls for the new shape
-    showHint(MOBILE?'aim to place · tap to set it down · walk round it · spray to paint':'aim to place · scroll to resize · click to set it down · then spray to paint'); }
+  function conjure(type){                                 // spawns at the clicked spot (or ahead of you); previous shape stays put
+    const m=ghostMesh(type); const p=(typeof placeMarker!=='undefined'&&placeMarker)?placeMarker:placePoint();
+    m.position.set(p.x,0,p.z); m.scale.setScalar(0.12);
+    scene.add(m); bShapes.push(m); activeShape=m; heldGhost=null; setMode();
+    if(shaping){ buildShapeTools(type); return; }          // stay in the editor — refresh controls for the new shape
+    showHint(MOBILE?'manifested — Grab to move · ◆ make to resize':'manifested — click-hold to move · scroll/◆ make to resize · Enter to paint'); }
 
-  // ---------- full shape control (per-axis / uniform / rotate) over the HELD ghost ----------
+  // ---------- full shape control (per-axis / uniform / rotate) over the ACTIVE shape ----------
   const AXES={ box:[['W','x'],['H','y'],['D','z']], wall:[['W','x'],['H','y'],['T','z']],
     plane:[['W','x'],['D','z']], cylinder:[['R','xz'],['H','y']],
     cone:[['R','xz'],['H','y']], pyramid:[['R','xz'],['H','y']], sphere:[['Size','xyz']] };
-  function scaleAxis(axis,f){ const t=heldGhost&&heldGhost.userData.target; if(!t)return;
+  function scaleAxis(axis,f){ const t=activeShape&&activeShape.userData.target; if(!t)return;
     if(axis.indexOf('x')>=0) t.x=Math.max(0.25,Math.min(6,t.x*f));
     if(axis.indexOf('y')>=0) t.y=Math.max(0.25,Math.min(6,t.y*f));
     if(axis.indexOf('z')>=0) t.z=Math.max(0.25,Math.min(6,t.z*f)); }
-  function scaleAll(f){ const t=heldGhost&&heldGhost.userData.target; if(!t)return;
+  function scaleAll(f){ const t=activeShape&&activeShape.userData.target; if(!t)return;
     const mx=Math.max(t.x,t.y,t.z), mn=Math.min(t.x,t.y,t.z);
     if(f>1) f=Math.min(f,6/mx); else f=Math.max(f,0.25/mn); t.multiplyScalar(f); }
-  function rotY(d){ if(heldGhost) heldGhost.rotation.y+=d; }
-  function lean(d){ if(heldGhost) heldGhost.rotation.x+=d; }
-  function resetShape(){ if(!heldGhost)return; heldGhost.userData.target.set(1,1,1); heldGhost.rotation.set(0,0,0); }
-  el.addEventListener('wheel', e=>{ if(heldGhost){ e.preventDefault(); scaleAll(e.deltaY<0?1.1:1/1.1); } }, {passive:false});   // scroll = quick uniform resize
+  function rotY(d){ if(activeShape) activeShape.rotation.y+=d; }
+  function lean(d){ if(activeShape) activeShape.rotation.x+=d; }
+  function resetShape(){ if(!activeShape)return; activeShape.userData.target.set(1,1,1); activeShape.rotation.set(0,0,0); }
+  el.addEventListener('wheel', e=>{ if(activeShape){ e.preventDefault(); scaleAll(e.deltaY<0?1.1:1/1.1); } }, {passive:false});   // scroll = quick uniform resize
 
   // the pop-in side panel
   let shaping=false;
@@ -950,10 +952,10 @@
     const mh=document.createElement('div'); mh.className='mkhdr'; mh.textContent='make'; box.appendChild(mh);
     const grid=document.createElement('div'); grid.className='mkgrid';
     BSHAPES.forEach((s,i)=>{ const b=document.createElement('div');
-      b.className='pbtn'+(heldGhost&&heldGhost.userData.type===s?' on':'');
+      b.className='pbtn'+(activeShape&&activeShape.userData.type===s?' on':'');
       b.innerHTML='<b>'+(i+1)+'</b>'+s; b.addEventListener('click',()=>conjure(s)); grid.appendChild(b); });
     box.appendChild(grid);
-    if(heldGhost){                                          // --- SHAPE: tune the held ghost before you paint it solid ---
+    if(activeShape){                                        // --- SHAPE: tune the active shape before you paint it solid ---
       const sh=document.createElement('div'); sh.className='mkhdr'; sh.textContent='shape'; box.appendChild(sh);
       (AXES[type]||[]).forEach(([label,axis])=>{ const row=document.createElement('div'); row.className='srow';
         row.appendChild(sbtn('−',()=>scaleAxis(axis,1/1.12)));
@@ -968,23 +970,52 @@
       r.appendChild(sbtn('◣',()=>lean(Math.PI/12)));  r.appendChild(sbtn('◢',()=>lean(-Math.PI/12))); box.appendChild(r);
       const d=document.createElement('div'); d.className='srow'; d.appendChild(sbtn('⎌ reset',resetShape,'wide')); box.appendChild(d);
     }
-    const done=document.createElement('div'); done.className='srow';
-    done.appendChild(sbtn(heldGhost?'✓ done':'✕ close',closeShape,'done')); box.appendChild(done);
+    const close=document.createElement('div'); close.className='srow';
+    close.appendChild(sbtn('✕ close',closeShape,'done')); box.appendChild(close);
   }
-  function openShape(){ shaping=true; document.body.classList.add('shaping'); buildShapeTools(heldGhost?heldGhost.userData.type:null);
-    if(!MOBILE) document.exitPointerLock(); }             // can visibility handled per-frame (away while shaping / carrying)
-  function closeShape(){ shaping=false; document.body.classList.remove('shaping');
-    if(!MOBILE) el.requestPointerLock(); }
+  // MANIFEST mode = the free-cursor editor (HUD open). PAINT mode = first-person, pointer-locked, spray.
+  function openShape(){ shaping=true; document.body.classList.add('shaping'); buildShapeTools(activeShape?activeShape.userData.type:null);
+    if(!MOBILE) document.exitPointerLock();               // free the cursor — you build by clicking
+    showHint(MOBILE?'manifest — tap a shape to place it ahead · Grab to move · ✕ close to paint':'manifest — click the ground for a spot, then a shape · drag to look · click-hold a shape to move it'); }
+  function closeShape(){ shaping=false; document.body.classList.remove('shaping');   // leave the editor → first-person PAINT mode
+    activeShape=null; heldGhost=null; setMode(); placeMarker=null; if(placeRing) placeRing.visible=false;
+    if(!MOBILE) el.requestPointerLock();
+    if(hasCan) showHint(MOBILE?'aim + Spray to paint it solid':'aim + hold-click to paint it solid'); }
   addEventListener('keydown', e=>{ if(e.code==='KeyE' && buildUnlocked && !talking && !keepOpen){ e.preventDefault(); shaping?closeShape():openShape(); } });
+  addEventListener('keydown', e=>{ if(e.code==='Enter' && shaping && !talking){ e.preventDefault(); closeShape(); } });
   document.getElementById('shapeTab').addEventListener('click', openShape);
-  function dropGrab(){                                    // unfocus: drop the held ghost, OR grab the unpainted one under the crosshair
-    if(heldGhost){ heldGhost=null; document.body.classList.remove('holding');
-      showHint(MOBILE?'dropped — aim at it, tap Hold to move/reshape · spray to make it real':'dropped — walk around · aim + G to move/reshape · spray to make it real'); }
-    else { ray.setFromCamera(CENTER,camera); const h=ray.intersectObjects(bShapes,false)[0];
-      if(h && h.object && !h.object.userData.painted){ heldGhost=h.object; document.body.classList.add('holding'); openShape(); } }   // grab AND open the shape HUD
-    const gb=document.getElementById('grabBtn'); if(gb) gb.textContent = heldGhost ? 'Drop' : 'Hold';
-  }
-  addEventListener('keydown', e=>{ if(e.code==='KeyG' && buildUnlocked && !talking && !shaping && !keepOpen){ e.preventDefault(); dropGrab(); } });
+
+  function tryGrab(){                                     // mobile Grab button — pick up the shape under the crosshair
+    ray.setFromCamera(CENTER,camera); const h=ray.intersectObjects(bShapes,false)[0];
+    if(h && h.object && !h.object.userData.painted){ activeShape=h.object; heldGhost=h.object; setMode();
+      if(shaping) buildShapeTools(activeShape.userData.type); } }
+
+  // ---- desktop free-cursor editor: drag empty space to look, click ground for a spot, click-hold a shape to move it ----
+  const placeRing=new THREE.Mesh(new THREE.RingGeometry(0.34,0.5,40).rotateX(-Math.PI/2),
+    new THREE.MeshBasicMaterial({color:0x6fd3ff,transparent:true,opacity:0.7,fog:false}));
+  placeRing.visible=false; scene.add(placeRing);
+  let placeMarker=null;
+  function setPlaceMarker(p){ placeMarker=p.clone(); placeRing.position.set(p.x,0.02,p.z); placeRing.visible=true; }
+  const _cur=new THREE.Vector2(), _curRay=new THREE.Raycaster();
+  function _pick(e,objs){ const r=el.getBoundingClientRect();
+    _cur.set(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
+    _curRay.setFromCamera(_cur,camera); return _curRay.intersectObjects(objs,false)[0]||null; }
+  let dragMode=null, dragX=0, dragY=0, dragMoved=0;
+  el.addEventListener('pointerdown', e=>{ if(MOBILE || !shaping || e.button!==0) return;
+    const hs=_pick(e,bShapes);
+    if(hs && !hs.object.userData.painted){ activeShape=hs.object; heldGhost=hs.object; setMode(); buildShapeTools(activeShape.userData.type); dragMode='move'; }
+    else dragMode='look';
+    dragX=e.clientX; dragY=e.clientY; dragMoved=0; try{ el.setPointerCapture(e.pointerId); }catch(_){} });
+  el.addEventListener('pointermove', e=>{ if(MOBILE || !shaping || !dragMode) return;
+    const dx=e.clientX-dragX, dy=e.clientY-dragY; dragMoved+=Math.abs(dx)+Math.abs(dy);
+    if(dragMode==='look'){ yaw-=dx*0.005; pitch-=dy*0.005; pitch=Math.max(-PITCH_MAX,Math.min(PITCH_MAX,pitch)); }
+    else if(dragMode==='move' && heldGhost){ const g=_pick(e,[ground]); if(g) heldGhost.position.set(g.point.x,heldGhost.position.y,g.point.z); }
+    dragX=e.clientX; dragY=e.clientY; });
+  el.addEventListener('pointerup', e=>{ if(MOBILE || !shaping) return;
+    if(dragMode==='move'){ heldGhost=null; setMode(); }
+    else if(dragMode==='look' && dragMoved<5){            // a click on empty ground → set the spot & deselect
+      const g=_pick(e,[ground]); if(g){ setPlaceMarker(g.point); activeShape=null; heldGhost=null; setMode(); buildShapeTools(null); } }
+    dragMode=null; try{ el.releasePointerCapture(e.pointerId); }catch(_){} });
 
   // ---------- top "Keep / Immortalize" HUD — save, reload, and (soon) mint your world ----------
   let keepOpen=false;
@@ -1067,11 +1098,12 @@
   function unlockBuild(){ if(buildUnlocked)return; buildUnlocked=true;   // the can IS the kit — reveal everything at once
     walletEl.style.opacity=1; renderWallet();          // wallet balance
     invEl.style.display='flex'; invEl.style.opacity=1; renderInv();   // your 2 colours + how much of each is left
-    document.body.classList.add('building');
+    document.body.classList.add('building'); setMode();
     showHint(MOBILE?'tap ◆ make on the right to manifest a shape':'press 1–7 (or ◆ make, right) to manifest a shape'); }
-  addEventListener('keydown',e=>{ if(!buildUnlocked||talking)return; const n=e.code.match(/^Digit([1-7])$/); if(n) conjure(BSHAPES[+n[1]-1]); });
+  addEventListener('keydown',e=>{ if(!buildUnlocked||talking||keepOpen)return; const n=e.code.match(/^Digit([1-7])$/);
+    if(n){ if(!shaping) openShape(); conjure(BSHAPES[+n[1]-1]); } });   // a number opens the manifest editor and drops a shape in
   function bTick(){
-    if(heldGhost && !shaping && !keepOpen){ const p=placePoint(); heldGhost.position.x=p.x; heldGhost.position.z=p.z; }   // follows gaze (frozen while shaping / keep panel open)
+    if(heldGhost && !keepOpen && (MOBILE || !shaping)){ const p=placePoint(); heldGhost.position.x=p.x; heldGhost.position.z=p.z; }   // mobile Grab follows gaze; desktop editor drags with the cursor instead
     for(const m of bShapes){ const u=m.userData; const t=u.target;
       if(u.grow<1){ u.grow=Math.min(1,u.grow+0.09); const e=1-Math.pow(1-u.grow,3); _vsc.copy(t).multiplyScalar(0.12+0.88*e); m.scale.copy(_vsc); }
       else m.scale.copy(t); } }
