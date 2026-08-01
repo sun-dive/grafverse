@@ -230,6 +230,7 @@
   // ---------- config ----------
   const COLORS = [0x38e1ff, 0xff3ea5, 0x7CFC00, 0xffe94d, 0xff7a00];
   const EYE = 1.7, SPEED = 2.1, SENS = 0.0022, PITCH_MAX = 1.45;
+  const JUMP_V = 6.2, GRAV = -15;   // jump impulse (units/s) + gravity — tuned to hop onto shapes ~1.3 units tall
   const GROUND = 500;          // ground plane size (units)
   const TEX = 2048;            // paint canvas resolution
   const PAINT_DRAIN = 0.22;    // per frame while spraying
@@ -296,6 +297,7 @@
   // spray a glowing splat (additive within the canvas so overlaps go white-hot).
   // dwell = how long you've lingered on one spot → paint pools & spatters (rewards a confident stroke).
   let lastPx=null, dwell=0;
+  let soleColor=null, soleCharge=0;            // wet paint picked up on the soles → tracked footprints
   function spray(uv){
     const {x,y} = toPx(uv);
     if(lastPx){ const dd=Math.hypot(x-lastPx.x, y-lastPx.y);
@@ -322,6 +324,24 @@
     }
     pctx.globalCompositeOperation = 'source-over';
     paintTex.needsUpdate = true;
+  }
+
+  // Walk through wet paint → pick it up on your soles and leave fading footprints for a few steps.
+  function leaveFootprint(px, pz, vx, vz, ph){
+    const u = px/GROUND + 0.5, v = 0.5 - pz/GROUND, fx = u*TEX, fy = (1-v)*TEX;
+    if(fx<1 || fx>=TEX-1 || fy<1 || fy>=TEX-1) return;
+    try{ const d = pctx.getImageData(fx|0, fy|0, 1, 1).data;      // is the ground here painted (wet)?
+      if(d[3] > 40){ soleColor=[d[0],d[1],d[2]]; soleCharge=8; } }catch(_){}
+    if(soleCharge<=0 || !soleColor) return;
+    const a = Math.atan2(vz, vx);                                 // walk direction (canvas space)
+    const side = (ph&1)?1:-1, ox=Math.cos(a+Math.PI/2)*11*side, oy=Math.sin(a+Math.PI/2)*11*side;
+    const alpha = 0.5*(soleCharge/8);
+    pctx.save(); pctx.translate(fx+ox, fy+oy); pctx.rotate(a);
+    pctx.fillStyle = `rgba(${soleColor[0]},${soleColor[1]},${soleColor[2]},${alpha})`;
+    pctx.beginPath(); pctx.ellipse(0,0, 8,5, 0,0,7); pctx.fill();  // sole (long axis along walk)
+    pctx.beginPath(); pctx.ellipse(10,0, 3,3, 0,0,7); pctx.fill(); // toe
+    pctx.restore();
+    soleCharge--; paintTex.needsUpdate=true;
   }
 
   // ---------- a spray can (pickup + viewmodel) ----------
@@ -561,6 +581,7 @@
     if(talking) return;
     keys[e.code]=true;
     if(e.code==='KeyT' && nearMachine){ enterTalk(); }
+    if(e.code==='Space' && !e.repeat && !airborne && !firstStart && !keepOpen && !shaping){ e.preventDefault(); velY=JUMP_V; airborne=true; }   // jump
   });
   addEventListener('keyup', e=> keys[e.code]=false);
 
@@ -638,7 +659,7 @@
       firstStart=false;
       $('splash').classList.add('hidden');
       reticle.style.opacity=1;
-      showHint(MOBILE ? 'left stick to move  ·  drag anywhere to look' : 'WASD to move  ·  move mouse to look');
+      showHint(MOBILE ? 'left stick to move  ·  drag anywhere to look' : 'WASD to move  ·  Space to jump  ·  move mouse to look');
     }
   }
 
@@ -814,7 +835,7 @@
   }
 
   // ---------- state ----------
-  let paint=0, hasCan=false, emptyAnnounced=false, fumble=0, velX=0, velZ=0, bob=0, stepPhase=0, paintShown=false;
+  let paint=0, hasCan=false, emptyAnnounced=false, fumble=0, velX=0, velZ=0, bob=0, stepPhase=0, paintShown=false, velY=0, airborne=false;
   const ray = new THREE.Raycaster();
   const CENTER = new THREE.Vector2(0,0);
   const clock = new THREE.Clock();
@@ -845,8 +866,22 @@
     camera.position.x += velX*dt; camera.position.z += velZ*dt;
     const spd = Math.hypot(velX,velZ);
     bob += spd*dt*1.9;
-    camera.position.y = EYE + Math.sin(bob)*0.05*Math.min(1, spd/SPEED);
-    if(spd>0.4){ const ph=Math.floor(bob/Math.PI); if(ph!==stepPhase){ stepPhase=ph; footstep(); } }   // a footfall each half-bob
+    // --- vertical: gravity + jump; land on the ground (y=0) and on top of solid shapes ---
+    const px=camera.position.x, pz=camera.position.z, feetY=camera.position.y-EYE;
+    let floorY=0;
+    for(const m of bShapes){ if(!m.userData.painted || m.userData.grow<1) continue;   // solid + fully grown = standable
+      let bb=m.userData.aabb;
+      if(!bb){ const b=new THREE.Box3().setFromObject(m); bb=m.userData.aabb={x0:b.min.x,x1:b.max.x,z0:b.min.z,z1:b.max.z,top:b.max.y}; }
+      if(px>=bb.x0&&px<=bb.x1&&pz>=bb.z0&&pz<=bb.z1 && bb.top<=feetY+0.35 && bb.top>floorY) floorY=bb.top;   // stand on the highest top under you
+    }
+    const standY=floorY+EYE;
+    if(airborne){ velY+=GRAV*dt; camera.position.y+=velY*dt;
+      if(velY<=0 && camera.position.y<=standY){ camera.position.y=standY; velY=0; airborne=false; } }   // landed
+    else if(camera.position.y>standY+0.06){ airborne=true; }                                            // walked off an edge → fall
+    else camera.position.y = standY + Math.sin(bob)*0.05*Math.min(1, spd/SPEED);                        // grounded: head-bob
+    // --- footfalls + wet-paint footprints (only while grounded on the actual ground) ---
+    if(spd>0.4 && !airborne){ const ph=Math.floor(bob/Math.PI);
+      if(ph!==stepPhase){ stepPhase=ph; footstep(); if(floorY<0.1) leaveFootprint(px,pz,velX,velZ,ph); } }
 
     // can pickup
     if(!hasCan){
