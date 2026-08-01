@@ -7,4 +7,6 @@ deployment:
     - export DEPLOYPATH="$HOME/grafverse.com/"
     - /bin/cp grafverse.html "$DEPLOYPATH/index.html"    # the integrated first-person game (onboarding → manifest → paint-to-earn)
     - /bin/cp og.jpg "$DEPLOYPATH"                        # social / link-preview card
-    - /bin/cp -r vendor "$DEPLOYPATH"                     # vendored three.min.js (offline, no CDN)
+    - /bin/cp -r vendor "$DEPLOYPATH"                     # vendored three.min.js + grafmint.js (offline, no CDN)
+    - /bin/cp -r wallet "$DEPLOYPATH"                     # wallet/immortalize app — TESTING at /wallet/ for now;
+                                                          # real home is the wallet.grafverse.com SUBDOMAIN (key isolation)
