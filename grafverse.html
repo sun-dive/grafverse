@@ -49,12 +49,10 @@
   #wallet .wrow.blk .wname{color:#c98bd0;}
   #wallet .wrow.blk .wval{color:#c98bd0;font-weight:600;font-size:11px;}
   #wallet .wmeta.blk{color:#7a5a86;}
-  /* --- first-person builder palette (Quake with paint) --- */
-  #palette{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);display:none;gap:6px;flex-wrap:wrap;justify-content:center;max-width:96vw;z-index:8;pointer-events:none;}
-  body.building #palette{display:flex;}
-  .pbtn{padding:8px 11px;border-radius:11px;background:rgba(16,30,58,.9);border:1px solid rgba(120,170,255,.35);color:#cfe0ff;font:600 12px system-ui;pointer-events:auto;cursor:pointer;white-space:nowrap;}
-  .pbtn b{color:#6fd3ff;margin-right:5px;}
-  .pbtn:active{background:rgba(56,120,210,.95);}
+  /* --- shape "make" buttons (live inside the right-edge Manifest HUD) --- */
+  .pbtn{padding:7px 10px;border-radius:10px;background:rgba(16,30,58,.9);border:1px solid rgba(120,170,255,.35);color:#cfe0ff;font:600 12px system-ui;pointer-events:auto;cursor:pointer;white-space:nowrap;}
+  .pbtn b{color:#6fd3ff;margin-right:4px;}
+  .pbtn:active,.pbtn.on{background:rgba(56,120,210,.95);border-color:#8fd0ff;}
   /* --- two-colour paint inventory (leftover can + full can) --- */
   #inv{position:fixed;left:24px;bottom:24px;display:none;flex-direction:column;gap:8px;opacity:0;transition:opacity .4s;z-index:6;}
   .islot{display:flex;align-items:center;gap:8px;pointer-events:auto;cursor:pointer;opacity:.5;transition:opacity .15s;}
@@ -68,13 +66,15 @@
   #shapeTab{position:fixed;right:0;top:50%;transform:translateY(-50%);display:none;z-index:8;
     padding:14px 9px;border-radius:12px 0 0 12px;background:rgba(20,40,74,.92);border:1px solid rgba(120,170,255,.4);border-right:none;
     color:#cfe0ff;font:600 12px system-ui;writing-mode:vertical-rl;letter-spacing:.14em;cursor:pointer;pointer-events:auto;}
-  body.holding #shapeTab{display:block;}
-  body.shaping #shapeTab{display:none;}
+  body.building #shapeTab{display:block;}
+  body.shaping #shapeTab, body.keep #shapeTab{display:none;}
   #shapePanel{position:fixed;right:-260px;top:50%;transform:translateY(-50%);width:206px;z-index:9;
     background:rgba(8,14,26,.94);border:1px solid rgba(120,170,255,.35);border-radius:14px 0 0 14px;border-right:none;
     padding:14px 12px;transition:right .22s ease;pointer-events:none;}
   body.shaping #shapePanel{right:0;pointer-events:auto;}
   #shapeTools{display:flex;flex-direction:column;gap:7px;}
+  .mkhdr{font:700 10px system-ui;letter-spacing:.2em;text-transform:uppercase;color:#7f95bb;text-align:center;margin:2px 0 -1px;}
+  .mkgrid{display:flex;flex-wrap:wrap;gap:5px;justify-content:center;}
   .srow{display:flex;gap:6px;align-items:center;justify-content:center;}
   .srow span{font:700 12px system-ui;color:#bcd0f0;width:30px;text-align:center;}
   .sb{min-width:40px;height:38px;padding:0 8px;border-radius:10px;background:rgba(24,46,82,.95);border:1px solid rgba(120,170,255,.45);
@@ -199,8 +199,7 @@
   <div id="talkBtn">Talk</div>
 </div>
 <div id="chips"></div>
-<div id="palette"></div>
-<div id="shapeTab">✎ shape</div>
+<div id="shapeTab">◆ make</div>
 <div id="shapePanel"><div id="shapeTools"></div></div>
 <div id="keepTab">◆ keep</div>
 <div id="keepPanel">
@@ -919,7 +918,8 @@
   function conjure(type){ heldGhost=null;               // lock any previously-held ghost where it is
     const m=ghostMesh(type); const p=placePoint(); m.position.set(p.x,0,p.z); m.scale.setScalar(0.12);
     scene.add(m); bShapes.push(m); heldGhost=m; document.body.classList.add('holding');
-    showHint(MOBILE?'look to place · ✎ shape · spray to make it real':'look to place · scroll to resize · E to shape · spray to make it real'); }
+    if(shaping){ buildShapeTools(type); return; }         // panel's open — just refresh its controls for the new shape
+    showHint(MOBILE?'look to place · ◆ make to reshape · spray to make it real':'look to place · scroll to resize · E to reshape · spray to make it real'); }
 
   // ---------- full shape control (per-axis / uniform / rotate) over the HELD ghost ----------
   const AXES={ box:[['W','x'],['H','y'],['D','z']], wall:[['W','x'],['H','y'],['T','z']],
@@ -942,28 +942,39 @@
   function sbtn(txt,fn,cls){ const b=document.createElement('div'); b.className='sb'+(cls?' '+cls:''); b.textContent=txt; b.addEventListener('click',fn); return b; }
   function buildShapeTools(type){
     const box=document.getElementById('shapeTools'); box.innerHTML='';
-    (AXES[type]||[]).forEach(([label,axis])=>{ const row=document.createElement('div'); row.className='srow';
-      row.appendChild(sbtn('−',()=>scaleAxis(axis,1/1.12)));
-      const s=document.createElement('span'); s.textContent=label; row.appendChild(s);
-      row.appendChild(sbtn('+',()=>scaleAxis(axis,1.12))); box.appendChild(row); });
-    const u=document.createElement('div'); u.className='srow';
-    u.appendChild(sbtn('⊖',()=>scaleAll(1/1.12)));
-    const us=document.createElement('span'); us.textContent='size'; us.style.width='auto'; u.appendChild(us);
-    u.appendChild(sbtn('⊕',()=>scaleAll(1.12))); box.appendChild(u);
-    const r=document.createElement('div'); r.className='srow';
-    r.appendChild(sbtn('↺',()=>rotY(-Math.PI/12))); r.appendChild(sbtn('↻',()=>rotY(Math.PI/12)));
-    r.appendChild(sbtn('◣',()=>lean(Math.PI/12)));  r.appendChild(sbtn('◢',()=>lean(-Math.PI/12))); box.appendChild(r);
-    const d=document.createElement('div'); d.className='srow'; d.appendChild(sbtn('⎌ reset',resetShape,'wide')); box.appendChild(d);
-    const done=document.createElement('div'); done.className='srow'; done.appendChild(sbtn('✓ done',closeShape,'done')); box.appendChild(done);
+    // --- MAKE: pick a shape to manifest ahead of you ---
+    const mh=document.createElement('div'); mh.className='mkhdr'; mh.textContent='make'; box.appendChild(mh);
+    const grid=document.createElement('div'); grid.className='mkgrid';
+    BSHAPES.forEach((s,i)=>{ const b=document.createElement('div');
+      b.className='pbtn'+(heldGhost&&heldGhost.userData.type===s?' on':'');
+      b.innerHTML='<b>'+(i+1)+'</b>'+s; b.addEventListener('click',()=>conjure(s)); grid.appendChild(b); });
+    box.appendChild(grid);
+    if(heldGhost){                                          // --- SHAPE: tune the held ghost before you paint it solid ---
+      const sh=document.createElement('div'); sh.className='mkhdr'; sh.textContent='shape'; box.appendChild(sh);
+      (AXES[type]||[]).forEach(([label,axis])=>{ const row=document.createElement('div'); row.className='srow';
+        row.appendChild(sbtn('−',()=>scaleAxis(axis,1/1.12)));
+        const s=document.createElement('span'); s.textContent=label; row.appendChild(s);
+        row.appendChild(sbtn('+',()=>scaleAxis(axis,1.12))); box.appendChild(row); });
+      const u=document.createElement('div'); u.className='srow';
+      u.appendChild(sbtn('⊖',()=>scaleAll(1/1.12)));
+      const us=document.createElement('span'); us.textContent='size'; us.style.width='auto'; u.appendChild(us);
+      u.appendChild(sbtn('⊕',()=>scaleAll(1.12))); box.appendChild(u);
+      const r=document.createElement('div'); r.className='srow';
+      r.appendChild(sbtn('↺',()=>rotY(-Math.PI/12))); r.appendChild(sbtn('↻',()=>rotY(Math.PI/12)));
+      r.appendChild(sbtn('◣',()=>lean(Math.PI/12)));  r.appendChild(sbtn('◢',()=>lean(-Math.PI/12))); box.appendChild(r);
+      const d=document.createElement('div'); d.className='srow'; d.appendChild(sbtn('⎌ reset',resetShape,'wide')); box.appendChild(d);
+    }
+    const done=document.createElement('div'); done.className='srow';
+    done.appendChild(sbtn(heldGhost?'✓ done':'✕ close',closeShape,'done')); box.appendChild(done);
   }
-  function openShape(){ if(!heldGhost)return; shaping=true; document.body.classList.add('shaping'); buildShapeTools(heldGhost.userData.type);
-    if(viewCan) viewCan.visible=false;                    // put the can away — you're shaping, not painting
+  function openShape(){ shaping=true; document.body.classList.add('shaping'); buildShapeTools(heldGhost?heldGhost.userData.type:null);
+    if(viewCan) viewCan.visible=false;                    // put the can away — you're making/shaping, not painting
     if(!MOBILE) document.exitPointerLock(); }
   function closeShape(){ shaping=false; document.body.classList.remove('shaping');
     if(viewCan) viewCan.visible=true;                     // can's back out — a spray will now make it solid
     if(!MOBILE) el.requestPointerLock(); }
-  addEventListener('keydown', e=>{ if(e.code==='KeyE' && heldGhost && !talking){ e.preventDefault(); shaping?closeShape():openShape(); } });
-  document.getElementById('shapeTab').addEventListener('click', ()=>{ if(heldGhost) openShape(); });
+  addEventListener('keydown', e=>{ if(e.code==='KeyE' && buildUnlocked && !talking && !keepOpen){ e.preventDefault(); shaping?closeShape():openShape(); } });
+  document.getElementById('shapeTab').addEventListener('click', openShape);
   function dropGrab(){                                    // unfocus: drop the held ghost, OR grab the unpainted one under the crosshair
     if(heldGhost){ heldGhost=null; document.body.classList.remove('holding');
       showHint(MOBILE?'dropped — aim at it, tap Hold to move/reshape · spray to make it real':'dropped — walk around · aim + G to move/reshape · spray to make it real'); }
@@ -1051,14 +1062,11 @@
     curStroke=null; curKey=null;
   }
   // scheduleSave() + the save/load system live with world-storage, below.
-  function buildPalette(){ const pal=document.getElementById('palette');
-    BSHAPES.forEach((s,i)=>{ const d=document.createElement('div'); d.className='pbtn'; d.innerHTML='<b>'+(i+1)+'</b>'+s;
-      d.addEventListener('click',()=>{ conjure(s); if(!MOBILE && !locked) el.requestPointerLock(); }); pal.appendChild(d); }); }
   function unlockBuild(){ if(buildUnlocked)return; buildUnlocked=true;   // the can IS the kit — reveal everything at once
     walletEl.style.opacity=1; renderWallet();          // wallet balance
     invEl.style.display='flex'; invEl.style.opacity=1; renderInv();   // your 2 colours + how much of each is left
-    document.body.classList.add('building'); buildPalette();   // the manifest display
-    showHint(MOBILE?'tap a shape to manifest it ahead of you':'press 1–7 to manifest a shape ahead of you'); }
+    document.body.classList.add('building');
+    showHint(MOBILE?'tap ◆ make on the right to manifest a shape':'press 1–7 (or ◆ make, right) to manifest a shape'); }
   addEventListener('keydown',e=>{ if(!buildUnlocked||talking)return; const n=e.code.match(/^Digit([1-7])$/); if(n) conjure(BSHAPES[+n[1]-1]); });
   function bTick(){
     if(heldGhost && !shaping && !keepOpen){ const p=placePoint(); heldGhost.position.x=p.x; heldGhost.position.z=p.z; }   // follows gaze (frozen while shaping / keep panel open)
