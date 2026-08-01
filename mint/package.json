@@ -1,0 +1,16 @@
+{
+  "name": "grafmint",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "grafspace's own BSV wallet + mint core (ported from PharLap; PharLap untouched). Bundles to ../vendor/grafmint.js.",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@bsv/sdk": "^2.1.4"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.0"
+  }
+}
