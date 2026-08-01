@@ -54,14 +54,19 @@
   .pbtn b{color:#6fd3ff;margin-right:4px;}
   .pbtn:active,.pbtn.on{background:rgba(56,120,210,.95);border-color:#8fd0ff;}
   /* --- two-colour paint inventory (leftover can + full can) --- */
-  #inv{position:fixed;left:24px;bottom:24px;display:none;flex-direction:column;gap:8px;opacity:0;transition:opacity .4s;z-index:6;}
+  /* --- left-edge "kit" inventory HUD (cans now; more item types later) --- */
+  #inv{position:fixed;left:0;top:50%;transform:translateY(-50%);display:none;flex-direction:column;gap:8px;z-index:6;
+    background:rgba(8,14,26,.9);border:1px solid rgba(120,170,255,.3);border-left:none;border-radius:0 14px 14px 0;
+    padding:12px 14px;opacity:0;transition:opacity .4s;pointer-events:auto;}
+  body.mtalk #inv, body.keep #inv{opacity:0;pointer-events:none;}
+  .invhdr{font:700 10px system-ui;letter-spacing:.2em;text-transform:uppercase;color:#7f95bb;text-align:center;margin-bottom:1px;}
   .islot{display:flex;align-items:center;gap:8px;pointer-events:auto;cursor:pointer;opacity:.5;transition:opacity .15s;}
   .islot.on{opacity:1;}
   .idot{width:22px;height:22px;border-radius:50%;border:2px solid rgba(255,255,255,.3);flex:none;}
   .islot.on .idot{border-color:#fff;box-shadow:0 0 8px rgba(255,255,255,.5);}
-  .ibar{width:120px;height:10px;border-radius:6px;background:rgba(255,255,255,.14);overflow:hidden;}
+  .ibar{width:104px;height:10px;border-radius:6px;background:rgba(255,255,255,.14);overflow:hidden;}
   .ifill{height:100%;border-radius:6px;transition:width .08s linear;}
-  .iamt{font:600 11px system-ui;color:#cfe0ff;width:36px;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px #000;}
+  .iamt{font:600 11px system-ui;color:#cfe0ff;width:34px;font-variant-numeric:tabular-nums;}
   /* --- shape panel (pop-in side HUD) --- */
   #shapeTab{position:fixed;right:0;top:50%;transform:translateY(-50%);display:none;z-index:8;
     padding:14px 9px;border-radius:12px 0 0 12px;background:rgba(20,40,74,.92);border:1px solid rgba(120,170,255,.4);border-right:none;
@@ -586,6 +591,7 @@
     activeSlot=i; syncActive(); renderInv();
   }
   function renderInv(){ invEl.innerHTML='';
+    const h=document.createElement('div'); h.className='invhdr'; h.textContent='cans'; invEl.appendChild(h);
     inv.forEach((s,i)=>{ const hex='#'+COLORS[s.ci].toString(16).padStart(6,'0');
       const row=document.createElement('div'); row.className='islot'+(i===activeSlot?' on':'');
       row.innerHTML='<div class="idot" style="background:'+hex+'"></div>'
@@ -1102,6 +1108,8 @@
     showHint(MOBILE?'tap ◆ make on the right to manifest a shape':'press 1–7 (or ◆ make, right) to manifest a shape'); }
   addEventListener('keydown',e=>{ if(!buildUnlocked||talking||keepOpen)return; const n=e.code.match(/^Digit([1-7])$/);
     if(n){ if(!shaping) openShape(); conjure(BSHAPES[+n[1]-1]); } });   // a number opens the manifest editor and drops a shape in
+  addEventListener('keydown',e=>{ if(e.code==='KeyC' && buildUnlocked && !talking && inv.length>1){ e.preventDefault();
+    activeSlot=(activeSlot+1)%inv.length; syncActive(); renderInv(); } });   // C = switch to your other can
   function bTick(){
     if(heldGhost && !keepOpen && (MOBILE || !shaping)){ const p=placePoint(); heldGhost.position.x=p.x; heldGhost.position.z=p.z; }   // mobile Grab follows gaze; desktop editor drags with the cursor instead
     for(const m of bShapes){ const u=m.userData; const t=u.target;
