@@ -384,6 +384,18 @@
   ring.rotation.x = -Math.PI/2; ring.position.set(CAN_POS.x, 0.02, CAN_POS.z);
   scene.add(ring);
 
+  // ---------- the manifest tool: a second thing the last droid left behind, a little further on ----------
+  // (placeholder look — a small glowing artifact; swap the mesh when its real design is decided)
+  const OBJ2_POS = new THREE.Vector3(3.2, 0.7, -14);
+  let manifestTool = new THREE.Group();
+  const _mtCore = new THREE.Mesh(new THREE.OctahedronGeometry(0.34,0),
+    new THREE.MeshStandardMaterial({ color:0x8a5cff, emissive:0x6a3cff, emissiveIntensity:.85, roughness:.3, metalness:.4, fog:false }));
+  _mtCore.add(new THREE.LineSegments(new THREE.EdgesGeometry(_mtCore.geometry), new THREE.LineBasicMaterial({ color:0xd8c0ff, transparent:true, opacity:.85, fog:false })));
+  manifestTool.add(_mtCore); manifestTool.position.copy(OBJ2_POS); scene.add(manifestTool);
+  const mtRing = new THREE.Mesh(new THREE.RingGeometry(0.5,0.74,36),
+    new THREE.MeshBasicMaterial({ color:0x9a6cff, transparent:true, opacity:.35, side:THREE.DoubleSide, depthWrite:false }));
+  mtRing.rotation.x = -Math.PI/2; mtRing.position.set(OBJ2_POS.x, 0.02, OBJ2_POS.z); scene.add(mtRing);
+
   // ---------- scavenge can: there is ALWAYS one full can stashed behind the machine (random spot, random colour) ----------
   let scavCan=null, scavRing=null, scavColor=0, scavRespawn=0;
   const COLNAMES=['blue','pink','green','yellow','orange'];
@@ -516,6 +528,26 @@
     const t=actx.currentTime;
     for(let i=0;i<4;i++){ hissGain.gain.setValueAtTime(0.11, t+i*0.06); hissGain.gain.setValueAtTime(0.0, t+i*0.06+0.03); }
   }
+  function footstep(){                                    // soft low thud, one per step
+    if(!actx) return; const o=actx.createOscillator(), g=actx.createGain(), t=actx.currentTime;
+    o.type='sine'; o.frequency.setValueAtTime(115,t); o.frequency.exponentialRampToValueAtTime(52,t+0.09);
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.07,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+0.13);
+    o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t+0.15);
+  }
+  function treasure(){                                    // bright rising chime — you found something the last one left
+    if(!actx) return; const t=actx.currentTime, notes=[523.25,659.25,783.99,1046.5];
+    notes.forEach((f,i)=>{ const o=actx.createOscillator(), g=actx.createGain(), s=t+i*0.085;
+      o.type='triangle'; o.frequency.value=f;
+      g.gain.setValueAtTime(0.0001,s); g.gain.exponentialRampToValueAtTime(0.13,s+0.02); g.gain.exponentialRampToValueAtTime(0.0001,s+0.3);
+      o.connect(g); g.connect(actx.destination); o.start(s); o.stop(s+0.34); });
+  }
+  function powerup(){                                     // rising sweep — a device waking up (the manifest tool)
+    if(!actx) return; const t=actx.currentTime, o=actx.createOscillator(), g=actx.createGain(), f=actx.createBiquadFilter();
+    o.type='sawtooth'; o.frequency.setValueAtTime(160,t); o.frequency.exponentialRampToValueAtTime(760,t+0.42);
+    f.type='lowpass'; f.frequency.setValueAtTime(500,t); f.frequency.exponentialRampToValueAtTime(3200,t+0.42);
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.11,t+0.05); g.gain.exponentialRampToValueAtTime(0.0001,t+0.5);
+    o.connect(f); f.connect(g); g.connect(actx.destination); o.start(t); o.stop(t+0.55);
+  }
   // chirpy "speech" blip — one per spoken character, so it sounds like the machine is talking (text = translation)
   function blip(base){
     if(!actx) return;
@@ -559,6 +591,8 @@
   });
   addEventListener('mousedown', e=>{ if(locked && e.button===0) spraying=true; });   // pointer-locked = PAINT mode → hold to spray
   addEventListener('mouseup',   e=>{ if(e.button===0) spraying=false; });
+  addEventListener('contextmenu', e=>{ if(buildUnlocked) e.preventDefault(); });     // right-click drives the Manifest HUD, not the browser menu
+  addEventListener('mousedown', e=>{ if(e.button===2 && buildUnlocked && !talking && !keepOpen){ e.preventDefault(); shaping?closeShape():openShape(); } });   // right-click toggles manifest ⇄ paint
   el.addEventListener('click', ()=>{ if(!locked && !talking && !firstStart && !shaping && !keepOpen) el.requestPointerLock(); });
 
   // ---------- HUD ----------
@@ -778,7 +812,7 @@
   }
 
   // ---------- state ----------
-  let paint=0, hasCan=false, emptyAnnounced=false, fumble=0, velX=0, velZ=0, bob=0;
+  let paint=0, hasCan=false, emptyAnnounced=false, fumble=0, velX=0, velZ=0, bob=0, stepPhase=0, paintShown=false;
   const ray = new THREE.Raycaster();
   const CENTER = new THREE.Vector2(0,0);
   const clock = new THREE.Clock();
@@ -811,6 +845,7 @@
     const spd = Math.hypot(velX,velZ);
     bob += spd*dt*1.9;
     camera.position.y = EYE + Math.sin(bob)*0.05*Math.min(1, spd/SPEED);
+    if(spd>0.4){ const ph=Math.floor(bob/Math.PI); if(ph!==stepPhase){ stepPhase=ph; footstep(); } }   // a footfall each half-bob
 
     // can pickup
     if(!hasCan){
@@ -818,12 +853,12 @@
       canPickup.position.y = 0.35 + Math.sin(performance.now()*0.003)*0.08;
       ring.material.opacity = 0.25 + Math.sin(performance.now()*0.004)*0.12;
       if(planarDist(CAN_POS) < 3.4){
-        hasCan=true;
+        hasCan=true; treasure();                // a found-treasure chime — the last droid left it behind
         const leftColor=Math.floor(Math.random()*COLORS.length);
-        addCan(leftColor, 15);                  // the respawn LEFTOVER — a random colour, almost empty (no kit yet; the FULL can triggers the HUD)
+        addCan(leftColor, 30);                  // the respawn LEFTOVER — a random colour, part-used (Paint HUD stays hidden until it runs low)
         scene.remove(canPickup); scene.remove(ring);
         viewCan = makeCan(0.5, COLORS[leftColor]); viewCan.position.set(0.42,-0.34,-0.9); viewCan.rotation.z=-0.15; camera.add(viewCan);
-        showHint(MOBILE ? 'Hold Spray — barely a dribble left' : 'Hold  CLICK  to spray — barely a dribble left');
+        showHint(MOBILE ? 'Hold Spray to paint — someone left it half-used' : 'Hold  CLICK  to spray — someone left it half-used');
       }
     }
 
@@ -833,14 +868,26 @@
       scavCan.position.y = 0.35 + Math.sin(performance.now()*0.0031)*0.08;
       scavRing.material.opacity = 0.25 + Math.sin(performance.now()*0.004)*0.12;
       if(planarDist(scavCan.position) < 3.4){
-        emptyAnnounced=false; addCan(scavColor, 100);               // full can → its (random) colour, added to your inventory
+        emptyAnnounced=false; addCan(scavColor, 100); treasure();   // full can → its (random) colour, added to your inventory
         if(!hasCan){ hasCan=true; viewCan=makeCan(0.5, COLORS[scavColor]); viewCan.position.set(0.42,-0.34,-0.9); viewCan.rotation.z=-0.15; camera.add(viewCan); }
-        unlockBuild();
+        revealPaintHUD();                                          // paint fallback — reveals the kit, but NOT the manifest tool
         showHint('A stashed can — '+COLNAMES[scavColor]+' paint, free. Someone always leaves one back here.');
         scene.remove(scavCan); scene.remove(scavRing); scavCan=null;
         scavRespawn = performance.now() + 5000;                     // another appears shortly — there's always one
       }
     } else if(scavRespawn && performance.now()>scavRespawn){ scavRespawn=0; spawnScav(); }
+
+    // manifest tool: the second thing the last droid left — picking it up wakes the builder in you
+    if(manifestTool && hasCan){                                    // only findable once you've got a can in hand
+      manifestTool.rotation.y += dt*1.0;
+      manifestTool.position.y = OBJ2_POS.y + Math.sin(performance.now()*0.003)*0.09;
+      mtRing.material.opacity = 0.22 + Math.sin(performance.now()*0.004)*0.12;
+      if(planarDist(OBJ2_POS) < 3.4){
+        powerup();
+        scene.remove(manifestTool); scene.remove(mtRing); manifestTool=null;
+        unlockBuild();                                             // reveals the Manifest HUD + holsters the can
+      }
+    }
 
     // spraying — only ever active in PAINT mode (arrange grabs, it doesn't spray)
     if(hasCan && spraying && paint>0 && !activeShape){
@@ -871,6 +918,7 @@
       }
       paint = Math.max(0, paint - PAINT_DRAIN);
       if(inv[activeSlot]){ inv[activeSlot].amt=paint; updateInvActive(); }
+      if(!paintShown && paint<10) revealPaintHUD();       // running low → your kit tracker slides in
       if(viewCan) viewCan.position.y = -0.34 + Math.sin(performance.now()*0.05)*0.01; // tiny shake
       if(paint===0){
         const other=(activeSlot+1)%2;
@@ -982,11 +1030,11 @@
   // MANIFEST mode = the free-cursor editor (HUD open). PAINT mode = first-person, pointer-locked, spray.
   function openShape(){ shaping=true; document.body.classList.add('shaping'); buildShapeTools(activeShape?activeShape.userData.type:null);
     if(!MOBILE) document.exitPointerLock();               // free the cursor — you build by clicking
-    showHint(MOBILE?'manifest — tap a shape to place it ahead · Grab to move · ✕ close to paint':'manifest — click the ground for a spot, then a shape · drag to look · click-hold a shape to move it'); }
+    showHint(MOBILE?'manifest — tap a shape to place it ahead · Grab to move · ✕ close to paint':'manifest — click the ground for a spot, then a shape · drag to look · click-hold to move · right-click to paint'); }
   function closeShape(){ shaping=false; document.body.classList.remove('shaping');   // leave the editor → first-person PAINT mode
     activeShape=null; heldGhost=null; setMode(); placeMarker=null; if(placeRing) placeRing.visible=false;
     if(!MOBILE) el.requestPointerLock();
-    if(hasCan) showHint(MOBILE?'aim + Spray to paint it solid':'aim + hold-click to paint it solid'); }
+    if(hasCan) showHint(MOBILE?'aim + Spray to paint it solid':'aim + hold-click to paint · right-click to manifest'); }
   addEventListener('keydown', e=>{ if(e.code==='KeyE' && buildUnlocked && !talking && !keepOpen){ e.preventDefault(); shaping?closeShape():openShape(); } });
   addEventListener('keydown', e=>{ if(e.code==='Enter' && shaping && !talking){ e.preventDefault(); closeShape(); } });
   document.getElementById('shapeTab').addEventListener('click', openShape);
@@ -1101,11 +1149,15 @@
     curStroke=null; curKey=null;
   }
   // scheduleSave() + the save/load system live with world-storage, below.
-  function unlockBuild(){ if(buildUnlocked)return; buildUnlocked=true;   // the can IS the kit — reveal everything at once
-    walletEl.style.opacity=1; renderWallet();          // wallet balance
-    invEl.style.display='flex'; invEl.style.opacity=1; renderInv();   // your 2 colours + how much of each is left
+  function revealPaintHUD(){ if(paintShown)return; paintShown=true;   // the left-edge kit inventory slides in
+    invEl.style.display='flex'; invEl.style.opacity=1; renderInv();
+    showHint(MOBILE?'your kit (left edge) — how much paint you have left':'your kit, left edge — how much paint you have left'); }
+  function unlockBuild(){ if(buildUnlocked)return; buildUnlocked=true;   // the manifest tool wakes up the builder in you
+    walletEl.style.opacity=1; renderWallet();          // sats wallet
+    revealPaintHUD();                                  // make sure the kit is showing too
     document.body.classList.add('building'); setMode();
-    showHint(MOBILE?'tap ◆ make on the right to manifest a shape':'press 1–7 (or ◆ make, right) to manifest a shape'); }
+    openShape();                                       // the Manifest HUD appears and the can holsters
+    showHint(MOBILE?'manifest — tap a shape to place it · this was the last one\'s':'manifest — click the ground, then a shape · this was the last one\'s'); }
   addEventListener('keydown',e=>{ if(!buildUnlocked||talking||keepOpen)return; const n=e.code.match(/^Digit([1-7])$/);
     if(n){ if(!shaping) openShape(); conjure(BSHAPES[+n[1]-1]); } });   // a number opens the manifest editor and drops a shape in
   addEventListener('keydown',e=>{ if(e.code==='KeyC' && buildUnlocked && !talking && inv.length>1){ e.preventDefault();
