@@ -84,6 +84,24 @@
   .sb:active{background:rgba(56,120,210,.95);}
   body.mtalk #shapeTab, body.mtalk #shapePanel{display:none!important;}
 
+  /* --- top "Keep / Immortalize" HUD --- */
+  #keepTab{position:fixed;top:0;left:50%;transform:translateX(-50%);display:none;z-index:8;
+    padding:7px 20px;border-radius:0 0 12px 12px;background:rgba(20,40,74,.92);border:1px solid rgba(120,170,255,.4);border-top:none;
+    color:#cfe0ff;font:600 11px system-ui;letter-spacing:.18em;text-transform:uppercase;cursor:pointer;pointer-events:auto;}
+  body.building #keepTab{display:block;}
+  body.mtalk #keepTab, body.shaping #keepTab, body.keep #keepTab{display:none;}
+  #keepPanel{position:fixed;top:-360px;left:50%;transform:translateX(-50%);width:min(300px,92vw);z-index:9;
+    background:rgba(8,14,26,.95);border:1px solid rgba(120,170,255,.35);border-radius:0 0 16px 16px;border-top:none;
+    padding:15px 15px 17px;transition:top .22s ease;pointer-events:none;display:flex;flex-direction:column;gap:8px;}
+  body.keep #keepPanel{top:0;pointer-events:auto;}
+  .kh{text-align:center;font:700 11px system-ui;letter-spacing:.2em;text-transform:uppercase;color:#9fb4d8;margin-bottom:2px;}
+  .kbtn{padding:12px 14px;border-radius:12px;background:rgba(24,46,82,.95);border:1px solid rgba(120,170,255,.45);
+    color:#eaf6ff;font:600 14px system-ui;text-align:center;cursor:pointer;pointer-events:auto;}
+  .kbtn:active{background:rgba(56,120,210,.95);}
+  .kbtn.immortal{background:rgba(58,42,88,.95);border-color:rgba(200,160,255,.5);color:#e8d8ff;}
+  .kbtn.done{background:rgba(30,90,70,.9);border-color:rgba(120,255,190,.5);}
+  .kfoot{font:12px/1.45 system-ui;color:#8fa6cc;text-align:center;min-height:1em;padding:2px 4px 0;}
+
   /* --- dialogue --- */
   #dialogue{position:fixed;left:50%;bottom:16%;transform:translateX(-50%);max-width:min(680px,92vw);
             padding:18px 22px;background:rgba(8,14,26,.82);border:1px solid rgba(120,170,255,.28);
@@ -118,8 +136,9 @@
     background:rgba(20,40,74,.9);border:1px solid rgba(120,170,255,.5);color:#dfe8ff;font:600 13px system-ui;
     letter-spacing:.1em;text-transform:uppercase;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;}
   body.building #grabBtn{display:block;}
-  body.mtalk #grabBtn, body.shaping #grabBtn{display:none!important;}
-  body.shaping #sprayBtn, body.shaping #backBtn{display:none!important;}   /* no firing / walking while shaping */
+  body.mtalk #grabBtn, body.shaping #grabBtn, body.keep #grabBtn{display:none!important;}
+  body.shaping #sprayBtn, body.shaping #backBtn,
+  body.keep #sprayBtn, body.keep #backBtn{display:none!important;}   /* no firing / walking while shaping or keeping */
   #talkBtn{position:fixed;left:50%;bottom:170px;transform:translateX(-50%);display:none;
     padding:12px 26px;border-radius:24px;background:rgba(8,16,30,.85);border:1px solid rgba(120,170,255,.55);
     color:#eaf6ff;font:600 14px system-ui;letter-spacing:.14em;text-transform:uppercase;pointer-events:auto;
@@ -183,6 +202,15 @@
 <div id="palette"></div>
 <div id="shapeTab">✎ shape</div>
 <div id="shapePanel"><div id="shapeTools"></div></div>
+<div id="keepTab">◆ keep</div>
+<div id="keepPanel">
+  <div class="kh">Your world</div>
+  <div class="kbtn" id="kSave">💾 Save now</div>
+  <div class="kbtn" id="kReload">↻ Reload world</div>
+  <div class="kbtn immortal" id="kMint">✦ Make immortal</div>
+  <div class="kfoot" id="kNote"></div>
+  <div class="kbtn done" id="kDone">✓ close</div>
+</div>
 
 <div id="splash">
   <h1>grafverse</h1>
@@ -526,7 +554,7 @@
   });
   addEventListener('mousedown', e=>{ if(locked && e.button===0) spraying=true; });
   addEventListener('mouseup',   e=>{ if(e.button===0) spraying=false; });
-  el.addEventListener('click', ()=>{ if(!locked && !talking && !firstStart && !shaping) el.requestPointerLock(); });
+  el.addEventListener('click', ()=>{ if(!locked && !talking && !firstStart && !shaping && !keepOpen) el.requestPointerLock(); });
 
   // ---------- HUD ----------
   const $ = id=>document.getElementById(id);
@@ -757,7 +785,7 @@
 
     // move — keys or joystick, velocity-smoothed (movement no longer needs pointer-lock, only mouse-LOOK does)
     let tx=0, tz=0;
-    if(!talking && !firstStart && !shaping){
+    if(!talking && !firstStart && !shaping && !keepOpen){
       const fx=-Math.sin(yaw), fz=-Math.cos(yaw), rx=Math.cos(yaw), rz=-Math.sin(yaw);
       let ix=0, iz=0;
       if(keys.KeyW) iz+=1;
@@ -943,7 +971,21 @@
       if(h && h.object && !h.object.userData.painted){ heldGhost=h.object; document.body.classList.add('holding'); openShape(); } }   // grab AND open the shape HUD
     const gb=document.getElementById('grabBtn'); if(gb) gb.textContent = heldGhost ? 'Drop' : 'Hold';
   }
-  addEventListener('keydown', e=>{ if(e.code==='KeyG' && buildUnlocked && !talking && !shaping){ e.preventDefault(); dropGrab(); } });
+  addEventListener('keydown', e=>{ if(e.code==='KeyG' && buildUnlocked && !talking && !shaping && !keepOpen){ e.preventDefault(); dropGrab(); } });
+
+  // ---------- top "Keep / Immortalize" HUD — save, reload, and (soon) mint your world ----------
+  let keepOpen=false;
+  const _kNote=()=>document.getElementById('kNote');
+  function openKeep(){ keepOpen=true; document.body.classList.add('keep'); _kNote().textContent='';
+    if(viewCan) viewCan.visible=false; if(!MOBILE) document.exitPointerLock(); }
+  function closeKeep(){ keepOpen=false; document.body.classList.remove('keep');
+    if(viewCan) viewCan.visible=true; if(!MOBILE) el.requestPointerLock(); }
+  document.getElementById('keepTab').addEventListener('click', openKeep);
+  document.getElementById('kDone').addEventListener('click', closeKeep);
+  document.getElementById('kSave').addEventListener('click', ()=>{ saveWorld(); _kNote().textContent='Saved to this device.'; });
+  document.getElementById('kReload').addEventListener('click', ()=>{ saveWorld(); location.reload(); });
+  document.getElementById('kMint').addEventListener('click', ()=>{
+    _kNote().textContent='Your world is already yours — saved right here. Making it immortal on-chain, where no one can claw it back, is coming next.'; });
 
   // ---------- paint onto a manifested shape (aim the crosshair at it + spray = it solidifies) ----------
   const TEXS=1024, EARN_PAY=111;   // paint a solidified shape ~halfway → earn a can's worth (111 sats)
@@ -1019,7 +1061,7 @@
     showHint(MOBILE?'tap a shape to manifest it ahead of you':'press 1–7 to manifest a shape ahead of you'); }
   addEventListener('keydown',e=>{ if(!buildUnlocked||talking)return; const n=e.code.match(/^Digit([1-7])$/); if(n) conjure(BSHAPES[+n[1]-1]); });
   function bTick(){
-    if(heldGhost && !shaping){ const p=placePoint(); heldGhost.position.x=p.x; heldGhost.position.z=p.z; }   // follows gaze (frozen while shaping)
+    if(heldGhost && !shaping && !keepOpen){ const p=placePoint(); heldGhost.position.x=p.x; heldGhost.position.z=p.z; }   // follows gaze (frozen while shaping / keep panel open)
     for(const m of bShapes){ const u=m.userData; const t=u.target;
       if(u.grow<1){ u.grow=Math.min(1,u.grow+0.09); const e=1-Math.pow(1-u.grow,3); _vsc.copy(t).multiplyScalar(0.12+0.88*e); m.scale.copy(_vsc); }
       else m.scale.copy(t); } }
