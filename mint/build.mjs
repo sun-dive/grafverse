@@ -1,3 +1,4 @@
+// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
 // Bundle grafspace's wallet+mint core into ../vendor/grafmint.js as the global `GrafMint`.
 // grafverse.html vendors it exactly like three.min.js and lazy-loads it only on "Make immortal".
 import { build } from 'esbuild'
@@ -12,5 +13,6 @@ await build({
   outfile: '../vendor/grafmint.js',
   minify: true,
   legalComments: 'none',
+  banner: { js: '/* grafspace mint core — © 2026 sun-dive · Open BSV License v6 (see LICENSE). Bundles @bsv/sdk (BRC-100 wallet SDK) © BSV Association, Open BSV License — see NOTICE. Not our code; bundled + called, not ported. */' },
 })
 console.log('built ../vendor/grafmint.js')

@@ -1,3 +1,4 @@
+// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
 // ─── Block Media Format (BMF) manifest ───────────────────────────────────────────────────────────
 //
 // A BMF manifest is the "recipe" for a composable video: a timeline that references media components

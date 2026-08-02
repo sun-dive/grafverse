@@ -1,4 +1,4 @@
-// © BSV Association — Licensed under the Open BSV License Version 5 (see LICENSE).
+// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
 /**
  * PHAR LAP seller-note — a seller's MUTABLE promo note for a collection (review, bonuses, redemption
  * instructions). PLAN.md Step 2 (D3): the note lives OUTSIDE the frozen edition covenant, so a reseller

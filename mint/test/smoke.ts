@@ -1,3 +1,4 @@
+// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
 // Phase-A smoke test: prove the wallet crypto + on-ramp work (no DOM / no network).
 import { newSeedWallet, keyFromMnemonic, importWif, identityFromKey, watchIdentity } from '../src/wallet.ts'
 import { buyBsvUrl } from '../src/onramp.ts'

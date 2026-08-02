@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<!-- grafspace — © 2026 sun-dive — Licensed under the Business Source License 1.1 (see LICENSE). -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>grafverse — paint a moon into existence</title>
@@ -682,7 +683,12 @@
 
   // ---------- vending-machine chat (keyword match + spintext, fully offline) ----------
   function spin(s){ let p; do{ p=s; s=s.replace(/\{([^{}]*)\}/g,(_,b)=>{const o=b.split('|');return o[Math.floor(Math.random()*o.length)];}); }while(s!==p); return s; }
+  // DRAFT — rewrite in Unit 21's voice (yours to write). The deep "why paint?" answer: the observer / owned-reality
+  // metaphysics — nothing exists till observed → you paint reality into being → owned, not claimed. Shared by the typed rule + the chip.
+  const WHYPAINT="{Why do you paint? Now that's a real question, gentlebot|Careful — you'll make an old machine think|Sit yourself down for that one}. {Look out there — nothing, isn't it? Just void|The moon's not real yet, see — not till you say so}. {Nothing out here exists till a droid looks at it and sprays it so|Nothing's real till someone observes it into being}. {You don't FIND a world, gentlebot — you paint one|You're not colouring a moon, you're DECIDING one}. {Every empty can collapses a heap of maybe into a something|One good spray pins down a single reality out of a thousand that never were}. {And here's the part the suits can't stomach|And the kicker}: {whatever you paint is YOURS|it's owned, not claimed} — {nobody paints your reality but you|your world, your signature, forever}. {Now, which colour|Anyway — buying, or shall we sit here inventing the universe all day}?";
   const RULES=[
+    // DRAFT: typed philosophical asks route here BEFORE the generic 'paint' rule, so "why do I paint" gets the DEEP answer.
+    {k:['why do i paint','why paint','why do you paint','what is real','nothing is real','what does it mean','why does it matter','the point of','make it real','observe','observer','existence','reality'], r:WHYPAINT},
     {k:['paint','colour','color','spray','acrylic','terrain','green','yellow'], r:"{Paint? {Yeah, I've got paint|Aye, plenty of paint|Course I've got paint}.|Paint's running low — {the next transport's a week out|next transport's not due for a week}.|Oh, you're here to paint the terrain? {You're gonna need a lot|You'll need a lot, then}.|What do you want paint for? What you really need is WD40, before the next dust storm.|What color do you want? I've {got green and yellow|only got green and yellow left}.|{Ah, |}Paint, is it? {Finest acrylic this side of the crater|Premium spray, all-purpose|Best cans in the sector}. {In the covenant we trust, as they say|Genuine bitgraf stock, that}. {111 sats a can|111 sats each}{, cheaper by the three|, three for a bargain|}.}"},
     {k:['wd40','wd-40','wd 40','oil','lube','grease','squeak','joint','joints','stiff'], r:"{WD40's what you need. {Running low, though|Stock's low}, but I can {give you a special deal|do you a special deal|cut you a deal}.|Everyone wants WD40, but what you see is all I've got. {There was a launch failure|A launch failure, you see} — no more stock coming for a month.|With these dust storms, it's selling out fast — {if you want it, you'd better grab it now|best grab it while it's here|grab it now if you want it}.|{Squeaky joints|Seized up|Stiff in the servos}? {A can or two of WD40 and you're new again|WD40'll sort you right out}. {These storms are murder on the joints|Murder on the bearings, this dust}.}"},
     {k:['how much','price','cost','how many sats','how many','rate','expensive'], r:"{{Says 111 sats right there on the display|111 sats a can, {sir|friend}}. {Supplies are low, mind|Next transport's weeks out}, so {I'd not dawdle|grab 'em while they're here}.|Look, we're both stuck here on this godforsaken rock, so I'm going to {give you a special deal|cut you a deal}.|Today's your lucky day — I've an extra can I was holding back, just for someone like you.|Well, that's hard to say. I've almost sold out, and the next transport's been delayed.|Almost out of stock, but I can {give you a special deal|do you a deal} — just don't tell anyone.|Don't trust those other vending machines — they'll rob you blind. I sell at cost{, plus a small tx fee| plus a modest tx fee}.}"},
@@ -749,6 +755,8 @@
     { q:"I don't have any money.", needs:['buy','earn'], a:"{No money? {Course you do, gentlebot|Ha — every droid's got a wallet}. {Company coin, topped up with your wage|Bit Graf sees to that}. {You're not broke, you're just new|Twenty-one sats an hour, steady as the stars}.}" },
     { q:"I'll take a can.",         needs:['buy','earn'], buy:true, a:SALE },   // buy flow: What colour? → pick → deduct 111 + add can; broke → refusal/scavenge/taunt
     { q:"I'm not buying anything.", needs:['buy','earn'], a:SCAVENGE },   // declining earns the same scavenge-and-solidify warning — there is no not-painting
+    // DRAFT (rewrite + tune the spend gate): the deep "why paint" reward — the observer / owned-reality metaphysics.
+    { q:"But why do I paint?", needs:'paint', spend:111, a:WHYPAINT },
     // deeper questions carry a spend: threshold, e.g. { q:"...", needs:'covenant', spend:333, a:"..." } — the mind-wipe / black-market reveal lives at a HIGH spend.
   ];
   function keysOf(Q){ return Q.needs ? (Array.isArray(Q.needs)?Q.needs:[Q.needs]) : []; }

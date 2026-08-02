@@ -1,4 +1,5 @@
 ---
+# grafspace — © 2026 sun-dive — Licensed under the Business Source License 1.1 (see LICENSE).
 # cPanel Git™ Version Control deployment for grafverse.com — the integrated first-person game.
 # In cPanel → Git Version Control: "Update from Remote" then "Deploy HEAD Commit".
 # DEPLOYPATH = the grafverse.com document root, relative to $HOME (mirrors bitgraf.com → $HOME/bitgraf.com/).

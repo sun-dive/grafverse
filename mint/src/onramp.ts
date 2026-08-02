@@ -1,3 +1,4 @@
+// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
 // grafspace "Buy BSV" on-ramp — SimpleSwap, ported DOM-free from PharLap's app.ts.
 // The Buy-BSV link opens SimpleSwap (swap any crypto — incl. stablecoins — for BSV) tagged with a referral
 // chosen by precedence: a share link's ?aff=… → your own saved ref-code → who gifted you → the app default.

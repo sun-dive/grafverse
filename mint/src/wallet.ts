@@ -1,3 +1,4 @@
+// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
 // grafspace wallet — self-custody BSV key management, ported DOM-free from PharLap's app.ts.
 // Pure crypto (seed / key / address) has no storage or DOM deps; persistence is a thin, guarded layer
 // that no-ops when localStorage is unavailable (so this also runs in Node).

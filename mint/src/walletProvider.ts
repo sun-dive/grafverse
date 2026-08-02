@@ -1,3 +1,4 @@
+// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
 /**
  * WhatsOnChain-based wallet provider for BSV mainnet.
  *
@@ -616,7 +617,7 @@ export class WalletProvider {
  * ─────────────────────────────────────────────────────────────────────────────
  * © BSV Association
  *
- * Open BSV License Version 5 – granted by BSV Association, Grafenauweg 6, 6300
+ * Open BSV License Version 6 – granted by BSV Association, Grafenauweg 6, 6300
  * Zug, Switzerland (CHE-427.008.338) ("Licensor"), to you as a user (henceforth
  * "You", "User" or "Licensee").
  *

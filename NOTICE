@@ -1,0 +1,33 @@
+grafspace / grafverse — NOTICE
+Copyright © 2026 sun-dive
+
+This product includes / bundles third-party software. These components are NOT
+our code; they are included unmodified and called as libraries. Per-file
+licences for our own code, and the full text of every licence, are in LICENSE.
+
+-------------------------------------------------------------------------------
+
+@bsv/sdk — the BSV SDK (BRC-100 wallet SDK)
+    © BSV Association. Licensed under the Open BSV License.
+    A dependency we bundle and call from the wallet/mint code (mint/). We do NOT
+    port or modify it. It is present in compiled form inside vendor/grafmint.js.
+    Source: https://github.com/bitcoin-sv/ts-sdk
+
+three.js — 3D engine
+    © the three.js authors. Licensed under the MIT License.
+    Vendored unmodified at vendor/three.min.js.
+
+-------------------------------------------------------------------------------
+
+Provenance
+    grafverse-codebase.tar.gz
+    SHA-256  fae37eb000cf09a13425125e7739bd6716fb6ca13485279e7f94850d128cb817
+
+    Timestamped on the BSV blockchain by a two-transaction genesis mint —
+    All Rights Reserved, unencrypted, authored by sun-dive:
+      TX1  4dbdd010e81d2fe8ec0a1efe161ce72f0bafdfa0230b007580a54a5e2b2ed4c8
+      TX2  34a80ee90d6a26e4c79314c104af0c18cb99512f3c9b749c70eaab869ae95844
+
+    Anyone can hash the archive pulled from chain and match the SHA-256 above.
+    (The on-chain copy of this NOTICE predates the mint, so it carries no txid —
+    the authoritative record is this repository plus the transactions above.)

@@ -1,3 +1,4 @@
+// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
 // BMC — a container (store-only ZIP + a bmc.json index) for a SET of BMF media files, minted as ONE
 // collection. Members stay individually referenceable by name: a BMF reference { tx: <setTxid>, name }
 // resolves to the member called <name>. This decodes the container so the player can pull a member out.

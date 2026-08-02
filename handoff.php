@@ -1,4 +1,5 @@
 <?php
+// grafspace — © 2026 sun-dive — Licensed under the Business Source License 1.1 (see LICENSE).
 // grafspace atom handoff — a transient bridge between the GAME (packs a binary BMF atom and POSTs it here)
 // and the WALLET (fetches it by id to mint). One short-lived blob per id; no chain, no keys, no accounts.
 // Mirrors nft.gift/save.php. The wallet may live on a SUBDOMAIN (key isolation), so cross-origin GET is

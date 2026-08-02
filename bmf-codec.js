@@ -1,3 +1,4 @@
+// grafspace BMF codec — © 2026 sun-dive — Licensed under the MIT License (see LICENSE).
 // BMF codec — the canonical THRIFTY JSON→packed-byte format for the art apps (grafspace and the others).
 // ONE shared design, vendored per app (like three.min.js) so it never drifts. Two layers:
 //   • BMF.*          — the reusable toolkit: Writer/Reader (LE ints + varint), SoA dab codec, quantisers.
