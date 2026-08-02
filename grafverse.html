@@ -333,17 +333,18 @@
   // Walk through wet paint → pick it up on your soles and leave fading footprints for a few steps.
   function leaveFootprint(px, pz, vx, vz, ph){
     const u = px/GROUND + 0.5, v = 0.5 - pz/GROUND, fx = u*TEX, fy = (1-v)*TEX;
-    if(fx<1 || fx>=TEX-1 || fy<1 || fy>=TEX-1) return;
-    try{ const d = pctx.getImageData(fx|0, fy|0, 1, 1).data;      // is the ground here painted (wet)?
-      if(d[3] > 40){ soleColor=[d[0],d[1],d[2]]; soleCharge=8; } }catch(_){}
+    if(fx<2 || fx>=TEX-2 || fy<2 || fy>=TEX-2) return;
+    try{ const d = pctx.getImageData(fx|0, fy|0, 1, 1).data;      // stepped in wet paint? → load the soles
+      if(d[3] > 22){ soleColor=[d[0],d[1],d[2]]; soleCharge=8; } }catch(_){}    // easier pickup; an 8-step trail (fades ~2× faster)
     if(soleCharge<=0 || !soleColor) return;
     const a = Math.atan2(vz, vx);                                 // walk direction (canvas space)
-    const side = (ph&1)?1:-1, ox=Math.cos(a+Math.PI/2)*11*side, oy=Math.sin(a+Math.PI/2)*11*side;
-    const alpha = 0.5*(soleCharge/8);
-    pctx.save(); pctx.translate(fx+ox, fy+oy); pctx.rotate(a);
+    const side = (ph&1)?1:-1, ox=Math.cos(a+Math.PI/2)*8*side, oy=Math.sin(a+Math.PI/2)*8*side;
+    const alpha = 0.9*(soleCharge/8), back=8;                     // bold start, faster fade; sit the print BEHIND the foot, not ahead
+    pctx.save(); pctx.globalCompositeOperation='lighter';        // glow like the paint so the prints POP
+    pctx.translate(fx+ox, fy+oy); pctx.rotate(a);
     pctx.fillStyle = `rgba(${soleColor[0]},${soleColor[1]},${soleColor[2]},${alpha})`;
-    pctx.beginPath(); pctx.ellipse(0,0, 8,5, 0,0,7); pctx.fill();  // sole (long axis along walk)
-    pctx.beginPath(); pctx.ellipse(10,0, 3,3, 0,0,7); pctx.fill(); // toe
+    pctx.beginPath(); pctx.ellipse(-back,0, 5,3.2, 0,0,7); pctx.fill();      // sole (smaller, trailing behind)
+    pctx.beginPath(); pctx.ellipse(-back+6,0, 2.4,1.9, 0,0,7); pctx.fill();  // ball of the foot
     pctx.restore();
     soleCharge--; paintTex.needsUpdate=true;
   }
