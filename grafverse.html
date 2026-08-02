@@ -232,6 +232,8 @@
   const COLORS = [0x38e1ff, 0xff3ea5, 0x7CFC00, 0xffe94d, 0xff7a00];
   const EYE = 1.7, SPEED = 2.1, SENS = 0.0022, PITCH_MAX = 1.45;
   const JUMP_V = 6.2, GRAV = -7.5;   // jump impulse (units/s) + LOW moon gravity — floaty double-height hop, ~2.6 units peak (was ~1.3)
+  // slope-slide EXPERIMENT — dial by feel:  REST_ANGLE = steepest you can hold (rad, 0.60≈34°) · SLIDE_G = downhill pull · SLIDE_FRIC/AIR_FRIC = per-frame slide damping (1=frictionless, lower=grippier)
+  const REST_ANGLE = 0.60, SLIDE_G = 22, SLIDE_FRIC = 0.94, AIR_FRIC = 0.995;
   const GROUND = 500;          // ground plane size (units)
   const TEX = 2048;            // paint canvas resolution
   const PAINT_DRAIN = 0.22;    // per frame while spraying
@@ -843,8 +845,9 @@
   }
 
   // ---------- state ----------
-  let paint=0, hasCan=false, emptyAnnounced=false, fumble=0, velX=0, velZ=0, bob=0, stepPhase=0, paintShown=false, velY=0, airborne=false;
+  let paint=0, hasCan=false, emptyAnnounced=false, fumble=0, velX=0, velZ=0, bob=0, stepPhase=0, paintShown=false, velY=0, airborne=false, slideX=0, slideZ=0;
   const ray = new THREE.Raycaster();
+  const downRay = new THREE.Raycaster(); const _DOWN=new THREE.Vector3(0,-1,0), _pOrig=new THREE.Vector3(), _nrm=new THREE.Vector3(), _stand=[];   // slope-slide: surface probe under the feet
   const CENTER = new THREE.Vector2(0,0);
   const clock = new THREE.Clock();
   const tmp = new THREE.Vector3();
@@ -874,21 +877,32 @@
     camera.position.x += velX*dt; camera.position.z += velZ*dt;
     const spd = Math.hypot(velX,velZ);
     bob += spd*dt*1.9;
-    // --- vertical: gravity + jump; land on the ground (y=0) and on top of solid shapes ---
+    // --- vertical: gravity + jump; stand/slide on REAL surfaces (down-ray → true height + normal) ---
     const px=camera.position.x, pz=camera.position.z, feetY=camera.position.y-EYE;
-    let floorY=0;
-    for(const m of bShapes){ if(!m.userData.painted || m.userData.grow<1) continue;   // solid + fully grown = standable
-      let bb=m.userData.aabb;
-      if(!bb){ const b=new THREE.Box3().setFromObject(m); bb=m.userData.aabb={x0:b.min.x,x1:b.max.x,z0:b.min.z,z1:b.max.z,top:b.max.y}; }
-      if(px>=bb.x0&&px<=bb.x1&&pz>=bb.z0&&pz<=bb.z1 && bb.top<=feetY+0.35 && bb.top>floorY) floorY=bb.top;   // stand on the highest top under you
+    let floorY=0, nUp=1, nX=0, nZ=0;                              // default = flat ground at y=0 (up normal)
+    _stand.length=0;
+    for(const m of bShapes){ if(m.userData.painted && m.userData.grow>=1) _stand.push(m); }   // solid + grown = standable
+    if(_stand.length){                                            // probe the true surface directly under the feet
+      downRay.set(_pOrig.set(px, feetY+0.5, pz), _DOWN); downRay.far=4.0;
+      const dh=downRay.intersectObjects(_stand,false)[0];
+      if(dh && dh.face && dh.point.y>floorY){                     // stand on the shape's real surface (height + slope)
+        floorY=dh.point.y;
+        _nrm.copy(dh.face.normal).transformDirection(dh.object.matrixWorld).normalize();
+        nX=_nrm.x; nUp=_nrm.y; nZ=_nrm.z;
+      }
     }
-    const standY=floorY+EYE;
+    const standY=floorY+EYE, slope=Math.acos(Math.max(-1,Math.min(1,nUp)));   // surface tilt from vertical
     if(airborne){ velY+=GRAV*dt; camera.position.y+=velY*dt;
       if(velY<=0 && camera.position.y<=standY){ camera.position.y=standY; velY=0; airborne=false; } }   // landed
     else if(camera.position.y>standY+0.06){ airborne=true; }                                            // walked off an edge → fall
-    else camera.position.y = standY + Math.sin(bob)*0.05*Math.min(1, spd/SPEED);                        // grounded: head-bob
-    // --- footfalls + wet-paint footprints (only while grounded on the actual ground) ---
-    if(spd>0.4 && !airborne){ const ph=Math.floor(bob/Math.PI);
+    else camera.position.y = standY + (slope>REST_ANGLE?0:Math.sin(bob)*0.05*Math.min(1,spd/SPEED));    // grounded: head-bob (flush while sliding)
+    // --- slope slide: too steep to hold → accelerate down the fall-line (dry for now; wet = lower friction next) ---
+    if(!airborne && slope>REST_ANGLE){ const dl=Math.hypot(nX,nZ)||1, pull=SLIDE_G*Math.sin(slope);
+      slideX+=(nX/dl)*pull*dt; slideZ+=(nZ/dl)*pull*dt; }
+    { const sf=Math.pow(airborne?AIR_FRIC:SLIDE_FRIC, dt*60); slideX*=sf; slideZ*=sf; }
+    camera.position.x+=slideX*dt; camera.position.z+=slideZ*dt;
+    // --- footfalls + wet-paint footprints (grounded on the actual ground, not sliding) ---
+    if(spd>0.4 && !airborne && slope<=REST_ANGLE){ const ph=Math.floor(bob/Math.PI);
       if(ph!==stepPhase){ stepPhase=ph; footstep(); if(floorY<0.1) leaveFootprint(px,pz,velX,velZ,ph); } }
 
     // can pickup
