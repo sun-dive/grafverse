@@ -1318,14 +1318,38 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
 
   // ---------- paint onto a manifested shape (aim the crosshair at it + spray = it solidifies) ----------
-  const TEXS=1024, EARN_PAY=111;   // paint a solidified shape ~halfway → earn a can's worth (111 sats)
-  function paintCanvas(){ const c=document.createElement('canvas'); c.width=c.height=TEXS; return c; }
+  const EARN_PAY=111;   // paint a solidified shape ~halfway → earn a can's worth (111 sats)
+  // Each paint surface gets a canvas sized to its AREA: dim² = area × D². So a face's texel count is EXACTLY linear
+  // in its area, and total world texture memory = D² × (total painted area) — independent of object count, shape, or
+  // facet count. That's the property FPS maps need: memory scales with painted surface, nothing else. D is the master
+  // performance/quality dial (texels per world-unit). Floor is kept tiny so many small facets don't waste VRAM; the
+  // ceiling just caps a single runaway face. Brush sizes stay in TEXELS → a constant world-size brush across every face.
+  // (True map-scale optimum, for the per-face-panel pass: one ATLAS texture per object — 1 material / 1 draw call —
+  //  memory = object area × D², with faces as sub-rects. This per-surface version is the stepping stone.)
+  const TEXEL_D=731, TEX_MIN=64, TEX_MAX=1024;   // texels/world-unit · floor · ceiling (a 1.4-unit face → 1024, as before)
+  function paintCanvas(dim){ const c=document.createElement('canvas'); c.width=c.height=dim; return c; }
+  const _pa=new THREE.Vector3(),_pb=new THREE.Vector3(),_pc=new THREE.Vector3(),_pab=new THREE.Vector3(),_pac=new THREE.Vector3();
+  function surfaceAreas(geo){                                      // total triangle area per materialIndex (local space)
+    const pos=geo.attributes.position, idx=geo.index;
+    const groups=(geo.groups&&geo.groups.length)?geo.groups:[{start:0,count:(idx?idx.count:pos.count),materialIndex:0}];
+    const area={};
+    for(const g of groups){ let s=0; const end=g.start+g.count;
+      for(let i=g.start;i<end;i+=3){
+        const a=idx?idx.getX(i):i, b=idx?idx.getX(i+1):i+1, c=idx?idx.getX(i+2):i+2;
+        _pa.fromBufferAttribute(pos,a); _pb.fromBufferAttribute(pos,b); _pc.fromBufferAttribute(pos,c);
+        _pab.subVectors(_pb,_pa); _pac.subVectors(_pc,_pa); s+=_pab.cross(_pac).length()*0.5; }
+      const mi=g.materialIndex||0; area[mi]=(area[mi]||0)+s; }
+    return area;
+  }
   function solidify(mesh){
     if(mesh.userData.surfaces) return;
     const geo=mesh.geometry, hasGroups=geo.groups.length>0;
     const used=hasGroups?geo.groups.map(g=>g.materialIndex):[0], maxMi=Math.max(0,...used);
+    const area=surfaceAreas(geo);
     const surfaces=[], mats=[];
-    for(let mi=0;mi<=maxMi;mi++){ const cvs=paintCanvas();
+    for(let mi=0;mi<=maxMi;mi++){
+      const dim=Math.max(TEX_MIN, Math.min(TEX_MAX, Math.round(Math.sqrt(area[mi]||0.04)*TEXEL_D)));   // canvas ∝ √(face area)
+      const cvs=paintCanvas(dim);
       const tex=new THREE.CanvasTexture(cvs); tex.anisotropy=4;
       surfaces[mi]={cvs, ctx:cvs.getContext('2d'), tex};
       mats[mi]=new THREE.MeshStandardMaterial({ color:0x0c1526, transparent:true, opacity:0.6, roughness:.75, metalness:.1, emissive:0xffffff, emissiveMap:tex, emissiveIntensity:1.0, side:THREE.DoubleSide, fog:false }); }
@@ -1337,7 +1361,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function materializeShape(mesh){ if(mesh.userData.painted)return; mesh.userData.painted=true;   // first fleck: ghost → solid & committed
     (Array.isArray(mesh.material)?mesh.material:[mesh.material]).forEach(mt=>{ mt.transparent=false; mt.opacity=1; mt.needsUpdate=true; }); }
   function sprayShapeAt(surface, u, v, dn){                          // explicit u,v,dn so it replays without a camera; rnd() = seeded splatter
-    const ctx=surface.ctx, x=u*TEXS, y=(1-v)*TEXS;
+    const ctx=surface.ctx, S=surface.cvs.width, x=u*S, y=(1-v)*S;
     const R=24*(0.6+dn*2.2), core=0.6*(1-dn*0.5);
     const c=new THREE.Color(COLORS[colorIdx]), cr=c.r*255|0, cg=c.g*255|0, cb=c.b*255|0;
     ctx.globalCompositeOperation='lighter';
@@ -1352,11 +1376,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     surface.tex.needsUpdate=true;
   }
   function sampleWet(surf,u,v){                                    // is the shape painted (=wet) here? → [r,g,b,a] or null
-    try{ const x=Math.max(0,Math.min(TEXS-1,u*TEXS|0)), y=Math.max(0,Math.min(TEXS-1,(1-v)*TEXS|0));
+    try{ const S=surf.cvs.width, x=Math.max(0,Math.min(S-1,u*S|0)), y=Math.max(0,Math.min(S-1,(1-v)*S|0));
       const d=surf.ctx.getImageData(x,y,1,1).data; return d[3]>40 ? d : null; }catch(_){ return null; }
   }
   function smearShapeAt(surf, u0,v0, u1,v1, r,g,b){                // drag the wet paint along the slide path — a brush-stroke streak
-    const ctx=surf.ctx, x0=u0*TEXS, y0=(1-v0)*TEXS, x1=u1*TEXS, y1=(1-v1)*TEXS;
+    const ctx=surf.ctx, S=surf.cvs.width, x0=u0*S, y0=(1-v0)*S, x1=u1*S, y1=(1-v1)*S;
     ctx.globalCompositeOperation='source-over'; ctx.lineCap='round'; ctx.lineJoin='round';
     ctx.strokeStyle='rgba('+r+','+g+','+b+',0.26)'; ctx.lineWidth=34;   // soft wide smear
     ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke();
