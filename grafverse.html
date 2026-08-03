@@ -870,12 +870,31 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   const ray = new THREE.Raycaster();
   const downRay = new THREE.Raycaster(); const _DOWN=new THREE.Vector3(0,-1,0), _pOrig=new THREE.Vector3(), _nrm=new THREE.Vector3(), _stand=[];   // slope-slide: surface probe under the feet
   const _cbox=new THREE.Box3(); const SPRINT=1.85, ENTER_SPEED=2.7;   // crystals are PERMEABLE: hold Shift to SPRINT and breach a crystal wall → step inside & watch it refract; a walk just bounces off
+  const _wbox=new THREE.Box3(), PLR=0.3;   // solids are SOLID: committed non-crystal shapes block you (wall collision); PLR = player half-width
   let smearSurf=null, smearU=0, smearV=0;   // last wet contact on a shape → drag a smear as you slide
   const CENTER = new THREE.Vector2(0,0);
   const clock = new THREE.Clock();
   const tmp = new THREE.Vector3();
 
   function planarDist(v){ const dx=camera.position.x-v.x, dz=camera.position.z-v.z; return Math.hypot(dx,dz); }
+
+  // solids are solid: push the player out of any committed, non-crystal shape's footprint (unless standing on its roof).
+  // Crystals are deliberately skipped → you can still walk in and watch the light refract from inside.
+  function resolveWalls(){
+    const feetY=camera.position.y-EYE;
+    for(const m of bShapes){ const u=m.userData;
+      if(!u.painted || u.grow<1 || u.crystal) continue;                 // only committed, solid, non-crystal shapes
+      const bb=_wbox.setFromObject(m);
+      if(bb.max.y-bb.min.y<0.05) continue;                              // a flat plane/floor is not a wall
+      if(feetY>=bb.max.y-0.05) continue;                                // standing on (or above) the roof → walkable
+      const minx=bb.min.x-PLR, maxx=bb.max.x+PLR, minz=bb.min.z-PLR, maxz=bb.max.z+PLR;
+      const px=camera.position.x, pz=camera.position.z;
+      if(px<=minx||px>=maxx||pz<=minz||pz>=maxz) continue;              // outside the padded footprint → no contact
+      const dxl=px-minx, dxr=maxx-px, dzl=pz-minz, dzr=maxz-pz;
+      if(Math.min(dxl,dxr)<Math.min(dzl,dzr)) camera.position.x += (dxl<dxr? -dxl : dxr);   // eject along the shallower axis → slide along the wall
+      else                                     camera.position.z += (dzl<dzr? -dzl : dzr);
+    }
+  }
 
   function update(dt){
     // look
@@ -899,6 +918,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const kk = 1 - Math.pow(0.0025, dt);
     velX += (tx-velX)*kk; velZ += (tz-velZ)*kk;
     camera.position.x += velX*dt; camera.position.z += velZ*dt;
+    resolveWalls();                                       // solids block you (crystals stay permeable)
     const spd = Math.hypot(velX,velZ);
     bob += spd*dt*1.9;
     // --- vertical: gravity + jump; stand/slide on REAL surfaces (down-ray → true height + normal) ---
@@ -936,6 +956,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       slideX+=(nX/dl)*pull*dt; slideZ+=(nZ/dl)*pull*dt; }
     { const sf=Math.pow(airborne?AIR_FRIC:fric, dt*60); slideX*=sf; slideZ*=sf; }
     camera.position.x+=slideX*dt; camera.position.z+=slideZ*dt;
+    resolveWalls();                                      // don't let a slide clip through a solid
     // --- smear: slipping over WET shape-paint drags a brush stroke down the surface (her idea) ---
     if(!airborne && wet && cSurf && slope>rest){
       if(smearSurf===cSurf && Math.abs(cU-smearU)<0.5 && Math.abs(cV-smearV)<0.5 && (Math.abs(cU-smearU)+Math.abs(cV-smearV))>0.001)
