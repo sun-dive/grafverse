@@ -1057,25 +1057,45 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // ================= FIRST-PERSON BUILDER — "Quake with paint" (Stage 1: conjure & place) =================
   const BSHAPES=['box','wall','plane','cylinder','cone','pyramid','sphere'];
   const LABELS={ cylinder:'column', cone:'spire' };   // player-facing names for the angular crystal forms (internal type strings stay for save/serialize/mint)
-  const BASE={ plane:{w:2,d:2}, wall:{w:2,h:2.4,t:0.15}, box:{w:1.4,h:1.4,d:1.4}, cylinder:{r:0.7,h:1.6}, sphere:{r:0.9}, cone:{r:0.9,h:1.7}, pyramid:{r:1.0,h:0.9} };
+  // ── the BMF-SOLID substrate (docs/BMF-SOLID-SPEC.md): every solid = BASE SOLID + RESOLUTION + ratios. ──
+  // The 7 player primitives are PRESETS on that record — the code speaks the atom substrate; UI names (LABELS) sit on top.
+  // Base solids: box · plane · prism(→cylinder) · pyramid(→cone) · ball(→sphere) · [rhombohedron · mesh — future].
+  // Phase 1 is NON-BREAKING: geometry output is identical to before. The geodesic ball + per-face paint panels
+  // land with the v2 codec (Phase 2), version-gated so already-painted / minted worlds stay pixel-identical.
+  const PRESETS = {
+    box:      { base:'box',                             dims:{ w:1.4, h:1.4, d:1.4 } },
+    wall:     { base:'box',                             dims:{ w:2,   h:2.4, d:0.15 } },   // box thinned to a slab
+    plane:    { base:'plane',                           dims:{ w:2,   d:2 } },
+    cylinder: { base:'prism',   res:6,                  dims:{ r:0.7, h:1.6 } },           // column — hexagonal prism
+    cone:     { base:'pyramid', res:6,                  dims:{ r:0.9, h:1.7 } },           // spire — hex point (quartz)
+    pyramid:  { base:'pyramid', res:4, align:Math.PI/4, dims:{ r:1.0, h:0.9 } },           // square pyramid
+    sphere:   { base:'ball',    res:40,                 dims:{ r:0.9 } },                  // ball — v1 lat/long (→ geodesic in v2)
+  };
   function coneDiskUV(geo,H){ const g0=geo.groups[0], idx=geo.index, pos=geo.attributes.position, uv=geo.attributes.uv, done=new Set();
     for(let i=g0.start;i<g0.start+g0.count;i++){ const vi=idx.getX(i); if(done.has(vi))continue; done.add(vi);
       const x=pos.getX(vi),y=pos.getY(vi),z=pos.getZ(vi), t=(y+H/2)/H, a=Math.atan2(z,x), rho=(1-t)*0.49;
       uv.setXY(vi, 0.5+rho*Math.cos(a), 0.5+rho*Math.sin(a)); } uv.needsUpdate=true; }
-  // ── geometry = the BMF-SOLID record: base solid + RESOLUTION (facet count) + ratios. ──
-  // The "simplest crystal form" of each primitive: box=cube, wall=slab, plane=face, cylinder=HEX PRISM,
-  // cone=HEX POINT (quartz), pyramid=square pyramid, sphere=faceted polyhedron. Raise a resolution → smoother.
-  const RES = { cylinder:6, cone:6, sphere:40 };   // per-shape default resolution (facets/segments); low = faceted gem · high = smooth lens/ball
-  function bgeomFor(type,p){ p=p||BASE[type]||{};
-    switch(type){
-      case 'plane':    return new THREE.PlaneGeometry(p.w||2,p.d||2).rotateX(-Math.PI/2);
-      case 'wall':     return new THREE.BoxGeometry(p.w||2,p.h||2.4,p.t||0.15).translate(0,(p.h||2.4)/2,0);
-      case 'box':      return new THREE.BoxGeometry(p.w||1.4,p.h||1.4,p.d||1.4).translate(0,(p.h||1.4)/2,0);
-      case 'cylinder': return new THREE.CylinderGeometry(p.r||0.7,p.r||0.7,p.h||1.6, p.res||RES.cylinder).translate(0,(p.h||1.6)/2,0);
-      case 'sphere':   { const n=p.res||RES.sphere; return new THREE.SphereGeometry(p.r||0.9, n, Math.max(2,Math.round(n*0.62))).translate(0,p.r||0.9,0); }
-      case 'cone':     { const c=new THREE.ConeGeometry(p.r||0.9,p.h||1.7, p.res||RES.cone); coneDiskUV(c,p.h||1.7); return c.translate(0,(p.h||1.7)/2,0); }
-      case 'pyramid':  { const H=p.h||0.9, g=new THREE.ConeGeometry(p.r||1.0,H,4).rotateY(Math.PI/4); coneDiskUV(g,H); return g.translate(0,H/2,0); }
-    } return new THREE.BoxGeometry(1,1,1); }
+  // makeGeometry(base, resolution, dims) — the ONE generator behind every solid (the BMF-SOLID record).
+  // Simplest crystal form of each base: box=cube/slab/face, prism=HEX PRISM (→cylinder), pyramid=HEX POINT/quartz (→cone),
+  // ball=polyhedron. Raise `resolution` → smoother. `dims` carries the working extents (r/h/w/d[/align]).
+  function makeGeometry(base, res, d){ d=d||{};
+    switch(base){
+      case 'plane':   return new THREE.PlaneGeometry(d.w||2, d.d||2).rotateX(-Math.PI/2);
+      case 'box':     { const h=d.h||1.4; return new THREE.BoxGeometry(d.w||1.4, h, d.d||1.4).translate(0,h/2,0); }
+      case 'prism':   { const h=d.h||1.6; return new THREE.CylinderGeometry(d.r||0.7, d.r||0.7, h, Math.max(3,res||6)).translate(0,h/2,0); }
+      case 'pyramid': { const h=d.h||1.7, g=new THREE.ConeGeometry(d.r||0.9, h, Math.max(3,res||6)); if(d.align) g.rotateY(d.align); coneDiskUV(g,h); return g.translate(0,h/2,0); }
+      case 'ball':    { const r=d.r||0.9, n=res||40; return new THREE.SphereGeometry(r, n, Math.max(2,Math.round(n*0.62))).translate(0,r,0); }
+    }
+    return new THREE.BoxGeometry(1,1,1);
+  }
+  const RES = { cylinder:6, cone:6, sphere:40 };   // facets slider defaults per family; low = faceted gem · high = smooth lens/ball
+  // bgeomFor(type[,p]) — adapter from a player PRESET to the record: resolve (base, resolution, dims), then makeGeometry.
+  // p may override dims (r/h/w/d) or pass {res} for the live facets slider.
+  function bgeomFor(type,p){ p=p||{}; const pr=PRESETS[type]||PRESETS.box;
+    const d=Object.assign({}, pr.dims, p);          // p may override r/h/w/d
+    if(pr.align) d.align=pr.align;
+    return makeGeometry(pr.base, p.res||pr.res, d);
+  }
   function ghostMesh(type){ const geo=bgeomFor(type);
     const m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:0x13203a,transparent:true,opacity:0.5,roughness:.7,metalness:.1,emissive:0x1a2c50,emissiveIntensity:.6,side:THREE.DoubleSide,fog:false}));
     m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo,32),new THREE.LineBasicMaterial({color:0x5fa0e0,transparent:true,opacity:0.65,fog:false})));
@@ -1110,13 +1130,16 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function rotY(d){ if(activeShape) activeShape.rotation.y+=d; }
   function lean(d){ if(activeShape) activeShape.rotation.x+=d; }
   function resetShape(){ if(!activeShape)return; activeShape.userData.target.set(1,1,1); activeShape.rotation.set(0,0,0); }
+  function applyRes(m,res){                               // rebuild a shape's geometry (+edges) at a facet resolution; recorded on userData.res so it persists
+    m.userData.res=res;
+    const geo=bgeomFor(m.userData.type, {res:res}), old=m.geometry;
+    m.geometry=geo; if(old) old.dispose();
+    m.children.forEach(ch=>{ if(ch.isLineSegments){ const eg=ch.geometry; ch.geometry=new THREE.EdgesGeometry(geo,32); if(eg) eg.dispose(); } });
+  }
   function reshapeActive(res){                            // live facet control: sweep the round family — gem (few facets) ↔ lens (many, smooth)
     const m=activeShape; if(!m) return; const type=m.userData.type;
     if(type!=='cylinder' && type!=='cone' && type!=='sphere') return;
-    m.userData.res=res;
-    const geo=bgeomFor(type, Object.assign({}, BASE[type], {res:res})), old=m.geometry;
-    m.geometry=geo; if(old) old.dispose();
-    m.children.forEach(ch=>{ if(ch.isLineSegments){ const eg=ch.geometry; ch.geometry=new THREE.EdgesGeometry(geo,32); if(eg) eg.dispose(); } });
+    applyRes(m,res); if(m.userData.crystal||m.userData.painted) scheduleSave();   // persist a new gem-cut / lens setting
   }
   el.addEventListener('wheel', e=>{ if(activeShape){ e.preventDefault(); scaleAll(e.deltaY<0?1.1:1/1.1); } }, {passive:false});   // scroll = quick uniform resize
 
@@ -1263,6 +1286,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       transparent:true, opacity:1.0, side:THREE.DoubleSide });
     mesh.userData.crystal=true; mesh.userData.gemIdx=gi; mesh.userData.painted=true; mesh.userData.paid=false; mesh.userData.paintAmt=0;
     mesh.children.forEach(ch=>{ if(ch.material && ch.material.isLineBasicMaterial){ ch.material.color.set(color); ch.material.opacity=0.5; ch.material.needsUpdate=true; } });
+    scheduleSave();                                                        // a crystal is owned the moment it's cut — persist it
   }
   function sprayCrystal(mesh, dn){                                        // a crystal KEEPS its magical translucency — spray only SUBTLY tints its inner colour
     const m=mesh.material; if(!m || !m.isMeshPhysicalMaterial) return;
@@ -1372,13 +1396,20 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   const SAVE_KEY='grafverse-world-v1';
   function serializeWorld(){
     const shapes=[];
-    for(const m of bShapes){ const st=m.userData.strokes; if(!st||!st.length) continue;   // only painted (owned) shapes
-      shapes.push({ t:m.userData.type,
+    for(const m of bShapes){ const u=m.userData;
+      const painted = u.strokes && u.strokes.length;
+      if(!painted && !u.crystal) continue;                                     // save OWNED shapes: painted OR crystallised
+      const rec={ t:u.type,
         p:[+m.position.x.toFixed(3),+m.position.y.toFixed(3),+m.position.z.toFixed(3)],
         r:[+m.rotation.x.toFixed(4),+m.rotation.y.toFixed(4),+m.rotation.z.toFixed(4)],
-        s:[+m.userData.target.x.toFixed(3),+m.userData.target.y.toFixed(3),+m.userData.target.z.toFixed(3)],
-        paid:!!m.userData.paid, st }); }
-    return { v:1, ground:groundStrokes, shapes };
+        s:[+u.target.x.toFixed(3),+u.target.y.toFixed(3),+u.target.z.toFixed(3)],
+        paid:!!u.paid };
+      if(u.res) rec.res=u.res;                                                 // custom facet count (column/spire/ball)
+      if(u.crystal){ rec.cr=1; rec.gem=u.gemIdx|0;                             // a crystal: gem index + its drifted inner colour
+        if(m.material && m.material.color) rec.col=m.material.color.getHex(); }
+      else rec.st=u.strokes;                                                   // a painted shape: its strokes
+      shapes.push(rec); }
+    return { v:2, ground:groundStrokes, shapes };
   }
   function saveWorld(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(serializeWorld())); }catch(e){} }
   let _saveT=null;
@@ -1393,12 +1424,20 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       m.position.set(sd.p[0],sd.p[1],sd.p[2]);
       m.rotation.set(sd.r[0],sd.r[1],sd.r[2]);
       m.userData.target.set(sd.s[0],sd.s[1],sd.s[2]); m.scale.copy(m.userData.target); m.userData.grow=1;   // already real — skip grow-in
-      solidify(m);
-      (sd.st||[]).forEach(stroke=>{ const surf=m.userData.surfaces[stroke.si]; if(!surf) return;
-        colorIdx=stroke.c; seedRand(stroke.seed>>>0);                 // deterministic replay
-        for(const d of stroke.dabs) sprayShapeAt(surf, d[0], d[1], d[2]); });
-      materializeShape(m);
-      m.userData.painted=true; m.userData.paid=!!sd.paid; m.userData.strokes=sd.st||[];
+      if(sd.res) applyRes(m, sd.res);                                          // restore custom facet count (geometry) BEFORE materials
+      if(sd.cr){                                                              // ── a crystal: gem material + drifted colour ──
+        crystallizeShape(m, sd.gem||0);
+        if(sd.col!=null && m.material.color){ m.material.color.setHex(sd.col);
+          if(m.material.attenuationColor) m.material.attenuationColor.setHex(sd.col); m.material.needsUpdate=true; }
+        m.userData.paid=!!sd.paid;
+      } else {                                                                // ── a painted shape: replay its strokes ──
+        solidify(m);
+        (sd.st||[]).forEach(stroke=>{ const surf=m.userData.surfaces[stroke.si]; if(!surf) return;
+          colorIdx=stroke.c; seedRand(stroke.seed>>>0);                       // deterministic replay
+          for(const d of stroke.dabs) sprayShapeAt(surf, d[0], d[1], d[2]); });
+        materializeShape(m);
+        m.userData.painted=true; m.userData.paid=!!sd.paid; m.userData.strokes=sd.st||[];
+      }
       scene.add(m); bShapes.push(m);
     });
     (data.ground||[]).forEach(stroke=>{
