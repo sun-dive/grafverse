@@ -214,8 +214,8 @@
   <div class="kbtn" id="kSave">💾 Save now</div>
   <div class="kbtn" id="kReload">↻ Reload world</div>
   <div class="kbtn immortal" id="kMint">✦ Make immortal</div>
-  <div class="kbtn" id="kImport">📥 Import scene (.bms)</div>
-  <input type="file" id="kFile" accept=".bms,application/octet-stream" style="display:none">
+  <div class="kbtn" id="kImport">📥 Import scene (.bmf)</div>
+  <input type="file" id="kFile" accept=".bmf,application/octet-stream" style="display:none">
   <div class="kfoot" id="kNote"></div>
   <div class="kbtn done" id="kDone">✓ close</div>
 </div>
@@ -1374,7 +1374,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       location.href = WALLET_URL + '?id=' + encodeURIComponent(data.id) + '&return=' + encodeURIComponent(ret);
     }catch(e){ _kNote().textContent='Handoff failed: '+(e.message||e)+'. (Is handoff.php deployed?)'; }
   });
-  // ── import: read a packed .bms scene file → rebuild it in the editor (replaces the current world) ──
+  // ── import: read a packed .bmf scene atom → rebuild it in the editor (replaces the current world) ──
   document.getElementById('kImport').addEventListener('click', ()=>{ document.getElementById('kFile').click(); });
   document.getElementById('kFile').addEventListener('change', async (e)=>{
     const f=e.target.files&&e.target.files[0]; if(!f) return;
@@ -1383,7 +1383,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const bytes=Array.from(new Uint8Array(await f.arrayBuffer()));
       const r=importScene(bytes);
       _kNote().textContent='Imported '+r.shapes+' shape'+(r.shapes===1?'':'s')+(r.ground?' + ground':'')+' from '+f.name+'.';
-    }catch(err){ _kNote().textContent='Import failed: '+(err.message||err)+' (not a valid .bms scene?)'; }
+    }catch(err){ _kNote().textContent='Import failed: '+(err.message||err)+' (not a valid .bmf scene?)'; }
     e.target.value='';   // allow re-importing the same file
   });
 
