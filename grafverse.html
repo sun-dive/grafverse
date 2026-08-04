@@ -1081,8 +1081,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
 
   // ================= FIRST-PERSON BUILDER — "Quake with paint" (Stage 1: conjure & place) =================
-  const BSHAPES=['box','wall','plane','cylinder','cone','pyramid','sphere'];
-  const LABELS={ cylinder:'column', cone:'spire' };   // player-facing names for the angular crystal forms (internal type strings stay for save/serialize/mint)
+  const BSHAPES=['box','wall','plane','cylinder','cone','pyramid','sphere','palm'];
+  const LABELS={ cylinder:'column', cone:'spire', palm:'🌴 palm' };   // player-facing names for the angular crystal forms (internal type strings stay for save/serialize/mint)
   // ── the BMF-SOLID substrate (docs/BMF-SOLID-SPEC.md): every solid = BASE SOLID + RESOLUTION + ratios. ──
   // The 7 player primitives are PRESETS on that record — the code speaks the atom substrate; UI names (LABELS) sit on top.
   // Base solids: box · plane · prism(→cylinder) · pyramid(→cone) · ball(→sphere) · [rhombohedron · mesh — future].
@@ -1117,15 +1117,45 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   const RES = { cylinder:6, cone:6, sphere:40 };   // facets slider defaults per family; low = faceted gem · high = smooth lens/ball
   // bgeomFor(type[,p]) — adapter from a player PRESET to the record: resolve (base, resolution, dims), then makeGeometry.
   // p may override dims (r/h/w/d) or pass {res} for the live facets slider.
-  function bgeomFor(type,p){ p=p||{}; const pr=PRESETS[type]||PRESETS.box;
+  function palmGeometry(seed){                            // a fractal-ish palm: tapered ringed trunk + a crown of arching fronds. One vertex-coloured mesh (→ crystal palm too).
+    const rnd=mulberry32((seed>>>0)||1), P=[], C=[];
+    const push=(p,c)=>{ P.push(p[0],p[1],p[2]); C.push(c[0],c[1],c[2]); };
+    const tri=(a,b,c,col)=>{ push(a,col); push(b,col); push(c,col); };
+    const H=2.8, RB=0.14, RT=0.09, SEG=8, RINGS=10, LEAN=0.25, brown=[0.40,0.27,0.16];
+    const ring=[]; for(let i=0;i<=RINGS;i++){ const t=i/RINGS; ring.push({ y:t*H, cx:LEAN*t*t, r:(RB+(RT-RB)*t)*(1+Math.sin(t*RINGS*1.3)*0.06) }); }
+    for(let i=0;i<RINGS;i++){ const a=ring[i], b=ring[i+1];                                                     // trunk (ringed, tapered, slight lean)
+      for(let s=0;s<SEG;s++){ const a1=s/SEG*6.2832, a2=(s+1)/SEG*6.2832, sh=0.85+rnd()*0.3, bc=[brown[0]*sh,brown[1]*sh,brown[2]*sh];
+        const p1=[a.cx+Math.cos(a1)*a.r,a.y,Math.sin(a1)*a.r], p2=[a.cx+Math.cos(a2)*a.r,a.y,Math.sin(a2)*a.r];
+        const p3=[b.cx+Math.cos(a2)*b.r,b.y,Math.sin(a2)*b.r], p4=[b.cx+Math.cos(a1)*b.r,b.y,Math.sin(a1)*b.r];
+        tri(p1,p2,p3,bc); tri(p1,p3,p4,bc); } }
+    const top=ring[RINGS], NF=10, green=[0.18,0.40,0.13];                                                       // crown of fronds
+    for(let f=0;f<NF;f++){ const ang=(f/NF)*6.2832+rnd()*0.25, dx=Math.cos(ang), dz=Math.sin(ang), px=-dz, pz=dx;
+      const L=1.5+rnd()*0.5, FS=6, W=0.14, spine=[];
+      for(let i=0;i<=FS;i++){ const t=i/FS, out=L*t, up=Math.sin(t*1.5)*0.5-t*t*1.1; spine.push([top.cx+dx*out, top.y+up, dz*out]); }   // arc out then droop
+      for(let i=0;i<FS;i++){ const t0=i/FS,t1=(i+1)/FS, w0=W*(1-t0), w1=W*(1-t1), sh=0.8+rnd()*0.4, gc=[green[0]*sh,green[1]*sh,green[2]*sh], s0=spine[i], s1=spine[i+1];
+        const l0=[s0[0]-px*w0,s0[1],s0[2]-pz*w0], r0=[s0[0]+px*w0,s0[1],s0[2]+pz*w0];
+        const l1=[s1[0]-px*w1,s1[1],s1[2]-pz*w1], r1=[s1[0]+px*w1,s1[1],s1[2]+pz*w1];
+        tri(l0,r0,r1,gc); tri(l0,r1,l1,gc); } }
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(P,3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(C,3));
+    g.computeVertexNormals(); return g;
+  }
+  function bgeomFor(type,p){ p=p||{};
+    if(type==='palm') return palmGeometry((p.seed>>>0)||1);
+    const pr=PRESETS[type]||PRESETS.box;
     const d=Object.assign({}, pr.dims, p);          // p may override r/h/w/d
     if(pr.align) d.align=pr.align;
     return makeGeometry(pr.base, p.res||pr.res, d);
   }
-  function ghostMesh(type){ const geo=bgeomFor(type);
-    const m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:0x13203a,transparent:true,opacity:0.5,roughness:.7,metalness:.1,emissive:0x1a2c50,emissiveIntensity:.6,side:THREE.DoubleSide,fog:false}));
-    m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo,32),new THREE.LineBasicMaterial({color:0x5fa0e0,transparent:true,opacity:0.65,fog:false})));
-    m.userData={type,grow:0,target:new THREE.Vector3(1,1,1)}; return m; }
+  function ghostMesh(type, seed){ const isPalm=type==='palm';
+    if(isPalm && seed==null) seed=(Math.random()*1e9)>>>0;
+    const geo=bgeomFor(type,{seed});
+    const m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:isPalm?0xffffff:0x13203a,vertexColors:isPalm,transparent:true,opacity:isPalm?0.8:0.5,roughness:.7,metalness:.1,emissive:isPalm?0x000000:0x1a2c50,emissiveIntensity:isPalm?0:.6,side:THREE.DoubleSide,fog:false}));
+    if(!isPalm) m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo,32),new THREE.LineBasicMaterial({color:0x5fa0e0,transparent:true,opacity:0.65,fog:false})));
+    m.userData={type,grow:0,target:new THREE.Vector3(1,1,1)};
+    if(isPalm){ m.userData.seed=seed; m.userData.base=0xffffff; }   // palm shows its vertex colours (white base) + a stored seed
+    return m; }
   const bShapes=[]; let heldGhost=null, activeShape=null; const _fwd=new THREE.Vector3(), _brc=new THREE.Raycaster();
   // activeShape = the un-painted shape you're building (arrange mode = can stowed, no painting).
   // heldGhost   = activeShape while it follows your gaze (being carried). null once set down.
@@ -1145,7 +1175,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // ---------- full shape control (per-axis / uniform / rotate) over the ACTIVE shape ----------
   const AXES={ box:[['W','x'],['H','y'],['D','z']], wall:[['W','x'],['H','y'],['T','z']],
     plane:[['W','x'],['D','z']], cylinder:[['R','xz'],['H','y']],
-    cone:[['R','xz'],['H','y']], pyramid:[['R','xz'],['H','y']], sphere:[['Size','xyz']] };
+    cone:[['R','xz'],['H','y']], pyramid:[['R','xz'],['H','y']], sphere:[['Size','xyz']], palm:[['Size','xyz']] };
   function scaleAxis(axis,f){ const t=activeShape&&activeShape.userData.target; if(!t)return;
     if(axis.indexOf('x')>=0) t.x=Math.max(0.25,Math.min(6,t.x*f));
     if(axis.indexOf('y')>=0) t.y=Math.max(0.25,Math.min(6,t.y*f));
@@ -1564,7 +1594,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const cvs=paintCanvas(dim);
       const tex=new THREE.CanvasTexture(cvs); tex.anisotropy=4;
       surfaces[mi]={cvs, ctx:cvs.getContext('2d'), tex};
-      mats[mi]=new THREE.MeshStandardMaterial({ color:(mesh.userData.base!=null?mesh.userData.base:0x0c1526), transparent:true, opacity:0.6, roughness:.75, metalness:.1, emissive:0xffffff, emissiveMap:tex, emissiveIntensity:1.0, side:THREE.DoubleSide, fog:false }); }
+      mats[mi]=new THREE.MeshStandardMaterial({ color:(mesh.userData.base!=null?mesh.userData.base:0x0c1526), vertexColors:!!geo.attributes.color, transparent:true, opacity:0.6, roughness:.75, metalness:.1, emissive:0xffffff, emissiveMap:tex, emissiveIntensity:1.0, side:THREE.DoubleSide, fog:false }); }
     mesh.material = hasGroups?mats:mats[0];
     mesh.userData.surfaces=surfaces;
     geo.computeBoundingBox(); const bb=geo.boundingBox, sx=bb.max.x-bb.min.x, sy=bb.max.y-bb.min.y, sz=bb.max.z-bb.min.z;
@@ -1668,7 +1698,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const paint = sd.cr ? { kind:0 } : { kind:1, strokes:sd.st||[] };                 // owned paint layer (a crystal carries no strokes)
     return { id:PRESET_ID[sd.t]||122, res:sd.res||pr.res||0, ratios, pos:sd.p, rot, scale:sizeM, color, tex, paint };
   }
-  function worldToRecords(world){ return { ground:world.ground||[], shapes:(world.shapes||[]).map(shapeToRecord) }; }
+  function worldToRecords(world){ return { ground:world.ground||[], shapes:(world.shapes||[]).filter(sd=>sd.t!=='palm').map(shapeToRecord) }; }   // trees not in the mint record yet (need a tree id + params)
 
   function shapeToSave(m){ const u=m.userData;                                 // one COMMITTED shape → its save record (shared by serialize + clone); null for a ghost
     if(!u.painted && !u.crystal) return null;
@@ -1678,6 +1708,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       s:[+u.target.x.toFixed(3),+u.target.y.toFixed(3),+u.target.z.toFixed(3)],
       paid:!!u.paid };
     if(u.res) rec.res=u.res;                                                   // custom facet count (column/spire/ball)
+    if(u.seed!=null) rec.seed=u.seed;                                          // procedural seed (palm/tree)
     if(u.base!=null) rec.base=u.base;                                          // base LAYER colour (if the picker set one)
     if(u.crystal){ rec.cr=1; rec.gem=u.gemIdx|0;                              // a crystal: gem index + its drifted inner colour
       if(m.material && m.material.color) rec.col=m.material.color.getHex(); }
@@ -1694,7 +1725,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   addEventListener('beforeunload', saveWorld);
   document.addEventListener('visibilitychange', ()=>{ if(document.hidden) saveWorld(); });
   function addShapeFromData(sd){                                            // rebuild one committed shape (used by load AND undo)
-    const m=ghostMesh(sd.t);
+    const m=ghostMesh(sd.t, sd.seed);
     m.position.set(sd.p[0],sd.p[1],sd.p[2]);
     m.rotation.set(sd.r[0],sd.r[1],sd.r[2]);
     m.userData.target.set(sd.s[0],sd.s[1],sd.s[2]); m.scale.copy(m.userData.target); m.userData.grow=1;   // already real — skip grow-in
