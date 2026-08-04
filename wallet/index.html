@@ -351,6 +351,27 @@
     }finally{ $('mintBtn').disabled = false; }
   };
 
+  // ── mint log — one line per mint (datetime · title · collection txid = what "Load from Chain" needs) ──
+  // Kept in the wallet's own storage and rewritten to a plain-text file after each mint, so the on-disk log
+  // stays complete and survives across sessions. Tab-separated so titles with spaces still parse cleanly.
+  const MINTLOG_KEY = 'p:mintlog';
+  function stamp(){ const d=new Date(), p=n=>String(n).padStart(2,'0');
+    return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); }
+  function readMintLog(){ try{ return localStorage.getItem(MINTLOG_KEY)||''; }catch(_){ return ''; } }
+  function downloadText(fname, text){
+    const url=URL.createObjectURL(new Blob([text], {type:'text/plain;charset=utf-8'}));
+    const a=document.createElement('a'); a.href=url; a.download=fname; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  }
+  function appendMintLog(title, txid){
+    const line = stamp()+'\t'+String(title||'untitled').replace(/[\t\r\n]+/g,' ').trim()+'\t'+txid;
+    let log = readMintLog(); if(log && !log.endsWith('\n')) log += '\n';
+    log += line + '\n';
+    try{ localStorage.setItem(MINTLOG_KEY, log); }catch(_){}
+    downloadText('grafverse-mint-log.txt', log);   // rewrite the full log so the saved file is always current
+    return line;
+  }
+
   function showResult(res, name){
     const el = $('mintResult'); el.classList.remove('hidden');
     const oc = res.collectionId;
@@ -360,11 +381,16 @@
       + '<div class="row"><span class="k">TX2</span><span class="mono">'+res.tx2Id+'</span></div>'
       + '<div class="btnrow" style="margin-top:10px">'
       +   '<button class="sm" id="copyId">Copy collection id</button>'
+      +   '<button class="sm ghost" id="saveLog">⬇ Mint log</button>'
       +   '<a href="https://whatsonchain.com/tx/'+oc+'" target="_blank" rel="noopener"><button class="sm ghost">View on chain ↗</button></a>'
       + (returnUrl ? '<button class="sm cyan" id="backGame">← Back to the game</button>' : '')
-      + '</div>';
+      + '</div>'
+      + '<div class="hint" id="logNote"></div>';
     $('copyId').onclick = ()=>copy(oc,'Collection id copied');
+    $('saveLog').onclick = ()=>downloadText('grafverse-mint-log.txt', readMintLog());
     const bg = $('backGame'); if(bg) bg.onclick = ()=>{ location.href = returnUrl + (returnUrl.includes('?')?'&':'?') + 'minted=' + oc; };
+    appendMintLog(name, oc);   // record this mint + save the updated log file
+    $('logNote').textContent = 'Saved to grafverse-mint-log.txt — the collection id above is what ⬇ Load from Chain needs.';
   }
 
   loadWallet();
