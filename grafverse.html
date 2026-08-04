@@ -889,7 +889,10 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const feetY=camera.position.y-EYE;
     for(const m of bShapes){ const u=m.userData;
       if(!u.painted || u.grow<1 || u.crystal) continue;                 // only committed, solid, non-crystal shapes
-      const bb=_wbox.setFromObject(m);
+      let bb=_wbox;
+      if(u.seed!=null){ const r=0.16*Math.max(m.scale.x,m.scale.z), h=3.2*m.scale.y;   // a TREE: collide with the TRUNK footprint only, not the wide frond crown
+        bb.min.set(m.position.x-r, m.position.y, m.position.z-r); bb.max.set(m.position.x+r, m.position.y+h, m.position.z+r); }
+      else bb.setFromObject(m);
       if(bb.max.y-bb.min.y<0.05) continue;                              // a flat plane/floor is not a wall
       if(feetY>=bb.max.y-0.05) continue;                                // standing on (or above) the roof → walkable
       const minx=bb.min.x-PLR, maxx=bb.max.x+PLR, minz=bb.min.z-PLR, maxz=bb.max.z+PLR;
