@@ -1256,7 +1256,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
 
   function tryGrab(){                                     // mobile Grab button — pick up the shape under the crosshair
     ray.setFromCamera(CENTER,camera); const h=ray.intersectObjects(bShapes,false)[0];
-    if(h && h.object && !h.object.userData.painted){ activeShape=h.object; heldGhost=h.object; setMode();
+    if(h && h.object){ activeShape=h.object; heldGhost=h.object; setMode();   // grab ANY placed shape (ghost or committed) to move/edit it
       if(shaping) buildShapeTools(activeShape.userData.type); } }
 
   // ---- desktop free-cursor editor: drag empty space to look, click ground for a spot, click-hold a shape to move it ----
@@ -1272,7 +1272,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   let dragMode=null, dragX=0, dragY=0, dragMoved=0;
   el.addEventListener('pointerdown', e=>{ if(MOBILE || !shaping || e.button!==0) return;
     const hs=_pick(e,bShapes);
-    if(hs && !hs.object.userData.painted){ activeShape=hs.object; heldGhost=hs.object; setMode(); buildShapeTools(activeShape.userData.type); dragMode='move'; }
+    if(hs){ activeShape=hs.object; heldGhost=hs.object; setMode(); buildShapeTools(activeShape.userData.type); dragMode='move'; }   // click ANY placed shape to select/move/edit it
     else dragMode='look';
     dragX=e.clientX; dragY=e.clientY; dragMoved=0; try{ el.setPointerCapture(e.pointerId); }catch(_){} });
   el.addEventListener('pointermove', e=>{ if(MOBILE || !shaping || !dragMode) return;
@@ -1281,7 +1281,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     else if(dragMode==='move' && heldGhost){ const g=_pick(e,[ground]); if(g) heldGhost.position.set(g.point.x,heldGhost.position.y,g.point.z); }
     dragX=e.clientX; dragY=e.clientY; });
   el.addEventListener('pointerup', e=>{ if(MOBILE || !shaping) return;
-    if(dragMode==='move'){ heldGhost=null; setMode(); }
+    if(dragMode==='move'){ heldGhost=null; setMode(); if(dragMoved>3) scheduleSave(); }   // persist a moved shape
     else if(dragMode==='look' && dragMoved<5){            // a click on empty ground → set the spot & deselect
       const g=_pick(e,[ground]); if(g){ setPlaceMarker(g.point); activeShape=null; heldGhost=null; setMode(); buildShapeTools(null); } }
     dragMode=null; try{ el.releasePointerCapture(e.pointerId); }catch(_){} });
