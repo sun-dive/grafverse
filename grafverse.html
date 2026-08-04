@@ -1199,6 +1199,13 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       r.appendChild(sbtn('↺',()=>rotY(-Math.PI/12))); r.appendChild(sbtn('↻',()=>rotY(Math.PI/12)));
       r.appendChild(sbtn('◣',()=>lean(Math.PI/12)));  r.appendChild(sbtn('◢',()=>lean(-Math.PI/12))); box.appendChild(r);
       const d=document.createElement('div'); d.className='srow'; d.appendChild(sbtn('⎌ reset',resetShape,'wide')); box.appendChild(d);
+      const bcr=document.createElement('div'); bcr.className='srow';   // base LAYER colour — the material beneath the paint
+      const bcl=document.createElement('span'); bcl.textContent='base'; bcl.style.width='auto'; bcr.appendChild(bcl);
+      const bci=document.createElement('input'); bci.type='color';
+      bci.style.cssText='width:52px;height:22px;padding:0;border:1px solid rgba(255,255,255,.25);border-radius:5px;background:none;cursor:pointer;';
+      bci.value='#'+('000000'+((activeShape.userData.base!=null?activeShape.userData.base:0x0c1526)>>>0).toString(16)).slice(-6);
+      bci.addEventListener('input',()=>setBaseColor(bci.value));
+      bcr.appendChild(bci); box.appendChild(bcr);
       const cr=document.createElement('div'); cr.className='srow';   // ◆ crystal — translucent gem; click again to cycle the gem colour
       cr.appendChild(sbtn('◆ crystal', ()=>{ if(activeShape) crystallizeShape(activeShape, activeShape.userData.crystal ? (activeShape.userData.gemIdx>=MAXGEM?1:activeShape.userData.gemIdx+1) : 1); },'wide'));   // cut → cycle gems 1…16
       box.appendChild(cr);
@@ -1337,6 +1344,14 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     c.setHex((R<<16)|(G<<8)|B);
   }
   function rgb332Index(hex){ const R=(hex>>16)&255, G=(hex>>8)&255, B=hex&255; return ((R>>5)<<5)|((G>>5)<<2)|(B>>6); }   // 0xRRGGBB → the 1-byte RGB332 index
+  function setBaseColor(hexStr){                                          // the solid's BASE LAYER colour (the material beneath the paint), snapped to 8-bit like a crystal
+    const m=activeShape; if(!m) return;
+    const c=new THREE.Color(hexStr); q332(c); const q=c.getHex();         // snap to RGB332 = the 1-byte colour
+    m.userData.base=q;
+    if(!m.userData.crystal)                                               // (crystals use their gem colour instead)
+      (Array.isArray(m.material)?m.material:[m.material]).forEach(mt=>{ if(mt && mt.color && !mt.isLineBasicMaterial){ mt.color.setHex(q); mt.needsUpdate=true; } });
+    scheduleSave();
+  }
   function sprayCrystal(mesh, dn){                                        // a crystal KEEPS its translucency — paint only SLIGHTLY blends its natural gem colour (unique tint)
     const m=mesh.material; if(!m || !m.isMeshPhysicalMaterial) return;
     const g=GEMS[mesh.userData.tex]||GEMS[1];
@@ -1383,7 +1398,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const cvs=paintCanvas(dim);
       const tex=new THREE.CanvasTexture(cvs); tex.anisotropy=4;
       surfaces[mi]={cvs, ctx:cvs.getContext('2d'), tex};
-      mats[mi]=new THREE.MeshStandardMaterial({ color:0x0c1526, transparent:true, opacity:0.6, roughness:.75, metalness:.1, emissive:0xffffff, emissiveMap:tex, emissiveIntensity:1.0, side:THREE.DoubleSide, fog:false }); }
+      mats[mi]=new THREE.MeshStandardMaterial({ color:(mesh.userData.base!=null?mesh.userData.base:0x0c1526), transparent:true, opacity:0.6, roughness:.75, metalness:.1, emissive:0xffffff, emissiveMap:tex, emissiveIntensity:1.0, side:THREE.DoubleSide, fog:false }); }
     mesh.material = hasGroups?mats:mats[0];
     mesh.userData.surfaces=surfaces;
     geo.computeBoundingBox(); const bb=geo.boundingBox, sx=bb.max.x-bb.min.x, sy=bb.max.y-bb.min.y, sz=bb.max.z-bb.min.z;
@@ -1500,6 +1515,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
         s:[+u.target.x.toFixed(3),+u.target.y.toFixed(3),+u.target.z.toFixed(3)],
         paid:!!u.paid };
       if(u.res) rec.res=u.res;                                                 // custom facet count (column/spire/ball)
+      if(u.base!=null) rec.base=u.base;                                         // base LAYER colour (if the picker set one)
       if(u.crystal){ rec.cr=1; rec.gem=u.gemIdx|0;                             // a crystal: gem index + its drifted inner colour
         if(m.material && m.material.color) rec.col=m.material.color.getHex(); }
       else rec.st=u.strokes;                                                   // a painted shape: its strokes
@@ -1526,6 +1542,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
           if(m.material.attenuationColor) m.material.attenuationColor.setHex(sd.col); m.material.needsUpdate=true; }
         m.userData.paid=!!sd.paid;
       } else {                                                                // ── a painted shape: replay its strokes ──
+        if(sd.base!=null) m.userData.base=sd.base;                           // restore the base layer colour before solidify bakes it in
         solidify(m);
         (sd.st||[]).forEach(stroke=>{ const surf=m.userData.surfaces[stroke.si]; if(!surf) return;
           colorIdx=stroke.c; seedRand(stroke.seed>>>0);                       // deterministic replay
