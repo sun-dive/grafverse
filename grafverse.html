@@ -1363,7 +1363,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   // ── solid finishes (the `tex` byte for OPAQUE solids). 0 plain · 25 shiny metal · 26–29 corroded metals. Colour = base picker. ──
   const METALS={   // col=null keeps the base-colour pick (shiny metal = any metal); else seeds a characteristic corrosion colour
-    25:{ n:'shiny metal',   col:null,     metalness:0.9, roughness:0.22, env:1.5, rough:false },
+    25:{ n:'shiny metal',   col:0xc0c4cc, metalness:0.9, roughness:0.15, env:1.6, rough:false },   // silver default so it looks metallic at once (re-tint via the base picker)
     26:{ n:'steel rust',    col:0xa0522d, metalness:0.5, roughness:0.95, env:0.3, rough:true },
     27:{ n:'copper patina', col:0x3aa58a, metalness:0.5, roughness:0.90, env:0.3, rough:true },
     28:{ n:'brass tarnish', col:0x8a6a2a, metalness:0.6, roughness:0.85, env:0.4, rough:true },
@@ -1383,7 +1383,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function applyFinish(mesh, tex){                                        // set metalness/roughness/maps per finish (colour stays = base, paint stays = emissiveMap)
     const M=METALS[tex];
     (Array.isArray(mesh.material)?mesh.material:[mesh.material]).forEach(m=>{ if(!m || m.isLineBasicMaterial) return;
-      if(M){ m.metalness=M.metalness; m.roughness=M.roughness; m.envMap=gemEnv(); m.envMapIntensity=M.env;
+      if(M){ m.metalness=M.metalness; m.roughness=M.roughness; m.envMap=reflectionEnv(); m.envMapIntensity=M.env;
         m.roughnessMap=M.rough?rustTexture():null; m.bumpMap=M.rough?rustTexture():null; m.bumpScale=M.rough?0.5:0; }
       else { m.metalness=0.1; m.roughness=0.75; m.envMap=null; m.envMapIntensity=1; m.roughnessMap=null; m.bumpMap=null; m.bumpScale=0; }   // plain
       m.needsUpdate=true; });
@@ -1404,6 +1404,20 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     applyFinish(mesh, tex);
     mesh.children.forEach(ch=>{ if(ch.material && ch.material.isLineBasicMaterial){ ch.material.color.set(0x5fa0e0); ch.material.opacity=0.65; ch.material.needsUpdate=true; } });
     showHint('◼ '+(tex===0?'plain solid':(M?M.n:'solid'))); scheduleSave();
+  }
+  // ── real-time reflections: ONE shared cube probe so metal mirrors the ACTUAL scene (ground · shapes · sky · your can), refreshed periodically ──
+  let _cubeRT=null, _cubeCam=null, _reflFrame=0;
+  function reflectionEnv(){ if(!_cubeRT){ _cubeRT=new THREE.WebGLCubeRenderTarget(256); _cubeCam=new THREE.CubeCamera(0.3, 3000, _cubeRT); } return _cubeRT.texture; }
+  function updateReflections(){
+    let any=false; for(const m of bShapes){ if(m.userData.tex>=25){ any=true; break; } }
+    if(!any) return;                                                     // no metal in the world → skip the whole cost
+    reflectionEnv();                                                     // ensure the probe exists
+    if((_reflFrame++ % 8)!==0) return;                                   // refresh every 8 frames (reflections may lag a touch — keeps it cheap)
+    _cubeCam.position.copy(camera.position);                             // probe from where you stand → reflects your surroundings
+    const hidden=[];
+    for(const m of bShapes){ if(m.userData.tex>=25 && m.visible){ m.visible=false; hidden.push(m); } }   // hide metals → no self-reflection artefacts
+    _cubeCam.update(renderer, scene);
+    for(const m of hidden) m.visible=true;
   }
   function sprayCrystal(mesh, dn){                                        // a crystal KEEPS its translucency — paint only SLIGHTLY blends its natural gem colour (unique tint)
     const m=mesh.material; if(!m || !m.isMeshPhysicalMaterial) return;
@@ -1621,6 +1635,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const dt = Math.min(clock.getDelta(), 0.05);
     update(dt);
     bTick();
+    updateReflections();                 // refresh the metal reflection probe (only when metal is present)
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
   }
