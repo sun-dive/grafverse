@@ -1182,10 +1182,10 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function scaleAxis(axis,f){ const t=activeShape&&activeShape.userData.target; if(!t)return;
     if(axis.indexOf('x')>=0) t.x=Math.max(0.25,Math.min(6,t.x*f));
     if(axis.indexOf('y')>=0) t.y=Math.max(0.25,Math.min(6,t.y*f));
-    if(axis.indexOf('z')>=0) t.z=Math.max(0.25,Math.min(6,t.z*f)); }
+    if(axis.indexOf('z')>=0) t.z=Math.max(0.25,Math.min(6,t.z*f)); updateTileRepeat(activeShape); }
   function scaleAll(f){ const t=activeShape&&activeShape.userData.target; if(!t)return;
     const mx=Math.max(t.x,t.y,t.z), mn=Math.min(t.x,t.y,t.z);
-    if(f>1) f=Math.min(f,6/mx); else f=Math.max(f,0.25/mn); t.multiplyScalar(f); }
+    if(f>1) f=Math.min(f,6/mx); else f=Math.max(f,0.25/mn); t.multiplyScalar(f); updateTileRepeat(activeShape); }
   function rotY(d){ if(activeShape) activeShape.rotation.y+=d; }
   function lean(d){ if(activeShape) activeShape.rotation.x+=d; }
   function resetShape(){ if(!activeShape)return; activeShape.userData.target.set(1,1,1); activeShape.rotation.set(0,0,0); }
@@ -1264,6 +1264,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       if(activeShape.userData.tex && (STONES[activeShape.userData.tex]||WOODS[activeShape.userData.tex])){   // rotate the grain/pattern 90° (stone & wood only)
         const tr=document.createElement('div'); tr.className='srow';
         tr.appendChild(sbtn('⟳ grain 90°', ()=>{ const m=activeShape; m.userData.texRot=((m.userData.texRot||0)+90)%360; applyFinish(m,m.userData.tex); scheduleSave(); },'wide'));
+        tr.appendChild(sbtn(activeShape.userData.texTile?'▦ tiled':'▨ scaled', ()=>{ const m=activeShape; m.userData.texTile=!m.userData.texTile; applyFinish(m,m.userData.tex); buildShapeTools(m.userData.type); scheduleSave(); },'wide'));   // constant world tile ⇄ fit-to-object
         box.appendChild(tr);
       }
       const mkr=document.createElement('div'); mkr.className='srow';   // ✓ make solid — commit as a plain, REAL solid (no paint needed)
@@ -1511,13 +1512,23 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     g.globalAlpha=1;
     const t=new THREE.CanvasTexture(cv); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(2,2); _rustTex=t; return t;
   }
+  function updateTileRepeat(mesh){                                        // TILED = repeat scales with object size (constant world tile) · SCALED = fixed repeat (fit-to-object). Only tiled uses a per-object map.
+    const t=mesh.userData.mapTex; if(!t) return;
+    const sw=STONES[mesh.userData.tex]||WOODS[mesh.userData.tex]; if(!sw) return;
+    const s=mesh.userData.target, avg=(Math.abs(s.x)+Math.abs(s.y)+Math.abs(s.z))/3;
+    t.repeat.set((REPEAT[sw.g]||2)*Math.max(0.25,avg), (REPEAT[sw.g]||2)*Math.max(0.25,avg));
+  }
   function applyFinish(mesh, tex){                                        // set metalness/roughness/maps per finish (colour stays = base, paint stays = emissiveMap)
     const M=METALS[tex], SW=STONES[tex]||WOODS[tex];
+    if(mesh.userData.mapTex){ mesh.userData.mapTex.dispose(); mesh.userData.mapTex=null; }   // drop any previous per-object map
+    let swTex=null;
+    if(SW){ if(mesh.userData.texTile){ swTex=patTex(SW.g,mesh.userData.texRot).clone(); swTex.needsUpdate=true; mesh.userData.mapTex=swTex; updateTileRepeat(mesh); }   // tiled → own clone, scaled repeat
+            else swTex=patTex(SW.g, mesh.userData.texRot); }                                                                                     // scaled → shared texture (fixed repeat)
     (Array.isArray(mesh.material)?mesh.material:[mesh.material]).forEach(m=>{ if(!m || m.isLineBasicMaterial) return;
       m.map=null; m.roughnessMap=null; m.bumpMap=null; m.bumpScale=0; m.envMap=null; m.metalness=0.1; m.roughness=0.75; m.envMapIntensity=1;   // reset to plain
       if(M){ m.metalness=M.metalness; m.roughness=M.roughness; m.envMap=reflectionEnv(); m.envMapIntensity=M.env;
         if(M.rough){ m.roughnessMap=rustTexture(); m.bumpMap=rustTexture(); m.bumpScale=0.5; } }
-      else if(SW){ const pt=patTex(SW.g, mesh.userData.texRot); m.map=pt; m.metalness=0; m.roughness=SW.ro; m.roughnessMap=pt; }   // stone/wood: procedural pattern (rotatable) as albedo, tinted by base colour
+      else if(SW){ m.map=swTex; m.metalness=0; m.roughness=SW.ro; m.roughnessMap=swTex; }   // stone/wood: procedural pattern (rotatable · tiled/scaled) as albedo, tinted by base colour
       m.needsUpdate=true; });
   }
   function applySolid(mesh, tex){                                         // ◼ Solids — an opaque, paintable solid with a finish (plain/metal); reverts a crystal
@@ -1712,6 +1723,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       paid:!!u.paid };
     if(u.res) rec.res=u.res;                                                   // custom facet count (column/spire/ball)
     if(u.seed!=null) rec.seed=u.seed;                                          // procedural seed (palm/tree)
+    if(u.texTile) rec.tile=1;                                                  // stone/wood: tiled (world-scale) vs scaled (fit)
     if(u.base!=null) rec.base=u.base;                                          // base LAYER colour (if the picker set one)
     if(u.crystal){ rec.cr=1; rec.gem=u.gemIdx|0;                              // a crystal: gem index + its drifted inner colour
       if(m.material && m.material.color) rec.col=m.material.color.getHex(); }
@@ -1746,7 +1758,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
         for(const d of stroke.dabs) sprayShapeAt(surf, d[0], d[1], d[2]); });
       materializeShape(m);
       m.userData.painted=true; m.userData.paid=!!sd.paid; m.userData.strokes=sd.st||[];
-      if(sd.tex){ m.userData.tex=sd.tex; if(sd.trot) m.userData.texRot=sd.trot; applyFinish(m, sd.tex); }   // restore the material finish + grain rotation
+      if(sd.tex){ m.userData.tex=sd.tex; if(sd.trot) m.userData.texRot=sd.trot; if(sd.tile) m.userData.texTile=1; applyFinish(m, sd.tex); }   // restore material finish + grain rotation + tiling mode
     }
     scene.add(m); bShapes.push(m); return m;
   }
@@ -1762,7 +1774,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   // ── undo / redo (world editor): snapshot committed shapes on each save; step back/forward by rebuilding them ──
   let _hist=[], _redoStk=[], _snap=null;
-  function _disposeShape(m){ scene.remove(m); if(m.geometry) m.geometry.dispose();
+  function _disposeShape(m){ scene.remove(m); if(m.geometry) m.geometry.dispose(); if(m.userData.mapTex) m.userData.mapTex.dispose();
     (Array.isArray(m.material)?m.material:[m.material]).forEach(mt=>mt&&mt.dispose&&mt.dispose());
     if(m.userData.surfaces) m.userData.surfaces.forEach(s=>{ if(s&&s.tex) s.tex.dispose(); });
     m.children.forEach(ch=>{ if(ch.geometry) ch.geometry.dispose(); if(ch.material)(Array.isArray(ch.material)?ch.material:[ch.material]).forEach(mt=>mt&&mt.dispose&&mt.dispose()); }); }
