@@ -154,7 +154,10 @@
         <input id="mPubFee" type="number" min="1" step="1" value="1">
         <label for="mHolderFee">Reseller's reward per resale (sats) — minimum 1</label>
         <input id="mHolderFee" type="number" min="1" step="1" value="1">
-        <div class="hint">On-chain royalties baked into the token. Both are <b>at least 1 sat</b> — that floor is the basis of the messaging/sale signalling and of a burnable token. <b>"Free" is the licence above, not the fees.</b></div>
+        <div class="hint">On-chain royalties baked into the token. Both are <b>at least 1 sat</b> — that floor is the basis of the messaging/sale signalling and of a burnable token. <b>"Free" is the licence above, not the fees.</b> These are paid by buyers on <b>resale</b> — not part of your mint cost.</div>
+        <label for="mBond">Bond — sats locked in the token — minimum 1</label>
+        <input id="mBond" type="number" min="1" step="1" value="1">
+        <div class="hint">Locked inside the token (recoverable only by burning it). This <b>is</b> part of your mint cost — 1 keeps it cheapest.</div>
         <label style="display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--ink)">
           <input type="checkbox" id="mEncrypt" style="width:auto"> Keep private (encrypt the content)
         </label>
@@ -298,7 +301,8 @@
     if(!payload) return;
     const opts = {
       hasStorefront: !!($('mDesc').value.trim()),
-      tokenSats: 1, mintCount: 1, feePerKb: 100,   // ← the values the mint will use; if the form later exposes bond/editions/fee-rate, read them here (and in the mint call) so both stay in lock-step
+      tokenSats: Math.max(1, parseInt($('mBond').value,10)||1),   // the BOND (user-set, Advanced) — the one covenant value that changes mint cost
+      mintCount: 1, feePerKb: 100,                                // editions fixed at 1; fee-rate policy-locked at 100 sats/KB (never user-set)
     };
     try{
       const stored = await G.compressIfSmaller(payload.bytes, 'application/bmf', 'atom.bmf');
@@ -317,6 +321,7 @@
       + ' is spent (network fee + the token bond); the rest returns as change. Exact amount is confirmed before anything is spent.'
       + (typeof lastBal==='number' && lastBal<need ? '  ⚠ Balance is below this — fund the wallet first.' : '');
   }
+  $('mBond').addEventListener('input', ()=>{ if(payload) computeEstimate(); });   // bond changes the mint cost → re-estimate live
 
   // ── mint ──
   $('mintBtn').onclick = async ()=>{
@@ -334,6 +339,7 @@
         encrypt: !open && $('mEncrypt').checked,
         publisherFeeSats: Math.max(1, parseInt($('mPubFee').value,10)||1),
         holderFeeSats: Math.max(1, parseInt($('mHolderFee').value,10)||1),
+        bondSats: Math.max(1, parseInt($('mBond').value,10)||1),
         confirmSpend: (sats)=> confirm('Mint “'+name+'” on-chain for '+sats.toLocaleString()+' sats?\n\nThis is permanent — you’ll own it, and it can’t be un-minted.'),
       });
       showResult(res, name);

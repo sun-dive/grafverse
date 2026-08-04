@@ -23,6 +23,9 @@ export interface MintAtomOpts {
   publisherFeeSats?: number
   /** Reseller/holder award per resale (sats). MINIMUM 1 (same reason). */
   holderFeeSats?: number
+  /** Bond — sats LOCKED in the token at mint (rides forward on every resale; recoverable only by burning).
+   *  MINIMUM 1. This is part of the mint cost (scales `(1+editions)·bond`); the resale fees above are NOT. */
+  bondSats?: number
   mintCount?: number
   /** Encrypt the content. FALSE for free/public atoms so anyone can pull them from chain (default false). */
   encrypt?: boolean
@@ -37,8 +40,8 @@ export async function mintAtom(provider: WalletProvider, wallet: WalletIdentity,
   const publisherPubKeyHash = Hash.hash160(Utils.toArray(wallet.pubKeyHex, 'hex'))
   return createEdition(provider, wallet.key, {
     tokenName: o.tokenName,
-    // fees + bond are ≥1 (messaging basis + burnability). tokenSats (the bond) defaults to 1 inside createEdition.
-    terms: { publisherPubKeyHash, publisherFeeSats: Math.max(1, o.publisherFeeSats ?? 1), holderFeeSats: Math.max(1, o.holderFeeSats ?? 1) },
+    // fees + bond are ≥1 (messaging basis + burnability). Bond = tokenSats locked in the token.
+    terms: { publisherPubKeyHash, publisherFeeSats: Math.max(1, o.publisherFeeSats ?? 1), holderFeeSats: Math.max(1, o.holderFeeSats ?? 1), tokenSats: Math.max(1, o.bondSats ?? 1) },
     mintCount: o.mintCount ?? 1,
     file: { mimeType: o.mimeType ?? 'application/bmf', fileName: o.fileName ?? 'atom.bmf', bytes: o.bytes },
     encrypt: o.encrypt === true,
