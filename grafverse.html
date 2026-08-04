@@ -1305,15 +1305,24 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       attenuationColor:new THREE.Color(color), attenuationDistance:1.4,
       clearcoat:0.6, clearcoatRoughness:0.12, envMap:gemEnv(), envMapIntensity:1.4,
       transparent:true, opacity:1.0, side:THREE.DoubleSide });
-    mesh.userData.crystal=true; mesh.userData.gemIdx=gi; mesh.userData.painted=true; mesh.userData.paid=false; mesh.userData.paintAmt=0;
+    q332(mesh.material.color); if(mesh.material.attenuationColor) q332(mesh.material.attenuationColor);   // base gem shown at 8-bit too → WYSIWYG with the 1-byte record
+    mesh.userData.crystal=true; mesh.userData.gemIdx=gi; mesh.userData.painted=true; mesh.userData.paid=false; mesh.userData.paintAmt=0; mesh.userData.crystalTrue=null;
     mesh.children.forEach(ch=>{ if(ch.material && ch.material.isLineBasicMaterial){ ch.material.color.set(color); ch.material.opacity=0.5; ch.material.needsUpdate=true; } });
     scheduleSave();                                                        // a crystal is owned the moment it's cut — persist it
   }
+  function q332(c){                                                       // snap a colour to 8-bit RGB332 (256 colours) = the 1-byte crystal colour on the wire
+    const h=c.getHex(); let R=(h>>16)&255, G=(h>>8)&255, B=h&255;         // sRGB
+    R=Math.round((R>>5)*(255/7)); G=Math.round((G>>5)*(255/7)); B=Math.round((B>>6)*(255/3));   // 3 bits R · 3 G · 2 B
+    c.setHex((R<<16)|(G<<8)|B);
+  }
+  function rgb332Index(hex){ const R=(hex>>16)&255, G=(hex>>8)&255, B=hex&255; return ((R>>5)<<5)|((G>>5)<<2)|(B>>6); }   // 0xRRGGBB → the 1-byte RGB332 index
   function sprayCrystal(mesh, dn){                                        // a crystal KEEPS its magical translucency — spray only SUBTLY tints its inner colour
     const m=mesh.material; if(!m || !m.isMeshPhysicalMaterial) return;
     const paint=new THREE.Color(COLORS[colorIdx]), amt=0.012+dn*0.018;    // gentle; transmission, polish & refraction untouched → it stays glass
-    m.color.lerp(paint, amt);
-    if(m.attenuationColor) m.attenuationColor.lerp(paint, amt);           // the colour that lives *inside* the glass drifts, slowly
+    const tc = mesh.userData.crystalTrue || (mesh.userData.crystalTrue=m.color.clone());   // TRUE continuous drift — so tiny nudges still accumulate under the quantiser
+    tc.lerp(paint, amt);
+    m.color.copy(tc); q332(m.color);                                      // DISPLAY the 1-byte (RGB332) colour → you SEE the 8-bit snap in-game
+    if(m.attenuationColor){ m.attenuationColor.copy(tc); q332(m.attenuationColor); }   // the colour that lives *inside* the glass, at 8-bit
     m.needsUpdate=true;
   }
 
@@ -1451,7 +1460,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     else if(base==='ball'){ sizeM=2*(d.r||0.9)*t[0]; ratios=[]; }                     // uniform = diameter
     else if(base==='plane'){ const W=(d.w||2)*t[0], Dp=(d.d||2)*t[2]; sizeM=Dp; ratios=[W/Dp]; }
     const rot=[sd.r[0], sd.r[1]+(pr.align||0), sd.r[2]];                              // fold the preset's canonical facing into rotation
-    const color = sd.cr ? (sd.gem|0) : (sd.color!=null?sd.color:0);                   // colour palette index — the gem tint for a crystal
+    const color = sd.cr ? rgb332Index(sd.col!=null?sd.col:GEMS[(sd.gem||0)%GEMS.length])   // crystal → its 8-bit (RGB332) tint
+                        : rgb332Index(sd.base!=null?sd.base:0x0c1526);                       // painted → base material colour, 8-bit
     const tex   = sd.cr ? TEX_CRYSTAL : (sd.tex||0);                                  // material/texture — crystal glass, else plain (0)
     const paint = sd.cr ? { kind:0 } : { kind:1, strokes:sd.st||[] };                 // owned paint layer (a crystal carries no strokes)
     return { id:PRESET_ID[sd.t]||122, res:sd.res||pr.res||0, ratios, pos:sd.p, rot, scale:sizeM, color, tex, paint };
