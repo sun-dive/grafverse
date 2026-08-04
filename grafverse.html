@@ -1698,7 +1698,18 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // ── engine shape → the frozen BMF-SOLID record (docs/BMF-SOLID-SPEC.md) — mint-time conversion ──
   // The 3-axis editor scale collapses to a UNIFORM size + proportion RATIOS; the object is ONE owned paint unit.
   const PRESET_ID = { box:122, wall:122, plane:123, cylinder:119, cone:120, pyramid:120, sphere:121 };
+  const FRACTAL_ID = { palm:160 };                                                   // §4 fractal class (160–207); palm is the first, more to come
+  const PALM_H = 2.8;                                                                 // palmGeometry() trunk height (m) — the size field's base
+  function matFlagsFor(sd){ return ((((sd.trot||0)/90)|0)&3) | (sd.tile?4:0); }       // grain rotation (2b: deg→0–3) · tiled/scaled (bit2)
   function shapeToRecord(sd){
+    const color = sd.cr ? rgb332Index(sd.col!=null?sd.col:(GEMS[sd.gem]||GEMS[1]).col)   // crystal → its 8-bit (RGB332) tint
+                        : rgb332Index(sd.base!=null?sd.base:0x0c1526);                       // painted → base material colour, 8-bit
+    const tex   = sd.cr ? (sd.gem||1) : (sd.tex||0);                                  // material/texture — the gem id (1…16), else plain (0)
+    const paint = sd.cr ? { kind:0 } : { kind:1, strokes:sd.st||[] };                 // owned paint layer (a crystal carries no strokes; strokes carry their fx byte)
+    const matFlags = sd.cr ? 0 : matFlagsFor(sd);                                     // crystals have no surface grain/tiling
+    if(FRACTAL_ID[sd.t]!=null){                                                       // FRACTAL (palm…): id + seed u16, uniform scale — no ratios (codec reads the seed)
+      return { id:FRACTAL_ID[sd.t], res:sd.res||0, seed:(sd.seed>>>0)||1, pos:sd.p, rot:sd.r, scale:PALM_H*(sd.s[1]||1), color, tex, matFlags, paint };
+    }
     const pr=PRESETS[sd.t]||PRESETS.box, base=pr.base, d=pr.dims, t=sd.s;            // t = 3-axis target multipliers
     let ratios=[], sizeM=1;
     if(base==='box'){ const W=(d.w||1)*t[0], H=(d.h||1)*t[1], D=(d.d||1)*t[2]; sizeM=H; ratios=[W/H, D/H]; }
@@ -1706,13 +1717,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     else if(base==='ball'){ sizeM=2*(d.r||0.9)*t[0]; ratios=[]; }                     // uniform = diameter
     else if(base==='plane'){ const W=(d.w||2)*t[0], Dp=(d.d||2)*t[2]; sizeM=Dp; ratios=[W/Dp]; }
     const rot=[sd.r[0], sd.r[1]+(pr.align||0), sd.r[2]];                              // fold the preset's canonical facing into rotation
-    const color = sd.cr ? rgb332Index(sd.col!=null?sd.col:(GEMS[sd.gem]||GEMS[1]).col)   // crystal → its 8-bit (RGB332) tint
-                        : rgb332Index(sd.base!=null?sd.base:0x0c1526);                       // painted → base material colour, 8-bit
-    const tex   = sd.cr ? (sd.gem||1) : (sd.tex||0);                                  // material/texture — the gem id (1…16), else plain (0)
-    const paint = sd.cr ? { kind:0 } : { kind:1, strokes:sd.st||[] };                 // owned paint layer (a crystal carries no strokes)
-    return { id:PRESET_ID[sd.t]||122, res:sd.res||pr.res||0, ratios, pos:sd.p, rot, scale:sizeM, color, tex, paint };
+    return { id:PRESET_ID[sd.t]||122, res:sd.res||pr.res||0, ratios, pos:sd.p, rot, scale:sizeM, color, tex, matFlags, paint };
   }
-  function worldToRecords(world){ return { ground:world.ground||[], shapes:(world.shapes||[]).filter(sd=>sd.t!=='palm').map(shapeToRecord) }; }   // trees not in the mint record yet (need a tree id + params)
+  function worldToRecords(world){ return { ground:world.ground||[], shapes:(world.shapes||[]).map(shapeToRecord) }; }   // palms now mint (fractal id + seed)
 
   function shapeToSave(m){ const u=m.userData;                                 // one COMMITTED shape → its save record (shared by serialize + clone); null for a ghost
     if(!u.painted && !u.crystal) return null;
