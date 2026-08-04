@@ -100,10 +100,11 @@
     color:#cfe0ff;font:600 11px system-ui;letter-spacing:.18em;text-transform:uppercase;cursor:pointer;pointer-events:auto;}
   body.building #keepTab{display:block;}
   body.mtalk #keepTab, body.shaping #keepTab, body.keep #keepTab{display:none;}
-  #keepPanel{position:fixed;top:-360px;left:50%;transform:translateX(-50%);width:min(300px,92vw);z-index:9;
+  #keepPanel{position:fixed;top:0;left:50%;transform:translateX(-50%) translateY(-100%);width:min(300px,92vw);z-index:9;
     background:rgba(8,14,26,.95);border:1px solid rgba(120,170,255,.35);border-radius:0 0 16px 16px;border-top:none;
-    padding:15px 15px 17px;transition:top .22s ease;pointer-events:none;display:flex;flex-direction:column;gap:8px;}
-  body.keep #keepPanel{top:0;pointer-events:auto;}
+    padding:15px 15px 17px;transition:transform .22s ease;pointer-events:none;display:flex;flex-direction:column;gap:8px;
+    max-height:96vh;overflow-y:auto;}
+  body.keep #keepPanel{transform:translateX(-50%) translateY(0);pointer-events:auto;}
   .kh{text-align:center;font:700 11px system-ui;letter-spacing:.2em;text-transform:uppercase;color:#9fb4d8;margin-bottom:2px;}
   .kbtn{padding:12px 14px;border-radius:12px;background:rgba(24,46,82,.95);border:1px solid rgba(120,170,255,.45);
     color:#eaf6ff;font:600 14px system-ui;text-align:center;cursor:pointer;pointer-events:auto;}
