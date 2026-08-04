@@ -1,9 +1,12 @@
 // grafspace BMF codec — © 2026 sun-dive — Licensed under the MIT License (see LICENSE).
-// BMF codec — the canonical THRIFTY JSON→packed-byte format for the art apps (grafspace and the others).
-// ONE shared design, vendored per app (like three.min.js) so it never drifts. Two layers:
-//   • BMF.*          — the reusable toolkit: Writer/Reader (LE ints + varint), SoA dab codec, quantisers.
-//   • BMF.scene.*    — grafspace's schema on top of the toolkit (ground strokes + shape atoms).
-// Other apps reuse BMF.* and add their own schema module next to BMF.scene.
+// BMF codec — the canonical PACKED-byte format for the whole BMF family (BMF-FAMILY.md). ONE shared design,
+// vendored per app (like three.min.js) so it never drifts. On-chain payloads are PACKED BYTES, never JSON.
+//   • BMF.*          — reusable toolkit: Writer/Reader (LE ints + varint), SoA dab codec, quantisers, txid/str.
+//   • BMF.ref        — the UNIVERSAL reference { tx, name? } (the pointer every atom/manifest uses).
+//   • BMF.scene      — grafverse's geometry scene (the BMF-SOLID record; ground strokes + solid atoms).
+//   • BMF.timeline   — the media manifest (binary .bmf; scene = time-cue + ref) — replaces the JSON/cue form.
+//   • BMF.container  — the packed .bmc index (member map) — replaces bmc.json.
+// Each app uses the modules it needs; all read this one file.
 //
 // Thrift — atoms can feed massive multi-MB BMCs, so the dab stream is squeezed hard and left gzip-friendly
 // (the mint pipeline compresses before embedding):
@@ -126,10 +129,59 @@
     return { v: 2, ground: ground, shapes: shapes };
   }
 
+  // ── the UNIFORM REFERENCE — { tx, name? } — the universal pointer (BMF-FAMILY.md). Packed, never JSON. ──
+  function writeTxid(w, tx) { tx = (tx || '').replace(/[^0-9a-fA-F]/g, ''); for (var i = 0; i < 32; i++) { var h = tx.substr(i * 2, 2); w.u8(h.length ? parseInt(h, 16) : 0); } }   // 64-hex → 32 bytes
+  function readTxid(r) { var s = ''; for (var i = 0; i < 32; i++) { var b = r.u8(); s += (b < 16 ? '0' : '') + b.toString(16); } return s; }
+  function writeStr(w, s) { s = s || ''; var e = (typeof TextEncoder !== 'undefined') ? new TextEncoder().encode(s) : null; if (e) { w.varint(e.length); for (var i = 0; i < e.length; i++) w.u8(e[i]); } else { w.varint(s.length); for (var j = 0; j < s.length; j++) w.u8(s.charCodeAt(j) & 255); } }   // varint len + UTF-8
+  function readStr(r) { var n = r.varint(), a = new Uint8Array(n), i; for (i = 0; i < n; i++) a[i] = r.u8(); if (typeof TextDecoder !== 'undefined') return new TextDecoder().decode(a); var s = ''; for (i = 0; i < n; i++) s += String.fromCharCode(a[i]); return s; }
+  function writeRef(w, ref) { if (!ref || !ref.tx) { w.u8(0); return; } if (ref.name) { w.u8(2); writeTxid(w, ref.tx); writeStr(w, ref.name); } else { w.u8(1); writeTxid(w, ref.tx); } }   // 0 none · 1 txid · 2 txid+member
+  function readRef(r) { var tag = r.u8(); if (tag === 0) return null; var tx = readTxid(r), name = tag === 2 ? readStr(r) : null; return name != null ? { tx: tx, name: name } : { tx: tx }; }
+
+  // ── BMF.timeline — the packed media manifest (binary .bmf) — PACKED replacement for the JSON/cue authoring forms ──
+  var TIMELINE_VERSION = 1;
+  function packTimeline(tl) {
+    var w = new Writer(); w.u8(TIMELINE_VERSION);
+    w.u16((tl.tempo || 0) & 0xffff);
+    writeStr(w, tl.license || ''); writeStr(w, tl.attribution || '');
+    writeRef(w, tl.audio || null);
+    var sc = tl.scenes || [], i; w.varint(sc.length);
+    for (i = 0; i < sc.length; i++) { var s = sc[i]; w.u32(q(s.t || 0, 1000)); writeRef(w, s.ref || (s.tx ? { tx: s.tx, name: s.name } : null)); }   // t = ms · ref = the component
+    return w.b;
+  }
+  function unpackTimeline(bytes) {
+    var r = new Reader(bytes), ver = r.u8();
+    if (ver !== TIMELINE_VERSION) throw new Error('unsupported timeline version ' + ver);
+    var tempo = r.u16(), license = readStr(r), attribution = readStr(r), audio = readRef(r);
+    var n = r.varint(), scenes = [], i;
+    for (i = 0; i < n; i++) { var t = r.u32() / 1000, ref = readRef(r); scenes.push({ t: t, ref: ref, tx: ref && ref.tx, name: ref && ref.name }); }
+    return { v: ver, tempo: tempo, license: license, attribution: attribution, audio: audio, scenes: scenes };
+  }
+
+  // ── BMF.container — the packed .bmc INDEX (replaces the JSON bmc.json; the store-only ZIP still holds member bytes by file) ──
+  var CONTAINER_VERSION = 1;
+  function packIndex(idx) {
+    var w = new Writer(); w.u8(CONTAINER_VERSION);
+    writeStr(w, idx.name || 'set');
+    var mem = idx.members || [], i; w.varint(mem.length);
+    for (i = 0; i < mem.length; i++) { var m = mem[i]; writeStr(w, m.name || ''); writeStr(w, m.file || m.name || ''); writeStr(w, m.mime || ''); }
+    return w.b;
+  }
+  function unpackIndex(bytes) {
+    var r = new Reader(bytes), ver = r.u8();
+    if (ver !== CONTAINER_VERSION) throw new Error('unsupported container-index version ' + ver);
+    var name = readStr(r), n = r.varint(), members = [], i;
+    for (i = 0; i < n; i++) members.push({ name: readStr(r), file: readStr(r), mime: readStr(r) });
+    return { v: ver, name: name, members: members };
+  }
+
   var BMF = {
     Writer: Writer, Reader: Reader, writeDabs: writeDabs, readDabs: readDabs, b8: b8, q: q, normAngle: normAngle,
+    writeTxid: writeTxid, readTxid: readTxid, writeStr: writeStr, readStr: readStr,
+    ref: { write: writeRef, read: readRef },
     scene: { VERSION: SCENE_VERSION, ratioN: ratioN, pack: packScene, unpack: unpackScene,
              encRatio: encRatio, decRatio: decRatio, encSize: encSize, decSize: decSize, encAngle: encAngle, decAngle: decAngle },
+    timeline: { VERSION: TIMELINE_VERSION, pack: packTimeline, unpack: unpackTimeline },
+    container: { VERSION: CONTAINER_VERSION, pack: packIndex, unpack: unpackIndex },
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = BMF;
   else (typeof window !== 'undefined' ? window : globalThis).BMF = BMF;
