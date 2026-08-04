@@ -213,9 +213,9 @@
   <div class="kh">Your world</div>
   <div class="kbtn" id="kSave">💾 Save now</div>
   <div class="kbtn" id="kReload">↻ Reload world</div>
-  <div class="kbtn immortal" id="kMint">✦ Make immortal</div>
-  <div class="kbtn" id="kExport">⬇ Download scene (.bmf)</div>
-  <div class="kbtn" id="kImport">📥 Import scene (.bmf)</div>
+  <div class="kbtn immortal" id="kMint">⬆ Save to Chain</div>
+  <div class="kbtn" id="kExport">📤 Save to File (.bmf)</div>
+  <div class="kbtn" id="kImport">📥 Load from File (.bmf)</div>
   <input type="file" id="kFile" accept=".bmf,application/octet-stream" style="display:none">
   <div class="kfoot" id="kNote"></div>
   <div class="kbtn done" id="kDone">✓ close</div>
@@ -1380,7 +1380,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       location.href = WALLET_URL + '?id=' + encodeURIComponent(data.id) + '&return=' + encodeURIComponent(ret);
     }catch(e){ _kNote().textContent='Handoff failed: '+(e.message||e)+'. (Is handoff.php deployed?)'; }
   });
-  // ── export: pack the world → download a .bmf file (local, so a scene round-trips entirely in the browser) ──
+  // ── save to file: pack the world → write a .bmf file (local, so a scene round-trips entirely in the browser) ──
   document.getElementById('kExport').addEventListener('click', ()=>{
     const p = packWorldBytes(); if(p.err){ _kNote().textContent=p.err; return; }
     const bytes = p.bytes;
@@ -1389,9 +1389,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const url=URL.createObjectURL(new Blob([new Uint8Array(bytes)], {type:'application/octet-stream'}));
     const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url), 2000);
-    _kNote().textContent='Downloaded '+bytes.length.toLocaleString()+' bytes → '+name;
+    _kNote().textContent='Saved '+bytes.length.toLocaleString()+' bytes → '+name;
   });
-  // ── import: read a packed .bmf scene atom → rebuild it in the editor (replaces the current world) ──
+  // ── load from file: read a packed .bmf scene atom → rebuild it in the editor (replaces the current world) ──
   document.getElementById('kImport').addEventListener('click', ()=>{ document.getElementById('kFile').click(); });
   document.getElementById('kFile').addEventListener('change', async (e)=>{
     const f=e.target.files&&e.target.files[0]; if(!f) return;
@@ -1399,9 +1399,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     try{
       const bytes=Array.from(new Uint8Array(await f.arrayBuffer()));
       const r=importScene(bytes);
-      _kNote().textContent='Imported '+r.shapes+' shape'+(r.shapes===1?'':'s')+(r.ground?' + ground':'')+' from '+f.name+'.';
-    }catch(err){ _kNote().textContent='Import failed: '+(err.message||err)+' (not a valid .bmf scene?)'; }
-    e.target.value='';   // allow re-importing the same file
+      _kNote().textContent='Loaded '+r.shapes+' shape'+(r.shapes===1?'':'s')+(r.ground?' + ground':'')+' from '+f.name+'.';
+    }catch(err){ _kNote().textContent='Load failed: '+(err.message||err)+' (not a valid .bmf scene?)'; }
+    e.target.value='';   // allow re-loading the same file
   });
 
   // ---------- crystal (translucent gem) material — the second register: found & precious ----------
