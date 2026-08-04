@@ -1887,13 +1887,30 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   { const _minted = new URLSearchParams(location.search).get('minted');   // came back from the wallet after a mint
     if(_minted){ showHint('✦ Immortalized on-chain — '+_minted.slice(0,8)+'… It’s yours forever.'); try{ history.replaceState(null,'',location.pathname); }catch(_){} } }
 
+  // ---------- draw-time motion: the SELECTED committed shape bobs (crystals also rotate) ----------
+  // Purely a render offset — applied just before renderer.render and undone right after, so logic, collision,
+  // dragging and saves ALWAYS see the resting transform. Nothing is stored → zero BMF impact.
+  let _selAnim=null;
+  function applySelAnim(){
+    const s = (activeShape && (activeShape.userData.painted || activeShape.userData.crystal)) ? activeShape : null;
+    if(!s) return;
+    const t = performance.now()*0.001, u=s.userData;
+    u._ay=s.position.y; u._ary=s.rotation.y;                 // stash the rest pose
+    s.position.y = u._ay + 0.10*Math.sin(t*1.8);            // bob up/down
+    if(u.crystal) s.rotation.y = u._ary + t*0.9;            // crystals also turn
+    _selAnim=s;
+  }
+  function restoreSelAnim(){ const s=_selAnim; if(!s) return; s.position.y=s.userData._ay; s.rotation.y=s.userData._ary; _selAnim=null; }
+
   // ---------- loop ----------
   function tick(){
     const dt = Math.min(clock.getDelta(), 0.05);
     update(dt);
     bTick();
     updateReflections();                 // refresh the metal reflection probe (only when metal is present)
+    applySelAnim();                      // offset the selected shape for THIS frame only…
     renderer.render(scene, camera);
+    restoreSelAnim();                    // …and put it back to rest before anything else reads it
     requestAnimationFrame(tick);
   }
   tick();
