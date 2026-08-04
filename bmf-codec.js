@@ -4,6 +4,8 @@
 //   • BMF.*          — reusable toolkit: Writer/Reader (LE ints + varint), SoA dab codec, quantisers, txid/str.
 //   • BMF.ref        — the UNIVERSAL reference { tx, name? } (the pointer every atom/manifest uses).
 //   • BMF.scene      — grafverse's geometry scene (the BMF-SOLID record; ground strokes + solid atoms).
+//                      v3 per-shape: id·res·[class params: fractal seed u16 / model u16 / mesh txid / n log-ratios]
+//                      ·pos·rot·size·color·tex·matFlags·paint(strokes carry an fx byte).
 //   • BMF.timeline   — the media manifest (binary .bmf; scene = time-cue + ref) — replaces the JSON/cue form.
 //   • BMF.container  — the packed .bmc index (member map) — replaces bmc.json.
 // Each app uses the modules it needs; all read this one file.
@@ -62,9 +64,21 @@
   //   id u8 · resolution u8 · ratios u8[n] · pos i32×3 (mm) · rot i16×3 (Euler) · scale u16 (log mm) · paint.
   // Callers pass SEMANTIC values (metres, radians, plain ratios); the codec owns the frozen quantisation.
   // n (ratio count) is derived from the base solid, never stored. One shape = one owned paint unit.
-  var SCENE_VERSION = 2;
+  var SCENE_VERSION = 3;
   var RATIO_N = { 119: 1, 120: 1, 121: 0, 122: 2, 123: 1, 124: 1, 125: 1, 126: 2 };  // ratios per base solid (§4)
   function ratioN(id) { return RATIO_N[id] != null ? RATIO_N[id] : 0; }
+
+  // ── id class ranges (§4 LOCKED map) — decide how the per-shape PARAM bytes after `res` are read ──
+  var FRACTAL_LO = 160, FRACTAL_HI = 207, ID_COMPLEX = 254, ID_MESH = 255;
+  function isFractal(id) { return id >= FRACTAL_LO && id <= FRACTAL_HI; }             // 160–207: seed u16
+  // 254 complex model: model index u16 · 255 mesh: 32-byte txid · 119–159 primitive: n log-ratios · else: no params
+
+  // ── material-flags byte — grain rotation (2b) · tiled|scaled (1b) · 5b reserved (beside color+tex) ──
+  function encMat(m) { if (typeof m === 'number') return m & 255; if (!m) return 0; return ((m.grain || 0) & 3) | (m.tiled ? 4 : 0); }
+  function decMat(b) { return { grain: b & 3, tiled: !!(b & 4) }; }                   // grain 0–3 = 0°/90°/180°/270°
+
+  // ── paint-fx byte — per-stroke STACKABLE bitfield (aligned to nft.gift wig/twk; seed-driven, deterministic) ──
+  var FX = { WIGGLE: 1, TWINKLE: 2, SPARKLE: 4, CRYSTAL: 8 };                          // bits 4–7 reserved
 
   // frozen encodings (§3): ratio & size are LOGARITHMIC; rotation is Euler XYZ.
   function log2(x) { return Math.log(x) / Math.LN2; }
@@ -87,18 +101,22 @@
       var m = sh[k], id = m.id & 255, n = ratioN(id), rat = m.ratios || [];
       w.u8(id);
       w.u8((m.res || 0) & 255);
-      for (a = 0; a < n; a++) w.u8(encRatio(rat[a] != null ? rat[a] : 1));            // exactly n ratio bytes
+      if (isFractal(id)) w.u16((m.seed >>> 0) & 0xffff);                              // 160–207 fractal: seed
+      else if (id === ID_COMPLEX) w.u16((m.model >>> 0) & 0xffff);                    // 254 complex model: pack index
+      else if (id === ID_MESH) writeTxid(w, m.mesh || (m.ref && m.ref.tx) || '');     // 255 mesh: geometry txid
+      else for (a = 0; a < n; a++) w.u8(encRatio(rat[a] != null ? rat[a] : 1));       // 119–159 primitive: n log-ratios
       w.i32(q(m.pos[0], 1000)); w.i32(q(m.pos[1], 1000)); w.i32(q(m.pos[2], 1000));   // metres → mm
       w.i16(encAngle(m.rot[0])); w.i16(encAngle(m.rot[1])); w.i16(encAngle(m.rot[2]));
       w.u16(encSize(m.scale * 1000));                                                 // uniform size: m → mm → log
       w.u8(m.color & 255);                                                            // base colour — palette index (gem tint for a crystal)
       w.u8(m.tex & 255);                                                              // surface texture — library index (0 plain · 1 crystal · …)
+      w.u8(encMat(m.matFlags != null ? m.matFlags : m.mat));                          // material flags — grain rotation · tiled/scaled
       var p = m.paint || { kind: 0 };
       w.u8(p.kind & 255);                                                             // owned paint layer: 0 none · 1 strokes · (2+ reserved: txid, per-surface)
       if (p.kind === 1) {                                                             // inline strokes
         var st = p.strokes || [];
         w.varint(st.length);
-        for (a = 0; a < st.length; a++) { w.u8(st[a].si & 255); w.u8(st[a].c & 255); w.u32(st[a].seed >>> 0); writeDabs(w, st[a].dabs, true); }
+        for (a = 0; a < st.length; a++) { w.u8(st[a].si & 255); w.u8(st[a].c & 255); w.u8(st[a].fx & 255); w.u32(st[a].seed >>> 0); writeDabs(w, st[a].dabs, true); }
       }
     }
     return w.b; // number[] (0..255)
@@ -112,21 +130,25 @@
     for (i = 0; i < gn; i++) { var gc = r.u8(), gseed = r.u32(); ground.push({ c: gc, seed: gseed, dabs: readDabs(r, false) }); }
     var shapes = [], sn = r.varint(), k, a;
     for (k = 0; k < sn; k++) {
-      var id = r.u8(), res = r.u8(), n = ratioN(id), ratios = [];
-      for (a = 0; a < n; a++) ratios.push(decRatio(r.u8()));
+      var id = r.u8(), res = r.u8(), ratios = [], seed = null, model = null, mesh = null, n;
+      if (isFractal(id)) seed = r.u16();                                              // 160–207 fractal
+      else if (id === ID_COMPLEX) model = r.u16();                                    // 254 complex model
+      else if (id === ID_MESH) mesh = readTxid(r);                                    // 255 mesh
+      else { n = ratioN(id); for (a = 0; a < n; a++) ratios.push(decRatio(r.u8())); } // 119–159 primitive
       var pos = [r.i32() / 1000, r.i32() / 1000, r.i32() / 1000];
       var rot = [decAngle(r.i16()), decAngle(r.i16()), decAngle(r.i16())];
       var scale = decSize(r.u16()) / 1000;                                            // → metres
       var color = r.u8(), tex = r.u8();                                               // base colour index · surface texture index
+      var matFlags = r.u8();                                                          // material flags — grain rotation · tiled/scaled
       var kind = r.u8(), paint;
       if (kind === 1) {
         var st = [], stn = r.varint(), b;
-        for (b = 0; b < stn; b++) { var si = r.u8(), c = r.u8(), sd = r.u32(); st.push({ si: si, c: c, seed: sd, dabs: readDabs(r, true) }); }
+        for (b = 0; b < stn; b++) { var si = r.u8(), c = r.u8(), fx = r.u8(), sd = r.u32(); st.push({ si: si, c: c, fx: fx, seed: sd, dabs: readDabs(r, true) }); }
         paint = { kind: 1, strokes: st };
       } else paint = { kind: kind };                                                  // 0 none · 2+ reserved (a crystal is tex, not a paint kind)
-      shapes.push({ id: id, res: res, ratios: ratios, pos: pos, rot: rot, scale: scale, color: color, tex: tex, paint: paint });
+      shapes.push({ id: id, res: res, ratios: ratios, seed: seed, model: model, mesh: mesh, pos: pos, rot: rot, scale: scale, color: color, tex: tex, matFlags: matFlags, mat: decMat(matFlags), paint: paint });
     }
-    return { v: 2, ground: ground, shapes: shapes };
+    return { v: SCENE_VERSION, ground: ground, shapes: shapes };
   }
 
   // ── the UNIFORM REFERENCE — { tx, name? } — the universal pointer (BMF-FAMILY.md). Packed, never JSON. ──
@@ -179,7 +201,8 @@
     writeTxid: writeTxid, readTxid: readTxid, writeStr: writeStr, readStr: readStr,
     ref: { write: writeRef, read: readRef },
     scene: { VERSION: SCENE_VERSION, ratioN: ratioN, pack: packScene, unpack: unpackScene,
-             encRatio: encRatio, decRatio: decRatio, encSize: encSize, decSize: decSize, encAngle: encAngle, decAngle: decAngle },
+             encRatio: encRatio, decRatio: decRatio, encSize: encSize, decSize: decSize, encAngle: encAngle, decAngle: decAngle,
+             isFractal: isFractal, ID_COMPLEX: ID_COMPLEX, ID_MESH: ID_MESH, encMat: encMat, decMat: decMat, FX: FX },
     timeline: { VERSION: TIMELINE_VERSION, pack: packTimeline, unpack: unpackTimeline },
     container: { VERSION: CONTAINER_VERSION, pack: packIndex, unpack: unpackIndex },
   };
