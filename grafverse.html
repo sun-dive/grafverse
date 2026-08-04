@@ -1442,6 +1442,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // ── engine shape → the frozen BMF-SOLID record (docs/BMF-SOLID-SPEC.md) — mint-time conversion ──
   // The 3-axis editor scale collapses to a UNIFORM size + proportion RATIOS; the object is ONE owned paint unit.
   const PRESET_ID = { box:122, wall:122, plane:123, cylinder:119, cone:120, pyramid:120, sphere:121 };
+  const TEX_CRYSTAL = 1;   // surface-texture library id: 0 = plain · 1 = crystal/glass · (2+ future: metal, wood…)
   function shapeToRecord(sd){
     const pr=PRESETS[sd.t]||PRESETS.box, base=pr.base, d=pr.dims, t=sd.s;            // t = 3-axis target multipliers
     let ratios=[], sizeM=1;
@@ -1450,9 +1451,10 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     else if(base==='ball'){ sizeM=2*(d.r||0.9)*t[0]; ratios=[]; }                     // uniform = diameter
     else if(base==='plane'){ const W=(d.w||2)*t[0], Dp=(d.d||2)*t[2]; sizeM=Dp; ratios=[W/Dp]; }
     const rot=[sd.r[0], sd.r[1]+(pr.align||0), sd.r[2]];                              // fold the preset's canonical facing into rotation
-    const paint = sd.cr ? { kind:2, gem:sd.gem|0, col:(sd.col!=null?sd.col:GEMS[(sd.gem||0)%GEMS.length]) }
-                        : { kind:1, strokes:sd.st||[] };
-    return { id:PRESET_ID[sd.t]||122, res:sd.res||pr.res||0, ratios, pos:sd.p, rot, scale:sizeM, paint };
+    const color = sd.cr ? (sd.gem|0) : (sd.color!=null?sd.color:0);                   // colour palette index — the gem tint for a crystal
+    const tex   = sd.cr ? TEX_CRYSTAL : (sd.tex||0);                                  // material/texture — crystal glass, else plain (0)
+    const paint = sd.cr ? { kind:0 } : { kind:1, strokes:sd.st||[] };                 // owned paint layer (a crystal carries no strokes)
+    return { id:PRESET_ID[sd.t]||122, res:sd.res||pr.res||0, ratios, pos:sd.p, rot, scale:sizeM, color, tex, paint };
   }
   function worldToRecords(world){ return { ground:world.ground||[], shapes:(world.shapes||[]).map(shapeToRecord) }; }
 

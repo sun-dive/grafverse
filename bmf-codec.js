@@ -88,14 +88,14 @@
       w.i32(q(m.pos[0], 1000)); w.i32(q(m.pos[1], 1000)); w.i32(q(m.pos[2], 1000));   // metres → mm
       w.i16(encAngle(m.rot[0])); w.i16(encAngle(m.rot[1])); w.i16(encAngle(m.rot[2]));
       w.u16(encSize(m.scale * 1000));                                                 // uniform size: m → mm → log
+      w.u8(m.color & 255);                                                            // base colour — palette index (gem tint for a crystal)
+      w.u8(m.tex & 255);                                                              // surface texture — library index (0 plain · 1 crystal · …)
       var p = m.paint || { kind: 0 };
-      w.u8(p.kind & 255);
-      if (p.kind === 1) {                                                             // inline strokes (owned paint)
+      w.u8(p.kind & 255);                                                             // owned paint layer: 0 none · 1 strokes · (2+ reserved: txid, per-surface)
+      if (p.kind === 1) {                                                             // inline strokes
         var st = p.strokes || [];
         w.varint(st.length);
         for (a = 0; a < st.length; a++) { w.u8(st[a].si & 255); w.u8(st[a].c & 255); w.u32(st[a].seed >>> 0); writeDabs(w, st[a].dabs, true); }
-      } else if (p.kind === 2) {                                                      // crystal material: gem + drifted colour
-        w.u8((p.gem || 0) & 255); w.u32((p.col || 0) >>> 0);
       }
     }
     return w.b; // number[] (0..255)
@@ -114,14 +114,14 @@
       var pos = [r.i32() / 1000, r.i32() / 1000, r.i32() / 1000];
       var rot = [decAngle(r.i16()), decAngle(r.i16()), decAngle(r.i16())];
       var scale = decSize(r.u16()) / 1000;                                            // → metres
+      var color = r.u8(), tex = r.u8();                                               // base colour index · surface texture index
       var kind = r.u8(), paint;
       if (kind === 1) {
         var st = [], stn = r.varint(), b;
         for (b = 0; b < stn; b++) { var si = r.u8(), c = r.u8(), sd = r.u32(); st.push({ si: si, c: c, seed: sd, dabs: readDabs(r, true) }); }
         paint = { kind: 1, strokes: st };
-      } else if (kind === 2) { paint = { kind: 2, gem: r.u8(), col: r.u32() }; }
-      else paint = { kind: 0 };
-      shapes.push({ id: id, res: res, ratios: ratios, pos: pos, rot: rot, scale: scale, paint: paint });
+      } else paint = { kind: kind };                                                  // 0 none · 2+ reserved (a crystal is tex, not a paint kind)
+      shapes.push({ id: id, res: res, ratios: ratios, pos: pos, rot: rot, scale: scale, color: color, tex: tex, paint: paint });
     }
     return { v: 2, ground: ground, shapes: shapes };
   }
