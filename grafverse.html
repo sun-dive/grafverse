@@ -1199,15 +1199,18 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       r.appendChild(sbtn('↺',()=>rotY(-Math.PI/12))); r.appendChild(sbtn('↻',()=>rotY(Math.PI/12)));
       r.appendChild(sbtn('◣',()=>lean(Math.PI/12)));  r.appendChild(sbtn('◢',()=>lean(-Math.PI/12))); box.appendChild(r);
       const d=document.createElement('div'); d.className='srow'; d.appendChild(sbtn('⎌ reset',resetShape,'wide')); box.appendChild(d);
-      const bcr=document.createElement('div'); bcr.className='srow';   // base LAYER colour — the material beneath the paint
-      const bcl=document.createElement('span'); bcl.textContent='base'; bcl.style.width='auto'; bcr.appendChild(bcl);
-      const bci=document.createElement('input'); bci.type='color';
-      bci.style.cssText='width:52px;height:22px;padding:0;border:1px solid rgba(255,255,255,.25);border-radius:5px;background:none;cursor:pointer;';
-      bci.value='#'+('000000'+((activeShape.userData.base!=null?activeShape.userData.base:0x0c1526)>>>0).toString(16)).slice(-6);
-      bci.addEventListener('input',()=>setBaseColor(bci.value));
-      bcr.appendChild(bci); box.appendChild(bcr);
-      const cr=document.createElement('div'); cr.className='srow';   // ◆ crystal — translucent gem; click again to cycle the gem colour
-      cr.appendChild(sbtn('◆ crystal', ()=>{ if(activeShape) crystallizeShape(activeShape, activeShape.userData.crystal ? (activeShape.userData.gemIdx>=MAXGEM?1:activeShape.userData.gemIdx+1) : 1); },'wide'));   // cut → cycle gems 1…16
+      const bcr=document.createElement('div'); bcr.className='srow'; bcr.style.flexWrap='wrap'; bcr.style.gap='4px';   // base LAYER colour — in-panel swatch grid
+      const bcl=document.createElement('span'); bcl.textContent='base'; bcl.style.width='100%'; bcr.appendChild(bcl);
+      const curBase=activeShape.userData.base!=null?activeShape.userData.base:0x0c1526, bsw=[];
+      BASE_PAL.forEach(hx=>{ const cc=new THREE.Color(hx); q332(cc); const q=cc.getHex(), hs='#'+('000000'+q.toString(16)).slice(-6);
+        const sw=document.createElement('div'); sw._q=q;
+        sw.style.cssText='width:16px;height:16px;border-radius:4px;cursor:pointer;background:'+hs+';border:2px solid '+(q===curBase?'#fff':'rgba(255,255,255,.25)')+';';
+        sw.addEventListener('click',()=>{ setBaseColor(hs); bsw.forEach(s=>s.style.borderColor=(s._q===q?'#fff':'rgba(255,255,255,.25)')); });
+        bsw.push(sw); bcr.appendChild(sw); });
+      box.appendChild(bcr);
+      const cr=document.createElement('div'); cr.className='srow';   // ◼ Solids (plain, paintable) | ◆ crystal (gem) — side by side
+      cr.appendChild(sbtn('◼ Solids', ()=>{ if(activeShape) makeSolid(activeShape); },'wide'));
+      cr.appendChild(sbtn('◆ Crystals', ()=>{ if(activeShape) crystallizeShape(activeShape, activeShape.userData.crystal ? (activeShape.userData.gemIdx>=MAXGEM?1:activeShape.userData.gemIdx+1) : 1); },'wide'));   // cut → cycle gems 1…16
       box.appendChild(cr);
     }
     const close=document.createElement('div'); close.className='srow';
@@ -1312,6 +1315,12 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     { n:'Moonstone',   mo:'',    col:0xcfe0f0, ior:1.52, tr:0.40, ro:0.25 },  // 16 (opaque, sheen)
   ];
   const MAXGEM=16, TINT_MAX=0.28;   // TINT_MAX = how far a paint blend can shift a gem from its natural colour ("slight · unique")
+  const BASE_PAL=[ 0x000000,0x555555,0xaaaaaa,0xffffff,   // base-layer colour palette (each snapped to RGB332 on use) — an in-panel grid
+                   0x552222,0xcc3322,0xff6644,0xffaa88,   // (a native <input type=color> popped its dialog off the right screen edge)
+                   0x553311,0xaa7722,0xffcc44,0xffff99,
+                   0x224422,0x44aa44,0x66ff66,0xbbffbb,
+                   0x223355,0x3377cc,0x55bbff,0x99ddff,
+                   0x442266,0x9955cc,0xcc88ff,0xff99cc ];
   let _gemEnv=null;
   function gemEnv(){ if(_gemEnv) return _gemEnv;                          // a little sky (dark + the sun) for the glass to refract/reflect
     try{ const S=256, cv=document.createElement('canvas'); cv.width=cv.height=S; const g=cv.getContext('2d');
@@ -1351,6 +1360,19 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(!m.userData.crystal)                                               // (crystals use their gem colour instead)
       (Array.isArray(m.material)?m.material:[m.material]).forEach(mt=>{ if(mt && mt.color && !mt.isLineBasicMaterial){ mt.color.setHex(q); mt.needsUpdate=true; } });
     scheduleSave();
+  }
+  function makeSolid(mesh){                                               // ◼ Solids — a plain, opaque, paintable solid (texture 0); reverts a crystal back
+    if(!mesh) return;
+    if(mesh.userData.crystal){                                            // drop the gem: dispose the glass material, rebuild fresh
+      (Array.isArray(mesh.material)?mesh.material:[mesh.material]).forEach(m=>m&&m.dispose&&m.dispose());
+      mesh.userData.crystal=false; mesh.userData.gemIdx=undefined; mesh.userData.tint=0; mesh.userData.surfaces=null;
+    }
+    mesh.userData.tex=0;
+    solidify(mesh);                                                       // paint surfaces, coloured by the base layer
+    (Array.isArray(mesh.material)?mesh.material:[mesh.material]).forEach(mt=>{ if(mt){ mt.transparent=false; mt.opacity=1; mt.needsUpdate=true; } });
+    mesh.userData.painted=true;
+    mesh.children.forEach(ch=>{ if(ch.material && ch.material.isLineBasicMaterial){ ch.material.color.set(0x5fa0e0); ch.material.opacity=0.65; ch.material.needsUpdate=true; } });
+    showHint('◼ solid — paint it, or set a base colour'); scheduleSave();
   }
   function sprayCrystal(mesh, dn){                                        // a crystal KEEPS its translucency — paint only SLIGHTLY blends its natural gem colour (unique tint)
     const m=mesh.material; if(!m || !m.isMeshPhysicalMaterial) return;
