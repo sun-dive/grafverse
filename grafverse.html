@@ -1269,7 +1269,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     saveWorld();
     const world = serializeWorld();
     if(!(world.shapes||[]).length && !(world.ground||[]).length){ _kNote().textContent='Paint something first — there’s nothing to immortalize yet.'; return; }
-    let bytes; try{ bytes = BMF.scene.pack(world); }catch(e){ _kNote().textContent='Could not pack the scene.'; return; }
+    let bytes; try{ bytes = BMF.scene.pack(worldToRecords(world)); }catch(e){ _kNote().textContent='Could not pack the scene.'; return; }
     _kNote().textContent='Packed '+bytes.length.toLocaleString()+' bytes — handing to your wallet…';
     // POST as base64 TEXT — raw-binary POST bodies get 403'd by shared-host WAFs (text passes, like nft.gift).
     let b64=''; for(let i=0;i<bytes.length;i+=0x8000) b64+=String.fromCharCode.apply(null, bytes.slice(i,i+0x8000));
@@ -1439,6 +1439,23 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
 
   // ---------- world storage & recall (strokes → localStorage; the WORLD persists, the droid wakes fresh) ----------
   const SAVE_KEY='grafverse-world-v1';
+  // ── engine shape → the frozen BMF-SOLID record (docs/BMF-SOLID-SPEC.md) — mint-time conversion ──
+  // The 3-axis editor scale collapses to a UNIFORM size + proportion RATIOS; the object is ONE owned paint unit.
+  const PRESET_ID = { box:122, wall:122, plane:123, cylinder:119, cone:120, pyramid:120, sphere:121 };
+  function shapeToRecord(sd){
+    const pr=PRESETS[sd.t]||PRESETS.box, base=pr.base, d=pr.dims, t=sd.s;            // t = 3-axis target multipliers
+    let ratios=[], sizeM=1;
+    if(base==='box'){ const W=(d.w||1)*t[0], H=(d.h||1)*t[1], D=(d.d||1)*t[2]; sizeM=H; ratios=[W/H, D/H]; }
+    else if(base==='prism'||base==='pyramid'){ const Dia=2*(d.r||0.5)*t[0], H=(d.h||1)*t[1]; sizeM=H; ratios=[Dia/H]; }
+    else if(base==='ball'){ sizeM=2*(d.r||0.9)*t[0]; ratios=[]; }                     // uniform = diameter
+    else if(base==='plane'){ const W=(d.w||2)*t[0], Dp=(d.d||2)*t[2]; sizeM=Dp; ratios=[W/Dp]; }
+    const rot=[sd.r[0], sd.r[1]+(pr.align||0), sd.r[2]];                              // fold the preset's canonical facing into rotation
+    const paint = sd.cr ? { kind:2, gem:sd.gem|0, col:(sd.col!=null?sd.col:GEMS[(sd.gem||0)%GEMS.length]) }
+                        : { kind:1, strokes:sd.st||[] };
+    return { id:PRESET_ID[sd.t]||122, res:sd.res||pr.res||0, ratios, pos:sd.p, rot, scale:sizeM, paint };
+  }
+  function worldToRecords(world){ return { ground:world.ground||[], shapes:(world.shapes||[]).map(shapeToRecord) }; }
+
   function serializeWorld(){
     const shapes=[];
     for(const m of bShapes){ const u=m.userData;

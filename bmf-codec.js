@@ -54,28 +54,49 @@
     return out;
   }
 
-  // ── grafspace scene schema (layered on the toolkit) ─────────────────
-  var SCENE_VERSION = 1;
-  var TYPES = ['box', 'wall', 'plane', 'cylinder', 'cone', 'pyramid', 'sphere'];
+  // ── grafverse scene schema v2 — the BMF-SOLID record (docs/BMF-SOLID-SPEC.md) ──
+  // A scene = a ground paint-atom + a list of SOLID records. Each shape record is the frozen wire:
+  //   id u8 · resolution u8 · ratios u8[n] · pos i32×3 (mm) · rot i16×3 (Euler) · scale u16 (log mm) · paint.
+  // Callers pass SEMANTIC values (metres, radians, plain ratios); the codec owns the frozen quantisation.
+  // n (ratio count) is derived from the base solid, never stored. One shape = one owned paint unit.
+  var SCENE_VERSION = 2;
+  var RATIO_N = { 119: 1, 120: 1, 121: 0, 122: 2, 123: 1, 124: 1, 125: 1, 126: 2 };  // ratios per base solid (§4)
+  function ratioN(id) { return RATIO_N[id] != null ? RATIO_N[id] : 0; }
 
-  function packScene(world) {
+  // frozen encodings (§3): ratio & size are LOGARITHMIC; rotation is Euler XYZ.
+  function log2(x) { return Math.log(x) / Math.LN2; }
+  function encRatio(r) { return clamp(Math.round(128 + 25.6 * log2(r > 1e-6 ? r : 1e-6)), 0, 255); }   // 2^((raw-128)/25.6)
+  function decRatio(raw) { return Math.pow(2, (raw - 128) / 25.6); }
+  function encSize(mm) { return clamp(Math.round(65535 * log2(mm > 1 ? mm : 1) / 22), 0, 65535); }       // 2^(22·raw/65535)
+  function decSize(raw) { return Math.pow(2, 22 * raw / 65535); }
+  function encAngle(rad) { return clamp(Math.round(normAngle(rad) * 65536 / TAU), -32768, 32767); }       // deg = raw·360/65536
+  function decAngle(raw) { return raw * TAU / 65536; }
+
+  function packScene(scene) {
     var w = new Writer();
     w.u8(SCENE_VERSION);
-    var g = world.ground || [], i;
+    var g = scene.ground || [], i;
     w.varint(g.length);
     for (i = 0; i < g.length; i++) { w.u8(g[i].c & 255); w.u32(g[i].seed >>> 0); writeDabs(w, g[i].dabs, false); }
-    var sh = world.shapes || [], k;
+    var sh = scene.shapes || [], k, a;
     w.varint(sh.length);
     for (k = 0; k < sh.length; k++) {
-      var m = sh[k], t = TYPES.indexOf(m.t); if (t < 0) t = 0;
-      w.u8(t);
-      w.i32(q(m.p[0], 1000)); w.i32(q(m.p[1], 1000)); w.i32(q(m.p[2], 1000));
-      w.i16(q(normAngle(m.r[0]), 10000)); w.i16(q(normAngle(m.r[1]), 10000)); w.i16(q(normAngle(m.r[2]), 10000));
-      w.u16(clamp(q(m.s[0], 1000), 0, 65535)); w.u16(clamp(q(m.s[1], 1000), 0, 65535)); w.u16(clamp(q(m.s[2], 1000), 0, 65535));
-      w.u8(m.paid ? 1 : 0);
-      var st = m.st || [], a;
-      w.varint(st.length);
-      for (a = 0; a < st.length; a++) { w.u8(st[a].si & 255); w.u8(st[a].c & 255); w.u32(st[a].seed >>> 0); writeDabs(w, st[a].dabs, true); }
+      var m = sh[k], id = m.id & 255, n = ratioN(id), rat = m.ratios || [];
+      w.u8(id);
+      w.u8((m.res || 0) & 255);
+      for (a = 0; a < n; a++) w.u8(encRatio(rat[a] != null ? rat[a] : 1));            // exactly n ratio bytes
+      w.i32(q(m.pos[0], 1000)); w.i32(q(m.pos[1], 1000)); w.i32(q(m.pos[2], 1000));   // metres → mm
+      w.i16(encAngle(m.rot[0])); w.i16(encAngle(m.rot[1])); w.i16(encAngle(m.rot[2]));
+      w.u16(encSize(m.scale * 1000));                                                 // uniform size: m → mm → log
+      var p = m.paint || { kind: 0 };
+      w.u8(p.kind & 255);
+      if (p.kind === 1) {                                                             // inline strokes (owned paint)
+        var st = p.strokes || [];
+        w.varint(st.length);
+        for (a = 0; a < st.length; a++) { w.u8(st[a].si & 255); w.u8(st[a].c & 255); w.u32(st[a].seed >>> 0); writeDabs(w, st[a].dabs, true); }
+      } else if (p.kind === 2) {                                                      // crystal material: gem + drifted colour
+        w.u8((p.gem || 0) & 255); w.u32((p.col || 0) >>> 0);
+      }
     }
     return w.b; // number[] (0..255)
   }
@@ -86,23 +107,29 @@
     if (ver !== SCENE_VERSION) throw new Error('unsupported scene version ' + ver);
     var ground = [], gn = r.varint(), i;
     for (i = 0; i < gn; i++) { var gc = r.u8(), gseed = r.u32(); ground.push({ c: gc, seed: gseed, dabs: readDabs(r, false) }); }
-    var shapes = [], sn = r.varint(), k;
+    var shapes = [], sn = r.varint(), k, a;
     for (k = 0; k < sn; k++) {
-      var t = TYPES[r.u8()] || 'box';
-      var p = [r.i32() / 1000, r.i32() / 1000, r.i32() / 1000];
-      var rot = [r.i16() / 10000, r.i16() / 10000, r.i16() / 10000];
-      var sc = [r.u16() / 1000, r.u16() / 1000, r.u16() / 1000];
-      var paid = !!r.u8();
-      var st = [], stn = r.varint(), a;
-      for (a = 0; a < stn; a++) { var si = r.u8(), scol = r.u8(), sseed = r.u32(); st.push({ si: si, c: scol, seed: sseed, dabs: readDabs(r, true) }); }
-      shapes.push({ t: t, p: p, r: rot, s: sc, paid: paid, st: st });
+      var id = r.u8(), res = r.u8(), n = ratioN(id), ratios = [];
+      for (a = 0; a < n; a++) ratios.push(decRatio(r.u8()));
+      var pos = [r.i32() / 1000, r.i32() / 1000, r.i32() / 1000];
+      var rot = [decAngle(r.i16()), decAngle(r.i16()), decAngle(r.i16())];
+      var scale = decSize(r.u16()) / 1000;                                            // → metres
+      var kind = r.u8(), paint;
+      if (kind === 1) {
+        var st = [], stn = r.varint(), b;
+        for (b = 0; b < stn; b++) { var si = r.u8(), c = r.u8(), sd = r.u32(); st.push({ si: si, c: c, seed: sd, dabs: readDabs(r, true) }); }
+        paint = { kind: 1, strokes: st };
+      } else if (kind === 2) { paint = { kind: 2, gem: r.u8(), col: r.u32() }; }
+      else paint = { kind: 0 };
+      shapes.push({ id: id, res: res, ratios: ratios, pos: pos, rot: rot, scale: scale, paint: paint });
     }
-    return { v: 1, ground: ground, shapes: shapes };
+    return { v: 2, ground: ground, shapes: shapes };
   }
 
   var BMF = {
     Writer: Writer, Reader: Reader, writeDabs: writeDabs, readDabs: readDabs, b8: b8, q: q, normAngle: normAngle,
-    scene: { VERSION: SCENE_VERSION, TYPES: TYPES, pack: packScene, unpack: unpackScene },
+    scene: { VERSION: SCENE_VERSION, ratioN: ratioN, pack: packScene, unpack: unpackScene,
+             encRatio: encRatio, decRatio: decRatio, encSize: encSize, decSize: decSize, encAngle: encAngle, decAngle: decAngle },
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = BMF;
   else (typeof window !== 'undefined' ? window : globalThis).BMF = BMF;
