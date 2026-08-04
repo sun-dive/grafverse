@@ -73,9 +73,10 @@
   function isFractal(id) { return id >= FRACTAL_LO && id <= FRACTAL_HI; }             // 160–207: seed u16
   // 254 complex model: model index u16 · 255 mesh: 32-byte txid · 119–159 primitive: n log-ratios · else: no params
 
-  // ── material-flags byte — grain rotation (2b) · tiled|scaled (1b) · 5b reserved (beside color+tex) ──
-  function encMat(m) { if (typeof m === 'number') return m & 255; if (!m) return 0; return ((m.grain || 0) & 3) | (m.tiled ? 4 : 0); }
-  function decMat(b) { return { grain: b & 3, tiled: !!(b & 4) }; }                   // grain 0–3 = 0°/90°/180°/270°
+  // ── material-flags byte — grain rotation (2b) · tiled|scaled (1b) · BOB (1b) · ROTATE (1b) · 3b reserved ──
+  var MAT = { GRAIN: 3, TILED: 4, BOB: 8, SPIN: 16 };                                 // matFlags bit masks
+  function encMat(m) { if (typeof m === 'number') return m & 255; if (!m) return 0; return ((m.grain || 0) & 3) | (m.tiled ? 4 : 0) | (m.bob ? 8 : 0) | (m.spin ? 16 : 0); }
+  function decMat(b) { return { grain: b & 3, tiled: !!(b & 4), bob: !!(b & 8), spin: !!(b & 16) }; }   // grain 0–3 = 0°/90°/180°/270°; bob/spin = owned draw-time motion
 
   // ── paint-fx byte — per-stroke STACKABLE bitfield (aligned to nft.gift wig/twk; seed-driven, deterministic) ──
   var FX = { WIGGLE: 1, TWINKLE: 2, SPARKLE: 4, CRYSTAL: 8 };                          // bits 4–7 reserved
@@ -202,7 +203,7 @@
     ref: { write: writeRef, read: readRef },
     scene: { VERSION: SCENE_VERSION, ratioN: ratioN, pack: packScene, unpack: unpackScene,
              encRatio: encRatio, decRatio: decRatio, encSize: encSize, decSize: decSize, encAngle: encAngle, decAngle: decAngle,
-             isFractal: isFractal, ID_COMPLEX: ID_COMPLEX, ID_MESH: ID_MESH, encMat: encMat, decMat: decMat, FX: FX },
+             isFractal: isFractal, ID_COMPLEX: ID_COMPLEX, ID_MESH: ID_MESH, encMat: encMat, decMat: decMat, MAT: MAT, FX: FX },
     timeline: { VERSION: TIMELINE_VERSION, pack: packTimeline, unpack: unpackTimeline },
     container: { VERSION: CONTAINER_VERSION, pack: packIndex, unpack: unpackIndex },
   };

@@ -1275,6 +1275,10 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const mkr=document.createElement('div'); mkr.className='srow';   // ✓ make solid — commit as a plain, REAL solid (no paint needed)
       mkr.appendChild(sbtn('✓ make solid', ()=>{ if(activeShape) applySolid(activeShape, 0); },'wide'));
       box.appendChild(mkr);
+      const anr=document.createElement('div'); anr.className='srow';   // ✧ motion — independent bob + rotate (owned, persist in the mint)
+      anr.appendChild(sbtn((activeShape.userData.bob?'✓ ':'')+'↕ bob', ()=>{ const m=activeShape; m.userData.bob=!m.userData.bob; buildShapeTools(m.userData.type); scheduleSave(); },'wide'));
+      anr.appendChild(sbtn((activeShape.userData.spin?'✓ ':'')+'↻ rotate', ()=>{ const m=activeShape; m.userData.spin=!m.userData.spin; buildShapeTools(m.userData.type); scheduleSave(); },'wide'));
+      box.appendChild(anr);
       const cr=document.createElement('div'); cr.className='srow';   // ◼ Materials (picker) | ◆ Crystals (gems)
       cr.appendChild(sbtn('◼ Materials', ()=>{ solidPickerOpen=!solidPickerOpen; if(activeShape) buildShapeTools(activeShape.userData.type); },'wide'));   // open/close the material picker grid
       cr.appendChild(sbtn('◆ Crystals', ()=>{ if(activeShape) crystallizeShape(activeShape, activeShape.userData.crystal ? (activeShape.userData.gemIdx>=MAXGEM?1:activeShape.userData.gemIdx+1) : 1); },'wide'));   // cut → cycle gems 1…16
@@ -1754,13 +1758,13 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   const PRESET_ID = { box:122, wall:122, plane:123, cylinder:119, cone:120, pyramid:120, sphere:121 };
   const FRACTAL_ID = { palm:160 };                                                   // §4 fractal class (160–207); palm is the first, more to come
   const PALM_H = 2.8;                                                                 // palmGeometry() trunk height (m) — the size field's base
-  function matFlagsFor(sd){ return ((((sd.trot||0)/90)|0)&3) | (sd.tile?4:0); }       // grain rotation (2b: deg→0–3) · tiled/scaled (bit2)
+  function matFlagsFor(sd){ return ((((sd.trot||0)/90)|0)&3) | (sd.tile?4:0) | (sd.bob?8:0) | (sd.spin?16:0); }   // grain(2b) · tiled(b2) · bob(b3) · rotate(b4)
   function shapeToRecord(sd){
     const color = sd.cr ? rgb332Index(sd.col!=null?sd.col:(GEMS[sd.gem]||GEMS[1]).col)   // crystal → its 8-bit (RGB332) tint
                         : rgb332Index(sd.base!=null?sd.base:0x0c1526);                       // painted → base material colour, 8-bit
     const tex   = sd.cr ? (sd.gem||1) : (sd.tex||0);                                  // material/texture — the gem id (1…16), else plain (0)
     const paint = sd.cr ? { kind:0 } : { kind:1, strokes:sd.st||[] };                 // owned paint layer (a crystal carries no strokes; strokes carry their fx byte)
-    const matFlags = sd.cr ? 0 : matFlagsFor(sd);                                     // crystals have no surface grain/tiling
+    const matFlags = matFlagsFor(sd);                                                // crystals have no grain/tiling (0), but DO carry bob/rotate
     if(FRACTAL_ID[sd.t]!=null){                                                       // FRACTAL (palm…): id + seed u16, uniform scale — no ratios (codec reads the seed)
       return { id:FRACTAL_ID[sd.t], res:sd.res||0, seed:(sd.seed>>>0)||1, pos:sd.p, rot:sd.r, scale:PALM_H*(sd.s[1]||1), color, tex, matFlags, paint };
     }
@@ -1782,6 +1786,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function recordToShape(rec){                                                             // one decoded record → editor save-record (sd), fed to addShapeFromData
     const grain=rec.matFlags&3, tile=(rec.matFlags&4)?1:0, crystal=!!(rec.paint&&rec.paint.kind===0);
     const sd={ p:rec.pos.slice(), r:rec.rot.slice(), paid:false };
+    if(rec.matFlags&8) sd.bob=1; if(rec.matFlags&16) sd.spin=1;                       // owned draw-time motion (both crystals + solids)
     if(rec.res) sd.res=rec.res;
     if(FRACTAL_TYPE[rec.id]!=null){ sd.t=FRACTAL_TYPE[rec.id]; sd.seed=(rec.seed>>>0)||1; const t=rec.scale/PALM_H; sd.s=[t,t,t]; }   // fractal: uniform scale from the seed
     else {
@@ -1816,6 +1821,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       s:[+u.target.x.toFixed(3),+u.target.y.toFixed(3),+u.target.z.toFixed(3)],
       paid:!!u.paid };
     if(u.res) rec.res=u.res;                                                   // custom facet count (column/spire/ball)
+    if(u.bob) rec.bob=1; if(u.spin) rec.spin=1;                                // owned draw-time motion (→ matFlags bits 3/4 at mint)
     if(u.seed!=null) rec.seed=u.seed;                                          // procedural seed (palm/tree)
     if(u.texTile) rec.tile=1;                                                  // stone/wood: tiled (world-scale) vs scaled (fit)
     if(u.base!=null) rec.base=u.base;                                          // base LAYER colour (if the picker set one)
@@ -1838,6 +1844,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     m.position.set(sd.p[0],sd.p[1],sd.p[2]);
     m.rotation.set(sd.r[0],sd.r[1],sd.r[2]);
     m.userData.target.set(sd.s[0],sd.s[1],sd.s[2]); m.scale.copy(m.userData.target); m.userData.grow=1;   // already real — skip grow-in
+    if(sd.bob) m.userData.bob=1; if(sd.spin) m.userData.spin=1;              // restore owned draw-time motion
     if(sd.res) applyRes(m, sd.res);                                          // restore custom facet count (geometry) BEFORE materials
     if(sd.cr){                                                              // ── a crystal: gem material + drifted colour ──
       crystallizeShape(m, sd.gem||0);
@@ -1887,20 +1894,20 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   { const _minted = new URLSearchParams(location.search).get('minted');   // came back from the wallet after a mint
     if(_minted){ showHint('✦ Immortalized on-chain — '+_minted.slice(0,8)+'… It’s yours forever.'); try{ history.replaceState(null,'',location.pathname); }catch(_){} } }
 
-  // ---------- draw-time motion: the SELECTED committed shape bobs (crystals also rotate) ----------
+  // ---------- draw-time motion: per-object BOB + ROTATE (independent, OWNED) ----------
   // Purely a render offset — applied just before renderer.render and undone right after, so logic, collision,
-  // dragging and saves ALWAYS see the resting transform. Nothing is stored → zero BMF impact.
-  let _selAnim=null;
-  function applySelAnim(){
-    const s = (activeShape && (activeShape.userData.painted || activeShape.userData.crystal)) ? activeShape : null;
-    if(!s) return;
-    const t = performance.now()*0.001, u=s.userData;
-    u._ay=s.position.y; u._ary=s.rotation.y;                 // stash the rest pose
-    s.position.y = u._ay + 0.10*Math.sin(t*1.8);            // bob up/down
-    if(u.crystal) s.rotation.y = u._ary + t*0.9;            // crystals also turn
-    _selAnim=s;
+  // dragging and saves ALWAYS see the resting transform. Flags ride in matFlags (bits 3/4) → owned on-chain.
+  const _animOn=[];   // shapes offset this frame → restored after render
+  function applyAnim(){
+    const t=performance.now()*0.001; _animOn.length=0;
+    for(const m of bShapes){ const u=m.userData; if(!u.bob && !u.spin) continue;
+      u._ay=m.position.y; u._ary=m.rotation.y;                                                       // stash rest pose
+      if(u.bob) m.position.y = u._ay + 0.10*Math.sin(t*1.8 + m.position.x*0.7 + m.position.z*0.9);   // phase from position → desynced
+      if(u.spin) m.rotation.y = u._ary + t*0.9;
+      _animOn.push(m);
+    }
   }
-  function restoreSelAnim(){ const s=_selAnim; if(!s) return; s.position.y=s.userData._ay; s.rotation.y=s.userData._ary; _selAnim=null; }
+  function restoreAnim(){ for(const m of _animOn){ m.position.y=m.userData._ay; m.rotation.y=m.userData._ary; } _animOn.length=0; }
 
   // ---------- loop ----------
   function tick(){
@@ -1908,9 +1915,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     update(dt);
     bTick();
     updateReflections();                 // refresh the metal reflection probe (only when metal is present)
-    applySelAnim();                      // offset the selected shape for THIS frame only…
+    applyAnim();                         // offset flagged shapes for THIS frame only…
     renderer.render(scene, camera);
-    restoreSelAnim();                    // …and put it back to rest before anything else reads it
+    restoreAnim();                       // …and restore rest before anything else reads them
     requestAnimationFrame(tick);
   }
   tick();
