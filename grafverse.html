@@ -1213,8 +1213,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
         tr.appendChild(sbtn('⟳ grain 90°', ()=>{ const m=activeShape; m.userData.texRot=((m.userData.texRot||0)+90)%360; applyFinish(m,m.userData.tex); scheduleSave(); },'wide'));
         box.appendChild(tr);
       }
-      const cr=document.createElement('div'); cr.className='srow';   // ◼ Solids (plain, paintable) | ◆ crystal (gem) — side by side
-      cr.appendChild(sbtn('◼ Solids', ()=>{ if(activeShape){ if(!activeShape.userData.painted && !activeShape.userData.crystal) applySolid(activeShape, activeShape.userData.tex||0); solidPickerOpen=!solidPickerOpen; buildShapeTools(activeShape.userData.type); } },'wide'));   // makes it a real SOLID (no paint needed) + opens the material picker
+      const mkr=document.createElement('div'); mkr.className='srow';   // ✓ make solid — commit as a plain, REAL solid (no paint needed)
+      mkr.appendChild(sbtn('✓ make solid', ()=>{ if(activeShape) applySolid(activeShape, 0); },'wide'));
+      box.appendChild(mkr);
+      const cr=document.createElement('div'); cr.className='srow';   // ◼ Materials (picker) | ◆ Crystals (gems)
+      cr.appendChild(sbtn('◼ Materials', ()=>{ solidPickerOpen=!solidPickerOpen; if(activeShape) buildShapeTools(activeShape.userData.type); },'wide'));   // open/close the material picker grid
       cr.appendChild(sbtn('◆ Crystals', ()=>{ if(activeShape) crystallizeShape(activeShape, activeShape.userData.crystal ? (activeShape.userData.gemIdx>=MAXGEM?1:activeShape.userData.gemIdx+1) : 1); },'wide'));   // cut → cycle gems 1…16
       box.appendChild(cr);
       if(solidPickerOpen && activeShape){                                  // ◼ Solids → material picker (categorised swatch grid); click a swatch to apply
