@@ -214,6 +214,7 @@
   <div class="kbtn" id="kSave">💾 Save now</div>
   <div class="kbtn" id="kReload">↻ Reload world</div>
   <div class="kbtn immortal" id="kMint">✦ Make immortal</div>
+  <div class="kbtn" id="kExport">⬇ Download scene (.bmf)</div>
   <div class="kbtn" id="kImport">📥 Import scene (.bmf)</div>
   <input type="file" id="kFile" accept=".bmf,application/octet-stream" style="display:none">
   <div class="kfoot" id="kNote"></div>
@@ -1356,12 +1357,17 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // ── immortalize: pack the world (binary BMF) → hand off to the wallet to mint (the key never touches the game) ──
   const HANDOFF_URL = 'handoff.php';   // same-origin bridge: POST packed bytes → { id }
   const WALLET_URL  = 'wallet/';        // TODO: switch to https://wallet.grafverse.com/ once the subdomain is live
-  document.getElementById('kMint').addEventListener('click', async ()=>{
-    if(!window.BMF){ _kNote().textContent='Codec missing (bmf-codec.js didn’t load).'; return; }
+  // pack the live world to packed BMF bytes — the ONE source of truth for both mint + download. Returns {bytes} or {err}.
+  function packWorldBytes(){
+    if(!window.BMF) return { err:'Codec missing (bmf-codec.js didn’t load).' };
     saveWorld();
     const world = serializeWorld();
-    if(!(world.shapes||[]).length && !(world.ground||[]).length){ _kNote().textContent='Paint something first — there’s nothing to immortalize yet.'; return; }
-    let bytes; try{ bytes = BMF.scene.pack(worldToRecords(world)); }catch(e){ _kNote().textContent='Could not pack the scene.'; return; }
+    if(!(world.shapes||[]).length && !(world.ground||[]).length) return { err:'Paint something first — there’s nothing here yet.' };
+    try{ return { bytes: BMF.scene.pack(worldToRecords(world)) }; }catch(e){ return { err:'Could not pack the scene.' }; }
+  }
+  document.getElementById('kMint').addEventListener('click', async ()=>{
+    const p = packWorldBytes(); if(p.err){ _kNote().textContent=p.err; return; }
+    const bytes = p.bytes;
     _kNote().textContent='Packed '+bytes.length.toLocaleString()+' bytes — handing to your wallet…';
     // POST as base64 TEXT — raw-binary POST bodies get 403'd by shared-host WAFs (text passes, like nft.gift).
     let b64=''; for(let i=0;i<bytes.length;i+=0x8000) b64+=String.fromCharCode.apply(null, bytes.slice(i,i+0x8000));
@@ -1373,6 +1379,17 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const ret = location.origin + location.pathname;
       location.href = WALLET_URL + '?id=' + encodeURIComponent(data.id) + '&return=' + encodeURIComponent(ret);
     }catch(e){ _kNote().textContent='Handoff failed: '+(e.message||e)+'. (Is handoff.php deployed?)'; }
+  });
+  // ── export: pack the world → download a .bmf file (local, so a scene round-trips entirely in the browser) ──
+  document.getElementById('kExport').addEventListener('click', ()=>{
+    const p = packWorldBytes(); if(p.err){ _kNote().textContent=p.err; return; }
+    const bytes = p.bytes;
+    const d=new Date(), pad=n=>String(n).padStart(2,'0');
+    const name='grafverse-'+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'-'+pad(d.getHours())+pad(d.getMinutes())+'.bmf';
+    const url=URL.createObjectURL(new Blob([new Uint8Array(bytes)], {type:'application/octet-stream'}));
+    const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+    _kNote().textContent='Downloaded '+bytes.length.toLocaleString()+' bytes → '+name;
   });
   // ── import: read a packed .bmf scene atom → rebuild it in the editor (replaces the current world) ──
   document.getElementById('kImport').addEventListener('click', ()=>{ document.getElementById('kFile').click(); });
