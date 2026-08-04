@@ -1165,7 +1165,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   el.addEventListener('wheel', e=>{ if(activeShape){ e.preventDefault(); scaleAll(e.deltaY<0?1.1:1/1.1); } }, {passive:false});   // scroll = quick uniform resize
 
   // the pop-in side panel
-  let shaping=false;
+  let shaping=false, solidPickerOpen=false;
   function sbtn(txt,fn,cls){ const b=document.createElement('div'); b.className='sb'+(cls?' '+cls:''); b.textContent=txt; b.addEventListener('click',fn); return b; }
   function buildShapeTools(type){
     const box=document.getElementById('shapeTools'); box.innerHTML='';
@@ -1209,9 +1209,27 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
         bsw.push(sw); bcr.appendChild(sw); });
       box.appendChild(bcr);
       const cr=document.createElement('div'); cr.className='srow';   // ◼ Solids (plain, paintable) | ◆ crystal (gem) — side by side
-      cr.appendChild(sbtn('◼ Solids', ()=>{ if(activeShape) applySolid(activeShape, activeShape.userData.crystal ? 0 : nextSolidTex(activeShape.userData.tex||0)); },'wide'));   // cycle plain → shiny metal → corroded
+      cr.appendChild(sbtn('◼ Solids', ()=>{ solidPickerOpen=!solidPickerOpen; if(activeShape) buildShapeTools(activeShape.userData.type); },'wide'));   // open/close the material picker grid
       cr.appendChild(sbtn('◆ Crystals', ()=>{ if(activeShape) crystallizeShape(activeShape, activeShape.userData.crystal ? (activeShape.userData.gemIdx>=MAXGEM?1:activeShape.userData.gemIdx+1) : 1); },'wide'));   // cut → cycle gems 1…16
       box.appendChild(cr);
+      if(solidPickerOpen && activeShape){                                  // ◼ Solids → material picker (categorised swatch grid); click a swatch to apply
+        const grid=document.createElement('div'); grid.style.cssText='max-height:190px;overflow-y:auto;margin-top:2px;';
+        const cur=activeShape.userData.tex||0;
+        const addCat=(label,entries)=>{
+          const lb=document.createElement('div'); lb.textContent=label; lb.style.cssText='font:700 10px system-ui;letter-spacing:.12em;color:#8fa6cc;margin:5px 0 3px;'; grid.appendChild(lb);
+          const row=document.createElement('div'); row.style.cssText='display:flex;flex-wrap:wrap;gap:4px;';
+          entries.forEach(([tx,m])=>{ const t=+tx, hx=(m.col!=null?m.col:0x2a3550), hs='#'+('000000'+(hx>>>0).toString(16)).slice(-6);
+            const sw=document.createElement('div'); sw.title=m.n; sw.style.cssText='width:20px;height:20px;border-radius:4px;cursor:pointer;background:'+hs+';border:2px solid '+(cur===t?'#fff':'rgba(255,255,255,.22)')+';';
+            sw.addEventListener('click',()=>{ applySolid(activeShape,t); buildShapeTools(activeShape.userData.type); });
+            row.appendChild(sw); });
+          grid.appendChild(row);
+        };
+        addCat('PLAIN',[[0,{n:'plain',col:0x2a3550}]]);
+        addCat('METAL',Object.entries(METALS));
+        addCat('STONE',Object.entries(STONES));
+        addCat('WOOD', Object.entries(WOODS));
+        box.appendChild(grid);
+      }
     }
     const close=document.createElement('div'); close.className='srow';
     close.appendChild(sbtn('✕ close',closeShape,'done')); box.appendChild(close);
@@ -1369,6 +1387,45 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     28:{ n:'brass tarnish', col:0x8a6a2a, metalness:0.6, roughness:0.85, env:0.4, rough:true },
     29:{ n:'lead oxide',    col:0xb0b0b8, metalness:0.4, roughness:0.92, env:0.3, rough:true },
   };
+  // ── stones (49–72) + wood (73–96): image-style materials via PROCEDURAL grayscale patterns, tinted by the base colour. ──
+  const STONES={
+    49:{ n:'brick',       g:'brick',  col:0x9a5a44, ro:0.90 }, 50:{ n:'cobblestone', g:'cobble', col:0x8a8a86, ro:0.90 },
+    51:{ n:'rock',        g:'noise',  col:0x8f8b84, ro:0.95 }, 52:{ n:'marble',      g:'marble', col:0xe8e6e0, ro:0.35 },
+    53:{ n:'granite',     g:'speckle',col:0x9a9088, ro:0.70 }, 54:{ n:'slate',       g:'noise',  col:0x4a5560, ro:0.80 },
+    55:{ n:'sandstone',   g:'bands',  col:0xc9a878, ro:0.90 }, 56:{ n:'sand',        g:'sand',   col:0xd8c088, ro:1.00 },
+    57:{ n:'gravel',      g:'cobble', col:0x9a968e, ro:0.95 }, 58:{ n:'concrete',    g:'noise',  col:0xa8a8a4, ro:0.85 },
+    59:{ n:'limestone',   g:'noise',  col:0xd8d2c0, ro:0.80 }, 60:{ n:'flagstone',   g:'cobble', col:0x8f8a82, ro:0.85 },
+  };
+  const WOODS={
+    73:{ n:'oak',      g:'grain', col:0xb08a5a, ro:0.70 }, 74:{ n:'pine',     g:'grain', col:0xd8b878, ro:0.70 },
+    75:{ n:'walnut',   g:'grain', col:0x6a4a30, ro:0.60 }, 76:{ n:'birch',    g:'grain', col:0xe0cfa8, ro:0.70 },
+    77:{ n:'bamboo',   g:'bamboo',col:0xc8b86a, ro:0.60 }, 78:{ n:'mahogany', g:'grain', col:0x8a3a28, ro:0.55 },
+    79:{ n:'cedar',    g:'grain', col:0xc07a4a, ro:0.70 }, 80:{ n:'maple',    g:'grain', col:0xe8d8b0, ro:0.60 },
+    81:{ n:'driftwood',g:'grain', col:0x9a968e, ro:0.85 }, 82:{ n:'teak',     g:'grain', col:0xb8894a, ro:0.60 },
+    83:{ n:'plywood',  g:'grain', col:0xd0b080, ro:0.70 }, 84:{ n:'ebony',    g:'grain', col:0x2a2622, ro:0.50 },
+  };
+  function matOf(tex){ return METALS[tex]||STONES[tex]||WOODS[tex]||null; }
+  function hashStr(s){ let h=0x811c9dc5>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,0x01000193)>>>0; } return h>>>0; }
+  const REPEAT={brick:3,cobble:3,noise:2,marble:1,speckle:2,bands:2,sand:4,grain:2,bamboo:2}, _patCache={};
+  function _rr(c,x,y,w,h,r){ if(w<2||h<2){ c.fillRect(x,y,w,h); return; } c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); c.fill(); }
+  function patTex(gen){ if(_patCache[gen]) return _patCache[gen];   // seeded grayscale pattern → CanvasTexture (cached). Zero assets, deterministic — pure BMF.
+    const S=256, cv=document.createElement('canvas'); cv.width=cv.height=S; const c=cv.getContext('2d'), rnd=mulberry32(hashStr(gen)||1);
+    const gray=v=>{ v=v<0?0:v>255?255:v|0; return 'rgb('+v+','+v+','+v+')'; };
+    c.fillStyle=gray(160); c.fillRect(0,0,S,S);
+    if(gen==='brick'){ c.fillStyle=gray(195); c.fillRect(0,0,S,S); const bw=S/4, bh=S/8;
+      for(let ry=0;ry<8;ry++){ const off=(ry%2)*(bw/2); for(let bx=-1;bx<5;bx++){ c.fillStyle=gray(115+rnd()*45); _rr(c,bx*bw+off+3,ry*bh+3,bw-6,bh-6,4); } } }
+    else if(gen==='grain'){ for(let y=0;y<S;y++){ const v=150+Math.sin(y*0.16+Math.sin(y*0.03)*3)*16+(rnd()-0.5)*22; c.fillStyle=gray(v); c.fillRect(0,y,S,1); }
+      for(let k=0;k<3;k++){ c.fillStyle=gray(95); c.beginPath(); c.ellipse(rnd()*S,rnd()*S,6+rnd()*8,3+rnd()*4,0,0,7); c.fill(); } }
+    else if(gen==='bamboo'){ for(let x=0;x<S;x+=S/6){ c.fillStyle=gray(150+rnd()*22); c.fillRect(x,0,S/6-2,S); } for(let y=0;y<S+1;y+=S/3){ c.fillStyle=gray(110); c.fillRect(0,y-2,S,4); } }
+    else if(gen==='marble'){ c.fillStyle=gray(222); c.fillRect(0,0,S,S); c.lineCap='round';
+      for(let v=0;v<6;v++){ c.strokeStyle=gray(110+rnd()*40); c.lineWidth=1+rnd()*2; c.beginPath(); let x=rnd()*S,y=-4; c.moveTo(x,y); for(;y<S;y+=7){ x+=(rnd()-0.5)*22; c.lineTo(x,y); } c.stroke(); } }
+    else if(gen==='speckle'){ for(let i=0;i<2600;i++){ c.fillStyle=gray(80+rnd()*160); c.fillRect(rnd()*S,rnd()*S,2,2); } }
+    else if(gen==='sand'){ for(let i=0;i<7000;i++){ c.fillStyle=gray(150+rnd()*55); c.fillRect(rnd()*S,rnd()*S,1,1); } }
+    else if(gen==='bands'){ for(let y=0;y<S;y++){ c.fillStyle=gray(155+Math.sin(y*0.06)*28+(rnd()-0.5)*12); c.fillRect(0,y,S,1); } }
+    else if(gen==='cobble'){ c.fillStyle=gray(70); c.fillRect(0,0,S,S); for(let i=0;i<70;i++){ c.fillStyle=gray(120+rnd()*75); c.save(); c.translate(rnd()*S,rnd()*S); c.rotate(rnd()*7); c.beginPath(); c.ellipse(0,0,9+rnd()*13,7+rnd()*11,0,0,7); c.fill(); c.restore(); } }
+    else { for(let i=0;i<900;i++){ c.globalAlpha=0.05+rnd()*0.12; c.fillStyle=rnd()>0.5?'#fff':'#000'; c.beginPath(); c.arc(rnd()*S,rnd()*S,2+rnd()*14,0,7); c.fill(); } c.globalAlpha=1; }
+    const t=new THREE.CanvasTexture(cv); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.colorSpace=THREE.SRGBColorSpace; const rp=REPEAT[gen]||2; t.repeat.set(rp,rp); _patCache[gen]=t; return t;
+  }
   const SOLID_CYCLE=[0,25,26,27,28,29];
   function nextSolidTex(t){ const i=SOLID_CYCLE.indexOf(t); return SOLID_CYCLE[(i+1)%SOLID_CYCLE.length]; }   // -1 (unknown) → index 0 = plain
   let _rustTex=null;
@@ -1381,11 +1438,12 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const t=new THREE.CanvasTexture(cv); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(2,2); _rustTex=t; return t;
   }
   function applyFinish(mesh, tex){                                        // set metalness/roughness/maps per finish (colour stays = base, paint stays = emissiveMap)
-    const M=METALS[tex];
+    const M=METALS[tex], SW=STONES[tex]||WOODS[tex];
     (Array.isArray(mesh.material)?mesh.material:[mesh.material]).forEach(m=>{ if(!m || m.isLineBasicMaterial) return;
+      m.map=null; m.roughnessMap=null; m.bumpMap=null; m.bumpScale=0; m.envMap=null; m.metalness=0.1; m.roughness=0.75; m.envMapIntensity=1;   // reset to plain
       if(M){ m.metalness=M.metalness; m.roughness=M.roughness; m.envMap=reflectionEnv(); m.envMapIntensity=M.env;
-        m.roughnessMap=M.rough?rustTexture():null; m.bumpMap=M.rough?rustTexture():null; m.bumpScale=M.rough?0.5:0; }
-      else { m.metalness=0.1; m.roughness=0.75; m.envMap=null; m.envMapIntensity=1; m.roughnessMap=null; m.bumpMap=null; m.bumpScale=0; }   // plain
+        if(M.rough){ m.roughnessMap=rustTexture(); m.bumpMap=rustTexture(); m.bumpScale=0.5; } }
+      else if(SW){ m.map=patTex(SW.g); m.metalness=0; m.roughness=SW.ro; m.roughnessMap=patTex(SW.g); }   // stone/wood: procedural pattern as albedo, tinted by base colour
       m.needsUpdate=true; });
   }
   function applySolid(mesh, tex){                                         // ◼ Solids — an opaque, paintable solid with a finish (plain/metal); reverts a crystal
@@ -1394,8 +1452,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       (Array.isArray(mesh.material)?mesh.material:[mesh.material]).forEach(m=>m&&m.dispose&&m.dispose());
       mesh.userData.crystal=false; mesh.userData.gemIdx=undefined; mesh.userData.tint=0; mesh.userData.surfaces=null;
     }
-    const M=METALS[tex];
-    if(M && M.col!=null) mesh.userData.base=M.col;                        // corroded metals seed their characteristic colour (still re-tintable via the picker)
+    const M=matOf(tex);
+    if(M && M.col!=null) mesh.userData.base=M.col;                        // metal/stone/wood seed their characteristic colour (still re-tintable via the picker)
     mesh.userData.tex=tex;
     solidify(mesh);                                                       // paint surfaces, coloured by the base layer
     const base=mesh.userData.base!=null?mesh.userData.base:0x0c1526;
