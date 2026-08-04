@@ -1209,7 +1209,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
         bsw.push(sw); bcr.appendChild(sw); });
       box.appendChild(bcr);
       const cr=document.createElement('div'); cr.className='srow';   // ◼ Solids (plain, paintable) | ◆ crystal (gem) — side by side
-      cr.appendChild(sbtn('◼ Solids', ()=>{ if(activeShape) makeSolid(activeShape); },'wide'));
+      cr.appendChild(sbtn('◼ Solids', ()=>{ if(activeShape) applySolid(activeShape, activeShape.userData.crystal ? 0 : nextSolidTex(activeShape.userData.tex||0)); },'wide'));   // cycle plain → shiny metal → corroded
       cr.appendChild(sbtn('◆ Crystals', ()=>{ if(activeShape) crystallizeShape(activeShape, activeShape.userData.crystal ? (activeShape.userData.gemIdx>=MAXGEM?1:activeShape.userData.gemIdx+1) : 1); },'wide'));   // cut → cycle gems 1…16
       box.appendChild(cr);
     }
@@ -1361,18 +1361,49 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       (Array.isArray(m.material)?m.material:[m.material]).forEach(mt=>{ if(mt && mt.color && !mt.isLineBasicMaterial){ mt.color.setHex(q); mt.needsUpdate=true; } });
     scheduleSave();
   }
-  function makeSolid(mesh){                                               // ◼ Solids — a plain, opaque, paintable solid (texture 0); reverts a crystal back
+  // ── solid finishes (the `tex` byte for OPAQUE solids). 0 plain · 25 shiny metal · 26–29 corroded metals. Colour = base picker. ──
+  const METALS={   // col=null keeps the base-colour pick (shiny metal = any metal); else seeds a characteristic corrosion colour
+    25:{ n:'shiny metal',   col:null,     metalness:0.9, roughness:0.22, env:1.5, rough:false },
+    26:{ n:'steel rust',    col:0xa0522d, metalness:0.5, roughness:0.95, env:0.3, rough:true },
+    27:{ n:'copper patina', col:0x3aa58a, metalness:0.5, roughness:0.90, env:0.3, rough:true },
+    28:{ n:'brass tarnish', col:0x8a6a2a, metalness:0.6, roughness:0.85, env:0.4, rough:true },
+    29:{ n:'lead oxide',    col:0xb0b0b8, metalness:0.4, roughness:0.92, env:0.3, rough:true },
+  };
+  const SOLID_CYCLE=[0,25,26,27,28,29];
+  function nextSolidTex(t){ const i=SOLID_CYCLE.indexOf(t); return SOLID_CYCLE[(i+1)%SOLID_CYCLE.length]; }   // -1 (unknown) → index 0 = plain
+  let _rustTex=null;
+  function rustTexture(){ if(_rustTex) return _rustTex;                   // procedural corrosion — a SEEDED noise map (deterministic; generated from the tex id, NOT stored on-chain)
+    const S=256, cv=document.createElement('canvas'); cv.width=cv.height=S; const g=cv.getContext('2d'), rnd=mulberry32(0x52535401);
+    g.fillStyle='#8a8a8a'; g.fillRect(0,0,S,S);
+    for(let i=0;i<1400;i++){ const x=rnd()*S, y=rnd()*S, r=2+rnd()*16; g.globalAlpha=0.04+rnd()*0.14;   // blotchy rough(light)/bare(dark) patches
+      g.fillStyle=rnd()>0.5?'#fff':'#000'; g.beginPath(); g.arc(x,y,r,0,7); g.fill(); }
+    g.globalAlpha=1;
+    const t=new THREE.CanvasTexture(cv); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(2,2); _rustTex=t; return t;
+  }
+  function applyFinish(mesh, tex){                                        // set metalness/roughness/maps per finish (colour stays = base, paint stays = emissiveMap)
+    const M=METALS[tex];
+    (Array.isArray(mesh.material)?mesh.material:[mesh.material]).forEach(m=>{ if(!m || m.isLineBasicMaterial) return;
+      if(M){ m.metalness=M.metalness; m.roughness=M.roughness; m.envMap=gemEnv(); m.envMapIntensity=M.env;
+        m.roughnessMap=M.rough?rustTexture():null; m.bumpMap=M.rough?rustTexture():null; m.bumpScale=M.rough?0.5:0; }
+      else { m.metalness=0.1; m.roughness=0.75; m.envMap=null; m.envMapIntensity=1; m.roughnessMap=null; m.bumpMap=null; m.bumpScale=0; }   // plain
+      m.needsUpdate=true; });
+  }
+  function applySolid(mesh, tex){                                         // ◼ Solids — an opaque, paintable solid with a finish (plain/metal); reverts a crystal
     if(!mesh) return;
     if(mesh.userData.crystal){                                            // drop the gem: dispose the glass material, rebuild fresh
       (Array.isArray(mesh.material)?mesh.material:[mesh.material]).forEach(m=>m&&m.dispose&&m.dispose());
       mesh.userData.crystal=false; mesh.userData.gemIdx=undefined; mesh.userData.tint=0; mesh.userData.surfaces=null;
     }
-    mesh.userData.tex=0;
+    const M=METALS[tex];
+    if(M && M.col!=null) mesh.userData.base=M.col;                        // corroded metals seed their characteristic colour (still re-tintable via the picker)
+    mesh.userData.tex=tex;
     solidify(mesh);                                                       // paint surfaces, coloured by the base layer
-    (Array.isArray(mesh.material)?mesh.material:[mesh.material]).forEach(mt=>{ if(mt){ mt.transparent=false; mt.opacity=1; mt.needsUpdate=true; } });
+    const base=mesh.userData.base!=null?mesh.userData.base:0x0c1526;
+    (Array.isArray(mesh.material)?mesh.material:[mesh.material]).forEach(mt=>{ if(mt){ if(mt.color && !mt.isLineBasicMaterial) mt.color.setHex(base); mt.transparent=false; mt.opacity=1; mt.needsUpdate=true; } });
     mesh.userData.painted=true;
+    applyFinish(mesh, tex);
     mesh.children.forEach(ch=>{ if(ch.material && ch.material.isLineBasicMaterial){ ch.material.color.set(0x5fa0e0); ch.material.opacity=0.65; ch.material.needsUpdate=true; } });
-    showHint('◼ solid — paint it, or set a base colour'); scheduleSave();
+    showHint('◼ '+(tex===0?'plain solid':(M?M.n:'solid'))); scheduleSave();
   }
   function sprayCrystal(mesh, dn){                                        // a crystal KEEPS its translucency — paint only SLIGHTLY blends its natural gem colour (unique tint)
     const m=mesh.material; if(!m || !m.isMeshPhysicalMaterial) return;
@@ -1530,7 +1561,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const shapes=[];
     for(const m of bShapes){ const u=m.userData;
       const painted = u.strokes && u.strokes.length;
-      if(!painted && !u.crystal) continue;                                     // save OWNED shapes: painted OR crystallised
+      if(!painted && !u.crystal && !(u.tex>0) && u.base==null) continue;        // save OWNED shapes: painted · crystal · metal/finish · or a set base colour
       const rec={ t:u.type,
         p:[+m.position.x.toFixed(3),+m.position.y.toFixed(3),+m.position.z.toFixed(3)],
         r:[+m.rotation.x.toFixed(4),+m.rotation.y.toFixed(4),+m.rotation.z.toFixed(4)],
@@ -1540,7 +1571,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       if(u.base!=null) rec.base=u.base;                                         // base LAYER colour (if the picker set one)
       if(u.crystal){ rec.cr=1; rec.gem=u.gemIdx|0;                             // a crystal: gem index + its drifted inner colour
         if(m.material && m.material.color) rec.col=m.material.color.getHex(); }
-      else rec.st=u.strokes;                                                   // a painted shape: its strokes
+      else { rec.st=u.strokes; if(u.tex) rec.tex=u.tex; }                       // a painted/finished shape: strokes + solid finish (metal) id
       shapes.push(rec); }
     return { v:2, ground:groundStrokes, shapes };
   }
@@ -1571,6 +1602,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
           for(const d of stroke.dabs) sprayShapeAt(surf, d[0], d[1], d[2]); });
         materializeShape(m);
         m.userData.painted=true; m.userData.paid=!!sd.paid; m.userData.strokes=sd.st||[];
+        if(sd.tex){ m.userData.tex=sd.tex; applyFinish(m, sd.tex); }          // restore the solid finish (metal / corroded)
       }
       scene.add(m); bShapes.push(m);
     });
