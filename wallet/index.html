@@ -251,7 +251,8 @@
   };
 
   // ── payload (the creation to mint) ──
-  let payload = null; // { bytes:number[], name?, description? }
+  let payload = null; // { bytes:number[], name?, description?, est? }
+  let lastBal = null; // most recent balance, so the cost line refreshes when EITHER balance or payload changes
   function setPayload(p){
     payload = p;
     $('payloadStatus').innerHTML = '<b style="color:var(--cyan)">'+(p.name||'Creation')+'</b> — '+p.bytes.length.toLocaleString()+' bytes ready to immortalize.';
@@ -259,6 +260,7 @@
     $('mintForm').classList.remove('hidden');
     if(p.name) $('mName').value = p.name;
     if(p.description) $('mDesc').value = p.description;
+    computeEstimate();   // work out the real cost (compresses the atom to size it exactly)
   }
   // A creation handed off from the game arrives by id (?id=…) via the handoff endpoint; else offer a test one.
   const params = new URLSearchParams(location.search);
@@ -289,11 +291,31 @@
   }
   $('mLicense').onchange = updateLicNote; updateLicNote();
 
-  function updateMintCost(balSats){
+  // Work out the mint cost with the SAME funding math the mint uses (grafmint.estimateEditionFunding) — no drift.
+  // The FILE record is sized from the COMPRESSED atom (the mint gzips before embedding). Nothing is assumed to
+  // be "1 sat": the estimate scales with the user's chosen values (bond, editions, fee-rate).
+  async function computeEstimate(){
     if(!payload) return;
-    const est = Math.max(200, Math.ceil(payload.bytes.length/1000)*20 + 300); // rough sats estimate (real total confirmed before broadcast)
-    $('mintCost').textContent = 'Roughly ~'+est.toLocaleString()+' sats to mint (exact amount is confirmed before anything is spent).'
-      + (typeof balSats==='number' && balSats<est ? '  ⚠ Your balance looks low — fund the wallet first.' : '');
+    const opts = {
+      hasStorefront: !!($('mDesc').value.trim()),
+      tokenSats: 1, mintCount: 1, feePerKb: 100,   // ← the values the mint will use; if the form later exposes bond/editions/fee-rate, read them here (and in the mint call) so both stay in lock-step
+    };
+    try{
+      const stored = await G.compressIfSmaller(payload.bytes, 'application/bmf', 'atom.bmf');
+      payload.est = G.estimateEditionFunding({ ...opts, fileBytes: stored.bytes.length });
+    }catch(_){
+      payload.est = G.estimateEditionFunding({ ...opts, fileBytes: payload.bytes.length }); // raw = safe upper bound
+    }
+    updateMintCost(lastBal);
+  }
+  function updateMintCost(balSats){
+    if(typeof balSats==='number') lastBal = balSats;
+    if(!payload) return;
+    if(!payload.est){ $('mintCost').textContent = 'Working out the mint cost…'; return; }
+    const need = payload.est.requiredSats, spend = payload.est.feeSats + payload.est.dustSats;
+    $('mintCost').textContent = 'Needs about '+need.toLocaleString()+' sats in the wallet — roughly '+spend.toLocaleString()
+      + ' is spent (network fee + the token bond); the rest returns as change. Exact amount is confirmed before anything is spent.'
+      + (typeof lastBal==='number' && lastBal<need ? '  ⚠ Balance is below this — fund the wallet first.' : '');
   }
 
   // ── mint ──

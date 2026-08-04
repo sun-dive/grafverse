@@ -23,6 +23,10 @@ export { mintAtom } from './mintApi.ts'
 // ── read-only chain import (no key): txid → embedded payload bytes (gunzipped) ──
 export { loadAtomBytes } from './sceneRead.ts'
 
+// ── pre-mint cost estimate (matches createEdition's own funding math) + compression for accurate file sizing ──
+export { estimateEditionFunding, fundingMargin, type MintCostEstimate } from './editionBuilder.ts'
+export { compressIfSmaller } from './compress.ts'
+
 // ── mint / editions / gift-voucher free units (low-level) ──
 export {
   createEdition, createEditionV2, replicateEdition, replicateEditionV2,

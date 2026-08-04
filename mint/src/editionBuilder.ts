@@ -518,6 +518,46 @@ export interface CreateEditionResult {
   editions: Array<{ txId: string; outputIndex: number; lockHex: string }>
 }
 
+// ── funding math — ONE source shared by createEdition, createEditionV2, and the wallet's pre-mint estimate ──
+/**
+ * Safety margin (sats) added to funding SELECTION so TX1 leaves a viable change output to fund TX2 and to
+ * absorb the exact-fee recompute at build (which never runs higher than estFee). This replaces an old flat
+ * 1000-sat floor that forced a user to hold ~3× the real cost (a 466-sat mint demanded ~1442 sats of balance
+ * → "not enough funds" despite an ample balance). estFee already budgets TX2, so a small buffer suffices.
+ */
+export const fundingMargin = (estFee: number): number => Math.max(60, Math.ceil(estFee * 0.1))
+
+export interface MintCostEstimate {
+  feeSats: number        // network fee for BOTH txs (~exact; the build recompute is never higher than this)
+  dustSats: number       // 1-sat covenant/token outputs kept on chain (part of the spend, not returned)
+  requiredSats: number   // balance the wallet must hold to mint — DISPLAY THIS so "enough funds" is reliable
+}
+/**
+ * Pre-mint cost estimate, using the SAME formula createEdition funds with (no drift). `fileBytes` = the
+ * ON-CHAIN (already-compressed) payload size — compress the atom first. Nothing is assumed to be "1 sat":
+ * the caller passes the user's chosen values. The covenant TEMPLATE is a near-constant (~950 B) regardless
+ * of the royalty/bond values (they're small int pushes), so byte-size is stable as the user tweaks them.
+ *
+ * Sat cost scales with the user's settings:
+ *  • `tokenSats` (the BOND) is carried by the template output + every edition token → `(1+mintCount)·tokenSats`.
+ *  • `mintCount` adds edition tokens (each bond-valued) and a little TX2 size.
+ *  • `feePerKb` scales the network fee.
+ *  • the FILE + STOREFRONT outputs are fixed 1-sat data carriers (NOT bond-scaled).
+ */
+export function estimateEditionFunding(p: {
+  fileBytes: number; coverBytes?: number; templateBytes?: number; mintCount?: number; tokenSats?: number; feePerKb?: number;
+  hasStorefront?: boolean;
+}): MintCostEstimate {
+  const mintCount = p.mintCount ?? 1, tokenSats = p.tokenSats ?? 1, feePerKb = p.feePerKb ?? 100
+  const tx1Bytes = 500 + (p.templateBytes ?? 950) + p.fileBytes + (p.coverBytes ?? 0)
+  const tx2Bytes = 300 + mintCount * 900
+  const estFee = Math.ceil(((tx1Bytes + tx2Bytes) * feePerKb) / 1000)
+  const bondOutputs = (1 + mintCount) * tokenSats               // template + each edition carry the bond
+  const dataDust = (p.fileBytes > 0 ? 1 : 0) + ((p.hasStorefront ?? true) ? 1 : 0)  // fixed 1-sat carriers
+  const dustSats = bondOutputs + dataDust
+  return { feeSats: estFee, dustSats, requiredSats: bondOutputs + dataDust + estFee + fundingMargin(estFee) }
+}
+
 /**
  * Create an edition collection on-chain: TX1 template (commits name, replicable rules, and the covenant
  * template with a zeroed tx1Ref/owner for later verification) + TX2 that mints the edition covenant
@@ -623,7 +663,7 @@ export async function createEdition(provider: WalletProvider, key: PrivateKey, p
     + (params.cover ? params.cover.bytes.length : 0)
   const tx2Bytes = 300 + mintCount * editionBytes
   const estFee = Math.ceil(((tx1Bytes + tx2Bytes) * feePerKb) / 1000)
-  const target = (1 + mintCount) * tokenSats + estFee + Math.max(1000, Math.ceil(estFee * 0.2))
+  const target = (1 + mintCount) * tokenSats + estFee + fundingMargin(estFee)
   const selected = selectFunding(await getSafeUtxos(provider), target)
   const funding = await toFundingInputs(provider, selected)
 
@@ -770,7 +810,7 @@ export async function createEditionV2(provider: WalletProvider, key: PrivateKey,
   const tx1Bytes = 500 + templateLock.toBinary().length + (file ? file.fileBytes.length : 0) + (params.cover ? params.cover.bytes.length : 0)
   const tx2Bytes = 300 + mintCount * 900
   const estFee = Math.ceil(((tx1Bytes + tx2Bytes) * feePerKb) / 1000)
-  const target = (1 + mintCount) * tokenSats + estFee + Math.max(1000, Math.ceil(estFee * 0.2))
+  const target = (1 + mintCount) * tokenSats + estFee + fundingMargin(estFee)
   const selected = selectFunding(await getSafeUtxos(provider), target)
   const funding = await toFundingInputs(provider, selected)
 
