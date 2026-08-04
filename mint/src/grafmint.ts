@@ -20,6 +20,9 @@ export { WalletProvider } from './walletProvider.ts'
 // ── high-level mint (grafspace-friendly wrapper) ──
 export { mintAtom } from './mintApi.ts'
 
+// ── read-only chain import (no key): txid → embedded payload bytes (gunzipped) ──
+export { loadAtomBytes } from './sceneRead.ts'
+
 // ── mint / editions / gift-voucher free units (low-level) ──
 export {
   createEdition, createEditionV2, replicateEdition, replicateEditionV2,

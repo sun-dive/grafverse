@@ -216,6 +216,7 @@
   <div class="kbtn immortal" id="kMint">⬆ Save to Chain</div>
   <div class="kbtn" id="kExport">📤 Save to File (.bmf)</div>
   <div class="kbtn" id="kImport">📥 Load from File (.bmf)</div>
+  <div class="kbtn" id="kChain">⬇ Load from Chain</div>
   <input type="file" id="kFile" accept=".bmf,application/octet-stream" style="display:none">
   <div class="kfoot" id="kNote"></div>
   <div class="kbtn done" id="kDone">✓ close</div>
@@ -1403,6 +1404,27 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     }catch(err){ _kNote().textContent='Load failed: '+(err.message||err)+' (not a valid .bmf scene?)'; }
     e.target.value='';   // allow re-loading the same file
   });
+  // ── load from chain: fetch a minted scene by txid (read-only, no wallet) → rebuild it ──
+  // Lazy-load the mint core (vendor/grafmint.js, bundles @bsv/sdk) only on demand — reads need no key.
+  let _gmPromise=null;
+  function loadGrafmint(){ if(window.GrafMint) return Promise.resolve(window.GrafMint);
+    return _gmPromise || (_gmPromise=new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='vendor/grafmint.js';
+      s.onload=()=>window.GrafMint?res(window.GrafMint):rej(new Error('mint core failed to init'));
+      s.onerror=()=>rej(new Error('could not load vendor/grafmint.js')); document.head.appendChild(s); })); }
+  async function loadFromChain(txid){
+    txid=(txid||'').trim().toLowerCase().replace(/[^0-9a-f]/g,'');
+    if(txid.length!==64){ _kNote().textContent='Paste a 64-character transaction id.'; return; }
+    if(!window.BMF){ _kNote().textContent='Codec missing (bmf-codec.js didn’t load).'; return; }
+    _kNote().textContent='Fetching from chain…';
+    try{
+      const GM=await loadGrafmint();
+      const provider=new GM.WalletProvider('');                     // read-only — address unused for tx fetch
+      const atom=await GM.loadAtomBytes(provider, txid);            // → { bytes, mimeType, fileName, compressed }
+      const r=importScene(atom.bytes);
+      _kNote().textContent='Loaded '+r.shapes+' shape'+(r.shapes===1?'':'s')+(r.ground?' + ground':'')+' from chain'+(atom.compressed?' (unzipped)':'')+'.';
+    }catch(e){ _kNote().textContent='Load from chain failed: '+(e.message||e); }
+  }
+  document.getElementById('kChain').addEventListener('click', ()=>{ const t=prompt('Paste the scene transaction id (txid) to load from chain:'); if(t) loadFromChain(t); });
 
   // ---------- crystal (translucent gem) material — the second register: found & precious ----------
   // ── gem texture library (docs/BMF-SOLID-SPEC.md) — the `tex` byte. Birthstone gems 1–12 == their MONTH, then extras. ──
