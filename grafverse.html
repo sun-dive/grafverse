@@ -1208,8 +1208,13 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
         sw.addEventListener('click',()=>{ setBaseColor(hs); bsw.forEach(s=>s.style.borderColor=(s._q===q?'#fff':'rgba(255,255,255,.25)')); });
         bsw.push(sw); bcr.appendChild(sw); });
       box.appendChild(bcr);
+      if(activeShape.userData.tex && (STONES[activeShape.userData.tex]||WOODS[activeShape.userData.tex])){   // rotate the grain/pattern 90° (stone & wood only)
+        const tr=document.createElement('div'); tr.className='srow';
+        tr.appendChild(sbtn('⟳ grain 90°', ()=>{ const m=activeShape; m.userData.texRot=((m.userData.texRot||0)+90)%360; applyFinish(m,m.userData.tex); scheduleSave(); },'wide'));
+        box.appendChild(tr);
+      }
       const cr=document.createElement('div'); cr.className='srow';   // ◼ Solids (plain, paintable) | ◆ crystal (gem) — side by side
-      cr.appendChild(sbtn('◼ Solids', ()=>{ solidPickerOpen=!solidPickerOpen; if(activeShape) buildShapeTools(activeShape.userData.type); },'wide'));   // open/close the material picker grid
+      cr.appendChild(sbtn('◼ Solids', ()=>{ if(activeShape){ if(!activeShape.userData.painted && !activeShape.userData.crystal) applySolid(activeShape, activeShape.userData.tex||0); solidPickerOpen=!solidPickerOpen; buildShapeTools(activeShape.userData.type); } },'wide'));   // makes it a real SOLID (no paint needed) + opens the material picker
       cr.appendChild(sbtn('◆ Crystals', ()=>{ if(activeShape) crystallizeShape(activeShape, activeShape.userData.crystal ? (activeShape.userData.gemIdx>=MAXGEM?1:activeShape.userData.gemIdx+1) : 1); },'wide'));   // cut → cycle gems 1…16
       box.appendChild(cr);
       if(solidPickerOpen && activeShape){                                  // ◼ Solids → material picker (categorised swatch grid); click a swatch to apply
@@ -1403,12 +1408,14 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     79:{ n:'cedar',    g:'grain', col:0xc07a4a, ro:0.70 }, 80:{ n:'maple',    g:'grain', col:0xe8d8b0, ro:0.60 },
     81:{ n:'driftwood',g:'grain', col:0x9a968e, ro:0.85 }, 82:{ n:'teak',     g:'grain', col:0xb8894a, ro:0.60 },
     83:{ n:'plywood',  g:'grain', col:0xd0b080, ro:0.70 }, 84:{ n:'ebony',    g:'grain', col:0x2a2622, ro:0.50 },
+    85:{ n:'oak bark', g:'bark',  col:0x6a5038, ro:0.95 }, 86:{ n:'pine bark',g:'bark',  col:0x7a4a30, ro:0.95 },
+    87:{ n:'palm bark',g:'palm',  col:0xa88a5a, ro:0.90 }, 88:{ n:'birch bark',g:'birch',col:0xe8e4da, ro:0.80 },
   };
   function matOf(tex){ return METALS[tex]||STONES[tex]||WOODS[tex]||null; }
   function hashStr(s){ let h=0x811c9dc5>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,0x01000193)>>>0; } return h>>>0; }
-  const REPEAT={brick:3,cobble:3,noise:2,marble:1,speckle:2,bands:2,sand:4,grain:2,bamboo:2}, _patCache={};
+  const REPEAT={brick:3,cobble:3,noise:2,marble:1,speckle:2,bands:2,sand:4,grain:2,bamboo:2,bark:2,birch:2,palm:2}, _patCache={}, _patImg={};
   function _rr(c,x,y,w,h,r){ if(w<2||h<2){ c.fillRect(x,y,w,h); return; } c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); c.fill(); }
-  function patTex(gen){ if(_patCache[gen]) return _patCache[gen];   // seeded grayscale pattern → CanvasTexture (cached). Zero assets, deterministic — pure BMF.
+  function _patCanvas(gen){ if(_patImg[gen]) return _patImg[gen];   // draw the seeded grayscale pattern ONCE (cached canvas). Zero assets, deterministic — pure BMF.
     const S=256, cv=document.createElement('canvas'); cv.width=cv.height=S; const c=cv.getContext('2d'), rnd=mulberry32(hashStr(gen)||1);
     const gray=v=>{ v=v<0?0:v>255?255:v|0; return 'rgb('+v+','+v+','+v+')'; };
     c.fillStyle=gray(160); c.fillRect(0,0,S,S);
@@ -1423,8 +1430,19 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     else if(gen==='sand'){ for(let i=0;i<7000;i++){ c.fillStyle=gray(150+rnd()*55); c.fillRect(rnd()*S,rnd()*S,1,1); } }
     else if(gen==='bands'){ for(let y=0;y<S;y++){ c.fillStyle=gray(155+Math.sin(y*0.06)*28+(rnd()-0.5)*12); c.fillRect(0,y,S,1); } }
     else if(gen==='cobble'){ c.fillStyle=gray(70); c.fillRect(0,0,S,S); for(let i=0;i<70;i++){ c.fillStyle=gray(120+rnd()*75); c.save(); c.translate(rnd()*S,rnd()*S); c.rotate(rnd()*7); c.beginPath(); c.ellipse(0,0,9+rnd()*13,7+rnd()*11,0,0,7); c.fill(); c.restore(); } }
+    else if(gen==='bark'){ for(let x=0;x<S;x++){ const v=138+Math.sin(x*0.09)*10+(rnd()-0.5)*32; c.fillStyle=gray(v); c.fillRect(x,0,1,S); }   // vertical furrows
+      c.strokeStyle=gray(74); c.lineWidth=2; for(let k=0;k<12;k++){ c.beginPath(); let x=rnd()*S,y=0; c.moveTo(x,0); for(;y<S;y+=6){ x+=(rnd()-0.5)*6; c.lineTo(x,y); } c.stroke(); } }   // deep vertical cracks
+    else if(gen==='birch'){ c.fillStyle=gray(226); c.fillRect(0,0,S,S); for(let i=0;i<44;i++){ c.fillStyle=gray(55+rnd()*45); c.fillRect(rnd()*S,rnd()*S,6+rnd()*20,2+rnd()*2); } }   // pale bark + horizontal dark lenticels
+    else if(gen==='palm'){ for(let y=0;y<S;y++){ c.fillStyle=gray(150+Math.sin(y*0.26)*22+(rnd()-0.5)*14); c.fillRect(0,y,S,1); }   // horizontal fibrous rings
+      c.strokeStyle=gray(96); c.lineWidth=2; for(let y=0;y<S;y+=S/6){ for(let x=0;x<S;x+=S/4){ c.beginPath(); c.moveTo(x,y+8); c.lineTo(x+S/8,y-6); c.lineTo(x+S/4,y+8); c.stroke(); } } }   // diamond frond scars
     else { for(let i=0;i<900;i++){ c.globalAlpha=0.05+rnd()*0.12; c.fillStyle=rnd()>0.5?'#fff':'#000'; c.beginPath(); c.arc(rnd()*S,rnd()*S,2+rnd()*14,0,7); c.fill(); } c.globalAlpha=1; }
-    const t=new THREE.CanvasTexture(cv); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.colorSpace=THREE.SRGBColorSpace; const rp=REPEAT[gen]||2; t.repeat.set(rp,rp); _patCache[gen]=t; return t;
+    _patImg[gen]=cv; return cv;
+  }
+  function patTex(gen, rot){ rot=((rot||0)%360+360)%360; const key=gen+'_'+rot; if(_patCache[key]) return _patCache[key];   // one CanvasTexture per (pattern, rotation), sharing the drawn canvas
+    const t=new THREE.CanvasTexture(_patCanvas(gen)); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.colorSpace=THREE.SRGBColorSpace;
+    const rp=REPEAT[gen]||2; t.repeat.set(rp,rp);
+    if(rot){ t.center.set(0.5,0.5); t.rotation=rot*Math.PI/180; }   // rotate the grain/pattern 90°/180°/270°
+    _patCache[key]=t; return t;
   }
   const SOLID_CYCLE=[0,25,26,27,28,29];
   function nextSolidTex(t){ const i=SOLID_CYCLE.indexOf(t); return SOLID_CYCLE[(i+1)%SOLID_CYCLE.length]; }   // -1 (unknown) → index 0 = plain
@@ -1443,7 +1461,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       m.map=null; m.roughnessMap=null; m.bumpMap=null; m.bumpScale=0; m.envMap=null; m.metalness=0.1; m.roughness=0.75; m.envMapIntensity=1;   // reset to plain
       if(M){ m.metalness=M.metalness; m.roughness=M.roughness; m.envMap=reflectionEnv(); m.envMapIntensity=M.env;
         if(M.rough){ m.roughnessMap=rustTexture(); m.bumpMap=rustTexture(); m.bumpScale=0.5; } }
-      else if(SW){ m.map=patTex(SW.g); m.metalness=0; m.roughness=SW.ro; m.roughnessMap=patTex(SW.g); }   // stone/wood: procedural pattern as albedo, tinted by base colour
+      else if(SW){ const pt=patTex(SW.g, mesh.userData.texRot); m.map=pt; m.metalness=0; m.roughness=SW.ro; m.roughnessMap=pt; }   // stone/wood: procedural pattern (rotatable) as albedo, tinted by base colour
       m.needsUpdate=true; });
   }
   function applySolid(mesh, tex){                                         // ◼ Solids — an opaque, paintable solid with a finish (plain/metal); reverts a crystal
@@ -1632,8 +1650,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function serializeWorld(){
     const shapes=[];
     for(const m of bShapes){ const u=m.userData;
-      const painted = u.strokes && u.strokes.length;
-      if(!painted && !u.crystal && !(u.tex>0) && u.base==null) continue;        // save OWNED shapes: painted · crystal · metal/finish · or a set base colour
+      if(!u.painted && !u.crystal) continue;                                     // save COMMITTED shapes (painted · crystal · any material finish — incl. a plain solid); ghosts are transient
       const rec={ t:u.type,
         p:[+m.position.x.toFixed(3),+m.position.y.toFixed(3),+m.position.z.toFixed(3)],
         r:[+m.rotation.x.toFixed(4),+m.rotation.y.toFixed(4),+m.rotation.z.toFixed(4)],
@@ -1643,7 +1660,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       if(u.base!=null) rec.base=u.base;                                         // base LAYER colour (if the picker set one)
       if(u.crystal){ rec.cr=1; rec.gem=u.gemIdx|0;                             // a crystal: gem index + its drifted inner colour
         if(m.material && m.material.color) rec.col=m.material.color.getHex(); }
-      else { rec.st=u.strokes; if(u.tex) rec.tex=u.tex; }                       // a painted/finished shape: strokes + solid finish (metal) id
+      else { rec.st=u.strokes; if(u.tex) rec.tex=u.tex; if(u.texRot) rec.trot=u.texRot; }   // a painted/finished shape: strokes + material id + grain rotation
       shapes.push(rec); }
     return { v:2, ground:groundStrokes, shapes };
   }
@@ -1674,7 +1691,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
           for(const d of stroke.dabs) sprayShapeAt(surf, d[0], d[1], d[2]); });
         materializeShape(m);
         m.userData.painted=true; m.userData.paid=!!sd.paid; m.userData.strokes=sd.st||[];
-        if(sd.tex){ m.userData.tex=sd.tex; applyFinish(m, sd.tex); }          // restore the solid finish (metal / corroded)
+        if(sd.tex){ m.userData.tex=sd.tex; if(sd.trot) m.userData.texRot=sd.trot; applyFinish(m, sd.tex); }   // restore the material finish + grain rotation
       }
       scene.add(m); bShapes.push(m);
     });
