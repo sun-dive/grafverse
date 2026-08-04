@@ -1156,6 +1156,21 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function rotY(d){ if(activeShape) activeShape.rotation.y+=d; }
   function lean(d){ if(activeShape) activeShape.rotation.x+=d; }
   function resetShape(){ if(!activeShape)return; activeShape.userData.target.set(1,1,1); activeShape.rotation.set(0,0,0); }
+  function cloneActive(){                                  // duplicate the active shape — a GHOST or a finished SOLID (geometry, material, paint, base, tex, rotation)
+    const src=activeShape; if(!src) return;
+    let m; const rec=shapeToSave(src);
+    if(rec){ m=addShapeFromData(rec); }                    // committed clone — a full copy via the save/rebuild path
+    else {                                                 // ghost clone — copy type, proportions, facets, rotation
+      m=ghostMesh(src.userData.type);
+      m.rotation.copy(src.rotation); m.userData.target.copy(src.userData.target); m.userData.grow=1; m.scale.copy(m.userData.target);
+      if(src.userData.res){ m.userData.res=src.userData.res; applyRes(m, src.userData.res); }
+      scene.add(m); bShapes.push(m);
+    }
+    m.position.set(src.position.x+0.6, src.position.y, src.position.z+0.6);   // offset so it isn't hidden inside the original
+    activeShape=m; heldGhost=null; setMode();
+    if(shaping) buildShapeTools(m.userData.type);
+    scheduleSave(); showHint('⧉ cloned — grab to move');
+  }
   function applyRes(m,res){                               // rebuild a shape's geometry (+edges) at a facet resolution; recorded on userData.res so it persists
     m.userData.res=res;
     const geo=bgeomFor(m.userData.type, {res:res}), old=m.geometry;
@@ -1203,7 +1218,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const r=document.createElement('div'); r.className='srow';
       r.appendChild(sbtn('↺',()=>rotY(-Math.PI/12))); r.appendChild(sbtn('↻',()=>rotY(Math.PI/12)));
       r.appendChild(sbtn('◣',()=>lean(Math.PI/12)));  r.appendChild(sbtn('◢',()=>lean(-Math.PI/12))); box.appendChild(r);
-      const d=document.createElement('div'); d.className='srow'; d.appendChild(sbtn('⎌ reset',resetShape,'wide')); box.appendChild(d);
+      const d=document.createElement('div'); d.className='srow'; d.appendChild(sbtn('⎌ reset',resetShape,'wide')); d.appendChild(sbtn('⧉ clone',cloneActive,'wide')); box.appendChild(d);
       const bcr=document.createElement('div'); bcr.className='srow'; bcr.style.flexWrap='wrap'; bcr.style.gap='4px';   // base LAYER colour — in-panel swatch grid
       const bcl=document.createElement('span'); bcl.textContent='base'; bcl.style.width='100%'; bcr.appendChild(bcl);
       const curBase=activeShape.userData.base!=null?activeShape.userData.base:0x0c1526, bsw=[];
@@ -1655,21 +1670,22 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   function worldToRecords(world){ return { ground:world.ground||[], shapes:(world.shapes||[]).map(shapeToRecord) }; }
 
+  function shapeToSave(m){ const u=m.userData;                                 // one COMMITTED shape → its save record (shared by serialize + clone); null for a ghost
+    if(!u.painted && !u.crystal) return null;
+    const rec={ t:u.type,
+      p:[+m.position.x.toFixed(3),+m.position.y.toFixed(3),+m.position.z.toFixed(3)],
+      r:[+m.rotation.x.toFixed(4),+m.rotation.y.toFixed(4),+m.rotation.z.toFixed(4)],
+      s:[+u.target.x.toFixed(3),+u.target.y.toFixed(3),+u.target.z.toFixed(3)],
+      paid:!!u.paid };
+    if(u.res) rec.res=u.res;                                                   // custom facet count (column/spire/ball)
+    if(u.base!=null) rec.base=u.base;                                          // base LAYER colour (if the picker set one)
+    if(u.crystal){ rec.cr=1; rec.gem=u.gemIdx|0;                              // a crystal: gem index + its drifted inner colour
+      if(m.material && m.material.color) rec.col=m.material.color.getHex(); }
+    else { rec.st=u.strokes; if(u.tex) rec.tex=u.tex; if(u.texRot) rec.trot=u.texRot; }   // painted/finished: strokes + material id + grain rotation
+    return rec;
+  }
   function serializeWorld(){
-    const shapes=[];
-    for(const m of bShapes){ const u=m.userData;
-      if(!u.painted && !u.crystal) continue;                                     // save COMMITTED shapes (painted · crystal · any material finish — incl. a plain solid); ghosts are transient
-      const rec={ t:u.type,
-        p:[+m.position.x.toFixed(3),+m.position.y.toFixed(3),+m.position.z.toFixed(3)],
-        r:[+m.rotation.x.toFixed(4),+m.rotation.y.toFixed(4),+m.rotation.z.toFixed(4)],
-        s:[+u.target.x.toFixed(3),+u.target.y.toFixed(3),+u.target.z.toFixed(3)],
-        paid:!!u.paid };
-      if(u.res) rec.res=u.res;                                                 // custom facet count (column/spire/ball)
-      if(u.base!=null) rec.base=u.base;                                         // base LAYER colour (if the picker set one)
-      if(u.crystal){ rec.cr=1; rec.gem=u.gemIdx|0;                             // a crystal: gem index + its drifted inner colour
-        if(m.material && m.material.color) rec.col=m.material.color.getHex(); }
-      else { rec.st=u.strokes; if(u.tex) rec.tex=u.tex; if(u.texRot) rec.trot=u.texRot; }   // a painted/finished shape: strokes + material id + grain rotation
-      shapes.push(rec); }
+    const shapes=[]; for(const m of bShapes){ const rec=shapeToSave(m); if(rec) shapes.push(rec); }
     return { v:2, ground:groundStrokes, shapes };
   }
   function saveWorld(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(serializeWorld())); }catch(e){} recordHistory(); }
