@@ -214,6 +214,8 @@
   <div class="kbtn" id="kSave">💾 Save now</div>
   <div class="kbtn" id="kReload">↻ Reload world</div>
   <div class="kbtn immortal" id="kMint">✦ Make immortal</div>
+  <div class="kbtn" id="kImport">📥 Import scene (.bms)</div>
+  <input type="file" id="kFile" accept=".bms,application/octet-stream" style="display:none">
   <div class="kfoot" id="kNote"></div>
   <div class="kbtn done" id="kDone">✓ close</div>
 </div>
@@ -1372,6 +1374,18 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       location.href = WALLET_URL + '?id=' + encodeURIComponent(data.id) + '&return=' + encodeURIComponent(ret);
     }catch(e){ _kNote().textContent='Handoff failed: '+(e.message||e)+'. (Is handoff.php deployed?)'; }
   });
+  // ── import: read a packed .bms scene file → rebuild it in the editor (replaces the current world) ──
+  document.getElementById('kImport').addEventListener('click', ()=>{ document.getElementById('kFile').click(); });
+  document.getElementById('kFile').addEventListener('change', async (e)=>{
+    const f=e.target.files&&e.target.files[0]; if(!f) return;
+    if(!window.BMF){ _kNote().textContent='Codec missing (bmf-codec.js didn’t load).'; return; }
+    try{
+      const bytes=Array.from(new Uint8Array(await f.arrayBuffer()));
+      const r=importScene(bytes);
+      _kNote().textContent='Imported '+r.shapes+' shape'+(r.shapes===1?'':'s')+(r.ground?' + ground':'')+' from '+f.name+'.';
+    }catch(err){ _kNote().textContent='Import failed: '+(err.message||err)+' (not a valid .bms scene?)'; }
+    e.target.value='';   // allow re-importing the same file
+  });
 
   // ---------- crystal (translucent gem) material — the second register: found & precious ----------
   // ── gem texture library (docs/BMF-SOLID-SPEC.md) — the `tex` byte. Birthstone gems 1–12 == their MONTH, then extras. ──
@@ -1720,6 +1734,39 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     return { id:PRESET_ID[sd.t]||122, res:sd.res||pr.res||0, ratios, pos:sd.p, rot, scale:sizeM, color, tex, matFlags, paint };
   }
   function worldToRecords(world){ return { ground:world.ground||[], shapes:(world.shapes||[]).map(shapeToRecord) }; }   // palms now mint (fractal id + seed)
+
+  // ── the READ path: a packed BMF scene → back into the live editor (inverse of shapeToRecord) ──
+  const ID_TYPE = { 119:'cylinder', 120:'cone', 121:'sphere', 122:'box', 123:'plane' };   // canonical inverse of PRESET_ID (wall→box, pyramid→cone: same geometry class; abs size recovered from scale+ratios)
+  const FRACTAL_TYPE = { 160:'palm' };                                                     // grows with the fractal roster
+  function rgb332ToHex(i){ const R=(i>>5)&7, G=(i>>2)&7, B=i&3; return (Math.round(R*255/7)<<16)|(Math.round(G*255/7)<<8)|Math.round(B*255/3); }   // 8-bit RGB332 index → 0xRRGGBB
+  function recordToShape(rec){                                                             // one decoded record → editor save-record (sd), fed to addShapeFromData
+    const grain=rec.matFlags&3, tile=(rec.matFlags&4)?1:0, crystal=!!(rec.paint&&rec.paint.kind===0);
+    const sd={ p:rec.pos.slice(), r:rec.rot.slice(), paid:false };
+    if(rec.res) sd.res=rec.res;
+    if(FRACTAL_TYPE[rec.id]!=null){ sd.t=FRACTAL_TYPE[rec.id]; sd.seed=(rec.seed>>>0)||1; const t=rec.scale/PALM_H; sd.s=[t,t,t]; }   // fractal: uniform scale from the seed
+    else {
+      const type=ID_TYPE[rec.id]||'box', pr=PRESETS[type], base=pr.base, d=pr.dims, R=rec.ratios||[], S=rec.scale;   // invert the size→ratios packing per base solid
+      let s=[1,1,1];
+      if(base==='box'){ const H=S, W=(R[0]||1)*H, D=(R[1]||1)*H; s=[W/d.w, H/d.h, D/d.d]; }
+      else if(base==='prism'||base==='pyramid'){ const H=S, Dia=(R[0]||1)*H, tr=Dia/(2*d.r); s=[tr, H/d.h, tr]; }
+      else if(base==='ball'){ const tr=S/(2*d.r); s=[tr,tr,tr]; }
+      else if(base==='plane'){ const Dp=S, W=(R[0]||1)*Dp; s=[W/d.w, 1, Dp/d.d]; }
+      sd.t=type; sd.s=s;                                                                   // a folded align stays in rot (canonical types have align 0 → geometry matches)
+    }
+    if(crystal){ sd.cr=1; sd.gem=rec.tex||0; sd.col=rgb332ToHex(rec.color); }
+    else { sd.st=(rec.paint&&rec.paint.strokes)||[]; sd.base=rgb332ToHex(rec.color); if(rec.tex){ sd.tex=rec.tex; if(grain) sd.trot=grain*90; if(tile) sd.tile=1; } }
+    return sd;
+  }
+  function importScene(bytes){                                                             // replace the live world with a decoded packed scene
+    const dec = BMF.scene.unpack(bytes);
+    clearShapes();
+    pctx.clearRect(0,0,TEX,TEX); paintTex.needsUpdate=true; groundStrokes.length=0;        // wipe the ground canvas + strokes
+    let n=0; (dec.shapes||[]).forEach(rec=>{ try{ addShapeFromData(recordToShape(rec)); n++; }catch(e){} });
+    (dec.ground||[]).forEach(stroke=>{ colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0;
+      for(const d of stroke.dabs) spray({x:d[0], y:d[1]}); groundStrokes.push(stroke); });
+    saveWorld();                                                                           // persist + snapshot for undo
+    return { shapes:n, ground:(dec.ground||[]).length };
+  }
 
   function shapeToSave(m){ const u=m.userData;                                 // one COMMITTED shape → its save record (shared by serialize + clone); null for a ghost
     if(!u.painted && !u.crystal) return null;
