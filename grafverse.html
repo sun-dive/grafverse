@@ -1200,7 +1200,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       r.appendChild(sbtn('◣',()=>lean(Math.PI/12)));  r.appendChild(sbtn('◢',()=>lean(-Math.PI/12))); box.appendChild(r);
       const d=document.createElement('div'); d.className='srow'; d.appendChild(sbtn('⎌ reset',resetShape,'wide')); box.appendChild(d);
       const cr=document.createElement('div'); cr.className='srow';   // ◆ crystal — translucent gem; click again to cycle the gem colour
-      cr.appendChild(sbtn('◆ crystal', ()=>{ if(activeShape) crystallizeShape(activeShape, activeShape.userData.crystal ? (activeShape.userData.gemIdx+1) : 0); },'wide'));
+      cr.appendChild(sbtn('◆ crystal', ()=>{ if(activeShape) crystallizeShape(activeShape, activeShape.userData.crystal ? (activeShape.userData.gemIdx>=MAXGEM?1:activeShape.userData.gemIdx+1) : 1); },'wide'));   // cut → cycle gems 1…16
       box.appendChild(cr);
     }
     const close=document.createElement('div'); close.className='srow';
@@ -1284,7 +1284,27 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   });
 
   // ---------- crystal (translucent gem) material — the second register: found & precious ----------
-  const GEMS=[0xffffff,0xe0384f,0x3f7fe0,0x22b877,0xa86fdf,0xf0c74a];   // clear · ruby · sapphire · emerald · amethyst · citrine
+  // ── gem texture library (docs/BMF-SOLID-SPEC.md) — the `tex` byte. Birthstone gems 1–12 == their MONTH, then extras. ──
+  // Each = natural colour + optics (ior · transmission · roughness). tex 0 = plain (no gem). Append-only forever.
+  const GEMS=[ null,                                                          // 0 = plain / no gem
+    { n:'Garnet',      mo:'Jan', col:0x8b1a2b, ior:1.79, tr:1.0,  ro:0.05 },  // 1
+    { n:'Amethyst',    mo:'Feb', col:0x9b6bd8, ior:1.54, tr:1.0,  ro:0.05 },  // 2
+    { n:'Aquamarine',  mo:'Mar', col:0x8fe6df, ior:1.58, tr:1.0,  ro:0.05 },  // 3
+    { n:'Diamond',     mo:'Apr', col:0xffffff, ior:2.33, tr:1.0,  ro:0.02 },  // 4  (the clear, max-sparkle one)
+    { n:'Emerald',     mo:'May', col:0x18a558, ior:1.58, tr:1.0,  ro:0.06 },  // 5
+    { n:'Pearl',       mo:'Jun', col:0xf5efe0, ior:1.53, tr:0.15, ro:0.25 },  // 6  (opaque, nacreous)
+    { n:'Ruby',        mo:'Jul', col:0xd0113a, ior:1.77, tr:1.0,  ro:0.05 },  // 7
+    { n:'Peridot',     mo:'Aug', col:0x9ac33a, ior:1.65, tr:1.0,  ro:0.06 },  // 8
+    { n:'Sapphire',    mo:'Sep', col:0x2f5fd0, ior:1.77, tr:1.0,  ro:0.05 },  // 9
+    { n:'Opal',        mo:'Oct', col:0xe6ddf0, ior:1.45, tr:0.35, ro:0.20 },  // 10 (opaque, iridescent)
+    { n:'Topaz',       mo:'Nov', col:0xffc06a, ior:1.62, tr:1.0,  ro:0.05 },  // 11
+    { n:'Turquoise',   mo:'Dec', col:0x3fd0c0, ior:1.61, tr:0.12, ro:0.30 },  // 12 (opaque)
+    { n:'Alexandrite', mo:'',    col:0x6f8f8f, ior:1.74, tr:1.0,  ro:0.06 },  // 13
+    { n:'Tanzanite',   mo:'',    col:0x6a5acd, ior:1.70, tr:1.0,  ro:0.05 },  // 14
+    { n:'Jade',        mo:'',    col:0x14a06b, ior:1.66, tr:0.18, ro:0.30 },  // 15 (opaque)
+    { n:'Moonstone',   mo:'',    col:0xcfe0f0, ior:1.52, tr:0.40, ro:0.25 },  // 16 (opaque, sheen)
+  ];
+  const MAXGEM=16, TINT_MAX=0.28;   // TINT_MAX = how far a paint blend can shift a gem from its natural colour ("slight · unique")
   let _gemEnv=null;
   function gemEnv(){ if(_gemEnv) return _gemEnv;                          // a little sky (dark + the sun) for the glass to refract/reflect
     try{ const S=256, cv=document.createElement('canvas'); cv.width=cv.height=S; const g=cv.getContext('2d');
@@ -1297,17 +1317,18 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       _gemEnv=pm.fromEquirectangular(et).texture; et.dispose();
     }catch(e){ console.warn('gemEnv failed', e); }
     return _gemEnv; }
-  function crystallizeShape(mesh, gi){                                    // ghost/painted → translucent crystal (cycle GEMS on repeat)
-    const color=GEMS[((gi%GEMS.length)+GEMS.length)%GEMS.length];
+  function crystallizeShape(mesh, tex){                                   // ghost/painted → a gem crystal (cycle the gem library on repeat)
+    const g=GEMS[tex]||GEMS[1], color=g.col, opaque=g.tr<0.5;
     (Array.isArray(mesh.material)?mesh.material:[mesh.material]).forEach(m=>m&&m.dispose&&m.dispose());
     mesh.material=new THREE.MeshPhysicalMaterial({ color:new THREE.Color(color),
-      metalness:0, roughness:0.05, ior:1.8, transmission:1.0, thickness:1.3,
-      attenuationColor:new THREE.Color(color), attenuationDistance:1.4,
-      clearcoat:0.6, clearcoatRoughness:0.12, envMap:gemEnv(), envMapIntensity:1.4,
+      metalness:0, roughness:g.ro, ior:g.ior, transmission:g.tr, thickness:1.3,
+      attenuationColor:new THREE.Color(color), attenuationDistance:opaque?0.5:1.4,
+      clearcoat:opaque?0.85:0.6, clearcoatRoughness:0.12, envMap:gemEnv(), envMapIntensity:1.4,
       transparent:true, opacity:1.0, side:THREE.DoubleSide });
-    q332(mesh.material.color); if(mesh.material.attenuationColor) q332(mesh.material.attenuationColor);   // base gem shown at 8-bit too → WYSIWYG with the 1-byte record
-    mesh.userData.crystal=true; mesh.userData.gemIdx=gi; mesh.userData.painted=true; mesh.userData.paid=false; mesh.userData.paintAmt=0; mesh.userData.crystalTrue=null;
+    q332(mesh.material.color); if(mesh.material.attenuationColor) q332(mesh.material.attenuationColor);   // gem shown at 8-bit → WYSIWYG with the 1-byte record
+    mesh.userData.crystal=true; mesh.userData.gemIdx=tex; mesh.userData.tex=tex; mesh.userData.painted=true; mesh.userData.paid=false; mesh.userData.paintAmt=0; mesh.userData.tint=0;
     mesh.children.forEach(ch=>{ if(ch.material && ch.material.isLineBasicMaterial){ ch.material.color.set(color); ch.material.opacity=0.5; ch.material.needsUpdate=true; } });
+    showHint('◆ '+g.n+(g.mo?' — '+g.mo+' birthstone':''));                 // name it as you cut it
     scheduleSave();                                                        // a crystal is owned the moment it's cut — persist it
   }
   function q332(c){                                                       // snap a colour to 8-bit RGB332 (256 colours) = the 1-byte crystal colour on the wire
@@ -1316,13 +1337,14 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     c.setHex((R<<16)|(G<<8)|B);
   }
   function rgb332Index(hex){ const R=(hex>>16)&255, G=(hex>>8)&255, B=hex&255; return ((R>>5)<<5)|((G>>5)<<2)|(B>>6); }   // 0xRRGGBB → the 1-byte RGB332 index
-  function sprayCrystal(mesh, dn){                                        // a crystal KEEPS its magical translucency — spray only SUBTLY tints its inner colour
+  function sprayCrystal(mesh, dn){                                        // a crystal KEEPS its translucency — paint only SLIGHTLY blends its natural gem colour (unique tint)
     const m=mesh.material; if(!m || !m.isMeshPhysicalMaterial) return;
-    const paint=new THREE.Color(COLORS[colorIdx]), amt=0.012+dn*0.018;    // gentle; transmission, polish & refraction untouched → it stays glass
-    const tc = mesh.userData.crystalTrue || (mesh.userData.crystalTrue=m.color.clone());   // TRUE continuous drift — so tiny nudges still accumulate under the quantiser
-    tc.lerp(paint, amt);
-    m.color.copy(tc); q332(m.color);                                      // DISPLAY the 1-byte (RGB332) colour → you SEE the 8-bit snap in-game
-    if(m.attenuationColor){ m.attenuationColor.copy(tc); q332(m.attenuationColor); }   // the colour that lives *inside* the glass, at 8-bit
+    const g=GEMS[mesh.userData.tex]||GEMS[1];
+    const nat=new THREE.Color(g.col), paint=new THREE.Color(COLORS[colorIdx]);
+    const amt=0.012+dn*0.018, t=mesh.userData.tint=Math.min(TINT_MAX,(mesh.userData.tint||0)+amt);   // CAPPED blend → gem stays recognisable
+    const c=nat.lerp(paint,t);                                            // natural gem colour + a little of your paint
+    m.color.copy(c); q332(m.color);                                       // DISPLAY the 1-byte (RGB332) colour → you SEE the 8-bit snap
+    if(m.attenuationColor){ m.attenuationColor.copy(c); q332(m.attenuationColor); }   // the colour that lives *inside* the glass, at 8-bit
     m.needsUpdate=true;
   }
 
@@ -1451,7 +1473,6 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // ── engine shape → the frozen BMF-SOLID record (docs/BMF-SOLID-SPEC.md) — mint-time conversion ──
   // The 3-axis editor scale collapses to a UNIFORM size + proportion RATIOS; the object is ONE owned paint unit.
   const PRESET_ID = { box:122, wall:122, plane:123, cylinder:119, cone:120, pyramid:120, sphere:121 };
-  const TEX_CRYSTAL = 1;   // surface-texture library id: 0 = plain · 1 = crystal/glass · (2+ future: metal, wood…)
   function shapeToRecord(sd){
     const pr=PRESETS[sd.t]||PRESETS.box, base=pr.base, d=pr.dims, t=sd.s;            // t = 3-axis target multipliers
     let ratios=[], sizeM=1;
@@ -1460,9 +1481,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     else if(base==='ball'){ sizeM=2*(d.r||0.9)*t[0]; ratios=[]; }                     // uniform = diameter
     else if(base==='plane'){ const W=(d.w||2)*t[0], Dp=(d.d||2)*t[2]; sizeM=Dp; ratios=[W/Dp]; }
     const rot=[sd.r[0], sd.r[1]+(pr.align||0), sd.r[2]];                              // fold the preset's canonical facing into rotation
-    const color = sd.cr ? rgb332Index(sd.col!=null?sd.col:GEMS[(sd.gem||0)%GEMS.length])   // crystal → its 8-bit (RGB332) tint
+    const color = sd.cr ? rgb332Index(sd.col!=null?sd.col:(GEMS[sd.gem]||GEMS[1]).col)   // crystal → its 8-bit (RGB332) tint
                         : rgb332Index(sd.base!=null?sd.base:0x0c1526);                       // painted → base material colour, 8-bit
-    const tex   = sd.cr ? TEX_CRYSTAL : (sd.tex||0);                                  // material/texture — crystal glass, else plain (0)
+    const tex   = sd.cr ? (sd.gem||1) : (sd.tex||0);                                  // material/texture — the gem id (1…16), else plain (0)
     const paint = sd.cr ? { kind:0 } : { kind:1, strokes:sd.st||[] };                 // owned paint layer (a crystal carries no strokes)
     return { id:PRESET_ID[sd.t]||122, res:sd.res||pr.res||0, ratios, pos:sd.p, rot, scale:sizeM, color, tex, paint };
   }
