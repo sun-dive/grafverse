@@ -213,7 +213,7 @@
 <div id="keepTab">◆ keep</div>
 <div id="keepPanel">
   <div class="kh">Your world</div>
-  <div class="kbtn" id="kSave">☁ Save to Server</div>
+  <div class="kbtn" id="kSave">☁ Save &amp; Share</div>
   <div class="kbtn" id="kReload">↻ Reload world</div>
   <div class="kbtn" id="kExport">📤 Save to File (.bmf)</div>
   <div class="kbtn" id="kImport">📥 Load from File (.bmf)</div>
@@ -1552,7 +1552,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   async function saveToServer(){   // ☁ Save = persist your world to the server (updatable at the same link, which is also shareable). The .bmf export is the LOCAL save.
     const p=packWorldBytes(); if(p.err){ _kNote().textContent=p.err; return; }
     const body=bytesToB64(p.bytes), cur=myShareId(), shares=sharesGet(), editing=cur&&shares[cur];
-    _kNote().textContent = editing ? 'Saving to server (updating)…' : 'Saving to server…';
+    _kNote().textContent = editing ? 'Saving & updating your link…' : 'Saving & making your share link…';
     try{
       const u = editing ? (WORLD_URL+'?id='+encodeURIComponent(cur)+'&edit='+encodeURIComponent(shares[cur])) : WORLD_URL;
       const res=await fetch(u, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body });
@@ -1560,7 +1560,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       if(!res.ok || !data.id) throw new Error(data.error||('HTTP '+res.status));
       if(data.edit){ shares[data.id]=data.edit; sharesSet(shares); setMyShare(data.id); }   // first save → remember the edit token so later saves UPDATE this same world/link
       const link=location.origin+location.pathname.replace(/[^/]*$/,'')+'w.php?id='+data.id;   // share the OG/SEO landing page (crawlable, social card) → it opens the game
-      _kNote().innerHTML=(data.updated?'☁ Updated on server — same link:':'☁ Saved to server — your link:')+'<br><a href="'+link+'" target="_blank" rel="noopener" style="color:var(--cyan);word-break:break-all">'+link+'</a> <span style="opacity:.6">(copied — share it to let anyone open your world)</span>';
+      _kNote().innerHTML=(data.updated?'☁ Saved &amp; updated — same link:':'☁ Saved &amp; shareable — your link:')+'<br><a href="'+link+'" target="_blank" rel="noopener" style="color:var(--cyan);word-break:break-all">'+link+'</a> <span style="opacity:.6">(copied — share it to let anyone open your world)</span>';
       try{ await navigator.clipboard.writeText(link); }catch(_){}
     }catch(e){ _kNote().textContent='Save to server failed: '+(e.message||e); }
   }
