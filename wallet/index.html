@@ -91,7 +91,7 @@
       <span><span class="bal" id="bal">—</span> <button class="sm ghost" id="refreshBal">↻</button></span></div>
     <div class="btnrow" style="margin-top:8px">
       <button class="gold" id="fundBtn">＋ Buy BSV to fund</button>
-      <button class="sm ghost" id="scanBtn">🎨 My atoms</button>
+      <button class="sm ghost" id="scanBtn">🎨 My NFTs ▾</button>
     </div>
     <div id="holdings" class="hidden" style="margin-top:10px"></div>
 
@@ -482,21 +482,37 @@
     }catch(e){ const m=e&&e.message||String(e); status(/cancel/i.test(m)?'World mint cancelled.':'World mint failed: '+m,'error'); }
   }
 
-  // ── holdings (gap 2): scan the chain for atoms this wallet HOLDS (the "message tx" that tells you what you own) — ported PharLap scanIncomingEditions ──
-  async function scanHoldings(){
-    if(!wallet || !wallet.pubKeyHex){ status('Load your key first.','error'); return; }
-    const box=$('holdings'); box.classList.remove('hidden'); box.innerHTML='<div class="hint">Scanning the chain for atoms you hold…</div>';
-    try{
-      const held=await G.scanIncomingEditions(provider, wallet.pubKeyHex);
-      if(!held.length){ box.innerHTML='<div class="hint">No owned atoms found yet — reproduce or mint one, then scan again.</div>'; return; }
-      let h='<div class="row"><span class="k">Atoms you hold</span><span class="mono">'+held.length+'</span></div><div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;max-height:220px;overflow-y:auto">';
-      held.forEach(e=>{ h+='<div class="row"><span class="k" style="font-size:11px">'+(e.height?('#'+e.height):'pending')+'</span><a class="mono" style="font-size:11px" href="https://whatsonchain.com/tx/'+e.txId+'" target="_blank" rel="noopener">'+e.txId.slice(0,16)+'…</a></div>'; });
-      h+='</div>'; box.innerHTML=h;
-    }catch(e){ box.innerHTML='<div class="hint">Scan failed: '+(e.message||e)+'</div>'; }
+  // ── "My NFTs" expanding dropdown — the atoms this wallet holds (mature scan: ported PharLap scanIncomingEditions; grouped by collection like PharLap) ──
+  let _nftsOpen=false, _nftsCache=null;
+  async function toggleNfts(){
+    const box=$('holdings'); _nftsOpen=!_nftsOpen;
+    $('scanBtn').textContent='🎨 My NFTs '+(_nftsOpen?'▴':'▾');
+    if(!_nftsOpen){ box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    if(_nftsCache){ renderNfts(_nftsCache); return; }
+    if(!wallet || !wallet.pubKeyHex){ box.innerHTML='<div class="hint">Load your key first.</div>'; return; }
+    box.innerHTML='<div class="hint">Scanning the chain for your NFTs…</div>';
+    try{ _nftsCache=await G.scanIncomingEditions(provider, wallet.pubKeyHex); renderNfts(_nftsCache); }
+    catch(e){ box.innerHTML='<div class="hint">Scan failed: '+(e.message||e)+'</div>'; }
+  }
+  function renderNfts(held){
+    const box=$('holdings');
+    if(!held.length){ box.innerHTML='<div class="hint">No NFTs yet — reproduce or mint one, then reopen.</div>'; return; }
+    const groups=new Map();                                       // group copies of the same collection (interchangeable) — PharLap's grouping
+    held.forEach(e=>{ const k=e.tx1RefHex||e.txId; const g=groups.get(k)||[]; g.push(e); groups.set(k,g); });
+    box.innerHTML='<div class="row"><span class="k">My NFTs</span><span class="mono">'+held.length+' copy'+(held.length===1?'':'ies')+' · '+groups.size+' collection'+(groups.size===1?'':'s')+'</span></div>'
+      +'<div id="nftList" style="display:flex;flex-direction:column;gap:5px;margin-top:6px;max-height:240px;overflow-y:auto"></div>';
+    const list=$('nftList');
+    for(const [col,copies] of groups){
+      const row=document.createElement('div'); row.className='row';
+      row.innerHTML='<a class="mono" style="font-size:11px" href="https://whatsonchain.com/tx/'+col+'" target="_blank" rel="noopener">'+col.slice(0,16)+'…</a><span class="mono">'+(copies.length>1?('×'+copies.length):'held')+'</span>';
+      list.appendChild(row);
+      G.readCollection(provider, col).then(info=>{ if(info&&info.tokenName){ const a=row.querySelector('a'); a.textContent=info.tokenName+(info.open?'':' 🔒'); } }).catch(()=>{});   // lazy name
+    }
   }
 
   loadWallet();
-  $('scanBtn').onclick=scanHoldings;
+  $('scanBtn').onclick=toggleNfts;
   { const bt=params.get('buy'); if(bt && /^[0-9a-fA-F]{64}$/.test(bt)) handleBuy(bt.toLowerCase()); }
   { const bd=params.get('bundle'); if(bd) loadBundle(bd); }
 })();
