@@ -402,10 +402,10 @@
   async function idbGet(k){ try{ const db=await idbOpen(); return await new Promise(res=>{ const q=db.transaction(IDB_STORE).objectStore(IDB_STORE).get(k); q.onsuccess=()=>res(q.result); q.onerror=()=>res(null); }); }catch(e){ return null; } }
   async function idbPut(k,v){ try{ const db=await idbOpen(); await new Promise(res=>{ const t=db.transaction(IDB_STORE,'readwrite'); t.objectStore(IDB_STORE).put(v,k); t.oncomplete=()=>res(); t.onerror=()=>res(); }); }catch(e){} }
   const holdKey=()=> 'h:'+(wallet&&wallet.pubKeyHex||'');
-  async function refreshHoldings(){                                  // scan chain → cache owned collection ids in IndexedDB (also feeds "My NFTs")
+  async function refreshHoldings(){                                  // scan chain → cache owned collections + a SLIM holdings list in IndexedDB
     const held=await G.scanIncomingEditions(provider, wallet.pubKeyHex);
-    const cols={}; held.forEach(e=>{ cols[e.tx1RefHex||e.txId]=1; });
-    await idbPut(holdKey(), { cols: cols }); _nftsCache=held; return held;
+    const cols={}, slim=[]; held.forEach(e=>{ const c=e.tx1RefHex||e.txId; cols[c]=1; slim.push({ col:c, txId:e.txId, height:e.height||0 }); });
+    await idbPut(holdKey(), { cols: cols, held: slim }); return slim;
   }
   async function ownsAtom(col){                                      // IndexedDB first → chain fallback → cache the result
     const c=await idbGet(holdKey());
@@ -414,8 +414,10 @@
     const c2=await idbGet(holdKey());
     return !!(c2 && c2.cols && c2.cols[col]);
   }
-  async function addHolding(col){                                    // after a buy, record ownership immediately (no re-scan needed)
-    const c=(await idbGet(holdKey()))||{cols:{}}; (c.cols=c.cols||{})[col]=1; await idbPut(holdKey(), c);
+  async function addHolding(col){                                    // after a buy, record ownership immediately (no re-scan needed) — shows in My NFTs too
+    const c=(await idbGet(holdKey()))||{cols:{},held:[]}; c.cols=c.cols||{}; c.held=c.held||[];
+    if(!c.cols[col]){ c.cols[col]=1; c.held.push({ col:col, txId:col, height:0 }); }
+    await idbPut(holdKey(), c);
   }
 
   // ── buy / import: replicate a RIGHTS-RESERVED collection (covenant pays the creator), then return to the game ──
@@ -507,33 +509,34 @@
     }catch(e){ const m=e&&e.message||String(e); status(/cancel/i.test(m)?'World mint cancelled.':'World mint failed: '+m,'error'); }
   }
 
-  // ── "My NFTs" expanding dropdown — the atoms this wallet holds (mature scan: ported PharLap scanIncomingEditions; grouped by collection like PharLap) ──
-  let _nftsOpen=false, _nftsCache=null;
+  // ── "My NFTs" dropdown — cache-first (show IndexedDB holdings instantly), then refresh from chain in the BACKGROUND (the scan is slow on a busy wallet) ──
+  let _nftsOpen=false;
   async function toggleNfts(){
     const box=$('holdings'); _nftsOpen=!_nftsOpen;
     $('scanBtn').textContent='🎨 My NFTs '+(_nftsOpen?'▴':'▾');
     if(!_nftsOpen){ box.classList.add('hidden'); return; }
     box.classList.remove('hidden');
-    if(_nftsCache){ renderNfts(_nftsCache); return; }
-    if(!wallet || !wallet.pubKeyHex){ box.innerHTML='<div class="hint">Load your key first.</div>'; return; }
-    box.innerHTML='<div class="hint">Scanning the chain for your NFTs…</div>';
-    try{ await refreshHoldings(); renderNfts(_nftsCache); }            // scan + cache to IndexedDB (shared with the buy check)
-    catch(e){ box.innerHTML='<div class="hint">Scan failed: '+(e.message||e)+'</div>'; }
+    const cache=await idbGet(holdKey());
+    renderNfts((cache&&cache.held)||[]);                            // show cached holdings immediately (instant)
+    refreshNfts();                                                  // …then refresh from chain in the background (non-blocking)
+  }
+  async function refreshNfts(){
+    if(!wallet || !wallet.pubKeyHex) return;
+    const s=$('nftScan'); if(s) s.textContent='↻ scanning the chain…';
+    try{ const held=await refreshHoldings(); if(_nftsOpen) renderNfts(held); }
+    catch(e){ const s2=$('nftScan'); if(s2) s2.textContent='scan failed: '+(e.message||e); }
   }
   function renderNfts(held){
-    const box=$('holdings');
-    if(!held.length){ box.innerHTML='<div class="hint">No NFTs yet — reproduce or mint one, then reopen.</div>'; return; }
-    const groups=new Map();                                       // group copies of the same collection (interchangeable) — PharLap's grouping
-    held.forEach(e=>{ const k=e.tx1RefHex||e.txId; const g=groups.get(k)||[]; g.push(e); groups.set(k,g); });
-    box.innerHTML='<div class="row"><span class="k">My NFTs</span><span class="mono">'+held.length+' copy'+(held.length===1?'':'ies')+' · '+groups.size+' collection'+(groups.size===1?'':'s')+'</span></div>'
-      +'<div id="nftList" style="display:flex;flex-direction:column;gap:5px;margin-top:6px;max-height:240px;overflow-y:auto"></div>';
-    const list=$('nftList');
-    for(const [col,copies] of groups){
-      const row=document.createElement('div'); row.className='row';
-      row.innerHTML='<a class="mono" style="font-size:11px" href="https://whatsonchain.com/tx/'+col+'" target="_blank" rel="noopener">'+col.slice(0,16)+'…</a><span class="mono">'+(copies.length>1?('×'+copies.length):'held')+'</span>';
-      list.appendChild(row);
-      G.readCollection(provider, col).then(info=>{ if(info&&info.tokenName){ const a=row.querySelector('a'); a.textContent=info.tokenName+(info.open?'':' 🔒'); } }).catch(()=>{});   // lazy name
-    }
+    const box=$('holdings'), groups=new Map();
+    held.forEach(e=>{ const k=e.col||e.tx1RefHex||e.txId; const g=groups.get(k); if(g) g.push(e); else groups.set(k,[e]); });
+    let h='<div class="row"><span class="k">My NFTs</span><span class="mono">'+groups.size+' collection'+(groups.size===1?'':'s')+'</span></div>'
+      +'<div id="nftScan" class="hint" style="font-size:11px;margin:2px 0"></div>';
+    if(!groups.size) h+='<div class="hint">No NFTs cached yet — scanning…</div>';
+    else { h+='<div style="display:flex;flex-direction:column;gap:5px;max-height:240px;overflow-y:auto">';
+      for(const [col,copies] of groups) h+='<div class="row" data-col="'+col+'"><a class="mono" style="font-size:11px" href="https://whatsonchain.com/tx/'+col+'" target="_blank" rel="noopener">'+col.slice(0,16)+'…</a><span class="mono">'+(copies.length>1?('×'+copies.length):'held')+'</span></div>';
+      h+='</div>'; }
+    box.innerHTML=h;
+    for(const [col] of groups){ G.readCollection(provider, col).then(info=>{ if(info&&info.tokenName){ const a=box.querySelector('[data-col="'+col+'"] a'); if(a) a.textContent=info.tokenName+(info.open?'':' 🔒'); } }).catch(()=>{}); }
   }
 
   loadWallet();
