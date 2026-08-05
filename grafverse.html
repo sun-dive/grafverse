@@ -1834,6 +1834,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       s:[+u.target.x.toFixed(3),+u.target.y.toFixed(3),+u.target.z.toFixed(3)],
       paid:!!u.paid };
     if(u.res) rec.res=u.res;                                                   // custom facet count (column/spire/ball)
+    if(u.txid) rec.txid=u.txid;                                                // ★ this paint atom's on-chain id (minted / imported). ABSENT = unminted → gets a genesis mint on Save-to-Chain
+    if(u.creator) rec.creator=u.creator;                                       // whose paint (creator pubkey) — carried on imported layers so their royalty stays theirs
     if(u.bob) rec.bob=1; if(u.spin) rec.spin=1;                                // owned draw-time motion (→ matFlags bits 3/4 at mint)
     if(u.seed!=null) rec.seed=u.seed;                                          // procedural seed (palm/tree)
     if(u.texTile) rec.tile=1;                                                  // stone/wood: tiled (world-scale) vs scaled (fit)
@@ -1858,6 +1860,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     m.rotation.set(sd.r[0],sd.r[1],sd.r[2]);
     m.userData.target.set(sd.s[0],sd.s[1],sd.s[2]); m.scale.copy(m.userData.target); m.userData.grow=1;   // already real — skip grow-in
     if(sd.bob) m.userData.bob=1; if(sd.spin) m.userData.spin=1;              // restore owned draw-time motion
+    if(sd.txid) m.userData.txid=sd.txid; if(sd.creator) m.userData.creator=sd.creator;   // ★ paint-atom identity (minted/imported) + its creator
     if(sd.res) applyRes(m, sd.res);                                          // restore custom facet count (geometry) BEFORE materials
     if(sd.cr){                                                              // ── a crystal: gem material + drifted colour ──
       crystallizeShape(m, sd.gem||0);
