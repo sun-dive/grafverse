@@ -172,6 +172,7 @@
   #splash .tag{font-size:15px;color:#7fa6df;letter-spacing:.04em;}
   #splash .go{margin-top:22px;font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:#cfe0ff;
               padding:12px 26px;border:1px solid rgba(140,180,255,.4);border-radius:30px;}
+  #splash .go.resume{margin-top:12px;border-color:rgba(56,225,255,.55);color:#bff0ff;}   /* returning player — skip the intro */
   #splash .creed{position:absolute;bottom:26px;font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:#3f5a86;}
   .hidden{opacity:0!important;pointer-events:none!important;}
   #tag2{font-size:13px;color:#5f7bab;font-style:italic;}
@@ -228,6 +229,7 @@
   <div class="tag">You are what you paint. Paint what you are.</div>
   <div id="tag2">Nothing exists until it's painted.</div>
   <div class="go">Click to begin</div>
+  <div class="go resume" id="resumeBtn" style="display:none">↩ Resume last world</div>
   <div class="creed">In the covenant we trust</div>
 </div>
 
@@ -1946,6 +1948,16 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if((e.ctrlKey||e.metaKey) && e.code==='KeyZ'){ e.preventDefault(); (e.shiftKey?redoAct:undo)(); }
     else if((e.ctrlKey||e.metaKey) && e.code==='KeyY'){ e.preventDefault(); redoAct(); } });
   loadWorld(); recordHistory();
+  // ── Resume last world — if a local save exists, offer a one-tap return on the splash that SKIPS the intro (loadWorld already put the world in the scene) ──
+  (function(){
+    let has=false; try{ const d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null'); has=!!(d && ((d.shapes&&d.shapes.length)||(d.ground&&d.ground.length))); }catch(e){}
+    const btn=$('resumeBtn'); if(!has || !btn) return;
+    btn.style.display='';
+    btn.addEventListener('click', e=>{ e.stopPropagation();   // don't also fire the splash's plain "begin"
+      begin();                                                // start (audio + pointer lock / mobile) → hides the splash
+      unlockBuild(true);                                      // returning player → straight into build mode, no intro
+    });
+  })();
   { const _minted = new URLSearchParams(location.search).get('minted');   // came back from the wallet after a mint
     if(_minted){ showHint('✦ Immortalized on-chain — '+_minted.slice(0,8)+'… It’s yours forever.'); try{ history.replaceState(null,'',location.pathname); }catch(_){} } }
   { const _bought = new URLSearchParams(location.search).get('bought');   // came back from the wallet after PURCHASING a rights-reserved world → import the owned copy
