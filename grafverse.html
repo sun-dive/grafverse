@@ -1439,9 +1439,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
         }
       }
       const atom=await GM.loadAtomBytes(provider, txid);            // → { bytes, mimeType, fileName, compressed }
-      const r=importScene(atom.bytes);
+      const dec=BMF.scene.unpack(atom.bytes);
+      const r = (dec.members&&dec.members.length) ? await importMembersWorld(dec, GM, provider)   // a MEMBERS world → fetch each owned paint atom
+                                                  : importScene(atom.bytes);                       // an inline scene (single-atom world)
       _provenance=[txid]; saveWorld();                             // this world now DERIVES from `txid` (its immediate parent) → recorded at mint
-      _kNote().textContent=(owned?'Purchased & loaded ':'Loaded ')+r.shapes+' shape'+(r.shapes===1?'':'s')+(r.ground?' + ground':'')+' from chain'+(atom.compressed?' (unzipped)':'')+'.';
+      _kNote().textContent=(owned?'Purchased & loaded ':'Loaded ')+r.shapes+(r.members?' owned paint atom'+(r.members===1?'':'s'):' shape'+(r.shapes===1?'':'s'))+(r.ground?' + ground':'')+' from chain.';
     }catch(e){ _kNote().textContent='Load from chain failed: '+(e.message||e); }
   }
   document.getElementById('kChain').addEventListener('click', ()=>{ const t=prompt('Paste the scene transaction id (txid) to load from chain:'); if(t) loadFromChain(t); });
@@ -1839,6 +1841,26 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       for(const d of stroke.dabs) spray({x:d[0], y:d[1]}); groundStrokes.push(stroke); });
     saveWorld();                                                                           // persist + snapshot for undo
     return { shapes:n, ground:(dec.ground||[]).length };
+  }
+
+  // ── Stage 3: import a MEMBERS world — each member is a paint-atom (a one-shape scene) → fetch it, rebuild the shape, set its txid ──
+  async function importMembersWorld(dec, GM, provider){
+    _provenance=[]; clearShapes();
+    pctx.clearRect(0,0,TEX,TEX); paintTex.needsUpdate=true; groundStrokes.length=0;         // wipe ground
+    (dec.ground||[]).forEach(stroke=>{ colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0;
+      for(const d of stroke.dabs) spray({x:d[0], y:d[1]}); groundStrokes.push(stroke); });
+    const mem=dec.members||[]; let n=0;
+    for(let k=0;k<mem.length;k++){
+      _kNote().textContent='Loading owned paint '+(k+1)+' / '+mem.length+'…';
+      try{
+        const a=await GM.loadAtomBytes(provider, mem[k].tx);                                 // fetch the paint atom (one-shape scene)
+        const one=BMF.scene.unpack(a.bytes), rec=one.shapes&&one.shapes[0];
+        if(!rec) continue;
+        const sd=recordToShape(rec); sd.txid=mem[k].tx;                                      // this shape IS this atom → carries its txid so a re-Save REFERENCES it (never re-mints → creator's royalty intact)
+        addShapeFromData(sd); n++;
+      }catch(e){}
+    }
+    return { shapes:n, ground:(dec.ground||[]).length, members:n };
   }
 
   function shapeToSave(m){ const u=m.userData;                                 // one COMMITTED shape → its save record (shared by serialize + clone); null for a ghost
