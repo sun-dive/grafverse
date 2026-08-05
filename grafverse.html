@@ -1385,12 +1385,18 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   const HANDOFF_URL = 'handoff.php';   // same-origin bridge: POST packed bytes → { id }
   const WALLET_URL  = 'wallet/';        // TODO: switch to https://wallet.grafverse.com/ once the subdomain is live
   // pack the live world to packed BMF bytes — the ONE source of truth for both mint + download. Returns {bytes} or {err}.
-  function packWorldBytes(){
+  function packWorldBytes(){                                                    // Save-to-File = the SAME manifest shape as Save-to-Chain: FREE content inline (the free channel) + OWNED paint as txid REFERENCES (the on-chain ownership channel) — never owned bytes, so a shared .bmf can't pirate paid work.
     if(!window.BMF) return { err:'Codec missing (bmf-codec.js didn’t load).' };
     saveWorld();
-    const world = serializeWorld();
-    if(!(world.shapes||[]).length && !(world.ground||[]).length) return { err:'Paint something first — there’s nothing here yet.' };
-    try{ return { bytes: BMF.scene.pack(worldToRecords(world)) }; }catch(e){ return { err:'Could not pack the scene.' }; }
+    const world = serializeWorld(), shapes=world.shapes||[], inl=[], members=[];
+    shapes.forEach(sd=>{
+      const layers = sd.layers || (!sd.cr && sd.st!=null ? [{ st:sd.st, txid:sd.txid, creator:sd.creator }] : null);
+      if(!layers){ inl.push(shapeToRecord(sd)); return; }                       // FREE geometry (crystal / fractal / unpainted) → inline
+      layers.forEach(L=>{ if(L.txid) members.push({ tx:L.txid }); else inl.push(layerRecord(sd, L.st||[])); });   // OWNED paint → txid ref (never bytes) · your UNMINTED paint → inline (the free channel)
+    });
+    if(!inl.length && !members.length && !(world.ground||[]).length) return { err:'Paint something first — there’s nothing here yet.' };
+    try{ return { bytes: BMF.scene.pack({ shapes:inl, members, ground:world.ground||[], provenance:(world.prov||[]).map(tx=>({tx})) }) }; }
+    catch(e){ return { err:'Could not pack the scene.' }; }
   }
   function bytesToB64(arr){ let s=''; for(let i=0;i<arr.length;i+=0x8000) s+=String.fromCharCode.apply(null, arr.slice(i,i+0x8000)); return btoa(s); }
   function txidToBytes(h){ h=(h||'').toLowerCase().replace(/[^0-9a-f]/g,''); const a=[]; for(let i=0;i+1<h.length&&i<64;i+=2) a.push(parseInt(h.substr(i,2),16)); return a; }   // 64-hex txid → 32 raw bytes (for the PORTAL attr)
@@ -1431,8 +1437,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(!window.BMF){ _kNote().textContent='Codec missing (bmf-codec.js didn’t load).'; return; }
     try{
       const bytes=Array.from(new Uint8Array(await f.arrayBuffer()));
-      const r=importScene(bytes);
-      _kNote().textContent='Loaded '+r.shapes+' shape'+(r.shapes===1?'':'s')+(r.ground?' + ground':'')+' from '+f.name+'.';
+      let dec; try{ dec=BMF.scene.unpack(bytes); }catch(_){ dec=null; }
+      const r=importScene(bytes);                                              // loads the FREE inline content (the free channel); owned paint refs are the on-chain ownership channel
+      let note='Loaded '+r.shapes+' free shape'+(r.shapes===1?'':'s')+(r.ground?' + ground':'')+' from '+f.name+'.';
+      if(dec && dec.members && dec.members.length) note+=' '+dec.members.length+' owned paint layer'+(dec.members.length===1?'':'s')+' referenced — acquire via the wallet (next step).';
+      _kNote().textContent=note;
     }catch(err){ _kNote().textContent='Load failed: '+(err.message||err)+' (not a valid .bmf scene?)'; }
     e.target.value='';   // allow re-loading the same file
   });
@@ -1867,8 +1876,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
 
   // ── paint-atom bundle (Stage 2): each PAINTED SHAPE = its own atom (a one-shape scene); the WORLD = a manifest whose MEMBERS are those atoms' txids ──
   function shapeAtomBytes(sd){ return BMF.scene.pack(worldToRecords({ ground:[], shapes:[sd], prov:[] })); }   // one painted shape → a self-contained atom (bytes to genesis-mint)
-  function layerAtomBytes(sd, strokes){ const rec=shapeToRecord(sd); rec.paint={ kind:1, strokes:strokes||[] };   // one paint LAYER = a one-solid atom: the (free) geometry as standalone context + JUST this layer's strokes
-    return BMF.scene.pack({ shapes:[rec], ground:[], provenance:[] }); }
+  function layerRecord(sd, strokes){ const rec=shapeToRecord(sd); rec.paint={ kind:1, strokes:strokes||[] }; return rec; }   // one paint LAYER as a shape record: (free) geometry + JUST this layer's strokes
+  function layerAtomBytes(sd, strokes){ return BMF.scene.pack({ shapes:[layerRecord(sd, strokes)], ground:[], provenance:[] }); }   // …the same, packed as a one-solid atom
   function worldBundlePlan(){                                     // split the live world for minting. ONLY PAINT is owned: each paint LAYER → an atom (owned→referenced by txid · new→minted). GEOMETRY is FREE: crystals/fractals/unpainted ride INLINE (never minted). Manifest = free shapes + MEMBERS (all layer txids) + ground + prov.
     const world=serializeWorld(), shapes=world.shapes||[], freeShapes=[], members=[], toMint=[]; let i=0;
     shapes.forEach((sd)=>{
