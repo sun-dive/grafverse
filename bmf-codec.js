@@ -225,19 +225,23 @@
   }
 
   // ── BMF.container — the packed .bmc INDEX (replaces the JSON bmc.json; the store-only ZIP still holds member bytes by file) ──
-  var CONTAINER_VERSION = 1;
+  var CONTAINER_VERSION = 2;   // v2 adds a per-member source ref {tx} — the artist's atom (multi-artist attribution / provenance)
   function packIndex(idx) {
     var w = new Writer(); w.u8(CONTAINER_VERSION);
     writeStr(w, idx.name || 'set');
     var mem = idx.members || [], i; w.varint(mem.length);
-    for (i = 0; i < mem.length; i++) { var m = mem[i]; writeStr(w, m.name || ''); writeStr(w, m.file || m.name || ''); writeStr(w, m.mime || ''); }
+    for (i = 0; i < mem.length; i++) {
+      var m = mem[i];
+      writeStr(w, m.name || ''); writeStr(w, m.file || m.name || ''); writeStr(w, m.mime || '');
+      writeRef(w, m.ref || (m.tx ? { tx: m.tx } : null));   // per-member source atom {tx} — who made this member (0 = none)
+    }
     return w.b;
   }
   function unpackIndex(bytes) {
     var r = new Reader(bytes), ver = r.u8();
-    if (ver !== CONTAINER_VERSION) throw new Error('unsupported container-index version ' + ver);
+    if (ver !== 1 && ver !== 2) throw new Error('unsupported container-index version ' + ver);
     var name = readStr(r), n = r.varint(), members = [], i;
-    for (i = 0; i < n; i++) members.push({ name: readStr(r), file: readStr(r), mime: readStr(r) });
+    for (i = 0; i < n; i++) { var m = { name: readStr(r), file: readStr(r), mime: readStr(r) }; if (ver >= 2) m.ref = readRef(r); members.push(m); }
     return { v: ver, name: name, members: members };
   }
 
