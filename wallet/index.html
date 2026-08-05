@@ -91,7 +91,9 @@
       <span><span class="bal" id="bal">—</span> <button class="sm ghost" id="refreshBal">↻</button></span></div>
     <div class="btnrow" style="margin-top:8px">
       <button class="gold" id="fundBtn">＋ Buy BSV to fund</button>
+      <button class="sm ghost" id="scanBtn">🎨 My atoms</button>
     </div>
+    <div id="holdings" class="hidden" style="margin-top:10px"></div>
 
     <div class="note warn-box hidden" id="backupNote">
       ⚠️ <b>Not backed up yet.</b> Reveal your 12 words below and write them on paper, in order — they're the only way back into this wallet.
@@ -411,9 +413,17 @@
       status('Building the purchase…');
       const res = tip.isV2 ? await G.replicateEditionV2(provider, wallet.key, base)
                            : await G.replicateEdition(provider, wallet.key, { ...base, terms: tip.terms });
-      appendMintLog('BOUGHT: '+(info.tokenName||'world'), res.txId);       // log the purchase too
-      status('Purchased ✓ — you own a copy. Returning to import…','ok'); refreshBalance();
-      setTimeout(()=>{ location.href = backTo(txid); }, 900);
+      appendMintLog('BOUGHT: '+(info.tokenName||'world'), res.txId);       // log the purchase (replication txid)
+      status('Purchased ✓ — royalty paid to the creator.','ok'); refreshBalance();
+      const el=$('mintResult'); el.classList.remove('hidden');            // ★ show the replication txid (gap 1)
+      el.innerHTML='<h3>✓ Reproduced — royalty paid to the creator</h3>'
+        +'<div class="row"><span class="k">Replication tx</span><span class="mono">'+res.txId+'</span></div>'
+        +'<div class="btnrow" style="margin-top:10px">'
+        +'<button class="sm" id="copyRep">Copy tx id</button>'
+        +'<a href="https://whatsonchain.com/tx/'+res.txId+'" target="_blank" rel="noopener"><button class="sm ghost">View on chain ↗</button></a>'
+        +'<button class="sm cyan" id="repGo">← Continue to the game</button></div>';
+      $('copyRep').onclick=()=>copy(res.txId,'Replication tx copied');
+      $('repGo').onclick=()=>{ location.href=backTo(txid); };
     }catch(e){ const m=e&&e.message||String(e); status(/cancel/i.test(m)?'Purchase cancelled.':'Buy failed: '+m,'error'); }
   }
 
@@ -472,7 +482,21 @@
     }catch(e){ const m=e&&e.message||String(e); status(/cancel/i.test(m)?'World mint cancelled.':'World mint failed: '+m,'error'); }
   }
 
+  // ── holdings (gap 2): scan the chain for atoms this wallet HOLDS (the "message tx" that tells you what you own) — ported PharLap scanIncomingEditions ──
+  async function scanHoldings(){
+    if(!wallet || !wallet.pubKeyHex){ status('Load your key first.','error'); return; }
+    const box=$('holdings'); box.classList.remove('hidden'); box.innerHTML='<div class="hint">Scanning the chain for atoms you hold…</div>';
+    try{
+      const held=await G.scanIncomingEditions(provider, wallet.pubKeyHex);
+      if(!held.length){ box.innerHTML='<div class="hint">No owned atoms found yet — reproduce or mint one, then scan again.</div>'; return; }
+      let h='<div class="row"><span class="k">Atoms you hold</span><span class="mono">'+held.length+'</span></div><div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;max-height:220px;overflow-y:auto">';
+      held.forEach(e=>{ h+='<div class="row"><span class="k" style="font-size:11px">'+(e.height?('#'+e.height):'pending')+'</span><a class="mono" style="font-size:11px" href="https://whatsonchain.com/tx/'+e.txId+'" target="_blank" rel="noopener">'+e.txId.slice(0,16)+'…</a></div>'; });
+      h+='</div>'; box.innerHTML=h;
+    }catch(e){ box.innerHTML='<div class="hint">Scan failed: '+(e.message||e)+'</div>'; }
+  }
+
   loadWallet();
+  $('scanBtn').onclick=scanHoldings;
   { const bt=params.get('buy'); if(bt && /^[0-9a-fA-F]{64}$/.test(bt)) handleBuy(bt.toLowerCase()); }
   { const bd=params.get('bundle'); if(bd) loadBundle(bd); }
 })();
