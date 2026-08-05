@@ -396,6 +396,28 @@
     $('logNote').textContent = 'Saved to grafverse-mint-log.txt — the collection id above is what ⬇ Load from Chain needs.';
   }
 
+  // ── holdings cache (IndexedDB) — a fast LOCAL record of which collections this key owns; the CHAIN is the source of truth on a miss ──
+  const IDB_DB='grafverse-wallet', IDB_STORE='holdings';
+  function idbOpen(){ return new Promise((res,rej)=>{ let r; try{ r=indexedDB.open(IDB_DB,1); }catch(e){ return rej(e); } r.onupgradeneeded=()=>r.result.createObjectStore(IDB_STORE); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+  async function idbGet(k){ try{ const db=await idbOpen(); return await new Promise(res=>{ const q=db.transaction(IDB_STORE).objectStore(IDB_STORE).get(k); q.onsuccess=()=>res(q.result); q.onerror=()=>res(null); }); }catch(e){ return null; } }
+  async function idbPut(k,v){ try{ const db=await idbOpen(); await new Promise(res=>{ const t=db.transaction(IDB_STORE,'readwrite'); t.objectStore(IDB_STORE).put(v,k); t.oncomplete=()=>res(); t.onerror=()=>res(); }); }catch(e){} }
+  const holdKey=()=> 'h:'+(wallet&&wallet.pubKeyHex||'');
+  async function refreshHoldings(){                                  // scan chain → cache owned collection ids in IndexedDB (also feeds "My NFTs")
+    const held=await G.scanIncomingEditions(provider, wallet.pubKeyHex);
+    const cols={}; held.forEach(e=>{ cols[e.tx1RefHex||e.txId]=1; });
+    await idbPut(holdKey(), { cols: cols }); _nftsCache=held; return held;
+  }
+  async function ownsAtom(col){                                      // IndexedDB first → chain fallback → cache the result
+    const c=await idbGet(holdKey());
+    if(c && c.cols && c.cols[col]) return true;                      // fast local hit
+    await refreshHoldings();                                         // miss → authoritative chain scan (caches to IndexedDB)
+    const c2=await idbGet(holdKey());
+    return !!(c2 && c2.cols && c2.cols[col]);
+  }
+  async function addHolding(col){                                    // after a buy, record ownership immediately (no re-scan needed)
+    const c=(await idbGet(holdKey()))||{cols:{}}; (c.cols=c.cols||{})[col]=1; await idbPut(holdKey(), c);
+  }
+
   // ── buy / import: replicate a RIGHTS-RESERVED collection (covenant pays the creator), then return to the game ──
   async function handleBuy(txid){
     const backTo = (t)=>{ const ret=returnUrl||location.origin; return ret+(ret.includes('?')?'&':'?')+'bought='+t; };
@@ -405,6 +427,8 @@
       const info = await G.readCollection(provider, txid);
       if(!info){ status('Couldn’t read that collection.','error'); return; }
       if(info.open){ location.href = backTo(txid); return; }              // open licence → nothing to buy, import free
+      status('Checking if you already own it…');                          // ★ IndexedDB → chain: don't re-buy what you hold
+      if(await ownsAtom(txid)){ status('You already own “'+(info.tokenName||'this')+'” — loading…','ok'); location.href = backTo(txid); return; }
       status('Finding the creator’s copy to replicate…');
       const tip = await G.resolveHolderEdition(provider, { tx1RefHex: txid, holderPubKeyHex: info.publisherPubKeyHex, templateCovenantHex: info.covenantScript });
       if(!tip){ status('No spendable copy from the creator right now (they may have moved it).','error'); return; }
@@ -414,6 +438,7 @@
       const res = tip.isV2 ? await G.replicateEditionV2(provider, wallet.key, base)
                            : await G.replicateEdition(provider, wallet.key, { ...base, terms: tip.terms });
       appendMintLog('BOUGHT: '+(info.tokenName||'world'), res.txId);       // log the purchase (replication txid)
+      await addHolding(txid);                                             // record ownership in IndexedDB → never re-buys it
       status('Purchased ✓ — royalty paid to the creator.','ok'); refreshBalance();
       const el=$('mintResult'); el.classList.remove('hidden');            // ★ show the replication txid (gap 1)
       el.innerHTML='<h3>✓ Reproduced — royalty paid to the creator</h3>'
@@ -492,7 +517,7 @@
     if(_nftsCache){ renderNfts(_nftsCache); return; }
     if(!wallet || !wallet.pubKeyHex){ box.innerHTML='<div class="hint">Load your key first.</div>'; return; }
     box.innerHTML='<div class="hint">Scanning the chain for your NFTs…</div>';
-    try{ _nftsCache=await G.scanIncomingEditions(provider, wallet.pubKeyHex); renderNfts(_nftsCache); }
+    try{ await refreshHoldings(); renderNfts(_nftsCache); }            // scan + cache to IndexedDB (shared with the buy check)
     catch(e){ box.innerHTML='<div class="hint">Scan failed: '+(e.message||e)+'</div>'; }
   }
   function renderNfts(held){
