@@ -1381,11 +1381,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(!window.BMF){ _kNote().textContent='Codec missing (bmf-codec.js didn’t load).'; return; }
     saveWorld();
     const plan = worldBundlePlan();                                          // each NEW painted shape → its own atom to mint; owned shapes → referenced
-    if(!plan.toMint.length && !plan.members.length){ _kNote().textContent='Paint something first — there’s nothing to immortalize yet.'; return; }
+    if(!plan.toMint.length && !plan.members.length){ _kNote().textContent = plan.multi ? ('Multi-layer solids can’t be minted yet (coming next update) — nothing single-layer to immortalize.') : 'Paint something first — there’s nothing to immortalize yet.'; return; }
     const pkg = { v:1, ground:plan.ground, prov:plan.prov, members:plan.members,   // off-chain handoff bridge — JSON is fine here (never on chain)
       toMint: plan.toMint.map(a=>({ i:a.i, b64: bytesToB64(a.bytes) })) };
     const nNew=plan.toMint.length, nRef=plan.members.length;
-    _kNote().textContent='Bundling '+nNew+' new paint layer'+(nNew===1?'':'s')+(nRef?(' + '+nRef+' owned'):'')+' — handing to your wallet…';
+    _kNote().textContent='Bundling '+nNew+' new paint layer'+(nNew===1?'':'s')+(nRef?(' + '+nRef+' owned'):'')+(plan.multi?(' · '+plan.multi+' multi-layer solid'+(plan.multi===1?'':'s')+' held for next update'):'')+' — handing to your wallet…';
     const body = btoa(unescape(encodeURIComponent(JSON.stringify(pkg))));      // base64(JSON), utf8-safe (like the single-atom path)
     try{
       const res = await fetch(HANDOFF_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body });
@@ -1748,11 +1748,14 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function endStroke(){
     if(curStroke && curStroke.dabs.length){
       if(curStroke.target==='ground') groundStrokes.push({c:curStroke.c, seed:curStroke.seed, dabs:curStroke.dabs});
-      else (curStroke.target.userData.strokes || (curStroke.target.userData.strokes=[])).push({si:curStroke.si, c:curStroke.c, seed:curStroke.seed, dabs:curStroke.dabs});
+      else wetLayer(curStroke.target).st.push({si:curStroke.si, c:curStroke.c, seed:curStroke.seed, dabs:curStroke.dabs});
       scheduleSave();
     }
     curStroke=null; curKey=null;
   }
+  // the paint LAYER you're currently adding to. New strokes join your wet (unminted) top layer; if the top layer is OWNED (carries a txid — someone's minted atom), a NEW layer is started so your paint becomes its own atom that composites over theirs (§ multi-artist BMC — layers grouped per solid).
+  function wetLayer(m){ const layers = m.userData.layers || (m.userData.layers=[]); let top = layers[layers.length-1];
+    if(!top || top.txid){ top = { st:[] }; layers.push(top); } return top; }
   // scheduleSave() + the save/load system live with world-storage, below.
   function revealPaintHUD(){ if(paintShown)return; paintShown=true;   // the left-edge kit inventory slides in
     invEl.style.display='flex'; invEl.style.opacity=1; renderInv();
@@ -1806,12 +1809,13 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // ── paint-atom bundle (Stage 2): each PAINTED SHAPE = its own atom (a one-shape scene); the WORLD = a manifest whose MEMBERS are those atoms' txids ──
   function shapeAtomBytes(sd){ return BMF.scene.pack(worldToRecords({ ground:[], shapes:[sd], prov:[] })); }   // one painted shape → a self-contained atom (bytes to genesis-mint)
   function worldBundlePlan(){                                     // split the live world: atoms to MINT (no txid) vs members already on-chain (have txid)
-    const world=serializeWorld(), shapes=world.shapes||[], members=[], toMint=[];
+    const world=serializeWorld(), shapes=world.shapes||[], members=[], toMint=[]; let multi=0;
     shapes.forEach((sd,i)=>{
+      if(sd.layers){ multi++; return; }                                          // multi-layer solid → per-layer minting lands in 4b; held back here so we never mint a broken/empty atom
       if(sd.txid) members.push({ i, tx:sd.txid, creator:sd.creator||null });     // already an atom → reference (NO re-mint → its creator keeps their royalty)
       else toMint.push({ i, bytes:shapeAtomBytes(sd) });                         // new paint → needs a genesis mint; its tx joins members after
     });
-    return { members, toMint, ground:world.ground||[], prov:world.prov||[] };    // wallet: mint each toMint → tx; then mint the manifest { members:[all txids], ground, provenance }
+    return { members, toMint, multi, ground:world.ground||[], prov:world.prov||[] };   // wallet: mint each toMint → tx; then mint the manifest { members:[all txids], ground, provenance }
   }
 
   // ── the READ path: a packed BMF scene → back into the live editor (inverse of shapeToRecord) ──
@@ -1877,15 +1881,19 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       s:[+u.target.x.toFixed(3),+u.target.y.toFixed(3),+u.target.z.toFixed(3)],
       paid:!!u.paid };
     if(u.res) rec.res=u.res;                                                   // custom facet count (column/spire/ball)
-    if(u.txid) rec.txid=u.txid;                                                // ★ this paint atom's on-chain id (minted / imported). ABSENT = unminted → gets a genesis mint on Save-to-Chain
-    if(u.creator) rec.creator=u.creator;                                       // whose paint (creator pubkey) — carried on imported layers so their royalty stays theirs
     if(u.bob) rec.bob=1; if(u.spin) rec.spin=1;                                // owned draw-time motion (→ matFlags bits 3/4 at mint)
     if(u.seed!=null) rec.seed=u.seed;                                          // procedural seed (palm/tree)
     if(u.texTile) rec.tile=1;                                                  // stone/wood: tiled (world-scale) vs scaled (fit)
     if(u.base!=null) rec.base=u.base;                                          // base LAYER colour (if the picker set one)
     if(u.crystal){ rec.cr=1; rec.gem=u.gemIdx|0;                              // a crystal: gem index + its drifted inner colour
-      if(m.material && m.material.color) rec.col=m.material.color.getHex(); }
-    else { rec.st=u.strokes; if(u.tex) rec.tex=u.tex; if(u.texRot) rec.trot=u.texRot; }   // painted/finished: strokes + material id + grain rotation
+      if(m.material && m.material.color) rec.col=m.material.color.getHex();
+      if(u.txid) rec.txid=u.txid; if(u.creator) rec.creator=u.creator;         // a crystal is a single owned atom
+    } else {                                                                   // painted/finished: a STACK of paint layers (each layer = one artist's owned atom, or your wet layer)
+      const layers = u.layers || (u.strokes ? [{ st:u.strokes, txid:u.txid, creator:u.creator }] : []);   // legacy fallback → one layer
+      if(layers.length>1){ rec.layers = layers.map(L=>{ const o={ st:L.st||[] }; if(L.txid) o.txid=L.txid; if(L.creator) o.creator=L.creator; return o; }); }   // multi-layer solid → the layer stack, grouped in the manifest (door open for a future per-solid BMC atom)
+      else { const L=layers[0]||{ st:[] }; rec.st=L.st||[]; if(L.txid) rec.txid=L.txid; if(L.creator) rec.creator=L.creator; }   // single layer → legacy flat fields (mint path unchanged)
+      if(u.tex) rec.tex=u.tex; if(u.texRot) rec.trot=u.texRot;                 // material id + grain rotation
+    }
     return rec;
   }
   function serializeWorld(){
@@ -1913,11 +1921,14 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     } else {                                                                // ── a painted / finished shape ──
       if(sd.base!=null) m.userData.base=sd.base;                           // restore the base layer colour before solidify bakes it in
       solidify(m);
-      (sd.st||[]).forEach(stroke=>{ const surf=m.userData.surfaces[stroke.si]; if(!surf) return;
-        colorIdx=stroke.c; seedRand(stroke.seed>>>0);                       // deterministic replay
-        for(const d of stroke.dabs) sprayShapeAt(surf, d[0], d[1], d[2]); });
+      const layers = sd.layers ? sd.layers.map(L=>({ st:L.st||[], txid:L.txid, creator:L.creator }))
+                               : [{ st:sd.st||[], txid:sd.txid, creator:sd.creator }];   // legacy single-layer record → one layer
+      layers.forEach(L=>{ (L.st||[]).forEach(stroke=>{ const surf=m.userData.surfaces[stroke.si]; if(!surf) return;
+        colorIdx=stroke.c; seedRand(stroke.seed>>>0);                       // deterministic replay — layers composite in paint order (later layers over earlier)
+        for(const d of stroke.dabs) sprayShapeAt(surf, d[0], d[1], d[2]); }); });
       materializeShape(m);
-      m.userData.painted=true; m.userData.paid=!!sd.paid; m.userData.strokes=sd.st||[];
+      m.userData.painted=true; m.userData.paid=!!sd.paid; m.userData.layers=layers;
+      m.userData.txid=(layers[0]&&layers[0].txid)||undefined; m.userData.creator=(layers[0]&&layers[0].creator)||undefined;   // base-layer identity (back-compat readers)
       if(sd.tex){ m.userData.tex=sd.tex; if(sd.trot) m.userData.texRot=sd.trot; if(sd.tile) m.userData.texTile=1; applyFinish(m, sd.tex); }   // restore material finish + grain rotation + tiling mode
     }
     scene.add(m); bShapes.push(m); return m;
