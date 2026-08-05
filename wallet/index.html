@@ -393,7 +393,31 @@
     $('logNote').textContent = 'Saved to grafverse-mint-log.txt — the collection id above is what ⬇ Load from Chain needs.';
   }
 
+  // ── buy / import: replicate a RIGHTS-RESERVED collection (covenant pays the creator), then return to the game ──
+  async function handleBuy(txid){
+    const backTo = (t)=>{ const ret=returnUrl||location.origin; return ret+(ret.includes('?')?'&':'?')+'bought='+t; };
+    if(!wallet || wallet.watchOnly || !wallet.key){ status('Load your key first to buy this world.','error'); return; }
+    try{
+      status('Reading the collection…');
+      const info = await G.readCollection(provider, txid);
+      if(!info){ status('Couldn’t read that collection.','error'); return; }
+      if(info.open){ location.href = backTo(txid); return; }              // open licence → nothing to buy, import free
+      status('Finding the creator’s copy to replicate…');
+      const tip = await G.resolveHolderEdition(provider, { tx1RefHex: txid, holderPubKeyHex: info.publisherPubKeyHex, templateCovenantHex: info.covenantScript });
+      if(!tip){ status('No spendable copy from the creator right now (they may have moved it).','error'); return; }
+      const confirmSpend = (sats)=> confirm('Buy “'+(info.tokenName||'this world')+'” for '+sats.toLocaleString()+' sats?\n\nThis replicates it on-chain and pays the creator ('+(info.license||'ARR')+') their royalty. Permanent.');
+      const base = { editionTxId: tip.txId, editionOutputIndex: tip.outputIndex, editionLockHex: tip.lockHex, confirmSpend };
+      status('Building the purchase…');
+      const res = tip.isV2 ? await G.replicateEditionV2(provider, wallet.key, base)
+                           : await G.replicateEdition(provider, wallet.key, { ...base, terms: tip.terms });
+      appendMintLog('BOUGHT: '+(info.tokenName||'world'), res.txId);       // log the purchase too
+      status('Purchased ✓ — you own a copy. Returning to import…','ok'); refreshBalance();
+      setTimeout(()=>{ location.href = backTo(txid); }, 900);
+    }catch(e){ const m=e&&e.message||String(e); status(/cancel/i.test(m)?'Purchase cancelled.':'Buy failed: '+m,'error'); }
+  }
+
   loadWallet();
+  { const bt=params.get('buy'); if(bt && /^[0-9a-fA-F]{64}$/.test(bt)) handleBuy(bt.toLowerCase()); }
 })();
 </script>
 </body>
