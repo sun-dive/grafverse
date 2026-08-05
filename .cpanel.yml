@@ -13,4 +13,5 @@ deployment:
                                                           # real home is the wallet.grafverse.com SUBDOMAIN (key isolation)
     - /bin/cp handoff.php "$DEPLOYPATH"                   # transient game→wallet atom bridge (POST bytes → id → GET)
     - /bin/cp world.php "$DEPLOYPATH"                     # persistent public store for shared FREE worlds (POST .bmf → short id → GET; 12-mo no-view expiry)
+    - /bin/cp w.php "$DEPLOYPATH"                         # shareable, crawlable OG/SEO landing page per shared world (→ ./?w=<id>)
     - /bin/cp bmf-codec.js "$DEPLOYPATH"                  # shared thrifty BMF pack/unpack codec (game packs before mint)

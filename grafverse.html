@@ -213,13 +213,12 @@
 <div id="keepTab">◆ keep</div>
 <div id="keepPanel">
   <div class="kh">Your world</div>
-  <div class="kbtn" id="kSave">💾 Save now</div>
+  <div class="kbtn" id="kSave">☁ Save to Server</div>
   <div class="kbtn" id="kReload">↻ Reload world</div>
   <div class="kbtn" id="kExport">📤 Save to File (.bmf)</div>
   <div class="kbtn" id="kImport">📥 Load from File (.bmf)</div>
   <div class="kbtn immortal" id="kMint">⬆ Save to Chain</div>
   <div class="kbtn" id="kChain">⬇ Load from Chain</div>
-  <div class="kbtn" id="kShareWorld">🔗 Share world (link)</div>
   <div class="kbtn" id="kBack" style="display:none">← Back to previous world</div>
   <div class="kbtn" id="kWallet">👛 Open Wallet — balance &amp; NFTs</div>
   <input type="file" id="kFile" accept=".bmf,application/octet-stream" style="display:none">
@@ -1380,7 +1379,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(!MOBILE) el.requestPointerLock(); }
   document.getElementById('keepTab').addEventListener('click', openKeep);
   document.getElementById('kDone').addEventListener('click', closeKeep);
-  document.getElementById('kSave').addEventListener('click', ()=>{ saveWorld(); _kNote().textContent='Saved to this device.'; });
+  document.getElementById('kSave').addEventListener('click', saveToServer);   // ☁ Save = persist to the server (updatable + shareable link). Local working state still auto-saves; .bmf export is the LOCAL file save.
   document.getElementById('kReload').addEventListener('click', ()=>{ saveWorld(); location.reload(); });
   // ── immortalize: pack the world (binary BMF) → hand off to the wallet to mint (the key never touches the game) ──
   const HANDOFF_URL = 'handoff.php';   // same-origin bridge: POST packed bytes → { id }
@@ -1550,21 +1549,21 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function sharesSet(o){ try{ localStorage.setItem('grafverse-shares', JSON.stringify(o)); }catch(_){} }
   function myShareId(){ try{ return localStorage.getItem('grafverse-myshare')||''; }catch(_){ return ''; } }
   function setMyShare(id){ try{ id?localStorage.setItem('grafverse-myshare',id):localStorage.removeItem('grafverse-myshare'); }catch(_){} }
-  document.getElementById('kShareWorld').addEventListener('click', async ()=>{
+  async function saveToServer(){   // ☁ Save = persist your world to the server (updatable at the same link, which is also shareable). The .bmf export is the LOCAL save.
     const p=packWorldBytes(); if(p.err){ _kNote().textContent=p.err; return; }
     const body=bytesToB64(p.bytes), cur=myShareId(), shares=sharesGet(), editing=cur&&shares[cur];
-    _kNote().textContent = editing ? 'Updating your shared world…' : 'Creating a share link…';
+    _kNote().textContent = editing ? 'Saving to server (updating)…' : 'Saving to server…';
     try{
       const u = editing ? (WORLD_URL+'?id='+encodeURIComponent(cur)+'&edit='+encodeURIComponent(shares[cur])) : WORLD_URL;
       const res=await fetch(u, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body });
       const data=await res.json().catch(()=>({}));
       if(!res.ok || !data.id) throw new Error(data.error||('HTTP '+res.status));
-      if(data.edit){ shares[data.id]=data.edit; sharesSet(shares); setMyShare(data.id); }   // NEW share → remember the edit token so you can UPDATE this same link later
-      const link=location.origin+location.pathname+'?w='+data.id;
-      _kNote().innerHTML=(data.updated?'✓ Updated — same link:':'🔗 Share link (yours to update):')+'<br><a href="'+link+'" target="_blank" rel="noopener" style="color:var(--cyan);word-break:break-all">'+link+'</a>';
+      if(data.edit){ shares[data.id]=data.edit; sharesSet(shares); setMyShare(data.id); }   // first save → remember the edit token so later saves UPDATE this same world/link
+      const link=location.origin+location.pathname.replace(/[^/]*$/,'')+'w.php?id='+data.id;   // share the OG/SEO landing page (crawlable, social card) → it opens the game
+      _kNote().innerHTML=(data.updated?'☁ Updated on server — same link:':'☁ Saved to server — your link:')+'<br><a href="'+link+'" target="_blank" rel="noopener" style="color:var(--cyan);word-break:break-all">'+link+'</a> <span style="opacity:.6">(copied — share it to let anyone open your world)</span>';
       try{ await navigator.clipboard.writeText(link); }catch(_){}
-    }catch(e){ _kNote().textContent='Share failed: '+(e.message||e); }
-  });
+    }catch(e){ _kNote().textContent='Save to server failed: '+(e.message||e); }
+  }
   async function openSharedWorld(id){                                     // opened via ?w=<id> — fetch the shared world + drop the visitor into it
     _welcomeBack();                                                       // splash → one tap → in the world, build-ready
     const shares=sharesGet(); setMyShare(shares[id]?id:'');               // YOUR shared world → Share = update · someone else's → editing forks to a NEW link
