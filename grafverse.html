@@ -940,6 +940,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     bob += spd*dt*1.9;
     // --- vertical: gravity + jump; stand/slide on REAL surfaces (down-ray → true height + normal) ---
     const px=camera.position.x, pz=camera.position.z, feetY=camera.position.y-EYE;
+    checkPortals(px, pz, camera.position.y, feetY);               // 🌀 breached a gate crystal? → travel to its destination world
     let floorY=0, nUp=1, nX=0, nZ=0;                              // default = flat ground at y=0 (up normal)
     let wetCol=null, cSurf=null, cU=0, cV=0;                      // wet paint under the feet (drives slip + smear)
     _stand.length=0;
@@ -1288,6 +1289,20 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       cr.appendChild(sbtn('◼ Materials', ()=>{ solidPickerOpen=!solidPickerOpen; if(activeShape) buildShapeTools(activeShape.userData.type); },'wide'));   // open/close the material picker grid
       cr.appendChild(sbtn('◆ Crystals', ()=>{ if(activeShape) crystallizeShape(activeShape, activeShape.userData.crystal ? (activeShape.userData.gemIdx>=MAXGEM?1:activeShape.userData.gemIdx+1) : 1); },'wide'));   // cut → cycle gems 1…16
       box.appendChild(cr);
+      if(activeShape.userData.crystal){                                   // 🌀 a crystal can become a JUMP GATE — set its destination world (sprint-breach it to travel there)
+        const gr=document.createElement('div'); gr.className='srow';
+        gr.appendChild(sbtn((activeShape.userData.portalTx?'🌀 gate ✓ (edit)':'🌀 make gate'), ()=>{
+          const cur=activeShape.userData.portalTx||'';
+          const t=prompt('JUMP GATE — paste the DESTINATION world txid.\nSprint-breach this crystal to travel there. Blank = remove the gate.', cur);
+          if(t===null) return;
+          const tx=(t||'').trim().toLowerCase().replace(/[^0-9a-f]/g,'');
+          if(tx.length===64){ activeShape.userData.portalTx=tx; showHint('🌀 gate set — sprint-breach the crystal to travel'); }
+          else if(tx.length===0){ delete activeShape.userData.portalTx; showHint('gate removed'); }
+          else { showHint('need a 64-character world txid'); return; }
+          scheduleSave(); buildShapeTools(activeShape.userData.type);
+        },'wide'));
+        box.appendChild(gr);
+      }
       if(solidPickerOpen && activeShape){                                  // ◼ Solids → material picker (categorised swatch grid); click a swatch to apply
         const grid=document.createElement('div'); grid.style.cssText='max-height:190px;overflow-y:auto;margin-top:2px;';
         const cur=activeShape.userData.tex||0;
@@ -1427,6 +1442,27 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     return _gmPromise || (_gmPromise=new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='vendor/grafmint.js';
       s.onload=()=>window.GrafMint?res(window.GrafMint):rej(new Error('mint core failed to init'));
       s.onerror=()=>rej(new Error('could not load vendor/grafmint.js')); document.head.appendChild(s); })); }
+  // ── 🌀 JUMP GATES — a crystal carrying a destination world txid. Sprint-breach it → travel (free world loads · owned assets prompt to purchase; the existing loadFromChain traversal). ──
+  let _portaling=false, _nearGate=null;
+  function checkPortals(px, pz, headY, feetY){
+    if(_portaling || talking || keepOpen) return;
+    let near=null;
+    for(const m of bShapes){ const u=m.userData; if(!u.crystal || !u.portalTx) continue;
+      const bb=_cbox.setFromObject(m);
+      const inside = px>bb.min.x+0.05 && px<bb.max.x-0.05 && pz>bb.min.z+0.05 && pz<bb.max.z-0.05 && feetY<bb.max.y-0.05 && headY>bb.min.y-0.2;
+      if(inside){ enterPortal(m); return; }                        // breached the volume → travel
+      if(!near){ const cx=(bb.min.x+bb.max.x)/2, cz=(bb.min.z+bb.max.z)/2, rr=(bb.max.x-bb.min.x)/2+1.6; if(Math.hypot(px-cx,pz-cz)<rr) near=m; }
+    }
+    if(near){ if(_nearGate!==near){ _nearGate=near; showHint('◈ jump gate — sprint in to travel'); } } else _nearGate=null;
+  }
+  function enterPortal(m){
+    _portaling=true; _nearGate=null;
+    const dest=m.userData.portalTx;
+    showHint('◈ entering world '+dest.slice(0,8)+'… — free assets load, owned assets ask to purchase');
+    saveWorld();                                                   // keep THIS world before the jump
+    loadFromChain(dest);                                           // free → loads · rights-reserved/owned → the buy-offer (same traversal we built)
+    setTimeout(()=>{ _portaling=false; }, 6000);                   // release the guard if the load didn't replace the world (e.g. failed/expired)
+  }
   async function loadFromChain(txid, owned){                        // owned=true after a purchase → skip the licence gate
     txid=(txid||'').trim().toLowerCase().replace(/[^0-9a-f]/g,'');
     if(txid.length!==64){ _kNote().textContent='Paste a 64-character transaction id.'; return; }
