@@ -219,6 +219,7 @@
   <div class="kbtn" id="kImport">📥 Load from File (.bmf)</div>
   <div class="kbtn immortal" id="kMint">⬆ Save to Chain</div>
   <div class="kbtn" id="kChain">⬇ Load from Chain</div>
+  <div class="kbtn" id="kShareWorld">🔗 Share world (link)</div>
   <div class="kbtn" id="kBack" style="display:none">← Back to previous world</div>
   <div class="kbtn" id="kWallet">👛 Open Wallet — balance &amp; NFTs</div>
   <input type="file" id="kFile" accept=".bmf,application/octet-stream" style="display:none">
@@ -1383,6 +1384,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   document.getElementById('kReload').addEventListener('click', ()=>{ saveWorld(); location.reload(); });
   // ── immortalize: pack the world (binary BMF) → hand off to the wallet to mint (the key never touches the game) ──
   const HANDOFF_URL = 'handoff.php';   // same-origin bridge: POST packed bytes → { id }
+  const WORLD_URL   = 'world.php';     // persistent public store for shared FREE worlds → grafverse.com/?w=<id>
   const WALLET_URL  = 'wallet/';        // TODO: switch to https://wallet.grafverse.com/ once the subdomain is live
   // pack the live world to packed BMF bytes — the ONE source of truth for both mint + download. Returns {bytes} or {err}.
   function packWorldBytes(){                                                    // Save-to-File = the SAME manifest shape as Save-to-Chain: FREE content inline (the free channel) + OWNED paint as txid REFERENCES (the on-chain ownership channel) — never owned bytes, so a shared .bmf can't pirate paid work.
@@ -1440,6 +1442,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     try{
       const bytes=Array.from(new Uint8Array(await f.arrayBuffer()));
       let dec; try{ dec=BMF.scene.unpack(bytes); }catch(_){ dec=null; }
+      setMyShare('');                                                          // loaded a different world → a later Share makes a NEW link (a fork), never overwrites your previous share
       if(dec && dec.members && dec.members.length){ await fileAcquire(bytes, dec.members.length, f.name); }   // owned paint refs → the wallet checks ownership + acquires the missing → reassemble on return
       else { const r=importScene(bytes); _kNote().textContent='Loaded '+r.shapes+' free shape'+(r.shapes===1?'':'s')+(r.ground?' + ground':'')+' from '+f.name+'.'; }   // pure-free file → load directly (the free channel)
     }catch(err){ _kNote().textContent='Load failed: '+(err.message||err)+' (not a valid .bmf scene?)'; }
@@ -1512,7 +1515,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     saveWorld();
   }
   function goBack(){ const a=trailGet(); if(!a.length){ _kNote().textContent='No previous world to go back to.'; return; }
-    const prev=a.pop(); trailSet(a); restoreWorldData(prev); unlockBuild(true); updateBackBtn(); _kNote().textContent='← Back in your previous world.'; }
+    const prev=a.pop(); trailSet(a); restoreWorldData(prev); unlockBuild(true); updateBackBtn(); setMyShare(''); _kNote().textContent='← Back in your previous world.'; }
   async function loadFromChain(txid, owned){                        // owned=true after a purchase → skip the licence gate
     txid=(txid||'').trim().toLowerCase().replace(/[^0-9a-f]/g,'');
     if(txid.length!==64){ _kNote().textContent='Paste a 64-character transaction id.'; return; }
@@ -1534,7 +1537,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const dec=BMF.scene.unpack(atom.bytes);
       const r = (dec.members&&dec.members.length) ? await importMembersWorld(dec, GM, provider)   // a MEMBERS world → fetch each owned paint atom
                                                   : importScene(atom.bytes);                       // an inline scene (single-atom world)
-      _provenance=[txid]; saveWorld(); unlockBuild(true);   // you loaded a world → drop straight into it, build-ready (paint kit + manifest live)                             // this world now DERIVES from `txid` (its immediate parent) → recorded at mint
+      _provenance=[txid]; saveWorld(); unlockBuild(true); setMyShare('');   // a chain-loaded world → Share creates a fresh link (you don't hold its edit token)   // you loaded a world → drop straight into it, build-ready (paint kit + manifest live)                             // this world now DERIVES from `txid` (its immediate parent) → recorded at mint
       _kNote().textContent=(owned?'Purchased & loaded ':'Loaded ')+r.shapes+(r.members?' owned paint atom'+(r.members===1?'':'s'):' shape'+(r.shapes===1?'':'s'))+(r.ground?' + ground':'')+' from chain.';
     }catch(e){ _kNote().textContent='Load from chain failed: '+(e.message||e); }
   }
@@ -1542,6 +1545,37 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   document.getElementById('kWallet').addEventListener('click', ()=> window.open(WALLET_URL, 'grafverseWallet'));   // balance + My NFTs in a new tab — the game stays live behind it (close the tab to return)
   document.getElementById('kBack').addEventListener('click', goBack);   // ← Back to the world you jumped from (breadcrumb trail)
   updateBackBtn();                                                      // show ← Back if a jump trail survived (e.g. after a paid-jump wallet round-trip)
+  // ── 🔗 Share world on Web2 — POST the .bmf to the persistent public store → grafverse.com/?w=<id>. UPDATABLE at the same link via a private edit token (server keeps only its hash). ──
+  function sharesGet(){ try{ return JSON.parse(localStorage.getItem('grafverse-shares')||'{}'); }catch(_){ return {}; } }
+  function sharesSet(o){ try{ localStorage.setItem('grafverse-shares', JSON.stringify(o)); }catch(_){} }
+  function myShareId(){ try{ return localStorage.getItem('grafverse-myshare')||''; }catch(_){ return ''; } }
+  function setMyShare(id){ try{ id?localStorage.setItem('grafverse-myshare',id):localStorage.removeItem('grafverse-myshare'); }catch(_){} }
+  document.getElementById('kShareWorld').addEventListener('click', async ()=>{
+    const p=packWorldBytes(); if(p.err){ _kNote().textContent=p.err; return; }
+    const body=bytesToB64(p.bytes), cur=myShareId(), shares=sharesGet(), editing=cur&&shares[cur];
+    _kNote().textContent = editing ? 'Updating your shared world…' : 'Creating a share link…';
+    try{
+      const u = editing ? (WORLD_URL+'?id='+encodeURIComponent(cur)+'&edit='+encodeURIComponent(shares[cur])) : WORLD_URL;
+      const res=await fetch(u, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body });
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok || !data.id) throw new Error(data.error||('HTTP '+res.status));
+      if(data.edit){ shares[data.id]=data.edit; sharesSet(shares); setMyShare(data.id); }   // NEW share → remember the edit token so you can UPDATE this same link later
+      const link=location.origin+location.pathname+'?w='+data.id;
+      _kNote().innerHTML=(data.updated?'✓ Updated — same link:':'🔗 Share link (yours to update):')+'<br><a href="'+link+'" target="_blank" rel="noopener" style="color:var(--cyan);word-break:break-all">'+link+'</a>';
+      try{ await navigator.clipboard.writeText(link); }catch(_){}
+    }catch(e){ _kNote().textContent='Share failed: '+(e.message||e); }
+  });
+  async function openSharedWorld(id){                                     // opened via ?w=<id> — fetch the shared world + drop the visitor into it
+    _welcomeBack();                                                       // splash → one tap → in the world, build-ready
+    const shares=sharesGet(); setMyShare(shares[id]?id:'');               // YOUR shared world → Share = update · someone else's → editing forks to a NEW link
+    try{
+      const r=await fetch(WORLD_URL+'?id='+encodeURIComponent(id)); if(!r.ok) throw new Error('HTTP '+r.status);
+      const bytes=Array.from(new Uint8Array(await r.arrayBuffer()));
+      let dec; try{ dec=BMF.scene.unpack(bytes); }catch(_){ dec=null; }
+      if(dec && dec.members && dec.members.length){ await fileAcquire(bytes, dec.members.length, 'shared world'); }   // owned paint → acquire gate
+      else { importScene(bytes); saveWorld(); }                           // free world → load directly (the free channel)
+    }catch(e){ showHint('Couldn’t load that shared world: '+(e.message||e)); }
+  }
 
   // ---------- crystal (translucent gem) material — the second register: found & precious ----------
   // ── gem texture library (docs/BMF-SOLID-SPEC.md) — the `tex` byte. Birthstone gems 1–12 == their MONTH, then extras. ──
@@ -2095,7 +2129,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       openKeep(); loadFromChain(_bought.toLowerCase(), true); }
     else if(_resume){ _welcomeBack(); try{ history.replaceState(null,'',location.pathname); }catch(_){} }
     else if(_p.get('fileloaded')!=null){ _welcomeBack(); try{ history.replaceState(null,'',location.pathname); }catch(_){}    // back from the wallet acquire → rebuild the shared world from the stashed .bmf
-      const _b64=sessionStorage.getItem('grafverse-fileload'); if(_b64){ sessionStorage.removeItem('grafverse-fileload'); openKeep(); reassembleFile(_b64, _p.get('fileloaded')==='1'); } } }
+      const _b64=sessionStorage.getItem('grafverse-fileload'); if(_b64){ sessionStorage.removeItem('grafverse-fileload'); openKeep(); reassembleFile(_b64, _p.get('fileloaded')==='1'); } }
+    else if(/^[0-9a-f]{6,16}$/i.test(_p.get('w')||'')){ try{ history.replaceState(null,'',location.pathname); }catch(_){} openSharedWorld((_p.get('w')||'').toLowerCase()); } }   // ?w=<id> → open a shared world (the Web2 link)
 
   // ---------- draw-time motion: per-object BOB + ROTATE (independent, OWNED) ----------
   // Purely a render offset — applied just before renderer.render and undone right after, so logic, collision,
