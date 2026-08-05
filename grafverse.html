@@ -95,7 +95,7 @@
   body.mtalk #shapeTab, body.mtalk #shapePanel{display:none!important;}
 
   /* --- top "Keep / Immortalize" HUD --- */
-  #keepTab{position:fixed;top:0;left:50%;transform:translateX(-50%);display:none;z-index:8;
+  #keepTab{position:fixed;top:0;left:50%;transform:translateX(-50%);display:block;z-index:8;   /* available from the very start — Load a world before you build */
     padding:7px 20px;border-radius:0 0 12px 12px;background:rgba(20,40,74,.92);border:1px solid rgba(120,170,255,.4);border-top:none;
     color:#cfe0ff;font:600 11px system-ui;letter-spacing:.18em;text-transform:uppercase;cursor:pointer;pointer-events:auto;}
   body.building #keepTab{display:block;}
@@ -1442,7 +1442,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const dec=BMF.scene.unpack(atom.bytes);
       const r = (dec.members&&dec.members.length) ? await importMembersWorld(dec, GM, provider)   // a MEMBERS world → fetch each owned paint atom
                                                   : importScene(atom.bytes);                       // an inline scene (single-atom world)
-      _provenance=[txid]; saveWorld();                             // this world now DERIVES from `txid` (its immediate parent) → recorded at mint
+      _provenance=[txid]; saveWorld(); unlockBuild(true);   // you loaded a world → drop straight into it, build-ready (paint kit + manifest live)                             // this world now DERIVES from `txid` (its immediate parent) → recorded at mint
       _kNote().textContent=(owned?'Purchased & loaded ':'Loaded ')+r.shapes+(r.members?' owned paint atom'+(r.members===1?'':'s'):' shape'+(r.shapes===1?'':'s'))+(r.ground?' + ground':'')+' from chain.';
     }catch(e){ _kNote().textContent='Load from chain failed: '+(e.message||e); }
   }
@@ -1752,10 +1752,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function revealPaintHUD(){ if(paintShown)return; paintShown=true;   // the left-edge kit inventory slides in
     invEl.style.display='flex'; invEl.style.opacity=1; renderInv();
     showHint(MOBILE?'your kit (left edge) — how much paint you have left':'your kit, left edge — how much paint you have left'); }
-  function unlockBuild(){ if(buildUnlocked)return; buildUnlocked=true;   // the manifest tool wakes up the builder in you
+  function unlockBuild(quiet){ if(buildUnlocked)return; buildUnlocked=true;   // the manifest tool wakes up the builder in you
     walletEl.style.opacity=1; renderWallet();          // sats wallet
     revealPaintHUD();                                  // make sure the kit is showing too
     document.body.classList.add('building'); setMode();
+    if(quiet) return;                                  // quiet (unlocked by LOADING a world) → don't pop the manifest over the fresh view
     openShape();                                       // the Manifest HUD appears and the can holsters
     showHint(MOBILE?'manifest — tap a shape to place it · this was the last one\'s':'manifest — click the ground, then a shape · this was the last one\'s'); }
   addEventListener('keydown',e=>{ if(!buildUnlocked||talking||keepOpen)return; const n=e.code.match(/^Digit([1-7])$/);
