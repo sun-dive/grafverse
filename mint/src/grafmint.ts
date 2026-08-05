@@ -20,8 +20,8 @@ export { WalletProvider } from './walletProvider.ts'
 // ── high-level mint (grafspace-friendly wrapper) ──
 export { mintAtom } from './mintApi.ts'
 
-// ── read-only chain import (no key): txid → embedded payload bytes (gunzipped) ──
-export { loadAtomBytes } from './sceneRead.ts'
+// ── read-only chain import (no key): txid → embedded payload bytes (gunzipped) + licence gate ──
+export { loadAtomBytes, readCollection, isOpenLicense } from './sceneRead.ts'
 
 // ── pre-mint cost estimate (matches createEdition's own funding math) + compression for accurate file sizing ──
 export { estimateEditionFunding, fundingMargin, type MintCostEstimate } from './editionBuilder.ts'

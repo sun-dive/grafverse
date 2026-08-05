@@ -1425,6 +1425,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     try{
       const GM=await loadGrafmint();
       const provider=new GM.WalletProvider('');                     // read-only — address unused for tx fetch
+      const info=await GM.readCollection(provider, txid).catch(()=>null);   // licence gate: open → free read · rights-reserved → purchase
+      if(info && !info.open){                                       // ARR / must-own → importing means PURCHASING a copy (pays the creator, covenant-enforced)
+        _kNote().textContent='“'+(info.tokenName||'This world')+'” is All Rights Reserved ('+(info.license||'ARR')+'). Importing it means purchasing a copy — that replicates it on-chain and pays the creator. (Purchase-to-import is coming next.)';
+        return;
+      }
       const atom=await GM.loadAtomBytes(provider, txid);            // → { bytes, mimeType, fileName, compressed }
       const r=importScene(atom.bytes);
       _provenance=[txid]; saveWorld();                             // this world now DERIVES from `txid` (its immediate parent) → recorded at mint

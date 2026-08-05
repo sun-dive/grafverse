@@ -4,8 +4,43 @@
 // grafspace design). Encrypted content stays as ciphertext here (no gzip magic, no BMF header) and the caller
 // reports it as unreadable without the holder key. Reuses the tested FILE-record parsers + native decompress.
 import type { WalletProvider } from './walletProvider.ts'
-import { parseFileScript, parseLegacyFileScript, type FileFields } from './tokenCodec.ts'
+import { parseFileScript, parseLegacyFileScript, parseTemplateScript, type FileFields } from './tokenCodec.ts'
 import { decompress } from './compress.ts'
+
+// ── licence tiers (see the wallet mint form) — OPEN = free to import (read-only); anything else = rights-reserved (purchase) ──
+const OPEN_LICENSES = new Set(['OPEN-BSV', 'CC0', 'CC0-1.0', 'PD', 'CC-BY-4.0'])
+/** True if an atom may be imported FREE (read-only). Missing/unknown licence defaults permissive (legacy atoms). */
+export function isOpenLicense(code?: string | null): boolean {
+  if (code == null || code === '') return true
+  return OPEN_LICENSES.has(code.toUpperCase())
+}
+
+export interface CollectionInfo {
+  txId: string
+  tokenName: string
+  license: string | null       // immutable licence code minted in the TEMPLATE record (e.g. CC0 · OPEN-BSV · ARR)
+  licenseRef: string | null
+  publisherPubKeyHex: string   // the creator's key (the fee payee)
+  covenantScript: string       // the covenant template (hex) — feeds resolveHolderEdition for a purchase/replicate
+  open: boolean                // isOpenLicense(license) → free-read vs purchase-to-import
+}
+
+/** Read a collection's TEMPLATE record (TX1) → its licence + creator + covenant template. NO key needed.
+ *  Lets an importer gate free-read (open) vs purchase-to-import (rights-reserved) before touching the content. */
+export async function readCollection(provider: WalletProvider, txId: string): Promise<CollectionInfo | null> {
+  const tx = await provider.getSourceTransaction(txId)
+  for (const out of tx.outputs) {
+    const t = parseTemplateScript(out.lockingScript)
+    if (t != null) {
+      const license = t.fields.license ?? null
+      return {
+        txId, tokenName: t.fields.tokenName, license, licenseRef: t.fields.licenseRef ?? null,
+        publisherPubKeyHex: t.publisherPubKeyHex, covenantScript: t.fields.covenantScript, open: isOpenLicense(license),
+      }
+    }
+  }
+  return null
+}
 
 export interface LoadedAtom {
   bytes: number[]        // the raw payload (decompressed if it was gzipped) — e.g. packed BMF scene bytes
