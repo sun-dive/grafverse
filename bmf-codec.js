@@ -86,7 +86,7 @@
   // numbering: core 0x01–0x3F · extension 0x40–0xBF · vendor 0xC0–0xFE (3rd-party, safely skipped)
   var CHUNK = { SHAPES: 0x01, GROUND: 0x02, CAMERA: 0x03, PROVENANCE: 0x04, MEMBERS: 0x08 };   // MEMBERS = paint-atom txids (world = a bundle of owned atoms). reserved: TIMELINE 0x05·CHARACTERS 0x06·LIGHTS 0x07
   var HAS_ATTRS = 0x80;                                                                // matFlags bit7 = per-shape ATTRIBUTES escape follows
-  var ATTR = { ANIM_PARAMS: 0x01, SOURCE_REF: 0x02, LIGHT: 0x03, POSE: 0x04, PHYSICS: 0x05 };  // per-shape attribute registry (append-only)
+  var ATTR = { ANIM_PARAMS: 0x01, SOURCE_REF: 0x02, LIGHT: 0x03, POSE: 0x04, PHYSICS: 0x05, PORTAL: 0x06 };  // per-shape attribute registry (append-only). PORTAL = a JUMP GATE: data = 32-byte destination WORLD txid (breach the crystal → travel there)
 
   // frozen encodings (§3): ratio & size are LOGARITHMIC; rotation is Euler XYZ.
   function log2(x) { return Math.log(x) / Math.LN2; }
