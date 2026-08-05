@@ -3,9 +3,10 @@
 // vendored per app (like three.min.js) so it never drifts. On-chain payloads are PACKED BYTES, never JSON.
 //   • BMF.*          — reusable toolkit: Writer/Reader (LE ints + varint), SoA dab codec, quantisers, txid/str.
 //   • BMF.ref        — the UNIVERSAL reference { tx, name? } (the pointer every atom/manifest uses).
-//   • BMF.scene      — grafverse's geometry scene (the BMF-SOLID record; ground strokes + solid atoms).
-//                      v3 per-shape: id·res·[class params: fractal seed u16 / model u16 / mesh txid / n log-ratios]
-//                      ·pos·rot·size·color·tex·matFlags·paint(strokes carry an fx byte).
+//   • BMF.scene      — grafverse's geometry scene. v4 = CHUNKED container (version + typed chunks: SHAPES·GROUND·
+//                      CAMERA·PROVENANCE; unknown chunks skipped) + per-shape ATTRIBUTES escape (matFlags bit7).
+//                      v3 (flat) still decoded for the 2 existing mints. Shape record: id·res·[class params:
+//                      fractal seed / model / mesh txid / n log-ratios]·pos·rot·size·color·tex·matFlags·paint.
 //   • BMF.timeline   — the media manifest (binary .bmf; scene = time-cue + ref) — replaces the JSON/cue form.
 //   • BMF.container  — the packed .bmc index (member map) — replaces bmc.json.
 // Each app uses the modules it needs; all read this one file.
@@ -64,7 +65,7 @@
   //   id u8 · resolution u8 · ratios u8[n] · pos i32×3 (mm) · rot i16×3 (Euler) · scale u16 (log mm) · paint.
   // Callers pass SEMANTIC values (metres, radians, plain ratios); the codec owns the frozen quantisation.
   // n (ratio count) is derived from the base solid, never stored. One shape = one owned paint unit.
-  var SCENE_VERSION = 3;
+  var SCENE_VERSION = 4;   // v4 = CHUNKED container (docs/BMF-SCENE-V4.md); v3 (flat) still DECODED for the 2 existing mints
   var RATIO_N = { 119: 1, 120: 1, 121: 0, 122: 2, 123: 1, 124: 1, 125: 1, 126: 2 };  // ratios per base solid (§4)
   function ratioN(id) { return RATIO_N[id] != null ? RATIO_N[id] : 0; }
 
@@ -81,6 +82,12 @@
   // ── paint-fx byte — per-stroke STACKABLE bitfield (aligned to nft.gift wig/twk; seed-driven, deterministic) ──
   var FX = { WIGGLE: 1, TWINKLE: 2, SPARKLE: 4, CRYSTAL: 8 };                          // bits 4–7 reserved
 
+  // ── v4 CHUNK container (docs/BMF-SCENE-V4.md): scene = version + [type·len·payload]; UNKNOWN chunks SKIPPED ──
+  // numbering: core 0x01–0x3F · extension 0x40–0xBF · vendor 0xC0–0xFE (3rd-party, safely skipped)
+  var CHUNK = { SHAPES: 0x01, GROUND: 0x02, CAMERA: 0x03, PROVENANCE: 0x04 };          // reserved: TIMELINE 0x05·CHARACTERS 0x06·LIGHTS 0x07
+  var HAS_ATTRS = 0x80;                                                                // matFlags bit7 = per-shape ATTRIBUTES escape follows
+  var ATTR = { ANIM_PARAMS: 0x01, SOURCE_REF: 0x02, LIGHT: 0x03, POSE: 0x04, PHYSICS: 0x05 };  // per-shape attribute registry (append-only)
+
   // frozen encodings (§3): ratio & size are LOGARITHMIC; rotation is Euler XYZ.
   function log2(x) { return Math.log(x) / Math.LN2; }
   function encRatio(r) { return clamp(Math.round(128 + 25.6 * log2(r > 1e-6 ? r : 1e-6)), 0, 255); }   // 2^((raw-128)/25.6)
@@ -90,66 +97,103 @@
   function encAngle(rad) { return clamp(Math.round(normAngle(rad) * 65536 / TAU), -32768, 32767); }       // deg = raw·360/65536
   function decAngle(raw) { return raw * TAU / 65536; }
 
-  function packScene(scene) {
-    var w = new Writer();
-    w.u8(SCENE_VERSION);
-    var g = scene.ground || [], i;
-    w.varint(g.length);
-    for (i = 0; i < g.length; i++) { w.u8(g[i].c & 255); w.u32(g[i].seed >>> 0); writeDabs(w, g[i].dabs, false); }
-    var sh = scene.shapes || [], k, a;
-    w.varint(sh.length);
-    for (k = 0; k < sh.length; k++) {
-      var m = sh[k], id = m.id & 255, n = ratioN(id), rat = m.ratios || [];
-      w.u8(id);
-      w.u8((m.res || 0) & 255);
-      if (isFractal(id)) w.u16((m.seed >>> 0) & 0xffff);                              // 160–207 fractal: seed
-      else if (id === ID_COMPLEX) w.u16((m.model >>> 0) & 0xffff);                    // 254 complex model: pack index
-      else if (id === ID_MESH) writeTxid(w, m.mesh || (m.ref && m.ref.tx) || '');     // 255 mesh: geometry txid
-      else for (a = 0; a < n; a++) w.u8(encRatio(rat[a] != null ? rat[a] : 1));       // 119–159 primitive: n log-ratios
-      w.i32(q(m.pos[0], 1000)); w.i32(q(m.pos[1], 1000)); w.i32(q(m.pos[2], 1000));   // metres → mm
-      w.i16(encAngle(m.rot[0])); w.i16(encAngle(m.rot[1])); w.i16(encAngle(m.rot[2]));
-      w.u16(encSize(m.scale * 1000));                                                 // uniform size: m → mm → log
-      w.u8(m.color & 255);                                                            // base colour — palette index (gem tint for a crystal)
-      w.u8(m.tex & 255);                                                              // surface texture — library index (0 plain · 1 crystal · …)
-      w.u8(encMat(m.matFlags != null ? m.matFlags : m.mat));                          // material flags — grain rotation · tiled/scaled
-      var p = m.paint || { kind: 0 };
-      w.u8(p.kind & 255);                                                             // owned paint layer: 0 none · 1 strokes · (2+ reserved: txid, per-surface)
-      if (p.kind === 1) {                                                             // inline strokes
-        var st = p.strokes || [];
-        w.varint(st.length);
-        for (a = 0; a < st.length; a++) { w.u8(st[a].si & 255); w.u8(st[a].c & 255); w.u8(st[a].fx & 255); w.u32(st[a].seed >>> 0); writeDabs(w, st[a].dabs, true); }
-      }
+  // ── one ground stroke ──
+  function writeGround(w, g) { w.u8(g.c & 255); w.u32(g.seed >>> 0); writeDabs(w, g.dabs, false); }
+  function readGround(r) { var c = r.u8(), seed = r.u32(); return { c: c, seed: seed, dabs: readDabs(r, false) }; }
+
+  // ── one SHAPE record (shared by v3 + v4). matFlags bit7 = HAS_ATTRS → a trailing per-shape attributes TLV. ──
+  function writeShape(w, m) {
+    var id = m.id & 255, n = ratioN(id), rat = m.ratios || [], a;
+    w.u8(id);
+    w.u8((m.res || 0) & 255);
+    if (isFractal(id)) w.u16((m.seed >>> 0) & 0xffff);                                // 160–207 fractal: seed
+    else if (id === ID_COMPLEX) w.u16((m.model >>> 0) & 0xffff);                      // 254 complex model: pack index
+    else if (id === ID_MESH) writeTxid(w, m.mesh || (m.ref && m.ref.tx) || '');       // 255 mesh: geometry txid
+    else for (a = 0; a < n; a++) w.u8(encRatio(rat[a] != null ? rat[a] : 1));         // 119–159 primitive: n log-ratios
+    w.i32(q(m.pos[0], 1000)); w.i32(q(m.pos[1], 1000)); w.i32(q(m.pos[2], 1000));     // metres → mm
+    w.i16(encAngle(m.rot[0])); w.i16(encAngle(m.rot[1])); w.i16(encAngle(m.rot[2]));
+    w.u16(encSize(m.scale * 1000));                                                   // uniform size: m → mm → log
+    w.u8(m.color & 255);                                                              // base colour — palette index
+    w.u8(m.tex & 255);                                                                // surface texture — library index
+    var attrs = m.attrs || [];
+    var mf = encMat(m.matFlags != null ? m.matFlags : m.mat) & 0x7f;                  // material bits (grain·tiled·bob·spin), bit7 reserved for HAS_ATTRS
+    if (attrs.length) mf |= HAS_ATTRS;
+    w.u8(mf);
+    var p = m.paint || { kind: 0 };
+    w.u8(p.kind & 255);                                                               // owned paint: 0 none · 1 strokes
+    if (p.kind === 1) {
+      var st = p.strokes || [];
+      w.varint(st.length);
+      for (a = 0; a < st.length; a++) { w.u8(st[a].si & 255); w.u8(st[a].c & 255); w.u8(st[a].fx & 255); w.u32(st[a].seed >>> 0); writeDabs(w, st[a].dabs, true); }
     }
+    if (attrs.length) {                                                              // per-shape ATTRIBUTES escape (v4) — type·len·data, unknown types round-trip
+      w.varint(attrs.length);
+      for (a = 0; a < attrs.length; a++) { var at = attrs[a], d = at.data || []; w.varint(at.type & 0xffff); w.varint(d.length); for (var b = 0; b < d.length; b++) w.u8(d[b] & 255); }
+    }
+  }
+  function readShape(r) {
+    var id = r.u8(), res = r.u8(), ratios = [], seed = null, model = null, mesh = null, n, a;
+    if (isFractal(id)) seed = r.u16();
+    else if (id === ID_COMPLEX) model = r.u16();
+    else if (id === ID_MESH) mesh = readTxid(r);
+    else { n = ratioN(id); for (a = 0; a < n; a++) ratios.push(decRatio(r.u8())); }
+    var pos = [r.i32() / 1000, r.i32() / 1000, r.i32() / 1000];
+    var rot = [decAngle(r.i16()), decAngle(r.i16()), decAngle(r.i16())];
+    var scale = decSize(r.u16()) / 1000;
+    var color = r.u8(), tex = r.u8();
+    var mfRaw = r.u8(), hasAttrs = !!(mfRaw & HAS_ATTRS), matFlags = mfRaw & 0x7f;     // strip the framing bit → material only
+    var kind = r.u8(), paint, b;
+    if (kind === 1) {
+      var st = [], stn = r.varint();
+      for (b = 0; b < stn; b++) { var si = r.u8(), c = r.u8(), fx = r.u8(), sd = r.u32(); st.push({ si: si, c: c, fx: fx, seed: sd, dabs: readDabs(r, true) }); }
+      paint = { kind: 1, strokes: st };
+    } else paint = { kind: kind };
+    var shape = { id: id, res: res, ratios: ratios, seed: seed, model: model, mesh: mesh, pos: pos, rot: rot, scale: scale, color: color, tex: tex, matFlags: matFlags, mat: decMat(matFlags), paint: paint };
+    if (hasAttrs) { var attrs = [], an = r.varint(); for (a = 0; a < an; a++) { var atype = r.varint(), alen = r.varint(), data = []; for (b = 0; b < alen; b++) data.push(r.u8()); attrs.push({ type: atype, data: data }); } shape.attrs = attrs; }
+    return shape;
+  }
+
+  // ── CAMERA chunk (v4): the authored shot — pos + look-at target (mm) + fov° + flags ──
+  function writeCamera(w, c) { var t = c.target || [0, 0, 0]; w.i32(q(c.pos[0], 1000)); w.i32(q(c.pos[1], 1000)); w.i32(q(c.pos[2], 1000)); w.i32(q(t[0], 1000)); w.i32(q(t[1], 1000)); w.i32(q(t[2], 1000)); w.u8((c.fov || 0) & 255); w.u8((c.flags || 0) & 255); }
+  function readCamera(r) { return { pos: [r.i32() / 1000, r.i32() / 1000, r.i32() / 1000], target: [r.i32() / 1000, r.i32() / 1000, r.i32() / 1000], fov: r.u8(), flags: r.u8() }; }
+
+  function writeChunk(w, type, payload) { w.varint(type); w.varint(payload.length); for (var i = 0; i < payload.length; i++) w.b.push(payload[i]); }
+
+  // v4 scene = version(4) + typed chunks (SHAPES · GROUND · CAMERA · PROVENANCE); each chunk only written if present.
+  function packScene(scene) {
+    var w = new Writer(); w.u8(SCENE_VERSION);
+    var sh = scene.shapes || [], g = scene.ground || [], prov = scene.provenance || [], i, cw;
+    if (sh.length) { cw = new Writer(); cw.varint(sh.length); for (i = 0; i < sh.length; i++) writeShape(cw, sh[i]); writeChunk(w, CHUNK.SHAPES, cw.b); }
+    if (g.length) { cw = new Writer(); cw.varint(g.length); for (i = 0; i < g.length; i++) writeGround(cw, g[i]); writeChunk(w, CHUNK.GROUND, cw.b); }
+    if (scene.camera) { cw = new Writer(); writeCamera(cw, scene.camera); writeChunk(w, CHUNK.CAMERA, cw.b); }
+    if (prov.length) { cw = new Writer(); cw.varint(prov.length); for (i = 0; i < prov.length; i++) writeRef(cw, prov[i]); writeChunk(w, CHUNK.PROVENANCE, cw.b); }
     return w.b; // number[] (0..255)
   }
 
   function unpackScene(bytes) {
-    var r = new Reader(bytes);
-    var ver = r.u8();
-    if (ver !== SCENE_VERSION) throw new Error('unsupported scene version ' + ver);
-    var ground = [], gn = r.varint(), i;
-    for (i = 0; i < gn; i++) { var gc = r.u8(), gseed = r.u32(); ground.push({ c: gc, seed: gseed, dabs: readDabs(r, false) }); }
-    var shapes = [], sn = r.varint(), k, a;
-    for (k = 0; k < sn; k++) {
-      var id = r.u8(), res = r.u8(), ratios = [], seed = null, model = null, mesh = null, n;
-      if (isFractal(id)) seed = r.u16();                                              // 160–207 fractal
-      else if (id === ID_COMPLEX) model = r.u16();                                    // 254 complex model
-      else if (id === ID_MESH) mesh = readTxid(r);                                    // 255 mesh
-      else { n = ratioN(id); for (a = 0; a < n; a++) ratios.push(decRatio(r.u8())); } // 119–159 primitive
-      var pos = [r.i32() / 1000, r.i32() / 1000, r.i32() / 1000];
-      var rot = [decAngle(r.i16()), decAngle(r.i16()), decAngle(r.i16())];
-      var scale = decSize(r.u16()) / 1000;                                            // → metres
-      var color = r.u8(), tex = r.u8();                                               // base colour index · surface texture index
-      var matFlags = r.u8();                                                          // material flags — grain rotation · tiled/scaled
-      var kind = r.u8(), paint;
-      if (kind === 1) {
-        var st = [], stn = r.varint(), b;
-        for (b = 0; b < stn; b++) { var si = r.u8(), c = r.u8(), fx = r.u8(), sd = r.u32(); st.push({ si: si, c: c, fx: fx, seed: sd, dabs: readDabs(r, true) }); }
-        paint = { kind: 1, strokes: st };
-      } else paint = { kind: kind };                                                  // 0 none · 2+ reserved (a crystal is tex, not a paint kind)
-      shapes.push({ id: id, res: res, ratios: ratios, seed: seed, model: model, mesh: mesh, pos: pos, rot: rot, scale: scale, color: color, tex: tex, matFlags: matFlags, mat: decMat(matFlags), paint: paint });
+    var r = new Reader(bytes), ver = r.u8();
+    if (ver === 3) return unpackSceneV3(r);   // the 2 existing mints (flat)
+    if (ver === 4) return unpackSceneV4(r);   // chunked container
+    throw new Error('unsupported scene version ' + ver);
+  }
+  function unpackSceneV3(r) {                  // flat: ground list then shapes list (version byte already consumed)
+    var ground = [], gn = r.varint(), i, shapes = [], sn, k;
+    for (i = 0; i < gn; i++) ground.push(readGround(r));
+    sn = r.varint();
+    for (k = 0; k < sn; k++) shapes.push(readShape(r));
+    return { v: 3, ground: ground, shapes: shapes, camera: null, provenance: [] };
+  }
+  function unpackSceneV4(r) {                  // loop chunks to end; UNKNOWN types skipped via len → forward-compatible
+    var ground = [], shapes = [], camera = null, provenance = [], i, n;
+    while (r.i < r.d.length) {
+      var type = r.varint(), len = r.varint(), end = r.i + len;
+      if (type === CHUNK.SHAPES) { n = r.varint(); for (i = 0; i < n; i++) shapes.push(readShape(r)); }
+      else if (type === CHUNK.GROUND) { n = r.varint(); for (i = 0; i < n; i++) ground.push(readGround(r)); }
+      else if (type === CHUNK.CAMERA) { camera = readCamera(r); }
+      else if (type === CHUNK.PROVENANCE) { n = r.varint(); for (i = 0; i < n; i++) provenance.push(readRef(r)); }
+      r.i = end;                              // always jump to chunk end (skips unknown chunks + any reserved trailing bytes)
     }
-    return { v: SCENE_VERSION, ground: ground, shapes: shapes };
+    return { v: 4, ground: ground, shapes: shapes, camera: camera, provenance: provenance };
   }
 
   // ── the UNIFORM REFERENCE — { tx, name? } — the universal pointer (BMF-FAMILY.md). Packed, never JSON. ──
@@ -203,7 +247,8 @@
     ref: { write: writeRef, read: readRef },
     scene: { VERSION: SCENE_VERSION, ratioN: ratioN, pack: packScene, unpack: unpackScene,
              encRatio: encRatio, decRatio: decRatio, encSize: encSize, decSize: decSize, encAngle: encAngle, decAngle: decAngle,
-             isFractal: isFractal, ID_COMPLEX: ID_COMPLEX, ID_MESH: ID_MESH, encMat: encMat, decMat: decMat, MAT: MAT, FX: FX },
+             isFractal: isFractal, ID_COMPLEX: ID_COMPLEX, ID_MESH: ID_MESH, encMat: encMat, decMat: decMat, MAT: MAT, FX: FX,
+             CHUNK: CHUNK, ATTR: ATTR, HAS_ATTRS: HAS_ATTRS },
     timeline: { VERSION: TIMELINE_VERSION, pack: packTimeline, unpack: unpackTimeline },
     container: { VERSION: CONTAINER_VERSION, pack: packIndex, unpack: unpackIndex },
   };
