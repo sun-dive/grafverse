@@ -1401,6 +1401,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function bytesToB64(arr){ let s=''; for(let i=0;i<arr.length;i+=0x8000) s+=String.fromCharCode.apply(null, arr.slice(i,i+0x8000)); return btoa(s); }
   function txidToBytes(h){ h=(h||'').toLowerCase().replace(/[^0-9a-f]/g,''); const a=[]; for(let i=0;i+1<h.length&&i<64;i+=2) a.push(parseInt(h.substr(i,2),16)); return a; }   // 64-hex txid → 32 raw bytes (for the PORTAL attr)
   function bytesToTxid(b){ let s=''; for(let i=0;i<b.length;i++) s+=(b[i]&255).toString(16).padStart(2,'0'); return s; }
+  function b64ToBytes(b64){ const s=atob(b64), a=new Array(s.length); for(let i=0;i<s.length;i++) a[i]=s.charCodeAt(i); return a; }   // base64 → byte array (reassemble a stashed .bmf after the wallet round-trip)
   document.getElementById('kMint').addEventListener('click', async ()=>{
     if(!window.BMF){ _kNote().textContent='Codec missing (bmf-codec.js didn’t load).'; return; }
     saveWorld();
@@ -1438,13 +1439,34 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     try{
       const bytes=Array.from(new Uint8Array(await f.arrayBuffer()));
       let dec; try{ dec=BMF.scene.unpack(bytes); }catch(_){ dec=null; }
-      const r=importScene(bytes);                                              // loads the FREE inline content (the free channel); owned paint refs are the on-chain ownership channel
-      let note='Loaded '+r.shapes+' free shape'+(r.shapes===1?'':'s')+(r.ground?' + ground':'')+' from '+f.name+'.';
-      if(dec && dec.members && dec.members.length) note+=' '+dec.members.length+' owned paint layer'+(dec.members.length===1?'':'s')+' referenced — acquire via the wallet (next step).';
-      _kNote().textContent=note;
+      if(dec && dec.members && dec.members.length){ await fileAcquire(bytes, dec.members.length, f.name); }   // owned paint refs → the wallet checks ownership + acquires the missing → reassemble on return
+      else { const r=importScene(bytes); _kNote().textContent='Loaded '+r.shapes+' free shape'+(r.shapes===1?'':'s')+(r.ground?' + ground':'')+' from '+f.name+'.'; }   // pure-free file → load directly (the free channel)
     }catch(err){ _kNote().textContent='Load failed: '+(err.message||err)+' (not a valid .bmf scene?)'; }
     e.target.value='';   // allow re-loading the same file
   });
+  // ── Load-from-File ACQUIRE: a .bmf's OWNED paint refs must pass the on-chain ownership channel. Stash the file, route the member list to the wallet (checks holdings + replicates the missing, paying each creator), then reassemble on return. Cancel/unfunded → free-only. ──
+  async function fileAcquire(bytes, nMembers, fname){
+    try{ sessionStorage.setItem('grafverse-fileload', bytesToB64(bytes)); }catch(_){}    // stash → reassemble after the wallet round-trip
+    _kNote().textContent='“'+fname+'” references '+nMembers+' owned paint layer'+(nMembers===1?'':'s')+' — opening your wallet to acquire what you don’t already own…';
+    try{
+      const dec=BMF.scene.unpack(bytes), members=(dec.members||[]).map(m=>m.tx).filter(Boolean);
+      const body=btoa(unescape(encodeURIComponent(JSON.stringify({ v:1, acquire:members }))));
+      const res=await fetch(HANDOFF_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body });
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok || !data.id) throw new Error(data.error||('HTTP '+res.status));
+      const ret=location.origin+location.pathname;
+      location.href = WALLET_URL + '?acquire=' + encodeURIComponent(data.id) + '&return=' + encodeURIComponent(ret);
+    }catch(e){ const r=importScene(bytes); _kNote().textContent='Loaded free content from '+fname+'. (Couldn’t reach the wallet: '+(e.message||e)+')'; }
+  }
+  async function reassembleFile(b64, acquired){                                          // back from the wallet → rebuild the shared world from the stashed .bmf
+    let bytes; try{ bytes=b64ToBytes(b64); }catch(_){ return; }
+    try{
+      if(acquired){ const GM=await loadGrafmint(); const provider=new GM.WalletProvider('');
+        const rr=await importMembersWorld(BMF.scene.unpack(bytes), GM, provider);        // free inline + fetch the now-owned members + composite
+        saveWorld(); _kNote().textContent='Loaded the shared world — free content + '+rr.members+' owned paint layer'+(rr.members===1?'':'s')+'.';
+      } else { const rr=importScene(bytes); _kNote().textContent='Loaded the free content only ('+rr.shapes+' shape'+(rr.shapes===1?'':'s')+') — owned paint not acquired.'; }
+    }catch(e){ try{ importScene(bytes); }catch(_){}; _kNote().textContent='Loaded free content (owned-paint load failed: '+(e.message||e)+').'; }
+  }
   // ── load from chain: fetch a minted scene by txid (read-only, no wallet) → rebuild it ──
   // Lazy-load the mint core (vendor/grafmint.js, bundles @bsv/sdk) only on demand — reads need no key.
   let _gmPromise=null;
@@ -2070,7 +2092,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(_minted){ _welcomeBack(); showHint('✦ Immortalized on-chain — '+_minted.slice(0,8)+'… It’s yours forever.'); try{ history.replaceState(null,'',location.pathname); }catch(_){} }
     else if(_bought && /^[0-9a-f]{64}$/i.test(_bought)){ _welcomeBack(); try{ history.replaceState(null,'',location.pathname); }catch(_){}
       openKeep(); loadFromChain(_bought.toLowerCase(), true); }
-    else if(_resume){ _welcomeBack(); try{ history.replaceState(null,'',location.pathname); }catch(_){} } }
+    else if(_resume){ _welcomeBack(); try{ history.replaceState(null,'',location.pathname); }catch(_){} }
+    else if(_p.get('fileloaded')!=null){ _welcomeBack(); try{ history.replaceState(null,'',location.pathname); }catch(_){}    // back from the wallet acquire → rebuild the shared world from the stashed .bmf
+      const _b64=sessionStorage.getItem('grafverse-fileload'); if(_b64){ sessionStorage.removeItem('grafverse-fileload'); openKeep(); reassembleFile(_b64, _p.get('fileloaded')==='1'); } } }
 
   // ---------- draw-time motion: per-object BOB + ROTATE (independent, OWNED) ----------
   // Purely a render offset — applied just before renderer.render and undone right after, so logic, collision,
