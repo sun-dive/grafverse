@@ -84,7 +84,7 @@
 
   // ── v4 CHUNK container (docs/BMF-SCENE-V4.md): scene = version + [type·len·payload]; UNKNOWN chunks SKIPPED ──
   // numbering: core 0x01–0x3F · extension 0x40–0xBF · vendor 0xC0–0xFE (3rd-party, safely skipped)
-  var CHUNK = { SHAPES: 0x01, GROUND: 0x02, CAMERA: 0x03, PROVENANCE: 0x04 };          // reserved: TIMELINE 0x05·CHARACTERS 0x06·LIGHTS 0x07
+  var CHUNK = { SHAPES: 0x01, GROUND: 0x02, CAMERA: 0x03, PROVENANCE: 0x04, MEMBERS: 0x08 };   // MEMBERS = paint-atom txids (world = a bundle of owned atoms). reserved: TIMELINE 0x05·CHARACTERS 0x06·LIGHTS 0x07
   var HAS_ATTRS = 0x80;                                                                // matFlags bit7 = per-shape ATTRIBUTES escape follows
   var ATTR = { ANIM_PARAMS: 0x01, SOURCE_REF: 0x02, LIGHT: 0x03, POSE: 0x04, PHYSICS: 0x05 };  // per-shape attribute registry (append-only)
 
@@ -167,6 +167,8 @@
     if (g.length) { cw = new Writer(); cw.varint(g.length); for (i = 0; i < g.length; i++) writeGround(cw, g[i]); writeChunk(w, CHUNK.GROUND, cw.b); }
     if (scene.camera) { cw = new Writer(); writeCamera(cw, scene.camera); writeChunk(w, CHUNK.CAMERA, cw.b); }
     if (prov.length) { cw = new Writer(); cw.varint(prov.length); for (i = 0; i < prov.length; i++) writeRef(cw, prov[i]); writeChunk(w, CHUNK.PROVENANCE, cw.b); }
+    var mem = scene.members || [];   // MEMBERS = the world's paint-atom txids (a bundle of owned atoms; each atom is a one-shape scene)
+    if (mem.length) { cw = new Writer(); cw.varint(mem.length); for (i = 0; i < mem.length; i++) writeRef(cw, mem[i]); writeChunk(w, CHUNK.MEMBERS, cw.b); }
     return w.b; // number[] (0..255)
   }
 
@@ -181,19 +183,20 @@
     for (i = 0; i < gn; i++) ground.push(readGround(r));
     sn = r.varint();
     for (k = 0; k < sn; k++) shapes.push(readShape(r));
-    return { v: 3, ground: ground, shapes: shapes, camera: null, provenance: [] };
+    return { v: 3, ground: ground, shapes: shapes, camera: null, provenance: [], members: [] };
   }
   function unpackSceneV4(r) {                  // loop chunks to end; UNKNOWN types skipped via len → forward-compatible
-    var ground = [], shapes = [], camera = null, provenance = [], i, n;
+    var ground = [], shapes = [], camera = null, provenance = [], members = [], i, n;
     while (r.i < r.d.length) {
       var type = r.varint(), len = r.varint(), end = r.i + len;
       if (type === CHUNK.SHAPES) { n = r.varint(); for (i = 0; i < n; i++) shapes.push(readShape(r)); }
       else if (type === CHUNK.GROUND) { n = r.varint(); for (i = 0; i < n; i++) ground.push(readGround(r)); }
       else if (type === CHUNK.CAMERA) { camera = readCamera(r); }
       else if (type === CHUNK.PROVENANCE) { n = r.varint(); for (i = 0; i < n; i++) provenance.push(readRef(r)); }
+      else if (type === CHUNK.MEMBERS) { n = r.varint(); for (i = 0; i < n; i++) members.push(readRef(r)); }   // paint-atom txids (bundle)
       r.i = end;                              // always jump to chunk end (skips unknown chunks + any reserved trailing bytes)
     }
-    return { v: 4, ground: ground, shapes: shapes, camera: camera, provenance: provenance };
+    return { v: 4, ground: ground, shapes: shapes, camera: camera, provenance: provenance, members: members };
   }
 
   // ── the UNIFORM REFERENCE — { tx, name? } — the universal pointer (BMF-FAMILY.md). Packed, never JSON. ──

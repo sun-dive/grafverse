@@ -1791,6 +1791,17 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function worldToRecords(world){ return { ground:world.ground||[], shapes:(world.shapes||[]).map(shapeToRecord),
     provenance:(world.prov||_provenance||[]).map(tx=>({tx})) }; }   // PROVENANCE chunk — the parent txid(s) this fork derives from
 
+  // ── paint-atom bundle (Stage 2): each PAINTED SHAPE = its own atom (a one-shape scene); the WORLD = a manifest whose MEMBERS are those atoms' txids ──
+  function shapeAtomBytes(sd){ return BMF.scene.pack(worldToRecords({ ground:[], shapes:[sd], prov:[] })); }   // one painted shape → a self-contained atom (bytes to genesis-mint)
+  function worldBundlePlan(){                                     // split the live world: atoms to MINT (no txid) vs members already on-chain (have txid)
+    const world=serializeWorld(), shapes=world.shapes||[], members=[], toMint=[];
+    shapes.forEach((sd,i)=>{
+      if(sd.txid) members.push({ i, tx:sd.txid, creator:sd.creator||null });     // already an atom → reference (NO re-mint → its creator keeps their royalty)
+      else toMint.push({ i, bytes:shapeAtomBytes(sd) });                         // new paint → needs a genesis mint; its tx joins members after
+    });
+    return { members, toMint, ground:world.ground||[], prov:world.prov||[] };    // wallet: mint each toMint → tx; then mint the manifest { members:[all txids], ground, provenance }
+  }
+
   // ── the READ path: a packed BMF scene → back into the live editor (inverse of shapeToRecord) ──
   const ID_TYPE = { 119:'cylinder', 120:'cone', 121:'sphere', 122:'box', 123:'plane' };   // canonical inverse of PRESET_ID (wall→box, pyramid→cone: same geometry class; abs size recovered from scale+ratios)
   const FRACTAL_TYPE = { 160:'palm' };                                                     // grows with the fractal roster
