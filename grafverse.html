@@ -1165,6 +1165,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(isPalm){ m.userData.seed=seed; m.userData.base=0xffffff; }   // palm shows its vertex colours (white base) + a stored seed
     return m; }
   const bShapes=[]; let heldGhost=null, activeShape=null; const _fwd=new THREE.Vector3(), _brc=new THREE.Raycaster();
+  let _provenance=[];   // txids this world derives from (set when loaded from chain) → PROVENANCE chunk at mint (fork lineage / royalty attribution)
   // activeShape = the un-painted shape you're building (arrange mode = can stowed, no painting).
   // heldGhost   = activeShape while it follows your gaze (being carried). null once set down.
   function setMode(){ const gb=document.getElementById('grabBtn'); if(gb){ gb.textContent = heldGhost ? 'Drop' : 'Grab'; gb.classList.toggle('down', !!heldGhost); } }
@@ -1426,6 +1427,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const provider=new GM.WalletProvider('');                     // read-only — address unused for tx fetch
       const atom=await GM.loadAtomBytes(provider, txid);            // → { bytes, mimeType, fileName, compressed }
       const r=importScene(atom.bytes);
+      _provenance=[txid]; saveWorld();                             // this world now DERIVES from `txid` (its immediate parent) → recorded at mint
       _kNote().textContent='Loaded '+r.shapes+' shape'+(r.shapes===1?'':'s')+(r.ground?' + ground':'')+' from chain'+(atom.compressed?' (unzipped)':'')+'.';
     }catch(e){ _kNote().textContent='Load from chain failed: '+(e.message||e); }
   }
@@ -1777,7 +1779,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const rot=[sd.r[0], sd.r[1]+(pr.align||0), sd.r[2]];                              // fold the preset's canonical facing into rotation
     return { id:PRESET_ID[sd.t]||122, res:sd.res||pr.res||0, ratios, pos:sd.p, rot, scale:sizeM, color, tex, matFlags, paint };
   }
-  function worldToRecords(world){ return { ground:world.ground||[], shapes:(world.shapes||[]).map(shapeToRecord) }; }   // palms now mint (fractal id + seed)
+  function worldToRecords(world){ return { ground:world.ground||[], shapes:(world.shapes||[]).map(shapeToRecord),
+    provenance:(world.prov||_provenance||[]).map(tx=>({tx})) }; }   // PROVENANCE chunk — the parent txid(s) this fork derives from
 
   // ── the READ path: a packed BMF scene → back into the live editor (inverse of shapeToRecord) ──
   const ID_TYPE = { 119:'cylinder', 120:'cone', 121:'sphere', 122:'box', 123:'plane' };   // canonical inverse of PRESET_ID (wall→box, pyramid→cone: same geometry class; abs size recovered from scale+ratios)
@@ -1804,6 +1807,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   function importScene(bytes){                                                             // replace the live world with a decoded packed scene
     const dec = BMF.scene.unpack(bytes);
+    _provenance=[];                                                                        // fresh world → no parent (loadFromChain sets the immediate parent after)
     clearShapes();
     pctx.clearRect(0,0,TEX,TEX); paintTex.needsUpdate=true; groundStrokes.length=0;        // wipe the ground canvas + strokes
     let n=0; (dec.shapes||[]).forEach(rec=>{ try{ addShapeFromData(recordToShape(rec)); n++; }catch(e){} });
@@ -1832,7 +1836,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   function serializeWorld(){
     const shapes=[]; for(const m of bShapes){ const rec=shapeToSave(m); if(rec) shapes.push(rec); }
-    return { v:2, ground:groundStrokes, shapes };
+    return { v:2, ground:groundStrokes, shapes, prov:_provenance };
   }
   function saveWorld(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(serializeWorld())); }catch(e){} recordHistory(); }
   let _saveT=null;
@@ -1866,6 +1870,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function loadWorld(){
     let data; try{ data=JSON.parse(localStorage.getItem(SAVE_KEY)||'null'); }catch(e){ data=null; }
     if(!data) return;
+    _provenance=Array.isArray(data.prov)?data.prov:[];                 // restore fork lineage across reloads
     (data.shapes||[]).forEach(addShapeFromData);
     (data.ground||[]).forEach(stroke=>{
       colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0;
