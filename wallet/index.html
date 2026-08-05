@@ -498,11 +498,12 @@
     }catch(e){ $('payloadStatus').innerHTML='Couldn’t load that bundle (the handoff may have expired).'; }
   }
   function renderBundle(){
-    const toMint=_bundle.toMint||[], members=_bundle.members||[], done=toMint.filter(a=>_bmintd[a.i]).length, allDone=done===toMint.length;
+    const toMint=_bundle.toMint||[], members=_bundle.members||[], freeShapes=_bundle.freeShapes||[], done=toMint.filter(a=>_bmintd[a.i]).length, allDone=done===toMint.length;
     $('payloadStatus').textContent='World bundle — mint each new paint layer, then the world.';
     const el=$('mintResult'); el.classList.remove('hidden');
     let h='<div class="row"><span class="k">New paint layers</span><span class="mono">'+done+' / '+toMint.length+' minted</span></div>';
     if(members.length) h+='<div class="row"><span class="k">Already owned</span><span class="mono">'+members.length+' referenced · no re-mint</span></div>';
+    if(freeShapes.length) h+='<div class="row"><span class="k">Free shapes</span><span class="mono">'+freeShapes.length+' inline · no covenant</span></div>';
     h+='<div style="display:flex;flex-direction:column;gap:5px;margin:8px 0;">';
     toMint.forEach(a=>{ const tx=_bmintd[a.i]; h+='<div class="row"><span class="k">paint layer #'+a.i+'</span>'+(tx?'<span class="mono" style="color:var(--good)">✓ '+tx.slice(0,10)+'…</span>':'<span class="mono" style="opacity:.55">unminted</span>')+'</div>'; });
     h+='</div><div class="btnrow" style="margin-top:6px">'
@@ -526,12 +527,13 @@
   async function mintWorldManifest(){
     if(typeof BMF==='undefined'){ status('Codec missing (bmf-codec.js).','error'); return; }
     const all={}; (_bundle.members||[]).forEach(m=>{ all[m.i]=m.tx; }); Object.keys(_bmintd).forEach(i=>{ all[i]=_bmintd[i]; });
-    const members=Object.keys(all).map(Number).sort((a,b)=>a-b).map(i=>({tx:all[i]}));   // ordered paint-atom txids → the world manifest
-    const manifest=BMF.scene.pack({ members, ground:_bundle.ground||[], provenance:(_bundle.prov||[]).map(tx=>({tx})) });
+    const members=Object.keys(all).map(Number).sort((a,b)=>a-b).map(i=>({tx:all[i]}));   // ordered paint-layer txids → the world manifest
+    const manifest=BMF.scene.pack({ shapes:_bundle.freeShapes||[], members, ground:_bundle.ground||[], provenance:(_bundle.prov||[]).map(tx=>({tx})) });   // free geometry inline + owned paint layers referenced
     const name=$('mName').value.trim()||'grafverse world';
+    const nFree=(_bundle.freeShapes||[]).length;
     try{
       const res=await G.mintAtom(provider, wallet, { ...bundleOpts(name), bytes:manifest,
-        confirmSpend:(s)=>confirm('Immortalize “'+name+'” (a manifest of '+members.length+' paint layers) for '+s.toLocaleString()+' sats?') });
+        confirmSpend:(s)=>confirm('Immortalize “'+name+'” ('+members.length+' owned paint layer'+(members.length===1?'':'s')+(nFree?(' + '+nFree+' free shape'+(nFree===1?'':'s')):'')+') for '+s.toLocaleString()+' sats?') });
       status('World immortalized ✓','ok'); refreshBalance(); showResult(res, name);   // showResult logs + shows collection id + back-to-game
     }catch(e){ const m=e&&e.message||String(e); status(/cancel/i.test(m)?'World mint cancelled.':'World mint failed: '+m,'error'); }
   }

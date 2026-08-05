@@ -1380,12 +1380,12 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   document.getElementById('kMint').addEventListener('click', async ()=>{
     if(!window.BMF){ _kNote().textContent='Codec missing (bmf-codec.js didn’t load).'; return; }
     saveWorld();
-    const plan = worldBundlePlan();                                          // each NEW painted shape → its own atom to mint; owned shapes → referenced
-    if(!plan.toMint.length && !plan.members.length){ _kNote().textContent = plan.multi ? ('Multi-layer solids can’t be minted yet (coming next update) — nothing single-layer to immortalize.') : 'Paint something first — there’s nothing to immortalize yet.'; return; }
-    const pkg = { v:1, ground:plan.ground, prov:plan.prov, members:plan.members,   // off-chain handoff bridge — JSON is fine here (never on chain)
+    const plan = worldBundlePlan();                                          // each NEW paint LAYER → its own atom to mint; owned layers → referenced; free geometry → inline
+    if(!plan.toMint.length && !plan.members.length && !plan.freeShapes.length){ _kNote().textContent='Paint something first — there’s nothing to immortalize yet.'; return; }
+    const pkg = { v:1, ground:plan.ground, prov:plan.prov, members:plan.members, freeShapes:plan.freeShapes,   // off-chain handoff bridge — JSON is fine here (never on chain)
       toMint: plan.toMint.map(a=>({ i:a.i, b64: bytesToB64(a.bytes) })) };
-    const nNew=plan.toMint.length, nRef=plan.members.length;
-    _kNote().textContent='Bundling '+nNew+' new paint layer'+(nNew===1?'':'s')+(nRef?(' + '+nRef+' owned'):'')+(plan.multi?(' · '+plan.multi+' multi-layer solid'+(plan.multi===1?'':'s')+' held for next update'):'')+' — handing to your wallet…';
+    const nNew=plan.toMint.length, nRef=plan.members.length, nFree=plan.freeShapes.length;
+    _kNote().textContent='Bundling '+nNew+' new paint layer'+(nNew===1?'':'s')+(nRef?(' + '+nRef+' owned'):'')+(nFree?(' + '+nFree+' free shape'+(nFree===1?'':'s')):'')+' — handing to your wallet…';
     const body = btoa(unescape(encodeURIComponent(JSON.stringify(pkg))));      // base64(JSON), utf8-safe (like the single-atom path)
     try{
       const res = await fetch(HANDOFF_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body });
@@ -1808,14 +1808,19 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
 
   // ── paint-atom bundle (Stage 2): each PAINTED SHAPE = its own atom (a one-shape scene); the WORLD = a manifest whose MEMBERS are those atoms' txids ──
   function shapeAtomBytes(sd){ return BMF.scene.pack(worldToRecords({ ground:[], shapes:[sd], prov:[] })); }   // one painted shape → a self-contained atom (bytes to genesis-mint)
-  function worldBundlePlan(){                                     // split the live world: atoms to MINT (no txid) vs members already on-chain (have txid)
-    const world=serializeWorld(), shapes=world.shapes||[], members=[], toMint=[]; let multi=0;
-    shapes.forEach((sd,i)=>{
-      if(sd.layers){ multi++; return; }                                          // multi-layer solid → per-layer minting lands in 4b; held back here so we never mint a broken/empty atom
-      if(sd.txid) members.push({ i, tx:sd.txid, creator:sd.creator||null });     // already an atom → reference (NO re-mint → its creator keeps their royalty)
-      else toMint.push({ i, bytes:shapeAtomBytes(sd) });                         // new paint → needs a genesis mint; its tx joins members after
+  function layerAtomBytes(sd, strokes){ const rec=shapeToRecord(sd); rec.paint={ kind:1, strokes:strokes||[] };   // one paint LAYER = a one-solid atom: the (free) geometry as standalone context + JUST this layer's strokes
+    return BMF.scene.pack({ shapes:[rec], ground:[], provenance:[] }); }
+  function worldBundlePlan(){                                     // split the live world for minting. ONLY PAINT is owned: each paint LAYER → an atom (owned→referenced by txid · new→minted). GEOMETRY is FREE: crystals/fractals/unpainted ride INLINE (never minted). Manifest = free shapes + MEMBERS (all layer txids) + ground + prov.
+    const world=serializeWorld(), shapes=world.shapes||[], freeShapes=[], members=[], toMint=[]; let i=0;
+    shapes.forEach((sd)=>{
+      const layers = sd.layers || (!sd.cr && sd.st!=null ? [{ st:sd.st, txid:sd.txid, creator:sd.creator }] : null);   // painted → the layer stack (multi or single); crystal → no layers
+      if(!layers){ freeShapes.push(shapeToRecord(sd)); return; }                  // FREE geometry (crystal / fractal / unpainted) → inline, never minted
+      layers.forEach((L)=>{
+        if(L.txid) members.push({ i:i++, tx:L.txid, creator:L.creator||null });   // owned paint layer → reference (creator royalty intact, no re-mint)
+        else toMint.push({ i:i++, bytes:layerAtomBytes(sd, L.st||[]) });          // new paint layer → its own atom (minted, then joins members)
+      });
     });
-    return { members, toMint, multi, ground:world.ground||[], prov:world.prov||[] };   // wallet: mint each toMint → tx; then mint the manifest { members:[all txids], ground, provenance }
+    return { freeShapes, members, toMint, ground:world.ground||[], prov:world.prov||[] };   // wallet: mint each toMint → tx; then mint the manifest { shapes:freeShapes, members:[all layer txids by i-order], ground, provenance }
   }
 
   // ── the READ path: a packed BMF scene → back into the live editor (inverse of shapeToRecord) ──
@@ -1859,19 +1864,30 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     pctx.clearRect(0,0,TEX,TEX); paintTex.needsUpdate=true; groundStrokes.length=0;         // wipe ground
     (dec.ground||[]).forEach(stroke=>{ colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0;
       for(const d of stroke.dabs) spray({x:d[0], y:d[1]}); groundStrokes.push(stroke); });
+    (dec.shapes||[]).forEach(rec=>{ try{ addShapeFromData(recordToShape(rec)); }catch(e){} });   // FREE inline shapes (crystals / geometry) — always load, no ownership
     const mem=dec.members||[]; let n=0;
     for(let k=0;k<mem.length;k++){
       _kNote().textContent='Loading owned paint '+(k+1)+' / '+mem.length+'…';
       try{
-        const a=await GM.loadAtomBytes(provider, mem[k].tx);                                 // fetch the paint atom (one-shape scene)
+        const a=await GM.loadAtomBytes(provider, mem[k].tx);                                 // fetch the paint-LAYER atom (a one-solid scene: free geometry + one layer's strokes)
         const one=BMF.scene.unpack(a.bytes), rec=one.shapes&&one.shapes[0];
         if(!rec) continue;
-        const sd=recordToShape(rec); sd.txid=mem[k].tx;                                      // this shape IS this atom → carries its txid so a re-Save REFERENCES it (never re-mints → creator's royalty intact)
-        addShapeFromData(sd); n++;
+        const sd=recordToShape(rec);
+        const at=findSolidAt(sd);                                                            // a solid already at this transform → this atom is ANOTHER paint LAYER of it (layers of a solid share geometry+transform)
+        if(at) addPaintLayer(at, sd.st||[], mem[k].tx);                                      // composite the layer onto the existing solid (owned, carries its txid)
+        else { sd.txid=mem[k].tx; addShapeFromData(sd); }                                    // first layer → build the solid (carries txid so a re-Save REFERENCES it → creator royalty intact)
+        n++;
       }catch(e){}
     }
     return { shapes:n, ground:(dec.ground||[]).length, members:n };
   }
+  function findSolidAt(sd){ const P=sd.p; for(const m of bShapes){ const u=m.userData;      // an already-loaded solid at this transform (all paint layers of one solid share geometry+transform)
+    if(u.painted && u.type===sd.t && Math.abs(m.position.x-P[0])<0.02 && Math.abs(m.position.y-P[1])<0.02 && Math.abs(m.position.z-P[2])<0.02) return m; } return null; }
+  function addPaintLayer(m, strokes, txid){                                                  // replay a layer's strokes onto an existing solid + record it as an owned layer (composites over the layers already there)
+    (strokes||[]).forEach(stroke=>{ const surf=m.userData.surfaces[stroke.si]; if(!surf) return;
+      colorIdx=stroke.c; seedRand(stroke.seed>>>0);
+      for(const d of stroke.dabs) sprayShapeAt(surf, d[0], d[1], d[2]); });
+    (m.userData.layers||(m.userData.layers=[])).push({ st:strokes||[], txid }); }
 
   function shapeToSave(m){ const u=m.userData;                                 // one COMMITTED shape → its save record (shared by serialize + clone); null for a ghost
     if(!u.painted && !u.crystal) return null;
