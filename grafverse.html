@@ -219,6 +219,7 @@
   <div class="kbtn" id="kImport">📥 Load from File (.bmf)</div>
   <div class="kbtn immortal" id="kMint">⬆ Save to Chain</div>
   <div class="kbtn" id="kChain">⬇ Load from Chain</div>
+  <div class="kbtn" id="kBack" style="display:none">← Back to previous world</div>
   <div class="kbtn" id="kWallet">👛 Open Wallet — balance &amp; NFTs</div>
   <input type="file" id="kFile" accept=".bmf,application/octet-stream" style="display:none">
   <div class="kfoot" id="kNote"></div>
@@ -1459,10 +1460,27 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     _portaling=true; _nearGate=null;
     const dest=m.userData.portalTx;
     showHint('◈ entering world '+dest.slice(0,8)+'… — free assets load, owned assets ask to purchase');
+    trailPush(serializeWorld());                                   // ← breadcrumb: remember the world you're LEAVING so you can go Back
     saveWorld();                                                   // keep THIS world before the jump
     loadFromChain(dest);                                           // free → loads · rights-reserved/owned → the buy-offer (same traversal we built)
     setTimeout(()=>{ _portaling=false; }, 6000);                   // release the guard if the load didn't replace the world (e.g. failed/expired)
   }
+  // ── ← Back breadcrumb: each jump snapshots the DEPARTING world into sessionStorage (survives the wallet round-trip on a paid jump) so the player is never stranded, and an unminted world is never lost ──
+  const TRAIL_KEY='grafverse-trail';
+  function trailGet(){ try{ return JSON.parse(sessionStorage.getItem(TRAIL_KEY)||'[]'); }catch(_){ return []; } }
+  function trailSet(a){ try{ sessionStorage.setItem(TRAIL_KEY, JSON.stringify(a)); }catch(_){} }
+  function trailPush(world){ const a=trailGet(); a.push(world); while(a.length>10) a.shift(); trailSet(a); updateBackBtn(); }   // cap the trail at 10
+  function updateBackBtn(){ const b=document.getElementById('kBack'); if(b) b.style.display = trailGet().length ? 'block' : 'none'; }
+  function restoreWorldData(data){                                 // rebuild a snapshotted world into the scene (mirrors loadWorld, from a given snapshot)
+    clearShapes();
+    pctx.clearRect(0,0,TEX,TEX); paintTex.needsUpdate=true; groundStrokes.length=0;
+    _provenance=Array.isArray(data.prov)?data.prov:[];
+    (data.shapes||[]).forEach(addShapeFromData);
+    (data.ground||[]).forEach(stroke=>{ colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0; for(const d of stroke.dabs) spray({x:d[0], y:d[1]}); groundStrokes.push(stroke); });
+    saveWorld();
+  }
+  function goBack(){ const a=trailGet(); if(!a.length){ _kNote().textContent='No previous world to go back to.'; return; }
+    const prev=a.pop(); trailSet(a); restoreWorldData(prev); unlockBuild(true); updateBackBtn(); _kNote().textContent='← Back in your previous world.'; }
   async function loadFromChain(txid, owned){                        // owned=true after a purchase → skip the licence gate
     txid=(txid||'').trim().toLowerCase().replace(/[^0-9a-f]/g,'');
     if(txid.length!==64){ _kNote().textContent='Paste a 64-character transaction id.'; return; }
@@ -1490,6 +1508,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   document.getElementById('kChain').addEventListener('click', ()=>{ const t=prompt('Paste the scene transaction id (txid) to load from chain:'); if(t) loadFromChain(t); });
   document.getElementById('kWallet').addEventListener('click', ()=> window.open(WALLET_URL, 'grafverseWallet'));   // balance + My NFTs in a new tab — the game stays live behind it (close the tab to return)
+  document.getElementById('kBack').addEventListener('click', goBack);   // ← Back to the world you jumped from (breadcrumb trail)
+  updateBackBtn();                                                      // show ← Back if a jump trail survived (e.g. after a paid-jump wallet round-trip)
 
   // ---------- crystal (translucent gem) material — the second register: found & precious ----------
   // ── gem texture library (docs/BMF-SOLID-SPEC.md) — the `tex` byte. Birthstone gems 1–12 == their MONTH, then extras. ──
