@@ -219,6 +219,7 @@
   <div class="kbtn" id="kImport">📥 Load from File (.bmf)</div>
   <div class="kbtn immortal" id="kMint">⬆ Save to Chain</div>
   <div class="kbtn" id="kChain">⬇ Load from Chain</div>
+  <div class="kbtn" id="kWallet">👛 Open Wallet — balance &amp; NFTs</div>
   <input type="file" id="kFile" accept=".bmf,application/octet-stream" style="display:none">
   <div class="kfoot" id="kNote"></div>
   <div class="kbtn done" id="kDone">✓ close</div>
@@ -689,12 +690,13 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function updateInvActive(){ const r=invEl.querySelector('.islot.on'); if(!r||!inv[activeSlot])return;
     const p=Math.round(inv[activeSlot].amt); r.querySelector('.ifill').style.width=p+'%'; r.querySelector('.iamt').textContent=p+'%'; }
 
-  let firstStart=true;
+  let firstStart=true, _resumeOnStart=false;
   function started(){
     if(firstStart){
       firstStart=false;
       $('splash').classList.add('hidden');
       reticle.style.opacity=1;
+      if(_resumeOnStart) unlockBuild(true);   // returned from the wallet → resume the world, skip the intro
       showHint(MOBILE ? 'left stick to move  ·  drag anywhere to look' : 'WASD to move  ·  Space to jump  ·  move mouse to look');
     }
   }
@@ -1449,6 +1451,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     }catch(e){ _kNote().textContent='Load from chain failed: '+(e.message||e); }
   }
   document.getElementById('kChain').addEventListener('click', ()=>{ const t=prompt('Paste the scene transaction id (txid) to load from chain:'); if(t) loadFromChain(t); });
+  document.getElementById('kWallet').addEventListener('click', ()=> window.open(WALLET_URL, 'grafverseWallet'));   // balance + My NFTs in a new tab — the game stays live behind it (close the tab to return)
 
   // ---------- crystal (translucent gem) material — the second register: found & precious ----------
   // ── gem texture library (docs/BMF-SOLID-SPEC.md) — the `tex` byte. Birthstone gems 1–12 == their MONTH, then extras. ──
@@ -1958,11 +1961,18 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       unlockBuild(true);                                      // returning player → straight into build mode, no intro
     });
   })();
-  { const _minted = new URLSearchParams(location.search).get('minted');   // came back from the wallet after a mint
-    if(_minted){ showHint('✦ Immortalized on-chain — '+_minted.slice(0,8)+'… It’s yours forever.'); try{ history.replaceState(null,'',location.pathname); }catch(_){} } }
-  { const _bought = new URLSearchParams(location.search).get('bought');   // came back from the wallet after PURCHASING a rights-reserved world → import the owned copy
-    if(_bought && /^[0-9a-f]{64}$/i.test(_bought)){ try{ history.replaceState(null,'',location.pathname); }catch(_){}
-      openKeep(); loadFromChain(_bought.toLowerCase(), true); } }
+  function _welcomeBack(){                                    // returned from the wallet → present the splash as a one-tap RESUME (skip the intro)
+    _resumeOnStart=true;
+    const go=document.querySelector('#splash .go'); if(go) go.textContent='▶ Resume your world';
+    const t2=$('tag2'); if(t2) t2.textContent='Welcome back.';
+    const rb=$('resumeBtn'); if(rb) rb.style.display='none';  // don't show two resume affordances
+  }
+  { const _p = new URLSearchParams(location.search);
+    const _minted=_p.get('minted'), _bought=_p.get('bought'), _resume=_p.get('resume');
+    if(_minted){ _welcomeBack(); showHint('✦ Immortalized on-chain — '+_minted.slice(0,8)+'… It’s yours forever.'); try{ history.replaceState(null,'',location.pathname); }catch(_){} }
+    else if(_bought && /^[0-9a-f]{64}$/i.test(_bought)){ _welcomeBack(); try{ history.replaceState(null,'',location.pathname); }catch(_){}
+      openKeep(); loadFromChain(_bought.toLowerCase(), true); }
+    else if(_resume){ _welcomeBack(); try{ history.replaceState(null,'',location.pathname); }catch(_){} } }
 
   // ---------- draw-time motion: per-object BOB + ROTATE (independent, OWNED) ----------
   // Purely a render offset — applied just before renderer.render and undone right after, so logic, collision,

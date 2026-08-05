@@ -92,6 +92,7 @@
 <body>
 <div class="wrap">
   <header>
+    <button class="sm ghost" id="backGameTop" style="margin-bottom:10px">← Back to the game</button>
     <h1>graf<span>space</span> wallet</h1>
     <p>Your key lives here, on its own origin — never on the game or ad pages. <span class="pill">self-custody</span> <span class="pill" id="buildTag" style="opacity:.55">build · mynfts-panel</span></p>
   </header>
@@ -294,6 +295,10 @@
   const params = new URLSearchParams(location.search);
   const handoffId = params.get('id');
   const returnUrl = params.get('return');
+  { const bgt=$('backGameTop'); if(bgt) bgt.onclick=()=>{               // smooth return: same-tab → back to the game (one-tap resume); new tab → just close it
+      if(returnUrl){ location.href = returnUrl + (returnUrl.includes('?')?'&':'?') + 'resume=1'; }
+      else { window.close(); setTimeout(()=>{ try{ if(!window.closed) location.href='../?resume=1'; }catch(_){ location.href='../?resume=1'; } }, 150); }
+    }; }
   if(params.get('aff')) G.setIncomingAff(params.get('aff'));
   if(handoffId){
     $('payloadStatus').textContent = 'Loading your creation…';
