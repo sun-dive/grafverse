@@ -72,6 +72,20 @@
   .pill{display:inline-block;background:rgba(120,170,255,.12);border:1px solid var(--line);border-radius:999px;
         padding:2px 10px;font-size:11px;color:var(--dim);}
   .hidden{display:none!important;}
+  /* My NFTs — a distinct floating dropdown WINDOW (not an inline list) */
+  .nft-overlay{position:fixed;inset:0;background:rgba(4,8,18,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:flex-start;justify-content:center;padding:8vh 16px 16px;z-index:60;}
+  .nft-panel{background:var(--card);border:1px solid var(--line2);border-radius:16px;
+    width:min(440px,100%);max-height:82vh;display:flex;flex-direction:column;padding:16px;
+    box-shadow:0 24px 70px rgba(0,0,0,.6);}
+  .nft-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    font-size:17px;font-weight:700;color:var(--cyan);padding-bottom:10px;margin-bottom:10px;
+    border-bottom:1px solid var(--line);}
+  .nft-list{display:flex;flex-direction:column;gap:6px;overflow-y:auto;}
+  .nft-item{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    background:rgba(120,170,255,.06);border:1px solid var(--line);border-radius:10px;padding:9px 11px;}
+  .nft-item a{color:var(--ink);text-decoration:none;}
+  .nft-item a:hover{color:var(--cyan);}
   .warn-box{border-color:rgba(255,107,107,.4);background:rgba(255,107,107,.07);}
 </style>
 </head>
@@ -79,7 +93,7 @@
 <div class="wrap">
   <header>
     <h1>graf<span>space</span> wallet</h1>
-    <p>Your key lives here, on its own origin — never on the game or ad pages. <span class="pill">self-custody</span></p>
+    <p>Your key lives here, on its own origin — never on the game or ad pages. <span class="pill">self-custody</span> <span class="pill" id="buildTag" style="opacity:.55">build · mynfts-panel</span></p>
   </header>
 
   <!-- ── WALLET ─────────────────────────────────────────── -->
@@ -93,7 +107,15 @@
       <button class="gold" id="fundBtn">＋ Buy BSV to fund</button>
       <button class="sm ghost" id="scanBtn">🎨 My NFTs ▾</button>
     </div>
-    <div id="holdings" class="hidden" style="margin-top:10px"></div>
+    <!-- My NFTs — floating dropdown window (built in #nftOverlay below) -->
+    <div id="nftOverlay" class="nft-overlay hidden">
+      <div class="nft-panel" role="dialog" aria-label="My NFTs" aria-modal="true">
+        <div class="nft-head"><span>🎨 My NFTs <span class="pill" id="nftCount"></span></span>
+          <button class="sm ghost" id="nftClose" aria-label="Close">✕</button></div>
+        <div id="nftScan" class="hint" style="margin:0 0 8px"></div>
+        <div id="nftList" class="nft-list"></div>
+      </div>
+    </div>
 
     <div class="note warn-box hidden" id="backupNote">
       ⚠️ <b>Not backed up yet.</b> Reveal your 12 words below and write them on paper, in order — they're the only way back into this wallet.
@@ -509,38 +531,38 @@
     }catch(e){ const m=e&&e.message||String(e); status(/cancel/i.test(m)?'World mint cancelled.':'World mint failed: '+m,'error'); }
   }
 
-  // ── "My NFTs" dropdown — cache-first (show IndexedDB holdings instantly), then refresh from chain in the BACKGROUND (the scan is slow on a busy wallet) ──
+  // ── "My NFTs" — a distinct floating dropdown WINDOW. Cache-first (show IndexedDB holdings instantly), then refresh from chain in the BACKGROUND (the scan is slow on a busy wallet). ──
   let _nftsOpen=false;
-  async function toggleNfts(){
-    const box=$('holdings'); _nftsOpen=!_nftsOpen;
-    $('scanBtn').textContent='🎨 My NFTs '+(_nftsOpen?'▴':'▾');
-    if(!_nftsOpen){ box.classList.add('hidden'); return; }
-    box.classList.remove('hidden');
+  function closeNfts(){ _nftsOpen=false; $('nftOverlay').classList.add('hidden'); $('scanBtn').textContent='🎨 My NFTs ▾'; }
+  async function openNfts(){
+    _nftsOpen=true; $('nftOverlay').classList.remove('hidden'); $('scanBtn').textContent='🎨 My NFTs ▴';
     const cache=await idbGet(holdKey());
     renderNfts((cache&&cache.held)||[]);                            // show cached holdings immediately (instant)
     refreshNfts();                                                  // …then refresh from chain in the background (non-blocking)
   }
+  function toggleNfts(){ _nftsOpen ? closeNfts() : openNfts(); }
   async function refreshNfts(){
-    if(!wallet || !wallet.pubKeyHex) return;
-    const s=$('nftScan'); if(s) s.textContent='↻ scanning the chain…';
-    try{ const held=await refreshHoldings(); if(_nftsOpen) renderNfts(held); }
-    catch(e){ const s2=$('nftScan'); if(s2) s2.textContent='scan failed: '+(e.message||e); }
+    if(!wallet || !wallet.pubKeyHex){ $('nftScan').textContent='Load or create a wallet first.'; return; }
+    $('nftScan').textContent='↻ scanning the chain…';
+    try{ const held=await refreshHoldings(); if(_nftsOpen){ renderNfts(held); $('nftScan').textContent='✓ up to date'; } }
+    catch(e){ $('nftScan').textContent='scan failed: '+(e.message||e); }
   }
   function renderNfts(held){
-    const box=$('holdings'), groups=new Map();
+    const list=$('nftList'), groups=new Map();
     held.forEach(e=>{ const k=e.col||e.tx1RefHex||e.txId; const g=groups.get(k); if(g) g.push(e); else groups.set(k,[e]); });
-    let h='<div class="row"><span class="k">My NFTs</span><span class="mono">'+groups.size+' collection'+(groups.size===1?'':'s')+'</span></div>'
-      +'<div id="nftScan" class="hint" style="font-size:11px;margin:2px 0"></div>';
-    if(!groups.size) h+='<div class="hint">No NFTs cached yet — scanning…</div>';
-    else { h+='<div style="display:flex;flex-direction:column;gap:5px;max-height:240px;overflow-y:auto">';
-      for(const [col,copies] of groups) h+='<div class="row" data-col="'+col+'"><a class="mono" style="font-size:11px" href="https://whatsonchain.com/tx/'+col+'" target="_blank" rel="noopener">'+col.slice(0,16)+'…</a><span class="mono">'+(copies.length>1?('×'+copies.length):'held')+'</span></div>';
-      h+='</div>'; }
-    box.innerHTML=h;
-    for(const [col] of groups){ G.readCollection(provider, col).then(info=>{ if(info&&info.tokenName){ const a=box.querySelector('[data-col="'+col+'"] a'); if(a) a.textContent=info.tokenName+(info.open?'':' 🔒'); } }).catch(()=>{}); }
+    $('nftCount').textContent=groups.size+' collection'+(groups.size===1?'':'s');
+    if(!groups.size){ list.innerHTML='<div class="hint">Nothing held yet — scanning the chain…</div>'; return; }
+    let h='';
+    for(const [col,copies] of groups) h+='<div class="nft-item" data-col="'+col+'"><a class="mono" href="https://whatsonchain.com/tx/'+col+'" target="_blank" rel="noopener">'+col.slice(0,16)+'…</a><span class="mono">'+(copies.length>1?('×'+copies.length):'held')+'</span></div>';
+    list.innerHTML=h;
+    for(const [col] of groups){ G.readCollection(provider, col).then(info=>{ if(info&&info.tokenName){ const a=list.querySelector('[data-col="'+col+'"] a'); if(a) a.textContent=info.tokenName+(info.open?'':' 🔒'); } }).catch(()=>{}); }
   }
 
   loadWallet();
   $('scanBtn').onclick=toggleNfts;
+  $('nftClose').onclick=closeNfts;
+  $('nftOverlay').addEventListener('click', e=>{ if(e.target===$('nftOverlay')) closeNfts(); });   // click backdrop to close
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape' && _nftsOpen) closeNfts(); });
   { const bt=params.get('buy'); if(bt && /^[0-9a-fA-F]{64}$/.test(bt)) handleBuy(bt.toLowerCase()); }
   { const bd=params.get('bundle'); if(bd) loadBundle(bd); }
 })();
