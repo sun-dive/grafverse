@@ -1388,11 +1388,12 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function packWorldBytes(){                                                    // Save-to-File = the SAME manifest shape as Save-to-Chain: FREE content inline (the free channel) + OWNED paint as txid REFERENCES (the on-chain ownership channel) — never owned bytes, so a shared .bmf can't pirate paid work.
     if(!window.BMF) return { err:'Codec missing (bmf-codec.js didn’t load).' };
     saveWorld();
+    let myPub=''; try{ myPub=localStorage.getItem('grafverse-mypub')||''; }catch(_){}   // YOUR public key (published by the wallet, same origin) → stamps you as the members' holder/reseller in this .bmf
     const world = serializeWorld(), shapes=world.shapes||[], inl=[], members=[];
     shapes.forEach(sd=>{
       const layers = sd.layers || (!sd.cr && sd.st!=null ? [{ st:sd.st, txid:sd.txid, creator:sd.creator }] : null);
       if(!layers){ inl.push(shapeToRecord(sd)); return; }                       // FREE geometry (crystal / fractal / unpainted) → inline
-      layers.forEach(L=>{ if(L.txid) members.push({ tx:L.txid }); else inl.push(layerRecord(sd, L.st||[])); });   // OWNED paint → txid ref (never bytes) · your UNMINTED paint → inline (the free channel)
+      layers.forEach(L=>{ if(L.txid) members.push({ tx:L.txid, owner: myPub||undefined }); else inl.push(layerRecord(sd, L.st||[])); });   // OWNED paint → txid ref + YOU as reseller (never bytes) · your UNMINTED paint → inline (the free channel)
     });
     if(!inl.length && !members.length && !(world.ground||[]).length) return { err:'Paint something first — there’s nothing here yet.' };
     try{ return { bytes: BMF.scene.pack({ shapes:inl, members, ground:world.ground||[], provenance:(world.prov||[]).map(tx=>({tx})) }) }; }
@@ -1449,7 +1450,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     try{ sessionStorage.setItem('grafverse-fileload', bytesToB64(bytes)); }catch(_){}    // stash → reassemble after the wallet round-trip
     _kNote().textContent='“'+fname+'” references '+nMembers+' owned paint layer'+(nMembers===1?'':'s')+' — opening your wallet to acquire what you don’t already own…';
     try{
-      const dec=BMF.scene.unpack(bytes), members=(dec.members||[]).map(m=>m.tx).filter(Boolean);
+      const dec=BMF.scene.unpack(bytes), members=(dec.members||[]).filter(m=>m&&m.tx).map(m=>({ tx:m.tx, owner:m.owner||null }));   // {tx, owner} — owner = who to replicate from (the sharer/reseller)
       const body=btoa(unescape(encodeURIComponent(JSON.stringify({ v:1, acquire:members }))));
       const res=await fetch(HANDOFF_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body });
       const data=await res.json().catch(()=>({}));

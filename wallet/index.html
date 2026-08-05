@@ -222,6 +222,7 @@
     wallet = G.loadOrCreateWallet();
     provider = new G.WalletProvider(wallet.address);
     $('addr').textContent = wallet.address;
+    try{ if(wallet.pubKeyHex) localStorage.setItem('grafverse-mypub', wallet.pubKeyHex); }catch(_){}   // expose your PUBLIC key (same-origin) so the game stamps YOU as owner/reseller when it writes a .bmf (Save-to-File)
     $('watchPill').hidden = !wallet.watchOnly;
     // recovery secrets: real values kept in memory, always shown MASKED, re-masked on every (re)load
     realSeed = wallet.watchOnly ? '' : (G.savedMnemonic() || '');
@@ -448,13 +449,15 @@
   }
 
   // ── replicate ONE rights-reserved atom (covenant pays its creator). Returns the replication txid, or null if it's open / already yours (nothing to pay). ──
-  async function replicateOne(txid, info, confirmSpend){
+  async function replicateOne(txid, info, confirmSpend, holderPubKeyHex){
     if(!info) info = await G.readCollection(provider, txid);
     if(!info) throw new Error('couldn’t read '+txid.slice(0,10)+'…');
     if(info.open) return null;                                            // open licence → free
     if(await ownsAtom(txid)) return null;                               // already held → don't re-buy
-    const tip = await G.resolveHolderEdition(provider, { tx1RefHex: txid, holderPubKeyHex: info.publisherPubKeyHex, templateCovenantHex: info.covenantScript });
-    if(!tip) throw new Error('no spendable copy of “'+(info.tokenName||txid.slice(0,10))+'” from its creator');
+    const seller = holderPubKeyHex || info.publisherPubKeyHex;           // replicate from the RESELLER (the sharer's holder pubkey, the manifest "sales link") if named, else the creator
+    let tip = await G.resolveHolderEdition(provider, { tx1RefHex: txid, holderPubKeyHex: seller, templateCovenantHex: info.covenantScript });
+    if(!tip && seller !== info.publisherPubKeyHex) tip = await G.resolveHolderEdition(provider, { tx1RefHex: txid, holderPubKeyHex: info.publisherPubKeyHex, templateCovenantHex: info.covenantScript });   // reseller moved their copy → fall back to the creator
+    if(!tip) throw new Error('no spendable copy of “'+(info.tokenName||txid.slice(0,10))+'” to replicate');
     const base = { editionTxId: tip.txId, editionOutputIndex: tip.outputIndex, editionLockHex: tip.lockHex, confirmSpend };
     const res = tip.isV2 ? await G.replicateEditionV2(provider, wallet.key, base)
                          : await G.replicateEdition(provider, wallet.key, { ...base, terms: tip.terms });
@@ -470,22 +473,22 @@
       status('Reading the world’s owned components…');
       const r=await fetch('../handoff.php?id='+encodeURIComponent(handoffId)); if(!r.ok) throw 0;
       const d=await r.json(); const pkg=JSON.parse(new TextDecoder().decode(new Uint8Array(d.bytes)));
-      const members=(pkg.acquire||[]).filter(t=>/^[0-9a-f]{64}$/i.test((t||'').toLowerCase())).map(t=>t.toLowerCase());
+      const members=(pkg.acquire||[]).map(m=>{ const o=(typeof m==='string')?{tx:m}:(m||{}); const tx=((o.tx||'')+'').toLowerCase(); return /^[0-9a-f]{64}$/.test(tx)?{ tx:tx, owner:o.owner||null }:null; }).filter(Boolean);   // each = { tx (collection/tx1Ref), owner (the sharer's holder pubkey = who to replicate from) }
       if(!members.length){ location.href=backTo(true); return; }                    // nothing referenced → just load
       if(!wallet || wallet.watchOnly || !wallet.key){ status('No key here — loading the free content only. Restore your key to acquire the owned paint.','error'); setTimeout(()=>{ location.href=backTo(false); }, 1400); return; }
       const pay=[];
       for(let i=0;i<members.length;i++){ status('Checking component '+(i+1)+' / '+members.length+'…');
-        let info; try{ info=await G.readCollection(provider, members[i]); }catch(_){ info=null; }
+        let info; try{ info=await G.readCollection(provider, members[i].tx); }catch(_){ info=null; }
         if(!info || info.open) continue;                                             // open / unreadable → free
-        if(await ownsAtom(members[i])) continue;                                     // already yours → skip
-        pay.push({ txid:members[i], info });
+        if(await ownsAtom(members[i].tx)) continue;                                  // already yours → skip
+        pay.push({ txid:members[i].tx, owner:members[i].owner, info });
       }
       if(!pay.length){ status('Everything here is free or already yours — loading…','ok'); location.href=backTo(true); return; }
       if(!confirm('This shared world uses '+members.length+' owned paint layer'+(members.length===1?'':'s')+'.\n\n'+pay.length+' rights-reserved one'+(pay.length===1?'':'s')+' you don’t own yet will be acquired on-chain — paying each creator. The rest are free or already yours.\n\nAcquire?  (Cancel = load the free content only)')){ location.href=backTo(false); return; }
       let paid=0;
       for(let i=0;i<pay.length;i++){ const p=pay[i]; status('Paying creator '+(i+1)+' / '+pay.length+' — “'+(p.info.tokenName||p.txid.slice(0,10))+'”…');
         const cs=(s)=>confirm('Component '+(i+1)+'/'+pay.length+': “'+(p.info.tokenName||'atom')+'” — '+s.toLocaleString()+' sats to its creator?');
-        try{ const tx=await replicateOne(p.txid, p.info, cs); if(tx) paid++; }
+        try{ const tx=await replicateOne(p.txid, p.info, cs, p.owner); if(tx) paid++; }   // replicate from the sharer (reseller) → they earn the reseller fee, creator earns the royalty
         catch(e){ const m=e&&e.message||String(e); if(/cancel/i.test(m)){ status('Stopped — '+paid+' acquired.'); location.href=backTo(paid>0); return; } status('Failed: '+m,'error'); location.href=backTo(paid>0); return; }
       }
       status('Acquired ✓ — '+paid+' creator'+(paid===1?'':'s')+' paid.','ok'); refreshBalance();
@@ -573,7 +576,7 @@
   async function mintWorldManifest(){
     if(typeof BMF==='undefined'){ status('Codec missing (bmf-codec.js).','error'); return; }
     const all={}; (_bundle.members||[]).forEach(m=>{ all[m.i]=m.tx; }); Object.keys(_bmintd).forEach(i=>{ all[i]=_bmintd[i]; });
-    const members=Object.keys(all).map(Number).sort((a,b)=>a-b).map(i=>({tx:all[i]}));   // ordered paint-layer txids → the world manifest
+    const members=Object.keys(all).map(Number).sort((a,b)=>a-b).map(i=>({tx:all[i], owner:wallet.pubKeyHex}));   // ordered paint-layer txids → the world manifest. owner = YOU → a downstream buyer replicates from your edition (you're the reseller; creator still gets the royalty)
     const manifest=BMF.scene.pack({ shapes:_bundle.freeShapes||[], members, ground:_bundle.ground||[], provenance:(_bundle.prov||[]).map(tx=>({tx})) });   // free geometry inline + owned paint layers referenced
     const name=$('mName').value.trim()||'grafverse world';
     const nFree=(_bundle.freeShapes||[]).length;

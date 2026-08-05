@@ -204,8 +204,24 @@
   function readTxid(r) { var s = ''; for (var i = 0; i < 32; i++) { var b = r.u8(); s += (b < 16 ? '0' : '') + b.toString(16); } return s; }
   function writeStr(w, s) { s = s || ''; var e = (typeof TextEncoder !== 'undefined') ? new TextEncoder().encode(s) : null; if (e) { w.varint(e.length); for (var i = 0; i < e.length; i++) w.u8(e[i]); } else { w.varint(s.length); for (var j = 0; j < s.length; j++) w.u8(s.charCodeAt(j) & 255); } }   // varint len + UTF-8
   function readStr(r) { var n = r.varint(), a = new Uint8Array(n), i; for (i = 0; i < n; i++) a[i] = r.u8(); if (typeof TextDecoder !== 'undefined') return new TextDecoder().decode(a); var s = ''; for (i = 0; i < n; i++) s += String.fromCharCode(a[i]); return s; }
-  function writeRef(w, ref) { if (!ref || !ref.tx) { w.u8(0); return; } if (ref.name) { w.u8(2); writeTxid(w, ref.tx); writeStr(w, ref.name); } else { w.u8(1); writeTxid(w, ref.tx); } }   // 0 none · 1 txid · 2 txid+member
-  function readRef(r) { var tag = r.u8(); if (tag === 0) return null; var tx = readTxid(r), name = tag === 2 ? readStr(r) : null; return name != null ? { tx: tx, name: name } : { tx: tx }; }
+  function writePub(w, hex) { hex = (hex || '').replace(/[^0-9a-fA-F]/g, ''); for (var i = 0; i < 33; i++) { var h = hex.substr(i * 2, 2); w.u8(h.length ? parseInt(h, 16) : 0); } }   // 66-hex compressed pubkey → 33 bytes
+  function readPub(r) { var s = ''; for (var i = 0; i < 33; i++) { var b = r.u8(); s += (b < 16 ? '0' : '') + b.toString(16); } return s; }
+  function writeRef(w, ref) {   // 0 none · 1 txid · 2 txid+name · 3 txid+owner · 4 txid+name+owner. owner = the current HOLDER pubkey (the reseller "sales link" — a downstream buyer replicates from this holder). Append-only tags.
+    if (!ref || !ref.tx) { w.u8(0); return; }
+    var hasName = !!ref.name, hasOwner = !!ref.owner;
+    if (hasOwner && hasName) { w.u8(4); writeTxid(w, ref.tx); writeStr(w, ref.name); writePub(w, ref.owner); }
+    else if (hasOwner) { w.u8(3); writeTxid(w, ref.tx); writePub(w, ref.owner); }
+    else if (hasName) { w.u8(2); writeTxid(w, ref.tx); writeStr(w, ref.name); }
+    else { w.u8(1); writeTxid(w, ref.tx); }
+  }
+  function readRef(r) {
+    var tag = r.u8(); if (tag === 0) return null;
+    var tx = readTxid(r);
+    if (tag === 2) return { tx: tx, name: readStr(r) };
+    if (tag === 3) return { tx: tx, owner: readPub(r) };
+    if (tag === 4) { var nm = readStr(r); return { tx: tx, name: nm, owner: readPub(r) }; }
+    return { tx: tx };   // tag 1 (or unknown) → txid only
+  }
 
   // ── BMF.timeline — the packed media manifest (binary .bmf) — PACKED replacement for the JSON/cue authoring forms ──
   var TIMELINE_VERSION = 1;
