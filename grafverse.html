@@ -1372,19 +1372,23 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(!(world.shapes||[]).length && !(world.ground||[]).length) return { err:'Paint something first — there’s nothing here yet.' };
     try{ return { bytes: BMF.scene.pack(worldToRecords(world)) }; }catch(e){ return { err:'Could not pack the scene.' }; }
   }
+  function bytesToB64(arr){ let s=''; for(let i=0;i<arr.length;i+=0x8000) s+=String.fromCharCode.apply(null, arr.slice(i,i+0x8000)); return btoa(s); }
   document.getElementById('kMint').addEventListener('click', async ()=>{
-    const p = packWorldBytes(); if(p.err){ _kNote().textContent=p.err; return; }
-    const bytes = p.bytes;
-    _kNote().textContent='Packed '+bytes.length.toLocaleString()+' bytes — handing to your wallet…';
-    // POST as base64 TEXT — raw-binary POST bodies get 403'd by shared-host WAFs (text passes, like nft.gift).
-    let b64=''; for(let i=0;i<bytes.length;i+=0x8000) b64+=String.fromCharCode.apply(null, bytes.slice(i,i+0x8000));
-    b64 = btoa(b64);
+    if(!window.BMF){ _kNote().textContent='Codec missing (bmf-codec.js didn’t load).'; return; }
+    saveWorld();
+    const plan = worldBundlePlan();                                          // each NEW painted shape → its own atom to mint; owned shapes → referenced
+    if(!plan.toMint.length && !plan.members.length){ _kNote().textContent='Paint something first — there’s nothing to immortalize yet.'; return; }
+    const pkg = { v:1, ground:plan.ground, prov:plan.prov, members:plan.members,   // off-chain handoff bridge — JSON is fine here (never on chain)
+      toMint: plan.toMint.map(a=>({ i:a.i, b64: bytesToB64(a.bytes) })) };
+    const nNew=plan.toMint.length, nRef=plan.members.length;
+    _kNote().textContent='Bundling '+nNew+' new paint layer'+(nNew===1?'':'s')+(nRef?(' + '+nRef+' owned'):'')+' — handing to your wallet…';
+    const body = btoa(unescape(encodeURIComponent(JSON.stringify(pkg))));      // base64(JSON), utf8-safe (like the single-atom path)
     try{
-      const res = await fetch(HANDOFF_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:b64 });
+      const res = await fetch(HANDOFF_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body });
       const data = await res.json().catch(()=>({}));
       if(!res.ok || !data.id) throw new Error(data.error || ('HTTP '+res.status));
       const ret = location.origin + location.pathname;
-      location.href = WALLET_URL + '?id=' + encodeURIComponent(data.id) + '&return=' + encodeURIComponent(ret);
+      location.href = WALLET_URL + '?bundle=' + encodeURIComponent(data.id) + '&return=' + encodeURIComponent(ret);
     }catch(e){ _kNote().textContent='Handoff failed: '+(e.message||e)+'. (Is handoff.php deployed?)'; }
   });
   // ── save to file: pack the world → write a .bmf file (local, so a scene round-trips entirely in the browser) ──

@@ -178,6 +178,7 @@
 
 <div id="status"></div>
 
+<script src="../bmf-codec.js"></script>
 <script src="../vendor/grafmint.js"></script>
 <script>
 (function(){
@@ -416,8 +417,64 @@
     }catch(e){ const m=e&&e.message||String(e); status(/cancel/i.test(m)?'Purchase cancelled.':'Buy failed: '+m,'error'); }
   }
 
+  // ── BUNDLE mint (paint-atom Stage 2b): a world = N new paint-layer atoms + owned members. Mint each layer one at a time, then the world manifest. ──
+  let _bundle=null, _bmintd={};   // _bmintd: shape index i → its minted collection txid
+  function b64ToBytes(b64){ const s=atob(b64), a=new Array(s.length); for(let i=0;i<s.length;i++) a[i]=s.charCodeAt(i); return a; }
+  function bundleOpts(name){ const open=licOpen(); return { tokenName:name, license:$('mLicense').value, encrypt:!open&&$('mEncrypt').checked,
+    publisherFeeSats:Math.max(1,parseInt($('mPubFee').value,10)||1), holderFeeSats:Math.max(1,parseInt($('mHolderFee').value,10)||1), bondSats:Math.max(1,parseInt($('mBond').value,10)||1) }; }
+  async function loadBundle(id){
+    $('payloadStatus').textContent='Loading your world bundle…';
+    try{
+      const r=await fetch('../handoff.php?id='+encodeURIComponent(id)); if(!r.ok) throw 0;
+      const d=await r.json(); _bundle=JSON.parse(new TextDecoder().decode(new Uint8Array(d.bytes)));
+      if(!$('mName').value) $('mName').value='grafverse world';
+      $('testRow').classList.add('hidden'); $('mintForm').classList.remove('hidden');
+      $('mintBtn').style.display='none'; $('mintCost').textContent='';   // the bundle has its own per-layer + world mint buttons
+      renderBundle();
+    }catch(e){ $('payloadStatus').innerHTML='Couldn’t load that bundle (the handoff may have expired).'; }
+  }
+  function renderBundle(){
+    const toMint=_bundle.toMint||[], members=_bundle.members||[], done=toMint.filter(a=>_bmintd[a.i]).length, allDone=done===toMint.length;
+    $('payloadStatus').textContent='World bundle — mint each new paint layer, then the world.';
+    const el=$('mintResult'); el.classList.remove('hidden');
+    let h='<div class="row"><span class="k">New paint layers</span><span class="mono">'+done+' / '+toMint.length+' minted</span></div>';
+    if(members.length) h+='<div class="row"><span class="k">Already owned</span><span class="mono">'+members.length+' referenced · no re-mint</span></div>';
+    h+='<div style="display:flex;flex-direction:column;gap:5px;margin:8px 0;">';
+    toMint.forEach(a=>{ const tx=_bmintd[a.i]; h+='<div class="row"><span class="k">paint layer #'+a.i+'</span>'+(tx?'<span class="mono" style="color:var(--good)">✓ '+tx.slice(0,10)+'…</span>':'<span class="mono" style="opacity:.55">unminted</span>')+'</div>'; });
+    h+='</div><div class="btnrow" style="margin-top:6px">'
+      +(allDone?'<button class="primary" id="mintWorld">✦ Immortalize the world ('+(toMint.length+members.length)+' layers)</button>':'<button class="primary" id="mintNext">Mint next layer ('+(done+1)+' / '+toMint.length+')</button>')
+      +'</div>';
+    el.innerHTML=h;
+    const mn=$('mintNext'); if(mn) mn.onclick=mintNextLayer;
+    const mw=$('mintWorld'); if(mw) mw.onclick=mintWorldManifest;
+  }
+  async function mintNextLayer(){
+    if(!wallet||wallet.watchOnly||!wallet.key){ status('Load your key first to mint.','error'); return; }
+    const next=(_bundle.toMint||[]).find(a=>!_bmintd[a.i]); if(!next) return;
+    const b=$('mintNext'); if(b) b.disabled=true;
+    try{
+      const res=await G.mintAtom(provider, wallet, { ...bundleOpts('paint layer #'+next.i), bytes:b64ToBytes(next.b64),
+        confirmSpend:(s)=>confirm('Mint paint layer #'+next.i+' for '+s.toLocaleString()+' sats?\n\nThis is your owned paint, permanent on-chain.') });
+      _bmintd[next.i]=res.collectionId; appendMintLog('layer #'+next.i, res.collectionId);
+      status('Layer #'+next.i+' minted ✓','ok'); refreshBalance(); renderBundle();
+    }catch(e){ const m=e&&e.message||String(e); status(/cancel/i.test(m)?'Layer mint cancelled.':'Layer mint failed: '+m,'error'); renderBundle(); }
+  }
+  async function mintWorldManifest(){
+    if(typeof BMF==='undefined'){ status('Codec missing (bmf-codec.js).','error'); return; }
+    const all={}; (_bundle.members||[]).forEach(m=>{ all[m.i]=m.tx; }); Object.keys(_bmintd).forEach(i=>{ all[i]=_bmintd[i]; });
+    const members=Object.keys(all).map(Number).sort((a,b)=>a-b).map(i=>({tx:all[i]}));   // ordered paint-atom txids → the world manifest
+    const manifest=BMF.scene.pack({ members, ground:_bundle.ground||[], provenance:(_bundle.prov||[]).map(tx=>({tx})) });
+    const name=$('mName').value.trim()||'grafverse world';
+    try{
+      const res=await G.mintAtom(provider, wallet, { ...bundleOpts(name), bytes:manifest,
+        confirmSpend:(s)=>confirm('Immortalize “'+name+'” (a manifest of '+members.length+' paint layers) for '+s.toLocaleString()+' sats?') });
+      status('World immortalized ✓','ok'); refreshBalance(); showResult(res, name);   // showResult logs + shows collection id + back-to-game
+    }catch(e){ const m=e&&e.message||String(e); status(/cancel/i.test(m)?'World mint cancelled.':'World mint failed: '+m,'error'); }
+  }
+
   loadWallet();
   { const bt=params.get('buy'); if(bt && /^[0-9a-fA-F]{64}$/.test(bt)) handleBuy(bt.toLowerCase()); }
+  { const bd=params.get('bundle'); if(bd) loadBundle(bd); }
 })();
 </script>
 </body>
