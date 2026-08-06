@@ -1501,13 +1501,13 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     catch(e){ return { err:'Could not pack the solid.' }; }
   }
   function soloMeta(m){                                          // default title + description built from the solid's own properties
-    const u=m.userData, obj=(LABELS[u.type]||u.type||'solid'), title='grafverse — '+obj;
+    const u=m.userData, obj=(LABELS[u.type]||u.type||'solid'), head='grafverse — hand painted '+obj;
     let mat='plain'; const tx=u.tex; if(tx){ const e=(METALS[tx]||STONES[tx]||WOODS[tx]); if(e&&e.n) mat=e.n; }
     const bh=(u.base!=null?u.base:0x0c1526), baseHex='#'+('000000'+(bh>>>0).toString(16)).slice(-6);
     const t=u.target, r=n=>Math.round(n*10)/10, dims=t?(r(t.x)+'×'+r(t.y)+'×'+r(t.z)):'';
     const bits=[mat, baseHex, dims].filter(Boolean); if(u.bob||u.spin) bits.push('animated');
     let d=''; try{ d=new Date().toISOString().slice(0,10); }catch(_){} if(d) bits.push(d);   // creation date (YYYY-MM-DD)
-    return { title, desc: title+'\n'+bits.join(' · ') };
+    return { title: head+(d?(' '+d):''), desc: head+'\n'+bits.join(' · ') };   // TITLE ends with the date; DESC line1 = head (no date), line2 = attrs (incl date)
   }
   function captureCoverWebP(){                                   // snapshot the live view (the solid AS SEEN, right now) → base64 WebP, or null
     try{
