@@ -4,7 +4,8 @@
 // grafspace design). Encrypted content stays as ciphertext here (no gzip magic, no BMF header) and the caller
 // reports it as unreadable without the holder key. Reuses the tested FILE-record parsers + native decompress.
 import type { WalletProvider } from './walletProvider.ts'
-import { parseFileScript, parseLegacyFileScript, parseTemplateScript, parseStorefrontScript, type FileFields } from './tokenCodec.ts'
+import { parseFileScript, parseLegacyFileScript, parseTemplateScript, parseStorefrontScript, type FileFields, type TemplateFields } from './tokenCodec.ts'
+import { unwrapContentKey, decryptContent } from './contentCrypto.ts'
 import { decompress } from './compress.ts'
 
 // ── licence tiers (see the wallet mint form) — OPEN = free to import (read-only); anything else = rights-reserved (purchase) ──
@@ -70,8 +71,11 @@ export interface LoadedAtom {
 export async function loadAtomBytes(provider: WalletProvider, txId: string): Promise<LoadedAtom> {
   const tx = await provider.getSourceTransaction(txId)
   const files: FileFields[] = []
+  let tmpl: TemplateFields | null = null
   for (const out of tx.outputs) {
     const ls = out.lockingScript
+    const t = parseTemplateScript(ls)
+    if (t != null) { if (tmpl == null) tmpl = t.fields; continue }
     const pd = parseFileScript(ls)
     if (pd != null) { files.push(pd.fields); continue }
     const legacy = parseLegacyFileScript(ls)
@@ -80,6 +84,12 @@ export async function loadAtomBytes(provider: WalletProvider, txId: string): Pro
   if (files.length === 0) throw new Error('no embedded file record in this transaction')
   const pick = files.find(f => !/^image\//i.test(f.mimeType)) ?? files[0]   // skip the cover image if present
   let bytes = pick.fileBytes
+  // Tier-1 decrypt (Addendum F): if the template carries a wrapped key + salt, unwrap K and decrypt. Tier 1 is
+  // "an inconvenience, not DRM" — any holder derives K from the PUBLIC keySalt (no private key, no live party).
+  if (tmpl != null && tmpl.wrappedKey != null && tmpl.wrappedKey.length > 0 && tmpl.keySalt != null && tmpl.keySalt.length > 0) {
+    const K = unwrapContentKey(tmpl.wrappedKey, tmpl.keySalt)
+    if (K != null) { try { bytes = decryptContent(bytes, K) } catch { /* not our key / garbled → leave as-is */ } }
+  }
   let compressed = false
   if (bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) { bytes = await decompress(bytes); compressed = true }  // gzip → inflate
   return { bytes, mimeType: pick.mimeType, fileName: pick.fileName, compressed }

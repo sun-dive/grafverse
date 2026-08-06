@@ -1678,6 +1678,32 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     }catch(e){ _kNote().textContent='Load from chain failed: '+(e.message||e); }
   }
   document.getElementById('kChain').addEventListener('click', ()=>{ const t=prompt('Paste the scene transaction id (txid) to load from chain:'); if(t) loadFromChain(t); });
+  // ── 📥 IMPORT an owned atom INTO the current world (additive). Owned → member ref on save (creator royalty intact). ──
+  const IMPORT_KEY='grafverse-import';
+  async function importSoloAtom(txid){
+    txid=(txid||'').trim().toLowerCase().replace(/[^0-9a-f]/g,'');
+    if(txid.length!==64) return;
+    if(!window.BMF){ showHint('Codec missing (bmf-codec.js didn’t load).'); return; }
+    showHint('Importing your atom…');
+    try{
+      const GM=await loadGrafmint();
+      const provider=new GM.WalletProvider('');
+      const atom=await GM.loadAtomBytes(provider, txid);          // Tier-1 decrypts automatically (any holder, no private key)
+      const dec=BMF.scene.unpack(atom.bytes), rec=dec.shapes&&dec.shapes[0];
+      if(!rec){ showHint('Nothing to import in that atom.'); return; }
+      const sd=recordToShape(rec); sd.txid=txid;                 // owned → carries its txid → a re-Save REFERENCES it (creator royalty intact)
+      const oy=(sd.p&&sd.p[1])||1, p=placePoint(); sd.p=[p.x, oy, p.z];   // drop it in front of the player
+      unlockBuild(true);
+      const m=addShapeFromData(sd);
+      if(m){ activeShape=m; heldGhost=null; setMode(); }
+      saveWorld();
+      showHint('Imported — click it to move it. It’s part of your world now.');
+    }catch(e){ showHint('Import failed: '+(e.message||e)); }
+  }
+  function checkPendingImport(){ let v=''; try{ v=localStorage.getItem(IMPORT_KEY)||''; }catch(_){}
+    if(v){ try{ localStorage.removeItem(IMPORT_KEY); }catch(_){} const tx=(v.split(':')[0]||''); if(tx) importSoloAtom(tx); } }
+  window.addEventListener('storage', e=>{ if(e.key===IMPORT_KEY && e.newValue) checkPendingImport(); });   // wallet tab flags it → this live game tab imports
+  window.addEventListener('focus', checkPendingImport);                                                     // safety net: catch it when the player switches back to the game tab
   document.getElementById('kWallet').addEventListener('click', ()=> window.open(WALLET_URL, 'grafverseWallet'));   // balance + My NFTs in a new tab — the game stays live behind it (close the tab to return)
   document.getElementById('kBack').addEventListener('click', goBack);   // ← Back to the world you jumped from (breadcrumb trail)
   updateBackBtn();                                                      // show ← Back if a jump trail survived (e.g. after a paid-jump wallet round-trip)
@@ -2267,7 +2293,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     else if(_resume){ _welcomeBack(); try{ history.replaceState(null,'',location.pathname); }catch(_){} }
     else if(_p.get('fileloaded')!=null){ _welcomeBack(); try{ history.replaceState(null,'',location.pathname); }catch(_){}    // back from the wallet acquire → rebuild the shared world from the stashed .bmf
       const _b64=sessionStorage.getItem('grafverse-fileload'); if(_b64){ sessionStorage.removeItem('grafverse-fileload'); openKeep(); reassembleFile(_b64, _p.get('fileloaded')==='1'); } }
-    else if(/^[0-9a-f]{6,16}$/i.test(_p.get('w')||'')){ try{ history.replaceState(null,'',location.pathname); }catch(_){} openSharedWorld((_p.get('w')||'').toLowerCase()); } }   // ?w=<id> → open a shared world (the Web2 link)
+    else if(/^[0-9a-f]{6,16}$/i.test(_p.get('w')||'')){ try{ history.replaceState(null,'',location.pathname); }catch(_){} openSharedWorld((_p.get('w')||'').toLowerCase()); } }
+  setTimeout(checkPendingImport, 1800);   // fresh load with a pending import (the wallet flagged it while this tab was closed)   // ?w=<id> → open a shared world (the Web2 link)
 
   // ---------- draw-time motion: per-object BOB + ROTATE (independent, OWNED) ----------
   // Purely a render offset — applied just before renderer.render and undone right after, so logic, collision,
