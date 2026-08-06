@@ -324,7 +324,7 @@
     const open = licOpen();
     $('licNote').innerHTML = open
       ? '<span class="lic-open">Open licence — anyone can pull this from chain and use it in the game <b>for free</b>. Great for starter units. (Content stays unencrypted.)</span>'
-      : '<span class="lic-closed">Covenant Royalty — an <b>owned</b> copy. Others replicate or resell it via the covenant token, and every time <b>you\'re paid</b> automatically. You can encrypt the content below.</span>';
+      : '<span class="lic-closed">Covenant Royalty — an <b>owned</b> copy. Others replicate or resell it via the covenant token, and every time, <b>you\'re paid</b> automatically. You can encrypt the content below.</span>';
     $('mEncrypt').disabled = open;
   }
   $('mLicense').onchange = ()=>{ updateLicNote(); applyPricingMode(); }; updateLicNote();
