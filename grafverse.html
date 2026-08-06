@@ -43,10 +43,11 @@
   #meterFill{height:100%;width:100%;border-radius:6px;background:#38e1ff;transition:width .08s linear, background .2s;}
 
   #swatches{position:fixed;left:24px;bottom:70px;display:flex;gap:8px;opacity:0;transition:opacity .4s;pointer-events:none;}
-  #stencilTog{position:fixed;left:24px;bottom:118px;padding:7px 12px;border-radius:12px;background:rgba(24,46,82,.9);border:1px solid rgba(120,170,255,.4);color:#cfe3ff;font:600 13px system-ui;cursor:pointer;opacity:0;transition:opacity .3s;pointer-events:none;z-index:6;user-select:none;}
-  body.building #stencilTog{opacity:.85;pointer-events:auto;}
-  body.shaping #stencilTog, body.keep #stencilTog, body.mtalk #stencilTog{display:none!important;}
-  #stencilTog.on{background:rgba(56,225,255,.35);border-color:#7fd8e8;color:#eafaff;}
+  #stencilTog,#stencilTog2{position:fixed;left:24px;padding:7px 12px;border-radius:12px;background:rgba(24,46,82,.9);border:1px solid rgba(120,170,255,.4);color:#cfe3ff;font:600 13px system-ui;cursor:pointer;opacity:0;transition:opacity .3s;pointer-events:none;z-index:6;user-select:none;}
+  #stencilTog{bottom:118px;} #stencilTog2{bottom:156px;}
+  body.building #stencilTog,body.building #stencilTog2{opacity:.85;pointer-events:auto;}
+  body.shaping #stencilTog,body.keep #stencilTog,body.mtalk #stencilTog,body.shaping #stencilTog2,body.keep #stencilTog2,body.mtalk #stencilTog2{display:none!important;}
+  #stencilTog.on,#stencilTog2.on{background:rgba(56,225,255,.35);border-color:#7fd8e8;color:#eafaff;}
   #undoBar{position:fixed;left:24px;top:16px;display:none;gap:8px;z-index:7;}
   body.building #undoBar{display:flex;}
   .ubtn{width:40px;height:40px;border-radius:10px;background:rgba(24,46,82,.92);border:1px solid rgba(120,170,255,.45);color:#cfe0ff;font-size:22px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;backdrop-filter:blur(4px);}
@@ -197,7 +198,8 @@
 
 <div id="meterWrap"><div id="meterLbl">paint</div><div id="meterBar"><div id="meterFill"></div></div></div>
 <div id="swatches"></div>
-<div id="stencilTog" title="grafverse stencil — spray a solid to reveal the wordmark (G)">▦ grafverse</div>
+<div id="stencilTog" title="grafverse stencil — spray a solid to reveal the wordmark (G cycles)">▦ grafverse</div>
+<div id="stencilTog2" title="Evidnus stencil — spray a solid to reveal the logo">▦ evidnus</div>
 <div id="inv"></div>
 
 <div id="wallet">
@@ -679,22 +681,30 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     meterFill.style.background='#'+COLORS[i].toString(16).padStart(6,'0'); }
   function showHint(t){ hint.textContent=t; hint.style.opacity = t?1:0; }
 
-  // ── STENCIL: spraying a face DEPOSITS the "grafverse" wordmark's own dabs (fixed on the face) — spray anywhere on it and the wordmark fills in + builds up. The dabs are recorded, so the mint replays it faithfully. ──
-  let stencilOn=false, _stPts=null;
-  function buildStencilMask(){                                        // "grafverse" wordmark → a set of UV dab-points (its letter pixels), centred to fill ~86% of a face
-    const S=256, c=document.createElement('canvas'); c.width=S; c.height=S; const g=c.getContext('2d');
-    g.clearRect(0,0,S,S); g.fillStyle='#000'; g.textAlign='center'; g.textBaseline='middle';
-    let fs=60; g.font='800 '+fs+'px system-ui,Arial,sans-serif';
-    const w=g.measureText('grafverse').width||1; fs=Math.max(10,Math.floor(fs*(S*0.86)/w)); g.font='800 '+fs+'px system-ui,Arial,sans-serif';
-    g.fillText('grafverse', S/2, S/2);
-    const data=g.getImageData(0,0,S,S).data, pts=[];
-    for(let y=0;y<S;y+=3) for(let x=0;x<S;x+=3){ if(data[(y*S+x)*4+3]>80) pts.push([x/S, 1-y/S]); }   // wordmark pixels → UV points (v = 1 − y/S, matching sprayShapeAt)
-    _stPts=pts;
+  // ── STENCILS: spraying a face DEPOSITS the active stencil's own dabs (fixed on the face) → spray anywhere on it and the mark fills in + builds up. Recorded dabs → faithful mint replay. Sources are pluggable (text · embedded logo · future: user uploads). ──
+  let activeStencil=null, _stPts=null, _evImg=null;
+  const EVIDNUS_SRC='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWgAAABbCAMAAABpou9QAAAABlBMVEX///8AAABVwtN+AAAAAWJLR0QAiAUdSAAAAAlwSFlzAAAuIwAALiMBeKU/dgAAAAd0SU1FB+oIBgsOAhLIJRoAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMDctMjBUMDM6NDg6MDQrMDA6MDAK5FxVAAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTA3LTIwVDAzOjQ4OjA0KzAwOjAwe7nk6QAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0wOC0wNlQxMToxNDowMSswMDowMCyenY0AAAAhdEVYdGhpc3RvZ3JhbTpjb250cmFzdC1zdHJldGNoADB4MTAwJXXjKWEAAAMgSURBVHja7dpJdsMgEARQc/9LZxsHRFWPSFHV1kz9QX6y5M/HljGMHRRPxohAhzq/KmOEpGPb9J6MEYMOdn9NxohJR/u/J0EpQbOJScmZT8hKznwi0DrQlvi15GxLDbT2YIr3YO77CXrOc6DxoFMLRxeXwTaUmM8ZL59c49cQFdDLMtiVGStwSYM+gk6CRn0EvarAIU06C3pdAQ09DeKf8p3QrPTUXtBUBdYjPY8haCM0Jz23FjTlbDzSizEie3s/aI8gGVPvjUHe0o5CfxXk8TTVZdmUVmjMFocukzYMu2rZC305kBl6M+LxI80sIGGN4LLJgR4UdNGRTmlYDk0+y+L2Zd3isDQ3u/+7kYXm3jfsZqFHS5a2QlOtKqE3h5BZB962qq9p01G9A/TA01JfDMyZPwfNjVULfXn3C9cBR6qUZgZlJ+6CHmBasCEQslg61KQXeuyn3e8Hhube9YPYBiVbfDcM7BgLvfzdtIUmNYiFeqFd1TsTgb6+M2OgaQ1DEdnQsWUlQl9JE9B/ep6Bjr8K7IK+kIbQUzdBA+g1NYKe+5yG3t+/x50ToFfSAHrToxn64/+wH3pzPtddVtXfETrTOQV6pt5Br4tvgDYDWNYEm+ZAw3u1eQ8uGqQ8s3RtUmyuLmj06wMeMjN0lvT1gKaZ2qDB72l4LbNVFUo/BXr7hAg5577BS4G2zdMJvXvmiZw90MXSN4bePMUHzJay0qWfCH35Xgo5+/7PkiMd/C47Aw3v3uC1YJGpPNK+Ax154Dp/vu1CQPvWsZyiDBrNMLj4CqSg1w7I2XcvVfjr+AnQq+sI0niv1CrpR0AvBoXTGNfxXYq56sT1HoX+BBbuqeZR0I4+DmhDrY3Q8+yC7oHGXQQt6DtD/52e6QIqdu7MS6FpZ0G7oJkegvY4X709fgt0hqARyvsnk8y1lELXrNRek/dfU4eX/5wIuitBaIXNL105V2ZxD3N6Sf8zgu6KoJtSc3+uTJFzUwTdFUE3RdBNEXRT5NwUQTdF0D3R7V1TBN0UQTdF0E0RdFME3RU5N0XQXZFzVwTdFTF3Rc67/AAEUx7aUW5cZAAAAABJRU5ErkJggg==';
+  { const im=new Image(); im.onload=()=>{ _evImg=im; if(activeStencil==='evidnus') buildStencil('evidnus'); }; im.src=EVIDNUS_SRC; }   // load the Evidnus logo once
+  function _sampleDark(g,S){ const d=g.getImageData(0,0,S,S).data, pts=[];                          // dark, opaque pixels → UV dab-points (works for black text AND black-on-white logos)
+    for(let y=0;y<S;y+=3) for(let x=0;x<S;x+=3){ const i=(y*S+x)*4; if(d[i+3]>80 && (d[i]+d[i+1]+d[i+2])/3 < 110) pts.push([x/S, 1-y/S]); }
+    return pts; }
+  function buildStencil(kind){
+    const S=256, c=document.createElement('canvas'); c.width=S; c.height=S; const g=c.getContext('2d'); g.clearRect(0,0,S,S);
+    if(kind==='evidnus'){ if(!_evImg){ _stPts=[]; return; } const tw=S*0.9, th=tw*_evImg.height/_evImg.width; g.drawImage(_evImg,(S-tw)/2,(S-th)/2,tw,th); }   // logo, ~90% width, centred
+    else { g.fillStyle='#000'; g.textAlign='center'; g.textBaseline='middle'; let fs=60; g.font='800 '+fs+'px system-ui,Arial,sans-serif';
+      const w=g.measureText('grafverse').width||1; fs=Math.max(10,Math.floor(fs*(S*0.86)/w)); g.font='800 '+fs+'px system-ui,Arial,sans-serif'; g.fillText('grafverse',S/2,S/2); }
+    _stPts=_sampleDark(g,S);
   }
-  function toggleStencil(){ stencilOn=!stencilOn; const t=document.getElementById('stencilTog'); if(t) t.classList.toggle('on',stencilOn);
-    showHint(stencilOn?'▦ grafverse stencil ON — spray any solid; the wordmark fills in':'stencil off'); }
-  { const t=document.getElementById('stencilTog'); if(t){ t.addEventListener('click',toggleStencil); t.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); toggleStencil(); },{passive:false}); } }
-  addEventListener('keydown', e=>{ if(e.code==='KeyG' && buildUnlocked && !talking && !keepOpen && !shaping){ e.preventDefault(); toggleStencil(); } });
+  function _applyStencil(){ if(activeStencil) buildStencil(activeStencil); else _stPts=null;
+    const a=document.getElementById('stencilTog'), b=document.getElementById('stencilTog2');
+    if(a) a.classList.toggle('on', activeStencil==='grafverse'); if(b) b.classList.toggle('on', activeStencil==='evidnus');
+    showHint(activeStencil ? ('▦ '+activeStencil+' stencil ON — spray any solid; it fills in') : 'stencil off'); }
+  function setStencil(kind){ activeStencil=(activeStencil===kind)?null:kind; _applyStencil(); }                 // chip → select/toggle that stencil
+  function cycleStencil(){ activeStencil = activeStencil===null?'grafverse':(activeStencil==='grafverse'?'evidnus':null); _applyStencil(); }   // G key → off → grafverse → evidnus → off
+  { const a=document.getElementById('stencilTog'), b=document.getElementById('stencilTog2');
+    if(a){ a.addEventListener('click',()=>setStencil('grafverse')); a.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); setStencil('grafverse'); },{passive:false}); }
+    if(b){ b.addEventListener('click',()=>setStencil('evidnus')); b.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); setStencil('evidnus'); },{passive:false}); } }
+  addEventListener('keydown', e=>{ if(e.code==='KeyG' && buildUnlocked && !talking && !keepOpen && !shaping){ e.preventDefault(); cycleStencil(); } });
 
   // ---------- two-colour paint inventory: the leftover can's colour + the full can's colour ----------
   const inv=[]; let activeSlot=0;                 // up to 2 slots: {ci, amt(0..100)}; colorIdx/paint mirror the active slot
@@ -1149,8 +1159,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
             const dist=camera.position.distanceTo(shot.point), dn=Math.max(0,Math.min(1,(dist-2.2)/(9-2.2)));
             const key=targetKey(o,si);
             if(curKey!==key){ endStroke(); beginStroke(o,si); }
-            if(stencilOn){ if(!_stPts) buildStencilMask();                                       // stencil ON → deposit wordmark dabs (fixed on the face); spray anywhere on it → "grafverse" fills in
-              for(let k=0;k<10 && _stPts.length;k++){ const p=_stPts[(Math.random()*_stPts.length)|0]; if(addDab(p[0],p[1],dn)) sprayShapeAt(surf,p[0],p[1],dn); } }
+            if(activeStencil && _stPts && _stPts.length){                                          // stencil ON → deposit the mark's dabs (fixed on the face); spray anywhere on it → it fills in
+              for(let k=0;k<10;k++){ const p=_stPts[(Math.random()*_stPts.length)|0]; if(addDab(p[0],p[1],dn)) sprayShapeAt(surf,p[0],p[1],dn); } }
             else if(addDab(shot.uv.x, shot.uv.y, dn)) sprayShapeAt(surf, shot.uv.x, shot.uv.y, dn);   // record + spray on each dab
             materializeShape(o); hasPainted=true;
             o.userData.paintAmt=(o.userData.paintAmt||0)+PAINT_DRAIN;                 // paint-to-earn: ~half-cover a solid shape → a can's pay
