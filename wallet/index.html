@@ -672,7 +672,7 @@
     $('nftCount').textContent=groups.size+' collection'+(groups.size===1?'':'s');
     if(!groups.size){ list.innerHTML='<div class="hint">Nothing held yet — scanning the chain…</div>'; return; }
     let h='';
-    for(const [col,copies] of groups) h+='<div class="nft-item" data-col="'+col+'"><img class="nft-thumb" alt="" data-col="'+col+'" style="display:none"><a class="mono" href="https://whatsonchain.com/tx/'+col+'" target="_blank" rel="noopener">'+col.slice(0,16)+'…</a><span class="mono">'+(copies.length>1?('×'+copies.length):'held')+'</span></div>';
+    for(const [col,copies] of groups) h+='<div class="nft-item" data-col="'+col+'"><img class="nft-thumb" alt="" data-col="'+col+'" style="display:none"><a class="mono" href="https://whatsonchain.com/tx/'+col+'" target="_blank" rel="noopener">'+col.slice(0,16)+'…</a><span class="mono">×'+copies.length+'</span></div>';
     list.innerHTML=h;
     for(const [col] of groups){
       const cu=_coverCache.get(col); if(cu) setThumb(col,cu);                       // instant on re-render
