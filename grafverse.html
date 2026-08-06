@@ -289,7 +289,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   const REST_ANGLE = 0.60, SLIDE_G = 22, SLIDE_FRIC = 0.94, AIR_FRIC = 0.995;
   const WET_REST = 0.42, WET_FRIC = 0.985;   // WET paint = slippier: slips at a gentler angle (~24°) + slides further
   const GROUND = 500;          // ground plane size (units)
-  const TEX = window.matchMedia('(pointer: coarse)').matches ? 1024 : 2048;   // ground paint res — mobile halves it (¼ the memory; lossless for mints, ground is stored as strokes)
+  const TEX = window.matchMedia('(pointer: coarse)').matches ? 512 : 1024;   // ground paint res — it's only random splatter, so keep it low (mobile 512 · desktop 1024). Lossless for mints (ground is stored as strokes)
   const PAINT_DRAIN = 0.22;    // per frame while spraying
   const CAN_POS = new THREE.Vector3(0, 0.35, -9);      // first can, a few steps ahead
   const MACHINE_POS = new THREE.Vector3(3, 0, -26);    // the glowing box in the (nearer) distance
