@@ -1,22 +1,34 @@
 <?php
 // grafspace — © 2026 sun-dive — Licensed under the Business Source License 1.1 (see LICENSE).
-// grafverse.com/w.php?id=<id> — the SHAREABLE, CRAWLABLE landing page for a shared FREE world.
-// Renders per-world OG / social-card meta + SEO content, then links into the game (./?w=<id>).
-// (A shared link points here so social crawlers get a proper card; humans click "Enter" into the game.)
+// grafverse.com/w.php?id=<id> — the SHAREABLE, CRAWLABLE landing page for a shared FREE world or solid.
+// Renders per-share OG / social-card meta (rendered 1200×630 cover + name + description), then links into
+// the game (./?w=<id>). A shared link points here so social crawlers get a proper card; humans click "Enter".
 $id  = preg_replace('/[^0-9a-f]/', '', (string)($_GET['id'] ?? ''));
 $dir = __DIR__ . '/worlds';
 $ok  = ($id !== '' && strlen($id) >= 6 && strlen($id) <= 16 && is_file($dir . '/' . $id . '.bmf'));
 
-// optional per-world name (future: the game can upload it on save); safe fallback otherwise
-$nameF = $ok ? ($dir . '/' . $id . '.name') : '';
-$name  = ($nameF && is_file($nameF)) ? substr(preg_replace('/[\x00-\x1f\x7f]/', '', (string)@file_get_contents($nameF)), 0, 80) : '';
-if ($name === '') $name = 'A grafverse world';
+// per-share meta {n:name, d:description, t:type 'w'|'s'} written by world.php (legacy .name honoured as a fallback)
+$name = ''; $desc = ''; $type = 'w';
+$metaF = $ok ? ($dir . '/' . $id . '.meta') : '';
+if ($metaF && is_file($metaF)) {
+  $m = json_decode((string)@file_get_contents($metaF), true);
+  if (is_array($m)) { $name = (string)($m['n'] ?? ''); $desc = (string)($m['d'] ?? ''); $type = (($m['t'] ?? 'w') === 's') ? 's' : 'w'; }
+}
+if ($name === '' && $ok && is_file($dir . '/' . $id . '.name')) $name = substr(preg_replace('/[\x00-\x1f\x7f]/', '', (string)@file_get_contents($dir . '/' . $id . '.name')), 0, 80);
+
+$thing = ($type === 's') ? 'creation' : 'world';
+if ($name === '') $name = ($type === 's') ? 'A grafverse creation' : 'A grafverse world';
+if ($desc === '') $desc = ($type === 's')
+  ? 'A hand-painted 3D creation you can walk up to, remix, and own — made in grafverse with the Block Media Format (BMF). Owned, not claimed.'
+  : 'Walk it, paint it, remix it, own it — a hand-painted 3D world you explore free in your browser. Built with grafverse and the Block Media Format (BMF). Owned, not claimed.';
 
 $origin = 'https://' . preg_replace('/[^a-z0-9.\-:]/i', '', ($_SERVER['HTTP_HOST'] ?? 'grafverse.com'));
 $url    = $origin . '/w.php?id=' . rawurlencode($id);
 $game   = './?w=' . rawurlencode($id);
-$img    = $origin . '/og.jpg';   // v1: brand card · v2: a per-world rendered thumbnail
-$desc   = 'Walk it, paint it, remix it, own it — a hand-painted 3D world you explore free in your browser. Built with grafverse and the Block Media Format (BMF). Owned, not claimed.';
+$jpg    = $ok ? ($dir . '/' . $id . '.jpg') : '';
+$hasImg = ($jpg && is_file($jpg));
+$img    = $origin . '/og.php?id=' . rawurlencode($id) . ($hasImg ? ('&v=' . @filemtime($jpg)) : '');   // per-share cover (cache-busted by mtime) · og.php falls back to the brand card
+$ttl    = ($type === 's') ? 'A creation' : 'A world';
 
 if (!$ok) http_response_code(404);
 header('Content-Type: text/html; charset=utf-8');
@@ -30,12 +42,14 @@ $h = function ($s) { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); };
 <link rel="canonical" href="<?= $h($url) ?>">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="grafverse">
-<meta property="og:title" content="<?= $h($name) ?> — a grafverse world">
+<meta property="og:title" content="<?= $h($name) ?> — a grafverse <?= $h($thing) ?>">
 <meta property="og:description" content="<?= $h($desc) ?>">
 <meta property="og:image" content="<?= $h($img) ?>">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 <meta property="og:url" content="<?= $h($url) ?>">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="<?= $h($name) ?> — a grafverse world">
+<meta name="twitter:title" content="<?= $h($name) ?> — a grafverse <?= $h($thing) ?>">
 <meta name="twitter:description" content="<?= $h($desc) ?>">
 <meta name="twitter:image" content="<?= $h($img) ?>">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>🎨</text></svg>">
@@ -44,8 +58,10 @@ $h = function ($s) { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); };
   body{background:radial-gradient(ellipse at 50% -10%, #10203c 0%, #0a1020 55%, #06090f 100%);
        color:#eaf2ff;font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
        min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 20px;}
-  main{max-width:600px;text-align:center;}
+  main{max-width:640px;text-align:center;}
   .tag{font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:#5f7bb0;margin-bottom:18px;}
+  .shot{max-width:100%;width:520px;aspect-ratio:1200/630;object-fit:cover;border-radius:14px;margin:0 auto 26px;
+        box-shadow:0 18px 60px rgba(0,0,0,.5),0 0 0 1px rgba(120,170,255,.16);display:block;}
   h1{font-size:clamp(30px,7vw,56px);font-weight:800;letter-spacing:-.02em;line-height:1.05;
      background:linear-gradient(180deg,#eaf2ff,#6fb6ff);-webkit-background-clip:text;background-clip:text;color:transparent;text-wrap:balance;}
   .lede{color:#a9bcdd;font-size:16px;margin:16px auto 28px;max-width:34em;}
@@ -61,16 +77,19 @@ $h = function ($s) { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); };
 </head><body>
 <main>
   <div class="tag">grafverse · owned, not claimed</div>
+<?php if ($ok && $hasImg): ?>
+  <img class="shot" src="<?= $h($img) ?>" width="1200" height="630" alt="<?= $h($name) ?> — a hand-painted grafverse <?= $h($thing) ?>">
+<?php endif; ?>
   <h1><?= $h($name) ?></h1>
   <p class="lede"><?= $h($desc) ?></p>
 <?php if ($ok): ?>
-  <a class="enter" href="<?= $h($game) ?>">▶ Enter this world</a>
+  <a class="enter" href="<?= $h($game) ?>">▶ Enter this <?= $h($thing) ?></a>
   <p class="hint">Free to explore in your browser — no install, no wallet. Paint on it, and what you paint is <b>yours</b>.</p>
 <?php else: ?>
-  <p class="hint">This world isn’t here — the link may be mistyped, or the world expired (worlds are kept for 12 months after their last view).</p>
+  <p class="hint">This <?= $h($thing) ?> isn’t here — the link may be mistyped, or it expired (shares are kept for 12 months after their last view).</p>
   <a class="enter" href="./">Open grafverse</a>
 <?php endif; ?>
-  <div class="foot">A world is a tiny <b>Block Media Format</b> (BMF) manifest — free models composite live in your browser, owned paint stays yours on-chain. <a href="./">Make your own →</a></div>
+  <div class="foot"><?= $h($ttl) ?> is a tiny <b>Block Media Format</b> (BMF) manifest — free models composite live in your browser, owned paint stays yours on-chain. <a href="./">Make your own →</a></div>
   <div class="creed">in the covenant we trust</div>
 </main>
 </body></html>

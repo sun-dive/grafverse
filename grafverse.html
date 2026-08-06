@@ -1566,6 +1566,21 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       return (url && url.indexOf('data:image/webp')===0) ? url.slice(url.indexOf(',')+1) : null;   // webp only (skip cover if unsupported)
     }catch(_){ return null; }
   }
+  function captureShareCover(){                                  // wide 1200×630 JPEG for social OG cards (the scene AS SEEN) → base64, or null. JPEG (not WebP) — social crawlers render it reliably.
+    try{
+      renderer.render(scene, camera);                            // fresh frame — read it THIS tick (preserveDrawingBuffer is off)
+      const src=renderer.domElement, W=1200, H=630, c=document.createElement('canvas'); c.width=W; c.height=H;
+      const ar=W/H, sar=src.width/src.height;                    // cover-crop the render to 1.91:1, centred
+      let sw,sh; if(sar>ar){ sh=src.height; sw=sh*ar; } else { sw=src.width; sh=sw/ar; }
+      const sx=(src.width-sw)/2, sy=(src.height-sh)/2;
+      const g=c.getContext('2d'); g.drawImage(src, sx, sy, sw, sh, 0, 0, W, H);
+      g.font='700 26px system-ui,Arial,sans-serif'; g.textAlign='right'; g.textBaseline='bottom';   // grafverse.com watermark
+      g.shadowColor='rgba(0,0,0,.6)'; g.shadowBlur=6; g.shadowOffsetY=1; g.fillStyle='rgba(255,255,255,.9)';
+      g.fillText('grafverse.com', W-22, H-18);
+      const url=c.toDataURL('image/jpeg', 0.85);
+      return (url && url.indexOf('data:image/jpeg')===0) ? url.slice(url.indexOf(',')+1) : null;
+    }catch(_){ return null; }
+  }
   async function sellSolo(m){
     const p = packSoloBytes(m); if(p.err){ showHint(p.err); return; }
     const meta = soloMeta(m);
@@ -1598,7 +1613,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const p=packSoloBytes(m); if(p.err){ showHint(p.err); return; }
     showHint('Making your share link…');
     try{
-      const res=await fetch(WORLD_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: bytesToB64(p.bytes) });
+      const u=m.userData, obj=(LABELS[u.type]||u.type||'creation');                          // per-share OG card: name + description + wide cover
+      const name='Hand-painted '+obj, desc='A hand-painted '+obj+' you can walk up to, remix, and own — made in grafverse. Owned, not claimed.';
+      const cover=captureShareCover();                                                        // snapshot NOW (renders) — before any await
+      const env=JSON.stringify({ bmf:bytesToB64(p.bytes), cover:cover||undefined, name, desc, type:'s' });
+      const res=await fetch(WORLD_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: env });   // text/plain → no CORS preflight; world.php json_decodes it
       const data=await res.json().catch(()=>({}));
       if(!res.ok || !data.id) throw new Error(data.error||('HTTP '+res.status));
       const link=location.origin+location.pathname.replace(/[^/]*$/,'')+'w.php?id='+data.id;
@@ -1830,11 +1849,14 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function setMyShare(id){ try{ id?localStorage.setItem('grafverse-myshare',id):localStorage.removeItem('grafverse-myshare'); }catch(_){} }
   async function saveToServer(){   // ☁ Save = persist your world to the server (updatable at the same link, which is also shareable). The .bmf export is the LOCAL save.
     const p=packWorldBytes(); if(p.err){ _kNote().textContent=p.err; return; }
-    const body=bytesToB64(p.bytes), cur=myShareId(), shares=sharesGet(), editing=cur&&shares[cur];
+    const cur=myShareId(), shares=sharesGet(), editing=cur&&shares[cur];
     _kNote().textContent = editing ? 'Saving & updating your link…' : 'Saving & making your share link…';
     try{
+      const cover=captureShareCover();                                                        // wide JPEG snapshot for the social card (renders — before any await)
+      const env=JSON.stringify({ bmf:bytesToB64(p.bytes), cover:cover||undefined, name:'A grafverse world',
+        desc:'A hand-painted 3D world — explore it free in your browser, paint on it, and own what you make. Owned, not claimed.', type:'w' });
       const u = editing ? (WORLD_URL+'?id='+encodeURIComponent(cur)+'&edit='+encodeURIComponent(shares[cur])) : WORLD_URL;
-      const res=await fetch(u, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body });
+      const res=await fetch(u, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: env });   // text/plain → no CORS preflight; world.php json_decodes the envelope
       const data=await res.json().catch(()=>({}));
       if(!res.ok || !data.id) throw new Error(data.error||('HTTP '+res.status));
       if(data.edit){ shares[data.id]=data.edit; sharesSet(shares); setMyShare(data.id); }   // first save → remember the edit token so later saves UPDATE this same world/link
