@@ -1471,12 +1471,13 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // ── immortalize: pack the world (binary BMF) → hand off to the wallet to mint (the key never touches the game) ──
   const HANDOFF_URL = 'handoff.php';   // same-origin bridge: POST packed bytes → { id }
   const WORLD_URL   = 'world.php';     // persistent public store for shared FREE worlds → grafverse.com/?w=<id>
-  const WALLET_URL  = 'wallet/';        // TODO: switch to https://wallet.grafverse.com/ once the subdomain is live
+  const WALLET_URL  = (function(){ var h=location.hostname; if(!h || h.indexOf('.')<0 || /^(localhost|127\.|10\.|192\.168\.|\[)/.test(h)) return 'wallet/'; return location.protocol+'//wallet.'+h.replace(/^www\./,'')+'/'; })();   // production → wallet.<domain> subdomain (key isolation); dev/local → same-origin subfolder
+  function myPubKey(){ try{ var m=document.cookie.match(/(?:^|;\s*)gvpub=([0-9a-fA-F]+)/); if(m&&m[1]) return m[1]; }catch(_){} try{ return localStorage.getItem('grafverse-mypub')||''; }catch(_){ return ''; } }   // wallet's PUBLIC key: cross-subdomain cookie, else same-origin localStorage
   // pack the live world to packed BMF bytes — the ONE source of truth for both mint + download. Returns {bytes} or {err}.
   function packWorldBytes(){                                                    // Save-to-File = the SAME manifest shape as Save-to-Chain: FREE content inline (the free channel) + OWNED paint as txid REFERENCES (the on-chain ownership channel) — never owned bytes, so a shared .bmf can't pirate paid work.
     if(!window.BMF) return { err:'Codec missing (bmf-codec.js didn’t load).' };
     saveWorld();
-    let myPub=''; try{ myPub=localStorage.getItem('grafverse-mypub')||''; }catch(_){}   // YOUR public key (published by the wallet, same origin) → stamps you as the members' holder/reseller in this .bmf
+    let myPub=myPubKey();   // YOUR public key (published by the wallet, same origin) → stamps you as the members' holder/reseller in this .bmf
     const world = serializeWorld(), shapes=world.shapes||[], inl=[], members=[];
     shapes.forEach(sd=>{
       const layers = sd.layers || (!sd.cr && sd.st!=null ? [{ st:sd.st, txid:sd.txid, creator:sd.creator }] : null);
@@ -1495,7 +1496,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function packSoloBytes(m){
     if(!window.BMF) return { err:'Codec missing (bmf-codec.js didn’t load).' };
     const sd = m && shapeToSave(m); if(!sd) return { err:'Select a solid first.' };
-    let myPub=''; try{ myPub=localStorage.getItem('grafverse-mypub')||''; }catch(_){}
+    let myPub=myPubKey();
     const layers = sd.layers || (!sd.cr && sd.st!=null ? [{ st:sd.st, txid:sd.txid, creator:sd.creator }] : null);
     if(!layers) return { err:'That solid has no paint to sell — spray some paint on it first.' };
     const inl=[], members=[]; let fresh=0;
@@ -1707,7 +1708,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   function checkPendingImport(){ let v=''; try{ v=localStorage.getItem(IMPORT_KEY)||''; }catch(_){}
     if(v){ try{ localStorage.removeItem(IMPORT_KEY); }catch(_){} const tx=(v.split(':')[0]||''); if(tx) importSoloAtom(tx); } }
-  window.addEventListener('storage', e=>{ if(e.key===IMPORT_KEY && e.newValue) checkPendingImport(); });   // wallet tab flags it → this live game tab imports
+  window.addEventListener('message', e=>{ if(e.data && e.data.type==='gv-import' && e.data.txid && (e.origin===location.origin || /^https?:\/\/wallet\./.test(e.origin))) importSoloAtom(String(e.data.txid)); });   // wallet SUBDOMAIN → game (cross-origin bridge)
+  window.addEventListener('storage', e=>{ if(e.key===IMPORT_KEY && e.newValue) checkPendingImport(); });   // same-origin fallback: wallet tab flags it → this live game tab imports
   window.addEventListener('focus', checkPendingImport);                                                     // safety net: catch it when the player switches back to the game tab
   document.getElementById('kWallet').addEventListener('click', ()=> window.open(WALLET_URL, 'grafverseWallet'));   // balance + My NFTs in a new tab — the game stays live behind it (close the tab to return)
   document.getElementById('kBack').addEventListener('click', goBack);   // ← Back to the world you jumped from (breadcrumb trail)

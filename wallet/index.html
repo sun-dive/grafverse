@@ -209,10 +209,16 @@
 
 <div id="status"></div>
 
-<script src="../bmf-codec.js"></script>
-<script src="../vendor/grafmint.js"></script>
+<script>
+// Shared codec + mint bundle live on the MAIN origin (grafverse.com). On the wallet SUBDOMAIN this loads them
+// cross-origin (fine for classic scripts); same-origin dev uses '..'. GV_PARENT = base for parent-origin resources.
+(function(){ var h=location.hostname, p=(h.indexOf('wallet.')===0)?(location.protocol+'//'+h.slice(7)+(location.port?':'+location.port:'')):'..'; window.GV_PARENT=p;
+  document.write('<scr'+'ipt src="'+p+'/bmf-codec.js"><\/scr'+'ipt>');
+  document.write('<scr'+'ipt src="'+p+'/vendor/grafmint.js"><\/scr'+'ipt>'); })();
+</script>
 <script>
 (function(){
+const PARENT = window.GV_PARENT || '..';   // parent-origin base: '..' same-origin · absolute main-origin on the wallet subdomain
   const G = window.GrafMint;
   const $ = id => document.getElementById(id);
   let statusT;
@@ -228,7 +234,8 @@
     wallet = G.loadOrCreateWallet();
     provider = new G.WalletProvider(wallet.address);
     $('addr').textContent = wallet.address;
-    try{ if(wallet.pubKeyHex) localStorage.setItem('grafverse-mypub', wallet.pubKeyHex); }catch(_){}   // expose your PUBLIC key (same-origin) so the game stamps YOU as owner/reseller when it writes a .bmf (Save-to-File)
+    try{ if(wallet.pubKeyHex){ localStorage.setItem('grafverse-mypub', wallet.pubKeyHex);                         // same-origin path
+      var rd=location.hostname.replace(/^wallet\./,''); if(rd.indexOf('.')>0) document.cookie='gvpub='+wallet.pubKeyHex+';path=/;max-age=31536000;domain=.'+rd+';samesite=lax'; } }catch(_){}   // cross-subdomain: share the PUBLIC key with the game origin so it can stamp YOU as reseller in a .bmf (the private key never leaves this origin)
     $('watchPill').hidden = !wallet.watchOnly;
     // recovery secrets: real values kept in memory, always shown MASKED, re-masked on every (re)load
     realSeed = wallet.watchOnly ? '' : (G.savedMnemonic() || '');
@@ -304,12 +311,12 @@
   const returnUrl = params.get('return');
   { const bgt=$('backGameTop'); if(bgt) bgt.onclick=()=>{               // smooth return: same-tab → back to the game (one-tap resume); new tab → just close it
       if(returnUrl){ location.href = returnUrl + (returnUrl.includes('?')?'&':'?') + 'resume=1'; }
-      else { window.close(); setTimeout(()=>{ try{ if(!window.closed) location.href='../?resume=1'; }catch(_){ location.href='../?resume=1'; } }, 150); }
+      else { window.close(); setTimeout(()=>{ try{ if(!window.closed) location.href=PARENT+'/?resume=1'; }catch(_){ location.href=PARENT+'/?resume=1'; } }, 150); }
     }; }
   if(params.get('aff')) G.setIncomingAff(params.get('aff'));
   if(handoffId){
     $('payloadStatus').textContent = 'Loading your creation…';
-    fetch('../handoff.php?id='+encodeURIComponent(handoffId))
+    fetch(PARENT+'/handoff.php?id='+encodeURIComponent(handoffId))
       .then(r=>r.ok?r.json():Promise.reject())
       .then(d=>{ if(!Array.isArray(d.bytes)) throw 0; setPayload({bytes:d.bytes, name:d.name, description:d.description}); })
       .catch(()=>{ $('payloadStatus').innerHTML = 'Couldn’t load that creation (the handoff may have expired). <br>You can still test below.'; });
@@ -318,7 +325,7 @@
   const coverId = params.get('cover');
   let coverBytes = null;
   if(coverId){
-    fetch('../handoff.php?id='+encodeURIComponent(coverId))
+    fetch(PARENT+'/handoff.php?id='+encodeURIComponent(coverId))
       .then(r=>r.ok?r.json():null)
       .then(d=>{ if(d && Array.isArray(d.bytes) && d.bytes.length){ coverBytes=d.bytes; showCoverPreview(d.bytes); } })
       .catch(()=>{});
@@ -529,10 +536,10 @@
 
   // ── ?acquire= : a .bmf loaded from FILE references OWNED paint layers. Check which the wallet holds, replicate the missing (pay each creator), then send the game back to reassemble. Cancel/unfunded → free-only. ──
   async function handleAcquire(handoffId){
-    const backTo = (ok)=>{ const ret=returnUrl||location.origin; return ret+(ret.includes('?')?'&':'?')+'fileloaded='+(ok?'1':'0'); };
+    const backTo = (ok)=>{ const ret=returnUrl||(PARENT+'/'); return ret+(ret.includes('?')?'&':'?')+'fileloaded='+(ok?'1':'0'); };
     try{
       status('Reading the world’s owned components…');
-      const r=await fetch('../handoff.php?id='+encodeURIComponent(handoffId)); if(!r.ok) throw 0;
+      const r=await fetch(PARENT+'/handoff.php?id='+encodeURIComponent(handoffId)); if(!r.ok) throw 0;
       const d=await r.json(); const pkg=JSON.parse(new TextDecoder().decode(new Uint8Array(d.bytes)));
       const members=(pkg.acquire||[]).map(m=>{ const o=(typeof m==='string')?{tx:m}:(m||{}); const tx=((o.tx||'')+'').toLowerCase(); return /^[0-9a-f]{64}$/.test(tx)?{ tx:tx, owner:o.owner||null }:null; }).filter(Boolean);   // each = { tx (collection/tx1Ref), owner (the sharer's holder pubkey = who to replicate from) }
       if(!members.length){ location.href=backTo(true); return; }                    // nothing referenced → just load
@@ -559,7 +566,7 @@
 
   // ── buy / import: replicate a RIGHTS-RESERVED collection (covenant pays the creator), then return to the game ──
   async function handleBuy(txid){
-    const backTo = (t)=>{ const ret=returnUrl||location.origin; return ret+(ret.includes('?')?'&':'?')+'bought='+t; };
+    const backTo = (t)=>{ const ret=returnUrl||(PARENT+'/'); return ret+(ret.includes('?')?'&':'?')+'bought='+t; };
     if(!wallet || wallet.watchOnly || !wallet.key){ status('Load your key first to buy this world.','error'); return; }
     try{
       status('Reading the collection…');
@@ -599,7 +606,7 @@
   async function loadBundle(id){
     $('payloadStatus').textContent='Loading your world bundle…';
     try{
-      const r=await fetch('../handoff.php?id='+encodeURIComponent(id)); if(!r.ok) throw 0;
+      const r=await fetch(PARENT+'/handoff.php?id='+encodeURIComponent(id)); if(!r.ok) throw 0;
       const d=await r.json(); _bundle=JSON.parse(new TextDecoder().decode(new Uint8Array(d.bytes)));
       if(!$('mName').value) $('mName').value='grafverse world';
       $('testRow').classList.add('hidden'); $('mintForm').classList.remove('hidden');
@@ -669,10 +676,11 @@
   function returnToGame(){                                         // one tap back to the game to place the import
     if(returnUrl){ location.href = returnUrl + (returnUrl.includes('?')?'&':'?') + 'resume=1'; return; }   // same-tab handoff → navigate back
     if(window.opener && !window.opener.closed){ try{ window.opener.focus(); }catch(_){} window.close(); return; }   // new tab (My NFTs) → focus + close, back to the live game tab
-    location.href='../?resume=1';                                  // fallback
+    location.href=PARENT+'/?resume=1';                                  // fallback
   }
-  function addToWorld(col){                                        // flag an owned atom for import → the live grafverse tab drops it into the world
-    try{ localStorage.setItem('grafverse-import', col+':'+Date.now()); }catch(_){}
+  function addToWorld(col){                                        // send an owned atom to the game to drop into the world
+    try{ var tgt=(PARENT.indexOf('http')===0)?PARENT:location.origin; if(window.opener && !window.opener.closed) window.opener.postMessage({type:'gv-import',txid:col}, tgt); }catch(_){}   // cross-origin bridge (wallet subdomain → game)
+    try{ localStorage.setItem('grafverse-import', col+':'+Date.now()); }catch(_){}   // same-origin fallback + queue for the next game load
     $('nftScan').innerHTML='✓ Added to your world. <button class="sm" id="goPlace" style="margin-left:6px">▸ Place it now</button>';
     const g=$('goPlace'); if(g) g.onclick=returnToGame;
   }
