@@ -1338,6 +1338,10 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       u.appendChild(sbtn('⊖',()=>scaleAll(1/1.12)));
       const us=document.createElement('span'); us.textContent='size'; us.style.width='auto'; u.appendChild(us);
       u.appendChild(sbtn('⊕',()=>scaleAll(1.12))); box.appendChild(u);
+      const hr=document.createElement('div'); hr.className='srow';   // ⬇⬆ height — raise/lower the shape (ground it, or float it)
+      hr.appendChild(sbtn('⬇',()=>{ if(activeShape){ activeShape.position.y=Math.max(0,activeShape.position.y-0.25); scheduleSave(); } }));
+      const hs2=document.createElement('span'); hs2.textContent='height'; hs2.style.width='auto'; hr.appendChild(hs2);
+      hr.appendChild(sbtn('⬆',()=>{ if(activeShape){ activeShape.position.y+=0.25; scheduleSave(); } })); box.appendChild(hr);
       const r=document.createElement('div'); r.className='srow';
       r.appendChild(sbtn('↺',()=>rotY(-Math.PI/12))); r.appendChild(sbtn('↻',()=>rotY(Math.PI/12)));
       r.appendChild(sbtn('◣',()=>lean(Math.PI/12)));  r.appendChild(sbtn('◢',()=>lean(-Math.PI/12))); box.appendChild(r);
@@ -1692,7 +1696,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const dec=BMF.scene.unpack(atom.bytes), rec=dec.shapes&&dec.shapes[0];
       if(!rec){ showHint('Nothing to import in that atom.'); return; }
       const sd=recordToShape(rec); sd.txid=txid;                 // owned → carries its txid → a re-Save REFERENCES it (creator royalty intact)
-      const oy=(sd.p&&sd.p[1])||1, p=placePoint(); sd.p=[p.x, oy, p.z];   // drop it in front of the player
+      const p=placePoint(); sd.p=[p.x, 0, p.z];                  // land it on the ground in front of the player (not its original, maybe-floating y) — raise it with ⬆ if wanted
       unlockBuild(true);
       const m=addShapeFromData(sd);
       if(m){ activeShape=m; heldGhost=null; setMode(); }
