@@ -1699,7 +1699,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const p=placePoint(); sd.p=[p.x, 0, p.z];                  // land it on the ground in front of the player (not its original, maybe-floating y) — raise it with ⬆ if wanted
       unlockBuild(true);
       const m=addShapeFromData(sd);
-      if(m){ activeShape=m; heldGhost=null; setMode(); }
+      if(m){ try{ m.updateMatrixWorld(true); const bb=new THREE.Box3().setFromObject(m); if(isFinite(bb.min.y)) m.position.y-=bb.min.y; }catch(_){}   // auto-rest ON the surface: shift up so its bottom sits at ground (sized to the solid)
+        activeShape=m; heldGhost=null; setMode(); }
       saveWorld();
       showHint('Imported — click it to move it. It’s part of your world now.');
     }catch(e){ showHint('Import failed: '+(e.message||e)); }
