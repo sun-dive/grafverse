@@ -854,6 +854,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     {k:['hello','hi','hey','yo','howdy','gday',"g'day",'greetings','morning','new here','just arrived','transport'], r:"{Hello young gentlebot. {What can I do you for|What'll it be}?|You're new around here{, aren't you|}?|Greetings — did you just come in on the latest transport?|And greetings to you{, {young gentlebot|friend}|}.|{Well hello|Hello|Ah, hello} there, {young gentlebot|sir|friend}. {What can I do you for|What'll it be|How can I help}{ today| this fine Martian evening|}?}"},
   ];
   const FALLBACK="{Hah, you've lost me there|Not sure I follow, {sir|friend}|The dust must be in my speakers}. {I sell paint and WD40 — {what'll it be|what do you need}?|Ask me about paint, prices, or this godforsaken rock}.";
+  // a grumpy brush-off Unit 21 throws at ANY question at random (~1 in 5) — the user's retort
+  const DEFLECT="{{Why do you ask these things, young droid|Why do you ask me these things, gentlebot|What's with all the questions}? {Are you just here to yak|You just here to yak}? {You've got a world to paint|There's a world out there wants painting}. {What colour do you want|What colour do you want, then}?|{Enough questions, young droid|Less chatter, gentlebot}. {Are you here to yak, or to paint|You've painting to do, not yakking}? {What colour do you want|Which colour'll it be}?}";
+  function maybeDeflect(){ return Math.random()<0.20 ? spin(DEFLECT) : null; }   // null = answer normally · string = brush the question off
   // Unit 21 knows the truth about the pay — but it's TRUST-GATED (guarded until you've proven yourself)
   const WGUARD="{Save? Of course you can save, {young gentlebot|friend}! Work hard, paint your quota, and you'll have your fare home before you know it.|A diligent droid always gets ahead — that's the Bit Graf way. Honest pay for honest work, steady as the stars.|Bit Graf takes care of its own, gentlebot. Nothing to fret over — keep your optics on the work and the sats add up.|Everything's in order. Paint hard, spend wise, and you'll do just fine, {sir|young gentlebot}.|In the covenant we trust, as they say — the Corporation's never let a hardworking droid down. Now, what'll it be?}";
   // the reveal is KEY-LOCKED (XOR+base64) so it can't be read from page source — decoded only the moment Unit 21 speaks it
@@ -868,6 +871,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const hit=k=> k.includes(' ') ? pad.includes(k) : pad.includes(' '+k+' ');
     if(MONEYK.some(hit)){ trust++;                       // knows — but won't tell a droid he doesn't trust yet
       return {reply:spin(trust>=4 && hasPainted ? _dec(_R) : WGUARD), bye:false}; }
+    const d=maybeDeflect(); if(d) return {reply:d, bye:false};   // random brush-off (never on the money-gate above — that path is the sealed trust logic)
     for(const rule of RULES){ if(rule.k.some(hit)){ trust++; return {reply:spin(rule.r), bye:!!rule.bye}; } }
     return {reply:spin(FALLBACK), bye:false};
   }
@@ -966,7 +970,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const raw=(typeof Q.a==='function')?Q.a():Q.a; const line=spin(raw); speak(line,''); absorb(line); buildColourChips(); return;
     }
     const raw = (typeof Q.a==='function') ? Q.a() : Q.a;   // answers can be conditional (e.g. broke vs flush)
-    const line=spin(raw); speak(line,''); absorb(line); buildChips(); }
+    const d=maybeDeflect();                                 // ~1 in 5 → Unit 21 brushes the question off instead of answering (no absorb → doesn't unlock follow-ups)
+    const line=d||spin(raw); speak(line,''); if(!d) absorb(line); buildChips(); }
   function buildColourChips(){                             // the "What colour?" sub-menu
     const box=$('chips'); box.innerHTML='';
     COLORS.forEach((c,i)=>{ const b=document.createElement('div'); b.className='chip';
