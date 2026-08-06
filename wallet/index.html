@@ -166,10 +166,10 @@
 
       <label for="mLicense">Licence <span class="hint" style="display:inline">— fixed forever at mint</span></label>
       <select id="mLicense">
-        <option value="OPEN-BSV" data-open="1">Open BSV License — free to use &amp; remix (default)</option>
-        <option value="CC0" data-open="1">CC0 / Public Domain — no rights reserved</option>
+        <option value="CC0-1.0" data-open="1">CC0 1.0 / Public Domain — no rights reserved (default)</option>
         <option value="CC-BY-4.0" data-open="1">CC BY 4.0 — free, credit required</option>
-        <option value="ARR" data-open="0">All Rights Reserved — an owned copy</option>
+        <option value="CC-BY-SA-4.0" data-open="1">CC BY-SA 4.0 — free, credit + share-alike</option>
+        <option value="COV-ROY-1" data-open="0" data-ref="9795fcbf5240905c8c700bb484f2d1dd1d30a24ad3141ba114d9284ef13f233b">Covenant Royalty — owned; resale &amp; reuse pay the creator</option>
       </select>
       <div class="hint" id="licNote"></div>
 
@@ -320,7 +320,7 @@
     const open = licOpen();
     $('licNote').innerHTML = open
       ? '<span class="lic-open">Open licence — anyone can pull this from chain and use it in the game <b>for free</b>. Great for starter units. (Content stays unencrypted.)</span>'
-      : '<span class="lic-closed">Owned/private — a copy others buy or claim. You can encrypt the content below.</span>';
+      : '<span class="lic-closed">Covenant Royalty — an <b>owned</b> copy. Others replicate or resell it via the covenant token, and every move <b>pays you</b> automatically. You can encrypt the content below.</span>';
     $('mEncrypt').disabled = open;
   }
   $('mLicense').onchange = updateLicNote; updateLicNote();
@@ -367,6 +367,7 @@
         bytes: payload.bytes,
         description: $('mDesc').value.trim(),
         license: $('mLicense').value,
+        licenseRef: $('mLicense').selectedOptions[0].dataset.ref || undefined,   // COV-ROY-1 → the on-chain licence-text genesis (Collection ID); open licences carry none
         encrypt: !open && $('mEncrypt').checked,
         publisherFeeSats: Math.max(1, parseInt($('mPubFee').value,10)||1),
         holderFeeSats: Math.max(1, parseInt($('mHolderFee').value,10)||1),
@@ -510,7 +511,7 @@
       status('Finding the creator’s copy to replicate…');
       const tip = await G.resolveHolderEdition(provider, { tx1RefHex: txid, holderPubKeyHex: info.publisherPubKeyHex, templateCovenantHex: info.covenantScript });
       if(!tip){ status('No spendable copy from the creator right now (they may have moved it).','error'); return; }
-      const confirmSpend = (sats)=> confirm('Buy “'+(info.tokenName||'this world')+'” for '+sats.toLocaleString()+' sats?\n\nThis replicates it on-chain and pays the creator ('+(info.license||'ARR')+') their royalty. Permanent.');
+      const confirmSpend = (sats)=> confirm('Buy “'+(info.tokenName||'this world')+'” for '+sats.toLocaleString()+' sats?\n\nThis replicates it on-chain and pays the creator ('+(info.license||'COV-ROY-1')+') their royalty. Permanent.');
       const base = { editionTxId: tip.txId, editionOutputIndex: tip.outputIndex, editionLockHex: tip.lockHex, confirmSpend };
       status('Building the purchase…');
       const res = tip.isV2 ? await G.replicateEditionV2(provider, wallet.key, base)

@@ -1604,7 +1604,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       if(!owned){
         const info=await GM.readCollection(provider, txid).catch(()=>null);   // licence gate: open → free read · rights-reserved → purchase
         if(info && !info.open){                                     // ARR / must-own → importing means PURCHASING a copy (covenant pays the creator)
-          _kNote().textContent='“'+(info.tokenName||'This world')+'” is All Rights Reserved ('+(info.license||'ARR')+') — opening your wallet to purchase a copy (pays the creator)…';
+          _kNote().textContent='“'+(info.tokenName||'This world')+'” needs an owned copy ('+(info.license||'COV-ROY-1')+') — opening your wallet to acquire one (pays the creator)…';
           const ret=location.origin+location.pathname;
           setTimeout(()=>{ location.href = WALLET_URL + '?buy=' + encodeURIComponent(txid) + '&return=' + encodeURIComponent(ret); }, 800);
           return;
