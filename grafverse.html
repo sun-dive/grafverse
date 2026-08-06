@@ -1509,7 +1509,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const data = await res.json().catch(()=>({}));
       if(!res.ok || !data.id) throw new Error(data.error || ('HTTP '+res.status));
       const ret = location.origin + location.pathname;
-      location.href = WALLET_URL + '?id=' + encodeURIComponent(data.id) + '&return=' + encodeURIComponent(ret);
+      location.href = WALLET_URL + '?id=' + encodeURIComponent(data.id) + '&sell=1&return=' + encodeURIComponent(ret);   // &sell=1 → wallet defaults to the paid Covenant Royalty licence
     }catch(e){ showHint('Sell failed: '+(e.message||e)+' (is handoff.php deployed?)'); }
   }
   document.getElementById('kMint').addEventListener('click', async ()=>{

@@ -368,6 +368,7 @@
     if(payload) computeEstimate();
   }
   applyPricingMode();
+  if(params.get('sell')==='1'){ $('mLicense').value='COV-ROY-1'; updateLicNote(); applyPricingMode(); }   // a SELL hand-off from the game → default to the paid Covenant Royalty licence (user can still change it)
 
   // Work out the mint cost with the SAME funding math the mint uses (grafmint.estimateEditionFunding) — no drift.
   // The FILE record is sized from the COMPRESSED atom (the mint gzips before embedding). Nothing is assumed to
