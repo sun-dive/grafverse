@@ -175,12 +175,15 @@
 
       <details>
         <summary>Advanced — royalties &amp; privacy</summary>
-        <label for="mPrice">Sale price a buyer pays (sats, incl. bond)</label>
-        <input id="mPrice" type="number" min="3" step="1" value="1000">
-        <label for="mResellerPct">Reseller's share of each resale (%)</label>
-        <input id="mResellerPct" type="number" min="0" max="100" step="1" value="20">
-        <div class="hint" id="mPctPreview"></div>
-        <div class="hint">From the sale price minus the bond, the <b>reseller</b> keeps the share you set and <b>you</b> keep the rest — minted as fixed publisher + holder fees (each <b>≥1 sat</b>, baked into the covenant). Paid by buyers on <b>resale</b>, not part of your mint cost. <b>"Free" is the licence above, not the fees.</b></div>
+        <div id="pricingBlock">
+          <label for="mPrice">Sale price a buyer pays (sats, incl. bond)</label>
+          <input id="mPrice" type="number" min="3" step="1" value="1000">
+          <label for="mResellerPct">Reseller's share of each resale (%)</label>
+          <input id="mResellerPct" type="number" min="0" max="100" step="1" value="20">
+          <div class="hint" id="mPctPreview"></div>
+          <div class="hint">From the sale price minus the bond, the <b>reseller</b> keeps the share you set and <b>you</b> keep the rest — minted as fixed publisher + holder fees (each <b>≥1 sat</b>, baked into the covenant). Paid by buyers on <b>resale</b>, not part of your mint cost.</div>
+        </div>
+        <div class="hint" id="freeFeeNote" hidden>Free licence — minted at the <b>1-sat floor</b> (publisher 1 · holder 1 · bond 1). Anyone can pull it from chain for free; there's no resale price to set.</div>
         <label for="mBond">Bond — sats locked in the token — minimum 1</label>
         <input id="mBond" type="number" min="1" step="1" value="1">
         <div class="hint">Locked inside the token (recoverable only by burning it). This <b>is</b> part of your mint cost — 1 keeps it cheapest.</div>
@@ -324,12 +327,13 @@
       : '<span class="lic-closed">Covenant Royalty — an <b>owned</b> copy. Others replicate or resell it via the covenant token, and every move <b>pays you</b> automatically. You can encrypt the content below.</span>';
     $('mEncrypt').disabled = open;
   }
-  $('mLicense').onchange = updateLicNote; updateLicNote();
+  $('mLicense').onchange = ()=>{ updateLicNote(); applyPricingMode(); }; updateLicNote();
 
   // ── pricing: a percentage CALCULATOR → the FIXED fees the covenant stores (ported from Phar Lap app.ts computeFees) ──
   // pot = price − bond; the reseller (holder) keeps its share, you (publisher) keep the rest; each floored at 1 sat.
   function mBondVal(){ return Math.max(1, parseInt($('mBond').value,10)||1); }
   function computeFees(){
+    if(licOpen()) return { publisherFeeSats:1, holderFeeSats:1 };   // free/open licences → the 1-sat floor (no resale economy to price)
     const bond=mBondVal();
     const pot=Math.max(2, (parseInt($('mPrice').value,10)||0) - bond);       // ≥2 so each fee floors at ≥1
     const pct=Math.min(100, Math.max(0, parseInt($('mResellerPct').value,10)||0));
@@ -345,6 +349,25 @@
   }
   ['mPrice','mResellerPct','mBond'].forEach(id=>{ const e=$(id); if(e) e.addEventListener('input', updatePctPreview); });
   updatePctPreview();
+
+  // pricing is LICENCE-AWARE: open (CC0 / CC-BY / CC-BY-SA) = free → locked at the 1/1/1 floor, no pricing shown;
+  // Covenant Royalty = paid → show the % calculator, restoring the creator's last-used pricing (or 1000 sats / 20%).
+  const COVROY_KEY='grafverse-covroy';
+  function applyPricingMode(){
+    const open=licOpen(), pb=$('pricingBlock'), fn=$('freeFeeNote');
+    if(pb) pb.hidden=open; if(fn) fn.hidden=!open;
+    if(open){ $('mBond').value='1'; $('mBond').disabled=true; }
+    else {
+      $('mBond').disabled=false;
+      let s=null; try{ s=JSON.parse(localStorage.getItem(COVROY_KEY)||'null'); }catch(_){}
+      $('mPrice').value=(s&&s.price)||1000;
+      $('mResellerPct').value=(s&&s.pct!=null)?s.pct:20;
+      $('mBond').value=(s&&s.bond)||1;
+      updatePctPreview();
+    }
+    if(payload) computeEstimate();
+  }
+  applyPricingMode();
 
   // Work out the mint cost with the SAME funding math the mint uses (grafmint.estimateEditionFunding) — no drift.
   // The FILE record is sized from the COMPRESSED atom (the mint gzips before embedding). Nothing is assumed to
@@ -381,6 +404,7 @@
     if(wallet.watchOnly){ status('This is a watch-only wallet — restore your key to mint.','error'); return; }
     const name = ($('mName').value.trim()||'grafspace creation').slice(0,80);
     const open = licOpen();
+    if(!open){ try{ localStorage.setItem(COVROY_KEY, JSON.stringify({ price:parseInt($('mPrice').value,10)||1000, pct:parseInt($('mResellerPct').value,10)||20, bond:parseInt($('mBond').value,10)||1 })); }catch(_){} }   // remember this Covenant Royalty pricing for next time
     $('mintBtn').disabled = true; status('Building the mint transaction…');
     try{
       const res = await G.mintAtom(provider, wallet, {
