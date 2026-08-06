@@ -679,21 +679,20 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     meterFill.style.background='#'+COLORS[i].toString(16).padStart(6,'0'); }
   function showHint(t){ hint.textContent=t; hint.style.opacity = t?1:0; }
 
-  // ── STENCIL: spray only lands where the "grafverse" wordmark mask is (UV space). Dabs are filtered at record-time, so the mint replays the stencil'd wordmark faithfully. ──
-  let stencilOn=false, _stMask=null;
-  function buildStencilMask(){                                        // "grafverse" wordmark → an alpha lookup, centred on a square (matches a surface's UV)
+  // ── STENCIL: spraying a face DEPOSITS the "grafverse" wordmark's own dabs (fixed on the face) — spray anywhere on it and the wordmark fills in + builds up. The dabs are recorded, so the mint replays it faithfully. ──
+  let stencilOn=false, _stPts=null;
+  function buildStencilMask(){                                        // "grafverse" wordmark → a set of UV dab-points (its letter pixels), centred to fill ~86% of a face
     const S=256, c=document.createElement('canvas'); c.width=S; c.height=S; const g=c.getContext('2d');
     g.clearRect(0,0,S,S); g.fillStyle='#000'; g.textAlign='center'; g.textBaseline='middle';
     let fs=60; g.font='800 '+fs+'px system-ui,Arial,sans-serif';
     const w=g.measureText('grafverse').width||1; fs=Math.max(10,Math.floor(fs*(S*0.86)/w)); g.font='800 '+fs+'px system-ui,Arial,sans-serif';
     g.fillText('grafverse', S/2, S/2);
-    _stMask={ S, data:g.getImageData(0,0,S,S).data };
+    const data=g.getImageData(0,0,S,S).data, pts=[];
+    for(let y=0;y<S;y+=3) for(let x=0;x<S;x+=3){ if(data[(y*S+x)*4+3]>80) pts.push([x/S, 1-y/S]); }   // wordmark pixels → UV points (v = 1 − y/S, matching sprayShapeAt)
+    _stPts=pts;
   }
-  function stencilHit(u,v){ if(!_stMask) buildStencilMask(); const S=_stMask.S;                    // same v-flip as sprayShapeAt → the wordmark reads upright
-    const x=Math.max(0,Math.min(S-1,Math.floor(u*S))), y=Math.max(0,Math.min(S-1,Math.floor((1-v)*S)));
-    return _stMask.data[(y*S+x)*4+3] > 80; }
   function toggleStencil(){ stencilOn=!stencilOn; const t=document.getElementById('stencilTog'); if(t) t.classList.toggle('on',stencilOn);
-    showHint(stencilOn?'▦ grafverse stencil ON — spray any solid to reveal the wordmark':'stencil off'); }
+    showHint(stencilOn?'▦ grafverse stencil ON — spray any solid; the wordmark fills in':'stencil off'); }
   { const t=document.getElementById('stencilTog'); if(t){ t.addEventListener('click',toggleStencil); t.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); toggleStencil(); },{passive:false}); } }
   addEventListener('keydown', e=>{ if(e.code==='KeyG' && buildUnlocked && !talking && !keepOpen && !shaping){ e.preventDefault(); toggleStencil(); } });
 
@@ -1150,7 +1149,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
             const dist=camera.position.distanceTo(shot.point), dn=Math.max(0,Math.min(1,(dist-2.2)/(9-2.2)));
             const key=targetKey(o,si);
             if(curKey!==key){ endStroke(); beginStroke(o,si); }
-            if((!stencilOn || stencilHit(shot.uv.x, shot.uv.y)) && addDab(shot.uv.x, shot.uv.y, dn)) sprayShapeAt(surf, shot.uv.x, shot.uv.y, dn);   // record + spray · stencil ON → only inside the grafverse mask
+            if(stencilOn){ if(!_stPts) buildStencilMask();                                       // stencil ON → deposit wordmark dabs (fixed on the face); spray anywhere on it → "grafverse" fills in
+              for(let k=0;k<10 && _stPts.length;k++){ const p=_stPts[(Math.random()*_stPts.length)|0]; if(addDab(p[0],p[1],dn)) sprayShapeAt(surf,p[0],p[1],dn); } }
+            else if(addDab(shot.uv.x, shot.uv.y, dn)) sprayShapeAt(surf, shot.uv.x, shot.uv.y, dn);   // record + spray on each dab
             materializeShape(o); hasPainted=true;
             o.userData.paintAmt=(o.userData.paintAmt||0)+PAINT_DRAIN;                 // paint-to-earn: ~half-cover a solid shape → a can's pay
             if(!o.userData.paid && o.userData.paintAmt>=(o.userData.earnAt||45)){
