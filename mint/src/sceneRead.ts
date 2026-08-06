@@ -4,7 +4,7 @@
 // grafspace design). Encrypted content stays as ciphertext here (no gzip magic, no BMF header) and the caller
 // reports it as unreadable without the holder key. Reuses the tested FILE-record parsers + native decompress.
 import type { WalletProvider } from './walletProvider.ts'
-import { parseFileScript, parseLegacyFileScript, parseTemplateScript, type FileFields } from './tokenCodec.ts'
+import { parseFileScript, parseLegacyFileScript, parseTemplateScript, parseStorefrontScript, type FileFields } from './tokenCodec.ts'
 import { decompress } from './compress.ts'
 
 // ── licence tiers (see the wallet mint form) — OPEN = free to import (read-only); anything else = rights-reserved (purchase) ──
@@ -23,23 +23,36 @@ export interface CollectionInfo {
   publisherPubKeyHex: string   // the creator's key (the fee payee)
   covenantScript: string       // the covenant template (hex) — feeds resolveHolderEdition for a purchase/replicate
   open: boolean                // isOpenLicense(license) → free-read vs purchase-to-import
+  cover: { mimeType: string; bytes: number[] } | null   // public (unencrypted) storefront cover image, if any — the wallet thumbnail
+  description: string | null   // public storefront blurb, if any
 }
 
 /** Read a collection's TEMPLATE record (TX1) → its licence + creator + covenant template. NO key needed.
  *  Lets an importer gate free-read (open) vs purchase-to-import (rights-reserved) before touching the content. */
 export async function readCollection(provider: WalletProvider, txId: string): Promise<CollectionInfo | null> {
   const tx = await provider.getSourceTransaction(txId)
+  let info: CollectionInfo | null = null
+  let cover: { mimeType: string; bytes: number[] } | null = null
+  let description: string | null = null
   for (const out of tx.outputs) {
     const t = parseTemplateScript(out.lockingScript)
-    if (t != null) {
+    if (t != null && info == null) {
       const license = t.fields.license ?? null
-      return {
+      info = {
         txId, tokenName: t.fields.tokenName, license, licenseRef: t.fields.licenseRef ?? null,
         publisherPubKeyHex: t.publisherPubKeyHex, covenantScript: t.fields.covenantScript, open: isOpenLicense(license),
+        cover: null, description: null,
       }
+      continue
+    }
+    const sf = parseStorefrontScript(out.lockingScript)   // public storefront output → description + (unencrypted) cover image
+    if (sf != null) {
+      if (sf.fields.coverBytes != null && sf.fields.coverBytes.length > 0) cover = { mimeType: sf.fields.coverMimeType ?? 'image/webp', bytes: sf.fields.coverBytes }
+      if (sf.fields.description != null && sf.fields.description.length > 0) description = sf.fields.description
     }
   }
-  return null
+  if (info != null) { info.cover = cover; info.description = description }
+  return info
 }
 
 export interface LoadedAtom {

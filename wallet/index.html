@@ -82,9 +82,10 @@
     font-size:17px;font-weight:700;color:var(--cyan);padding-bottom:10px;margin-bottom:10px;
     border-bottom:1px solid var(--line);}
   .nft-list{display:flex;flex-direction:column;gap:6px;overflow-y:auto;}
-  .nft-item{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  .nft-item{display:flex;align-items:center;gap:10px;
     background:rgba(120,170,255,.06);border:1px solid var(--line);border-radius:10px;padding:9px 11px;}
-  .nft-item a{color:var(--ink);text-decoration:none;}
+  .nft-thumb{width:44px;height:44px;border-radius:8px;object-fit:cover;flex:0 0 auto;background:#0d1117;border:1px solid var(--line);}
+  .nft-item a{color:var(--ink);text-decoration:none;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .nft-item a:hover{color:var(--cyan);}
   .warn-box{border-color:rgba(255,107,107,.4);background:rgba(255,107,107,.07);}
 </style>
@@ -663,15 +664,25 @@
     try{ const held=await refreshHoldings(); if(_nftsOpen){ renderNfts(held); $('nftScan').textContent='✓ up to date'; } }
     catch(e){ $('nftScan').textContent='scan failed: '+(e.message||e); }
   }
+  const _coverCache=new Map();   // col → object URL of its storefront cover (immutable per collection id → cache for the session)
+  function setThumb(col,url){ const img=$('nftList').querySelector('.nft-thumb[data-col="'+col+'"]'); if(img){ img.src=url; img.style.display='block'; } }
   function renderNfts(held){
     const list=$('nftList'), groups=new Map();
     held.forEach(e=>{ const k=e.col||e.tx1RefHex||e.txId; const g=groups.get(k); if(g) g.push(e); else groups.set(k,[e]); });
     $('nftCount').textContent=groups.size+' collection'+(groups.size===1?'':'s');
     if(!groups.size){ list.innerHTML='<div class="hint">Nothing held yet — scanning the chain…</div>'; return; }
     let h='';
-    for(const [col,copies] of groups) h+='<div class="nft-item" data-col="'+col+'"><a class="mono" href="https://whatsonchain.com/tx/'+col+'" target="_blank" rel="noopener">'+col.slice(0,16)+'…</a><span class="mono">'+(copies.length>1?('×'+copies.length):'held')+'</span></div>';
+    for(const [col,copies] of groups) h+='<div class="nft-item" data-col="'+col+'"><img class="nft-thumb" alt="" data-col="'+col+'" style="display:none"><a class="mono" href="https://whatsonchain.com/tx/'+col+'" target="_blank" rel="noopener">'+col.slice(0,16)+'…</a><span class="mono">'+(copies.length>1?('×'+copies.length):'held')+'</span></div>';
     list.innerHTML=h;
-    for(const [col] of groups){ G.readCollection(provider, col).then(info=>{ if(info&&info.tokenName){ const a=list.querySelector('[data-col="'+col+'"] a'); if(a) a.textContent=info.tokenName+(info.open?'':' 🔒'); } }).catch(()=>{}); }
+    for(const [col] of groups){
+      const cu=_coverCache.get(col); if(cu) setThumb(col,cu);                       // instant on re-render
+      G.readCollection(provider, col).then(info=>{ if(!info) return;
+        if(info.tokenName){ const a=list.querySelector('[data-col="'+col+'"] a'); if(a) a.textContent=info.tokenName+(info.open?'':' 🔒'); }
+        if(!_coverCache.get(col) && info.cover && info.cover.bytes && info.cover.bytes.length){    // storefront cover → thumbnail
+          try{ const u=URL.createObjectURL(new Blob([new Uint8Array(info.cover.bytes)],{type:info.cover.mimeType||'image/webp'})); _coverCache.set(col,u); setThumb(col,u); }catch(_){}
+        }
+      }).catch(()=>{});
+    }
   }
 
   loadWallet();
