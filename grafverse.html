@@ -1368,6 +1368,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       cr.appendChild(sbtn('◼ Materials', ()=>{ solidPickerOpen=!solidPickerOpen; if(activeShape) buildShapeTools(activeShape.userData.type); },'wide'));   // open/close the material picker grid
       cr.appendChild(sbtn('◆ Crystals', ()=>{ if(activeShape) crystallizeShape(activeShape, activeShape.userData.crystal ? (activeShape.userData.gemIdx>=MAXGEM?1:activeShape.userData.gemIdx+1) : 1); },'wide'));   // cut → cycle gems 1…16
       box.appendChild(cr);
+      if(activeShape.userData.painted && !activeShape.userData.crystal){   // 💰 SELL: mint THIS painted solid as its own Smart NFT (single-atom hand-off → wallet)
+        const sr=document.createElement('div'); sr.className='srow';
+        sr.appendChild(sbtn('💰 Sell this solid', ()=>sellSolo(activeShape), 'wide'));
+        box.appendChild(sr);
+      }
       if(activeShape.userData.crystal){                                   // 🌀 a crystal can become a JUMP GATE — set its destination world (sprint-breach it to travel there)
         const gr=document.createElement('div'); gr.className='srow';
         gr.appendChild(sbtn((activeShape.userData.portalTx?'🌀 gate ✓ (edit)':'🌀 make gate'), ()=>{
@@ -1482,6 +1487,31 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function txidToBytes(h){ h=(h||'').toLowerCase().replace(/[^0-9a-f]/g,''); const a=[]; for(let i=0;i+1<h.length&&i<64;i+=2) a.push(parseInt(h.substr(i,2),16)); return a; }   // 64-hex txid → 32 raw bytes (for the PORTAL attr)
   function bytesToTxid(b){ let s=''; for(let i=0;i<b.length;i++) s+=(b[i]&255).toString(16).padStart(2,'0'); return s; }
   function b64ToBytes(b64){ const s=atob(b64), a=new Array(s.length); for(let i=0;i<s.length;i++) a[i]=s.charCodeAt(i); return a; }   // base64 → byte array (reassemble a stashed .bmf after the wallet round-trip)
+  // ── SELL ONE SOLID (1a): pack the SELECTED painted solid as a one-shape scene → single-atom hand-off → wallet mints it as its own Smart NFT ──
+  function packSoloBytes(m){
+    if(!window.BMF) return { err:'Codec missing (bmf-codec.js didn’t load).' };
+    const sd = m && shapeToSave(m); if(!sd) return { err:'Select a solid first.' };
+    let myPub=''; try{ myPub=localStorage.getItem('grafverse-mypub')||''; }catch(_){}
+    const layers = sd.layers || (!sd.cr && sd.st!=null ? [{ st:sd.st, txid:sd.txid, creator:sd.creator }] : null);
+    if(!layers) return { err:'That solid has no paint to sell — spray some paint on it first.' };
+    const inl=[], members=[]; let fresh=0;
+    layers.forEach(L=>{ if(L.txid) members.push({ tx:L.txid, owner: myPub||undefined }); else { inl.push(layerRecord(sd, L.st||[])); fresh++; } });   // OWNED sub-paint → txid ref (anti-piracy, never bytes) · YOUR paint → inline
+    if(!fresh) return { err:'This solid is already minted — nothing new to sell.' };
+    try{ return { bytes: BMF.scene.pack({ shapes:inl, members, ground:[], provenance:[] }) }; }   // a ONE-SOLID scene = one Smart NFT
+    catch(e){ return { err:'Could not pack the solid.' }; }
+  }
+  async function sellSolo(m){
+    const p = packSoloBytes(m); if(p.err){ showHint(p.err); return; }
+    const name = 'Painted '+(LABELS[m.userData.type]||m.userData.type||'solid');
+    showHint('Handing your solid to the wallet to mint…');
+    try{
+      const res = await fetch(HANDOFF_URL+'?name='+encodeURIComponent(name), { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: bytesToB64(p.bytes) });
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok || !data.id) throw new Error(data.error || ('HTTP '+res.status));
+      const ret = location.origin + location.pathname;
+      location.href = WALLET_URL + '?id=' + encodeURIComponent(data.id) + '&return=' + encodeURIComponent(ret);
+    }catch(e){ showHint('Sell failed: '+(e.message||e)+' (is handoff.php deployed?)'); }
+  }
   document.getElementById('kMint').addEventListener('click', async ()=>{
     if(!window.BMF){ _kNote().textContent='Codec missing (bmf-codec.js didn’t load).'; return; }
     saveWorld();
