@@ -16,5 +16,6 @@ deployment:
     - /bin/mkdir -p "$WALLETPATH" && /bin/cp wallet/index.html "$WALLETPATH/index.html" && echo "wallet → $WALLETPATH/index.html"
     - /bin/cp handoff.php "$DEPLOYPATH"                   # transient game→wallet atom bridge (POST bytes → id → GET)
     - /bin/cp world.php "$DEPLOYPATH"                     # persistent public store for shared FREE worlds (POST .bmf → short id → GET; 12-mo no-view expiry)
-    - /bin/cp w.php "$DEPLOYPATH"                         # shareable, crawlable OG/SEO landing page per shared world (→ ./?w=<id>)
+    - /bin/cp w.php "$DEPLOYPATH"                         # shareable, crawlable OG/SEO landing page per shared world/solid (→ ./?w=<id>)
+    - /bin/cp og.php "$DEPLOYPATH"                        # serves a share's rendered 1200×630 OG cover (falls back to og.jpg)
     - /bin/cp bmf-codec.js "$DEPLOYPATH"                  # shared thrifty BMF pack/unpack codec (game packs before mint)
