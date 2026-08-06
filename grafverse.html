@@ -1610,7 +1610,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       let dec; try{ dec=BMF.scene.unpack(bytes); }catch(_){ dec=null; }
       setMyShare('');                                                          // loaded a different world → a later Share makes a NEW link (a fork), never overwrites your previous share
       if(dec && dec.members && dec.members.length){ await fileAcquire(bytes, dec.members.length, f.name); }   // owned paint refs → the wallet checks ownership + acquires the missing → reassemble on return
-      else { const r=importScene(bytes); _kNote().textContent='Loaded '+r.shapes+' free shape'+(r.shapes===1?'':'s')+(r.ground?' + ground':'')+' from '+f.name+'.'; }   // pure-free file → load directly (the free channel)
+      else { const additive=!(dec.ground&&dec.ground.length) && bShapes.length>0; const r=importScene(bytes, additive); _kNote().textContent=(additive?'Imported ':'Loaded ')+r.shapes+' free shape'+(r.shapes===1?'':'s')+(additive?' into your world':(r.ground?' + ground':''))+' from '+f.name+'.'; }   // no-ground file (a solo) while you're in a world → ADD it · a world → load (replace)
     }catch(err){ _kNote().textContent='Load failed: '+(err.message||err)+' (not a valid .bmf scene?)'; }
     e.target.value='';   // allow re-loading the same file
   });
@@ -1710,6 +1710,12 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   document.getElementById('kChain').addEventListener('click', ()=>{ const t=prompt('Paste the scene transaction id (txid) to load from chain:'); if(t) loadFromChain(t); });
   // ── 📥 IMPORT an owned atom INTO the current world (additive). Owned → member ref on save (creator royalty intact). ──
   const IMPORT_KEY='grafverse-import';
+  function dropSolidAtPlayer(sd){                                 // place a solid IN the current world: on the ground in front of the player, auto-rested (bottom at surface), selected
+    const p=placePoint(); sd.p=[p.x, 0, p.z]; unlockBuild(true);
+    const m=addShapeFromData(sd);
+    if(m){ try{ m.updateMatrixWorld(true); const bb=new THREE.Box3().setFromObject(m); if(isFinite(bb.min.y)) m.position.y-=bb.min.y; }catch(_){} activeShape=m; heldGhost=null; setMode(); }
+    return m;
+  }
   async function importSoloAtom(txid){
     txid=(txid||'').trim().toLowerCase().replace(/[^0-9a-f]/g,'');
     if(txid.length!==64) return;
@@ -1722,11 +1728,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const dec=BMF.scene.unpack(atom.bytes), rec=dec.shapes&&dec.shapes[0];
       if(!rec){ showHint('Nothing to import in that atom.'); return; }
       const sd=recordToShape(rec); sd.txid=txid;                 // owned → carries its txid → a re-Save REFERENCES it (creator royalty intact)
-      const p=placePoint(); sd.p=[p.x, 0, p.z];                  // land it on the ground in front of the player (not its original, maybe-floating y) — raise it with ⬆ if wanted
-      unlockBuild(true);
-      const m=addShapeFromData(sd);
-      if(m){ try{ m.updateMatrixWorld(true); const bb=new THREE.Box3().setFromObject(m); if(isFinite(bb.min.y)) m.position.y-=bb.min.y; }catch(_){}   // auto-rest ON the surface: shift up so its bottom sits at ground (sized to the solid)
-        activeShape=m; heldGhost=null; setMode(); }
+      dropSolidAtPlayer(sd);
       saveWorld();
       showHint('Imported — click it to move it. It’s part of your world now.');
     }catch(e){ showHint('Import failed: '+(e.message||e)); }
@@ -1767,7 +1769,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const bytes=Array.from(new Uint8Array(await r.arrayBuffer()));
       let dec; try{ dec=BMF.scene.unpack(bytes); }catch(_){ dec=null; }
       if(dec && dec.members && dec.members.length){ await fileAcquire(bytes, dec.members.length, 'shared world'); }   // owned paint → acquire gate
-      else { importScene(bytes); saveWorld(); }                           // free world → load directly (the free channel)
+      else { const additive=!(dec.ground&&dec.ground.length) && bShapes.length>0; importScene(bytes, additive); saveWorld(); }   // no-ground share (a solo) while in a world → ADD it · else load (replace)
     }catch(e){ showHint('Couldn’t load that shared world: '+(e.message||e)); }
   }
 
@@ -2167,16 +2169,16 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(rec.attrs){ const P=rec.attrs.find(a=>a.type===6); if(P&&P.data&&P.data.length>=32) sd.portalTx=bytesToTxid(P.data.slice(0,32)); }   // 🌀 jump-gate destination world txid
     return sd;
   }
-  function importScene(bytes){                                                             // replace the live world with a decoded packed scene
+  function importScene(bytes, additive){                                                   // load a packed scene: REPLACE the world, or (additive) drop its solid(s) INTO the current one
     const dec = BMF.scene.unpack(bytes);
-    _provenance=[];                                                                        // fresh world → no parent (loadFromChain sets the immediate parent after)
-    clearShapes();
-    pctx.clearRect(0,0,TEX,TEX); paintTex.needsUpdate=true; groundStrokes.length=0;        // wipe the ground canvas + strokes
-    let n=0; (dec.shapes||[]).forEach(rec=>{ try{ addShapeFromData(recordToShape(rec)); n++; }catch(e){} });
-    (dec.ground||[]).forEach(stroke=>{ colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0;
+    if(!additive){ _provenance=[]; clearShapes(); pctx.clearRect(0,0,TEX,TEX); paintTex.needsUpdate=true; groundStrokes.length=0; }   // replace → wipe · additive → keep the world you're in
+    let n=0;
+    if(additive && (dec.shapes||[]).length===1){ try{ dropSolidAtPlayer(recordToShape(dec.shapes[0])); n=1; }catch(e){} }             // a single shared solid → place it at the player, auto-rested
+    else { (dec.shapes||[]).forEach(rec=>{ try{ addShapeFromData(recordToShape(rec)); n++; }catch(e){} }); }
+    if(!additive) (dec.ground||[]).forEach(stroke=>{ colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0;
       for(const d of stroke.dabs) spray({x:d[0], y:d[1]}); groundStrokes.push(stroke); });
-    saveWorld();                                                                           // persist + snapshot for undo
-    return { shapes:n, ground:(dec.ground||[]).length };
+    saveWorld();
+    return { shapes:n, ground: additive?0:(dec.ground||[]).length };
   }
 
   // ── Stage 3: import a MEMBERS world — each member is a paint-atom (a one-shape scene) → fetch it, rebuild the shape, set its txid ──
