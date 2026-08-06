@@ -1720,6 +1720,50 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   function goBack(){ const a=trailGet(); if(!a.length){ _kNote().textContent='No previous world to go back to.'; return; }
     const prev=a.pop(); trailSet(a); restoreWorldData(prev); unlockBuild(true); updateBackBtn(); setMyShare(''); _kNote().textContent='← Back in your previous world.'; }
+  // ── BMF CDN cache ──────────────────────────────────────────────────────────────────────────
+  // On-chain atoms are IMMUTABLE per txid, so we cache them FOREVER (no invalidation). Three tiers:
+  // session memory → IndexedDB → chain. Turns grafverse into a lazy-load CDN — each atom is pulled
+  // from chain once (via the rate-limited pipeline), then served locally: instant repeat loads,
+  // offline-capable, and far less chain traffic when a world references many paint-atoms.
+  const bmfCache=(()=>{
+    const DB='grafverse-cdn', STORE='bmf', CAP=180*1024*1024;   // ~180 MB soft cap → LRU trim (oldest first)
+    const hot=new Map();                                         // session-hot layer (txid → atom): skips even the IDB round-trip
+    let _db=null, _try=null;
+    function open(){ if(_db) return Promise.resolve(_db); if(_try) return _try;
+      _try=new Promise(res=>{ let r; try{ r=indexedDB.open(DB,1); }catch{ return res(null); }   // private mode / no IDB → degrade to memory-only
+        r.onupgradeneeded=()=>{ const db=r.result; if(!db.objectStoreNames.contains(STORE)){ const s=db.createObjectStore(STORE,{keyPath:'txid'}); s.createIndex('ts','ts'); } };
+        r.onsuccess=()=>{ _db=r.result; res(_db); setTimeout(()=>trim().catch(()=>{}),4000); };   // trim to CAP once per session, off the critical path
+        r.onerror=()=>res(null); });
+      return _try; }
+    const os=(db,m)=>db.transaction(STORE,m).objectStore(STORE);
+    async function get(txid){ if(hot.has(txid)) return hot.get(txid);
+      const db=await open(); if(!db) return null;
+      return new Promise(res=>{ let q; try{ q=os(db,'readonly').get(txid); }catch{ return res(null); }
+        q.onsuccess=()=>{ const v=q.result; if(!v) return res(null);
+          const atom={ bytes:Array.from(v.bytes), mimeType:v.mimeType, fileName:v.fileName, compressed:v.compressed }; hot.set(txid,atom);
+          try{ os(db,'readwrite').put({ ...v, ts:Date.now() }); }catch{}   // LRU touch
+          res(atom); };
+        q.onerror=()=>res(null); }); }
+    async function put(txid, atom){ hot.set(txid, atom); const db=await open(); if(!db) return;
+      try{ const b=Uint8Array.from(atom.bytes); os(db,'readwrite').put({ txid, bytes:b, mimeType:atom.mimeType, fileName:atom.fileName, compressed:!!atom.compressed, size:b.length, ts:Date.now() }); }catch{} }
+    async function trim(){ const db=await open(); if(!db) return; let total=0; const rows=[];
+      await new Promise(r=>{ let q; try{ q=os(db,'readonly').openCursor(); }catch{ return r(); }
+        q.onsuccess=()=>{ const c=q.result; if(c){ total+=c.value.size||0; rows.push({txid:c.value.txid,size:c.value.size||0,ts:c.value.ts||0}); c.continue(); } else r(); }; q.onerror=()=>r(); });
+      if(total<=CAP) return; rows.sort((a,b)=>a.ts-b.ts); let free=total-CAP;               // evict oldest until back under the cap
+      try{ const s=os(db,'readwrite'); for(const row of rows){ if(free<=0) break; s.delete(row.txid); free-=row.size; } }catch{} }
+    async function stats(){ const db=await open(); if(!db) return {count:0,kb:0,hot:hot.size};
+      return new Promise(res=>{ let n=0,b=0; let q; try{ q=os(db,'readonly').openCursor(); }catch{ return res({count:0,kb:0,hot:hot.size}); }
+        q.onsuccess=()=>{ const c=q.result; if(c){ n++; b+=c.value.size||0; c.continue(); } else res({count:n,kb:Math.round(b/1024),hot:hot.size}); }; q.onerror=()=>res({count:0,kb:0,hot:hot.size}); }); }
+    return { get, put, trim, stats, open };
+  })();
+  try{ window.bmfCache=bmfCache; }catch{}                     // console: await bmfCache.stats()
+  async function loadAtomCached(GM, provider, txid){          // cache-first atom fetch — the CDN read path
+    txid=(txid||'').toLowerCase();
+    const hit=await bmfCache.get(txid); if(hit) return hit;   // memory / IndexedDB hit → instant, no chain call
+    const atom=await GM.loadAtomBytes(provider, txid);        // miss → pull from chain (rate-limited pipeline) …
+    bmfCache.put(txid, atom).catch(()=>{});                    // … then cache it for next time (fire-and-forget)
+    return atom;
+  }
   async function loadFromChain(txid, owned){                        // owned=true after a purchase → skip the licence gate
     txid=(txid||'').trim().toLowerCase().replace(/[^0-9a-f]/g,'');
     if(txid.length!==64){ _kNote().textContent='Paste a 64-character transaction id.'; return; }
@@ -1737,7 +1781,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
           return;
         }
       }
-      const atom=await GM.loadAtomBytes(provider, txid);            // → { bytes, mimeType, fileName, compressed }
+      const atom=await loadAtomCached(GM, provider, txid);          // → { bytes, mimeType, fileName, compressed } · cache-first
       const dec=BMF.scene.unpack(atom.bytes);
       const r = (dec.members&&dec.members.length) ? await importMembersWorld(dec, GM, provider)   // a MEMBERS world → fetch each owned paint atom
                                                   : importScene(atom.bytes);                       // an inline scene (single-atom world)
@@ -1762,7 +1806,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     try{
       const GM=await loadGrafmint();
       const provider=new GM.WalletProvider('');
-      const atom=await GM.loadAtomBytes(provider, txid);          // Tier-1 decrypts automatically (any holder, no private key)
+      const atom=await loadAtomCached(GM, provider, txid);        // cache-first · Tier-1 decrypts automatically (any holder, no private key)
       const dec=BMF.scene.unpack(atom.bytes), rec=dec.shapes&&dec.shapes[0];
       if(!rec){ showHint('Nothing to import in that atom.'); return; }
       const sd=recordToShape(rec); sd.txid=txid;                 // owned → carries its txid → a re-Save REFERENCES it (creator royalty intact)
@@ -2230,7 +2274,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     for(let k=0;k<mem.length;k++){
       _kNote().textContent='Loading owned paint '+(k+1)+' / '+mem.length+'…';
       try{
-        const a=await GM.loadAtomBytes(provider, mem[k].tx);                                 // fetch the paint-LAYER atom (a one-solid scene: free geometry + one layer's strokes)
+        const a=await loadAtomCached(GM, provider, mem[k].tx);                               // cache-first · fetch the paint-LAYER atom (a one-solid scene: free geometry + one layer's strokes)
         const one=BMF.scene.unpack(a.bytes), rec=one.shapes&&one.shapes[0];
         if(!rec) continue;
         const sd=recordToShape(rec);
