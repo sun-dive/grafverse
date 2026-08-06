@@ -48,6 +48,13 @@
   body.building #stencilTog,body.building #stencilTog2{opacity:.85;pointer-events:auto;}
   body.shaping #stencilTog,body.keep #stencilTog,body.mtalk #stencilTog,body.shaping #stencilTog2,body.keep #stencilTog2,body.mtalk #stencilTog2{display:none!important;}
   #stencilTog.on,#stencilTog2.on{background:rgba(56,225,255,.35);border-color:#7fd8e8;color:#eafaff;}
+  #ownOffer{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);display:none;align-items:center;gap:12px;max-width:92vw;padding:11px 12px 11px 18px;border-radius:14px;background:rgba(10,20,38,.93);border:1px solid rgba(120,170,255,.35);box-shadow:0 12px 40px rgba(0,0,0,.5);color:#dbe8ff;font:600 13.5px system-ui;z-index:20;}
+  #ownOffer.show{display:flex;}
+  #ownOffer b{color:#8fd0ff;}
+  #ownGo{cursor:pointer;font:700 13px system-ui;color:#04121f;background:linear-gradient(180deg,#5fe3ff,#2ec3ff);border:0;padding:9px 16px;border-radius:20px;white-space:nowrap;}
+  #ownGo:hover{filter:brightness(1.08);}
+  #ownX{cursor:pointer;background:none;border:0;color:#7f97bf;font-size:16px;line-height:1;padding:4px 6px;}
+  #ownX:hover{color:#dbe8ff;}
   #undoBar{position:fixed;left:24px;top:16px;display:none;gap:8px;z-index:7;}
   body.building #undoBar{display:flex;}
   .ubtn{width:40px;height:40px;border-radius:10px;background:rgba(24,46,82,.92);border:1px solid rgba(120,170,255,.45);color:#cfe0ff;font-size:22px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;backdrop-filter:blur(4px);}
@@ -200,6 +207,7 @@
 <div id="swatches"></div>
 <div id="stencilTog" title="grafverse stencil — spray a solid to reveal the wordmark (G cycles)">▦ grafverse</div>
 <div id="stencilTog2" title="Evidnus stencil — spray a solid to reveal the logo">▦ evidnus</div>
+<div id="ownOffer"><span id="ownMsg"></span><button id="ownGo">Own / remix</button><button id="ownX" title="dismiss">✕</button></div>
 <div id="inv"></div>
 
 <div id="wallet">
@@ -1872,10 +1880,31 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const r=await fetch(WORLD_URL+'?id='+encodeURIComponent(id)); if(!r.ok) throw new Error('HTTP '+r.status);
       const bytes=Array.from(new Uint8Array(await r.arrayBuffer()));
       let dec; try{ dec=BMF.scene.unpack(bytes); }catch(_){ dec=null; }
-      if(dec && dec.members && dec.members.length){ await fileAcquire(bytes, dec.members.length, 'shared world'); }   // owned paint → acquire gate
+      if(dec && dec.members && dec.members.length){                       // owned paint → WALK FREE (composite read-only from chain, no wallet), OWN OPTIONAL
+        try{
+          const GM=await loadGrafmint(); const provider=new GM.WalletProvider('');
+          const rr=await importMembersWorld(dec, GM, provider); saveWorld();
+          _kNote().textContent='Loaded '+rr.shapes+' shape'+(rr.shapes===1?'':'s')+(rr.members?' incl. '+rr.members+' owned paint layer'+(rr.members===1?'':'s'):'')+' — exploring free.';
+          anyRightsReserved(GM, provider, dec.members).then(n=>{ if(n) showOwnOffer(bytes, n); });   // offer to own/remix ONLY if some paint is rights-reserved — open/CC0 is already free to use
+        }catch(err){ importScene(bytes); saveWorld(); _kNote().textContent='Loaded the free content ('+(err.message||err)+').'; }
+      }
       else { const additive=!(dec.ground&&dec.ground.length) && bShapes.length>0; importScene(bytes, additive); saveWorld(); }   // no-ground share (a solo) while in a world → ADD it · else load (replace)
     }catch(e){ showHint('Couldn’t load that shared world: '+(e.message||e)); }
   }
+  // ── Opt-in acquire: a shared scene loads FULLY read-only above; this lets the visitor CHOOSE to own/remix its rights-reserved paint (→ wallet). "Walk free, own optional." ──
+  let _sharedBytes=null;
+  async function anyRightsReserved(GM, provider, members){                // → count of rights-reserved (must-own) members · 0 if all open/CC0 (truly free)
+    let n=0; for(const m of (members||[])){ if(!m||!m.tx) continue;
+      try{ const info=await GM.readCollection(provider, m.tx); if(info && info.open===false) n++; }catch(_){} }
+    return n;
+  }
+  function showOwnOffer(bytes, n){ _sharedBytes=bytes; const el=document.getElementById('ownOffer'); if(!el) return;
+    const t=document.getElementById('ownMsg'); if(t) t.textContent='🎨 '+n+' owned paint layer'+(n===1?'':'s')+' here — you’re exploring free. Own or remix?';
+    el.classList.add('show'); }
+  function hideOwnOffer(){ const el=document.getElementById('ownOffer'); if(el) el.classList.remove('show'); }
+  { const go=document.getElementById('ownGo'), x=document.getElementById('ownX');
+    if(go) go.addEventListener('click', ()=>{ if(!_sharedBytes) return; let n=0; try{ n=(BMF.scene.unpack(_sharedBytes).members||[]).length; }catch(_){}; hideOwnOffer(); fileAcquire(_sharedBytes, n, 'shared world'); });   // → the wallet acquires only what you don't already hold (rights-reserved), paying each creator
+    if(x) x.addEventListener('click', hideOwnOffer); }
 
   // ---------- crystal (translucent gem) material — the second register: found & precious ----------
   // ── gem texture library (docs/BMF-SOLID-SPEC.md) — the `tex` byte. Birthstone gems 1–12 == their MONTH, then extras. ──
