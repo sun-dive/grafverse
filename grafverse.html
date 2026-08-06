@@ -455,7 +455,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       new THREE.CylinderGeometry(0.34,0.42,0.5,20),
       new THREE.MeshStandardMaterial({ color: capColor!=null?capColor:0x0c1424, roughness:.6,
         emissive: capColor!=null?capColor:0x000000, emissiveIntensity: capColor!=null?0.35:0 }));
-    cap.position.y = 1.0; g.add(cap);
+    cap.position.y = 1.0; g.add(cap); g.userData.cap=cap;   // tag the cap so a held can can be recoloured to match the active paint
     const nozzle = new THREE.Mesh(
       new THREE.CylinderGeometry(0.08,0.08,0.18,10),
       new THREE.MeshStandardMaterial({ color:0x05070c }));
@@ -488,7 +488,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
 
   // ---------- scavenge can: there is ALWAYS one full can stashed behind the machine (random spot, random colour) ----------
   let scavCan=null, scavRing=null, scavColor=0, scavRespawn=0;
-  const COLNAMES=['blue','pink','green','yellow','orange'];
+  const COLNAMES=['blue','pink','green','yellow','orange','violet'];   // names track COLORS (Unit 21 lists them when asked "What colours?")
   function spawnScav(){
     if(scavCan){ scene.remove(scavCan); scene.remove(scavRing); }
     scavColor = Math.floor(Math.random()*COLORS.length);
@@ -701,7 +701,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     swWrap.appendChild(s);
   });
   function setColor(i){ colorIdx=i; [...swWrap.children].forEach((s,k)=>s.classList.toggle('on',k===i));
-    meterFill.style.background='#'+COLORS[i].toString(16).padStart(6,'0'); }
+    meterFill.style.background='#'+COLORS[i].toString(16).padStart(6,'0'); refreshHeldCan(); }
   function showHint(t){ hint.textContent=t; hint.style.opacity = t?1:0; }
 
   // ── STENCILS: spraying a face DEPOSITS the active stencil's own dabs (fixed on the face) → spray anywhere on it and the mark fills in + builds up. Recorded dabs → faithful mint replay. Sources are pluggable (text · embedded logo · future: user uploads). ──
@@ -742,12 +742,14 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   const CAN_SLOTS=6;
   const inv=[]; let activeSlot=0;                 // up to 6 slots: {ci, amt(0..100)}; colorIdx/paint mirror the active slot
   const invEl=$('inv');
-  function syncActive(){ if(inv[activeSlot]){ colorIdx=inv[activeSlot].ci; paint=inv[activeSlot].amt; } }
+  function setCanColor(can, hex){ const cap=can&&can.userData&&can.userData.cap; if(!cap)return;   // recolour a can's cap
+    cap.material.color.setHex(hex); cap.material.emissive.setHex(hex); cap.material.emissiveIntensity=0.35; cap.material.needsUpdate=true; }
+  function refreshHeldCan(){ if(viewCan) setCanColor(viewCan, COLORS[colorIdx]); }   // the held can's cap ALWAYS shows the paint being sprayed
+  function syncActive(){ if(inv[activeSlot]){ colorIdx=inv[activeSlot].ci; paint=inv[activeSlot].amt; refreshHeldCan(); } }
   function addCan(ci, amt){
-    let i=inv.findIndex(s=>s.ci===ci);
-    if(i<0){ if(inv.length<CAN_SLOTS){ inv.push({ci,amt}); i=inv.length-1; }
-             else { i=inv.reduce((lo,s,k,a)=>s.amt<a[lo].amt?k:lo,0); inv[i]={ci,amt}; } }   // full kit → a new colour bumps your most-empty can
-    else inv[i].amt=Math.min(100, inv[i].amt+amt);             // same colour → top up
+    let i;
+    if(inv.length<CAN_SLOTS){ inv.push({ci,amt}); i=inv.length-1; }                       // every can is its OWN slot — duplicates of a colour stack as separate cans
+    else { i=inv.reduce((lo,s,k,a)=>s.amt<a[lo].amt?k:lo,0); inv[i]={ci,amt}; }            // full kit → a new can bumps your most-empty one
     activeSlot=i; syncActive(); renderInv();
   }
   function selectCan(n){ if(n<0||n>=inv.length) return; activeSlot=n; syncActive(); renderInv(); }   // number key / click → pick the can
