@@ -43,6 +43,10 @@
   #meterFill{height:100%;width:100%;border-radius:6px;background:#38e1ff;transition:width .08s linear, background .2s;}
 
   #swatches{position:fixed;left:24px;bottom:70px;display:flex;gap:8px;opacity:0;transition:opacity .4s;pointer-events:none;}
+  #stencilTog{position:fixed;left:24px;bottom:118px;padding:7px 12px;border-radius:12px;background:rgba(24,46,82,.9);border:1px solid rgba(120,170,255,.4);color:#cfe3ff;font:600 13px system-ui;cursor:pointer;opacity:0;transition:opacity .3s;pointer-events:none;z-index:6;user-select:none;}
+  body.building #stencilTog{opacity:.85;pointer-events:auto;}
+  body.shaping #stencilTog, body.keep #stencilTog, body.mtalk #stencilTog{display:none!important;}
+  #stencilTog.on{background:rgba(56,225,255,.35);border-color:#7fd8e8;color:#eafaff;}
   #undoBar{position:fixed;left:24px;top:16px;display:none;gap:8px;z-index:7;}
   body.building #undoBar{display:flex;}
   .ubtn{width:40px;height:40px;border-radius:10px;background:rgba(24,46,82,.92);border:1px solid rgba(120,170,255,.45);color:#cfe0ff;font-size:22px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;backdrop-filter:blur(4px);}
@@ -193,6 +197,7 @@
 
 <div id="meterWrap"><div id="meterLbl">paint</div><div id="meterBar"><div id="meterFill"></div></div></div>
 <div id="swatches"></div>
+<div id="stencilTog" title="grafverse stencil — spray a solid to reveal the wordmark (G)">▦ grafverse</div>
 <div id="inv"></div>
 
 <div id="wallet">
@@ -674,6 +679,24 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     meterFill.style.background='#'+COLORS[i].toString(16).padStart(6,'0'); }
   function showHint(t){ hint.textContent=t; hint.style.opacity = t?1:0; }
 
+  // ── STENCIL: spray only lands where the "grafverse" wordmark mask is (UV space). Dabs are filtered at record-time, so the mint replays the stencil'd wordmark faithfully. ──
+  let stencilOn=false, _stMask=null;
+  function buildStencilMask(){                                        // "grafverse" wordmark → an alpha lookup, centred on a square (matches a surface's UV)
+    const S=256, c=document.createElement('canvas'); c.width=S; c.height=S; const g=c.getContext('2d');
+    g.clearRect(0,0,S,S); g.fillStyle='#000'; g.textAlign='center'; g.textBaseline='middle';
+    let fs=60; g.font='800 '+fs+'px system-ui,Arial,sans-serif';
+    const w=g.measureText('grafverse').width||1; fs=Math.max(10,Math.floor(fs*(S*0.86)/w)); g.font='800 '+fs+'px system-ui,Arial,sans-serif';
+    g.fillText('grafverse', S/2, S/2);
+    _stMask={ S, data:g.getImageData(0,0,S,S).data };
+  }
+  function stencilHit(u,v){ if(!_stMask) buildStencilMask(); const S=_stMask.S;                    // same v-flip as sprayShapeAt → the wordmark reads upright
+    const x=Math.max(0,Math.min(S-1,Math.floor(u*S))), y=Math.max(0,Math.min(S-1,Math.floor((1-v)*S)));
+    return _stMask.data[(y*S+x)*4+3] > 80; }
+  function toggleStencil(){ stencilOn=!stencilOn; const t=document.getElementById('stencilTog'); if(t) t.classList.toggle('on',stencilOn);
+    showHint(stencilOn?'▦ grafverse stencil ON — spray any solid to reveal the wordmark':'stencil off'); }
+  { const t=document.getElementById('stencilTog'); if(t){ t.addEventListener('click',toggleStencil); t.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); toggleStencil(); },{passive:false}); } }
+  addEventListener('keydown', e=>{ if(e.code==='KeyG' && buildUnlocked && !talking && !keepOpen && !shaping){ e.preventDefault(); toggleStencil(); } });
+
   // ---------- two-colour paint inventory: the leftover can's colour + the full can's colour ----------
   const inv=[]; let activeSlot=0;                 // up to 2 slots: {ci, amt(0..100)}; colorIdx/paint mirror the active slot
   const invEl=$('inv');
@@ -1127,7 +1150,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
             const dist=camera.position.distanceTo(shot.point), dn=Math.max(0,Math.min(1,(dist-2.2)/(9-2.2)));
             const key=targetKey(o,si);
             if(curKey!==key){ endStroke(); beginStroke(o,si); }
-            if(addDab(shot.uv.x, shot.uv.y, dn)) sprayShapeAt(surf, shot.uv.x, shot.uv.y, dn);   // record + spray on each dab
+            if((!stencilOn || stencilHit(shot.uv.x, shot.uv.y)) && addDab(shot.uv.x, shot.uv.y, dn)) sprayShapeAt(surf, shot.uv.x, shot.uv.y, dn);   // record + spray · stencil ON → only inside the grafverse mask
             materializeShape(o); hasPainted=true;
             o.userData.paintAmt=(o.userData.paintAmt||0)+PAINT_DRAIN;                 // paint-to-earn: ~half-cover a solid shape → a can's pay
             if(!o.userData.paid && o.userData.paintAmt>=(o.userData.earnAt||45)){
