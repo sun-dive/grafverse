@@ -682,7 +682,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   addEventListener('mouseup',   e=>{ if(e.button===0) spraying=false; });
   addEventListener('contextmenu', e=>{ if(buildUnlocked) e.preventDefault(); });     // right-click drives the Manifest HUD, not the browser menu
   addEventListener('mousedown', e=>{ if(e.button===2 && buildUnlocked && !talking && !keepOpen){ e.preventDefault(); shaping?closeShape():openShape(); } });   // right-click toggles manifest ⇄ paint
-  el.addEventListener('click', ()=>{ if(!locked && !talking && !firstStart && !shaping && !keepOpen) el.requestPointerLock(); });
+  el.addEventListener('click', ()=>{ if(!locked && !talking && !firstStart && !shaping && !keepOpen){ initAudio(); if(actx && actx.state==='suspended') actx.resume(); el.requestPointerLock(); } });   // first world-click (incl. straight-in shared links) arms audio + grabs the mouse
 
   // ---------- HUD ----------
   const $ = id=>document.getElementById(id);
@@ -777,6 +777,12 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       if(_resumeOnStart) unlockBuild(true);   // returned from the wallet → resume the world, skip the intro
       showHint(MOBILE ? 'left stick to move  ·  drag anywhere to look' : 'WASD to move  ·  Space to jump  ·  move mouse to look');
     }
+  }
+  function _dropIntoWorld(){                   // a ?w= shared link → land STRAIGHT in the world (no splash tap). The "Enter" click on the OG page is lost on navigation, so audio + pointer-lock still need one gesture on desktop — but there's no separate splash step.
+    const sp=$('splash'); if(sp) sp.classList.add('hidden');   // reveal the (already-composited) world
+    reticle.style.opacity=1; unlockBuild(true);                // visitor is build-ready (walk free · paint if they like)
+    if(MOBILE){ begin(); }                                     // mobile: full control now — no pointer-lock; audio arms on first touch
+    else if(firstStart){ firstStart=false; showHint('Click to look around  ·  WASD to move  ·  Space to jump'); }   // desktop: world's live; first click grabs the mouse + starts audio
   }
 
   // ---------- dialogue (typewriter) ----------
@@ -1930,7 +1936,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     }catch(e){ _kNote().textContent='Save to server failed: '+(e.message||e); }
   }
   async function openSharedWorld(id){                                     // opened via ?w=<id> — fetch the shared world + drop the visitor into it
-    _welcomeBack();                                                       // splash → one tap → in the world, build-ready
+    { const g=$('splash')&&$('splash').querySelector('.go'); if(g) g.textContent='Loading your world…'; const rb=$('resumeBtn'); if(rb) rb.style.display='none'; }   // load state, not "tap to begin" — we auto-enter below
     const shares=sharesGet(); setMyShare(shares[id]?id:'');               // YOUR shared world → Share = update · someone else's → editing forks to a NEW link
     _adoptWorldName('');                                                  // a loaded world starts unnamed (its name lives on the share card, not in the .bmf) — rename to re-brand
     try{
@@ -1946,7 +1952,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
         }catch(err){ importScene(bytes); saveWorld(); _kNote().textContent='Loaded the free content ('+(err.message||err)+').'; }
       }
       else { const additive=!(dec.ground&&dec.ground.length) && bShapes.length>0; importScene(bytes, additive); saveWorld(); }   // no-ground share (a solo) while in a world → ADD it · else load (replace)
-    }catch(e){ showHint('Couldn’t load that shared world: '+(e.message||e)); }
+      _dropIntoWorld();                                                    // ← world composited → land straight in it, no splash tap
+    }catch(e){ showHint('Couldn’t load that shared world: '+(e.message||e)); if($('splash')) $('splash').classList.remove('hidden'); }
   }
   // ── Opt-in acquire: a shared scene loads FULLY read-only above; this lets the visitor CHOOSE to own/remix its rights-reserved paint (→ wallet). "Walk free, own optional." ──
   let _sharedBytes=null;
