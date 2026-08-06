@@ -666,9 +666,15 @@
   }
   const _coverCache=new Map();   // col → object URL of its storefront cover (immutable per collection id → cache for the session)
   function setThumb(col,url){ const img=$('nftList').querySelector('.nft-thumb[data-col="'+col+'"]'); if(img){ img.src=url; img.style.display='block'; } }
+  function returnToGame(){                                         // one tap back to the game to place the import
+    if(returnUrl){ location.href = returnUrl + (returnUrl.includes('?')?'&':'?') + 'resume=1'; return; }   // same-tab handoff → navigate back
+    if(window.opener && !window.opener.closed){ try{ window.opener.focus(); }catch(_){} window.close(); return; }   // new tab (My NFTs) → focus + close, back to the live game tab
+    location.href='../?resume=1';                                  // fallback
+  }
   function addToWorld(col){                                        // flag an owned atom for import → the live grafverse tab drops it into the world
     try{ localStorage.setItem('grafverse-import', col+':'+Date.now()); }catch(_){}
-    $('nftScan').textContent='✓ Added — switch to your grafverse tab to place it.';
+    $('nftScan').innerHTML='✓ Added to your world. <button class="sm" id="goPlace" style="margin-left:6px">▸ Place it now</button>';
+    const g=$('goPlace'); if(g) g.onclick=returnToGame;
   }
   function renderNfts(held){
     const list=$('nftList'), groups=new Map();
