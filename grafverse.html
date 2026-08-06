@@ -1514,7 +1514,10 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       renderer.render(scene, camera);                            // fresh frame — must read it THIS tick (preserveDrawingBuffer is off)
       const src=renderer.domElement, S=512, c=document.createElement('canvas'); c.width=S; c.height=S;
       const side=Math.min(src.width, src.height), sx=(src.width-side)/2, sy=(src.height-side)/2;   // centre-crop to a square
-      c.getContext('2d').drawImage(src, sx, sy, side, side, 0, 0, S, S);
+      const g=c.getContext('2d'); g.drawImage(src, sx, sy, side, side, 0, 0, S, S);
+      g.font='700 18px system-ui,Arial,sans-serif'; g.textAlign='right'; g.textBaseline='bottom';   // grafverse.com watermark, bottom-right
+      g.shadowColor='rgba(0,0,0,.6)'; g.shadowBlur=4; g.shadowOffsetY=1; g.fillStyle='rgba(255,255,255,.88)';
+      g.fillText('grafverse.com', S-16, S-14);
       const url=c.toDataURL('image/webp', 0.8);
       return (url && url.indexOf('data:image/webp')===0) ? url.slice(url.indexOf(',')+1) : null;   // webp only (skip cover if unsupported)
     }catch(_){ return null; }
