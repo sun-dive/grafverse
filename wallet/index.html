@@ -154,6 +154,7 @@
   <section class="card" id="mintCard">
     <h2>✦ Immortalize</h2>
     <div id="payloadStatus" class="hint">No creation loaded yet.</div>
+    <img id="coverPreview" alt="cover snapshot" style="display:none;max-width:200px;width:100%;border-radius:10px;margin:8px auto 4px;box-shadow:0 6px 22px rgba(0,0,0,.45)">
     <div class="btnrow" style="margin-top:8px" id="testRow">
       <button class="sm ghost" id="testPayload">Load a test creation</button>
     </div>
@@ -312,6 +313,18 @@
       .then(d=>{ if(!Array.isArray(d.bytes)) throw 0; setPayload({bytes:d.bytes, name:d.name, description:d.description}); })
       .catch(()=>{ $('payloadStatus').innerHTML = 'Couldn’t load that creation (the handoff may have expired). <br>You can still test below.'; });
   }
+  // ── sell-cover: a WebP snapshot handed off alongside the atom (?cover=<id>) → becomes the public storefront face ──
+  const coverId = params.get('cover');
+  let coverBytes = null;
+  if(coverId){
+    fetch('../handoff.php?id='+encodeURIComponent(coverId))
+      .then(r=>r.ok?r.json():null)
+      .then(d=>{ if(d && Array.isArray(d.bytes) && d.bytes.length){ coverBytes=d.bytes; showCoverPreview(d.bytes); } })
+      .catch(()=>{});
+  }
+  function showCoverPreview(bytes){
+    try{ const url=URL.createObjectURL(new Blob([new Uint8Array(bytes)],{type:'image/webp'})); const img=$('coverPreview'); if(img){ img.src=url; img.style.display='block'; } }catch(_){}
+  }
   $('testPayload').onclick = ()=>{
     const bytes = []; for(let i=0;i<800;i++) bytes.push((i*37+13)&255); // deterministic dummy atom
     setPayload({bytes, name:'Test creation'});
@@ -414,6 +427,7 @@
         description: $('mDesc').value.trim(),
         license: $('mLicense').value,
         licenseRef: $('mLicense').selectedOptions[0].dataset.ref || undefined,   // COV-ROY-1 → the on-chain licence-text genesis (Collection ID); open licences carry none
+        cover: coverBytes ? { mimeType:'image/webp', fileName:'cover.webp', bytes:coverBytes } : undefined,   // storefront face (unencrypted, public) — wallet thumbnail + NFT.sale card
         encrypt: !open && $('mEncrypt').checked,
         ...computeFees(),   // percentage calculator → fixed publisher + holder fees (covenant stores fixed sats)
         bondSats: Math.max(1, parseInt($('mBond').value,10)||1),
