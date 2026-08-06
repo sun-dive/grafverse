@@ -1372,10 +1372,14 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       cr.appendChild(sbtn('◼ Materials', ()=>{ solidPickerOpen=!solidPickerOpen; if(activeShape) buildShapeTools(activeShape.userData.type); },'wide'));   // open/close the material picker grid
       cr.appendChild(sbtn('◆ Crystals', ()=>{ if(activeShape) crystallizeShape(activeShape, activeShape.userData.crystal ? (activeShape.userData.gemIdx>=MAXGEM?1:activeShape.userData.gemIdx+1) : 1); },'wide'));   // cut → cycle gems 1…16
       box.appendChild(cr);
-      if(activeShape.userData.painted && !activeShape.userData.crystal){   // 💰 SELL: mint THIS painted solid as its own Smart NFT (single-atom hand-off → wallet)
+      if(activeShape.userData.painted && !activeShape.userData.crystal){   // 💰 SELL (mint) + FREE channel (download / share link) for THIS painted solid
         const sr=document.createElement('div'); sr.className='srow';
         sr.appendChild(sbtn('💰 Sell this solid', ()=>sellSolo(activeShape), 'wide'));
         box.appendChild(sr);
+        const fr=document.createElement('div'); fr.className='srow';
+        fr.appendChild(sbtn('📥 .bmf', ()=>downloadSolo(activeShape), 'wide'));
+        fr.appendChild(sbtn('☁ Share', ()=>shareSolo(activeShape), 'wide'));
+        box.appendChild(fr);
       }
       if(activeShape.userData.crystal){                                   // 🌀 a crystal can become a JUMP GATE — set its destination world (sprint-breach it to travel there)
         const gr=document.createElement('div'); gr.className='srow';
@@ -1545,6 +1549,27 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const ret = location.origin + location.pathname;
       location.href = WALLET_URL + '?id=' + encodeURIComponent(data.id) + '&sell=1' + coverParam + '&return=' + encodeURIComponent(ret);   // &sell=1 → paid Covenant Royalty · &cover → storefront face
     }catch(e){ showHint('Sell failed: '+(e.message||e)+' (is handoff.php deployed?)'); }
+  }
+  // ── FREE channel for one solid (the twin of Sell): download a .bmf, or share a public link. Owned sub-paint stays a txid ref (packSoloBytes), never bytes. ──
+  function downloadSolo(m){
+    const p=packSoloBytes(m); if(p.err){ showHint(p.err); return; }
+    const fn=((soloMeta(m).title||'grafverse-solid').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')||'grafverse-solid')+'.bmf';
+    const url=URL.createObjectURL(new Blob([new Uint8Array(p.bytes)], {type:'application/octet-stream'}));
+    const a=document.createElement('a'); a.href=url; a.download=fn; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+    showHint('Saved '+p.bytes.length.toLocaleString()+' bytes → '+fn);
+  }
+  async function shareSolo(m){
+    const p=packSoloBytes(m); if(p.err){ showHint(p.err); return; }
+    showHint('Making your share link…');
+    try{
+      const res=await fetch(WORLD_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: bytesToB64(p.bytes) });
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok || !data.id) throw new Error(data.error||('HTTP '+res.status));
+      const link=location.origin+location.pathname.replace(/[^/]*$/,'')+'w.php?id='+data.id;
+      try{ await navigator.clipboard.writeText(link); }catch(_){}
+      showHint('☁ Shared — link copied: '+link);
+    }catch(e){ showHint('Share failed: '+(e.message||e)); }
   }
   document.getElementById('kMint').addEventListener('click', async ()=>{
     if(!window.BMF){ _kNote().textContent='Codec missing (bmf-codec.js didn’t load).'; return; }
