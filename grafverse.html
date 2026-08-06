@@ -48,6 +48,9 @@
   body.building #stencilTog,body.building #stencilTog2{opacity:.85;pointer-events:auto;}
   body.shaping #stencilTog,body.keep #stencilTog,body.mtalk #stencilTog,body.shaping #stencilTog2,body.keep #stencilTog2,body.mtalk #stencilTog2{display:none!important;}
   #stencilTog.on,#stencilTog2.on{background:rgba(56,225,255,.35);border-color:#7fd8e8;color:#eafaff;}
+  #spreadTog{position:fixed;left:24px;bottom:194px;padding:7px 12px;border-radius:12px;background:rgba(24,46,82,.9);border:1px solid rgba(120,170,255,.4);color:#cfe3ff;font:600 13px system-ui;cursor:pointer;z-index:6;user-select:none;display:none;}
+  #spreadTog.show{display:block;}
+  body.shaping #spreadTog,body.keep #spreadTog,body.mtalk #spreadTog{display:none!important;}
   #ownOffer{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);display:none;align-items:center;gap:12px;max-width:92vw;padding:11px 12px 11px 18px;border-radius:14px;background:rgba(10,20,38,.93);border:1px solid rgba(120,170,255,.35);box-shadow:0 12px 40px rgba(0,0,0,.5);color:#dbe8ff;font:600 13.5px system-ui;z-index:20;}
   #ownOffer.show{display:flex;}
   #ownOffer b{color:#8fd0ff;}
@@ -216,6 +219,7 @@
 <div id="swatches"></div>
 <div id="stencilTog" title="grafverse stencil — spray a solid to reveal the wordmark (G cycles)">▦ grafverse</div>
 <div id="stencilTog2" title="Evidnus stencil — spray a solid to reveal the logo">▦ evidnus</div>
+<div id="spreadTog" title="Stencil spread (H) — 1 crisp · 2 wide · 3 very wide. Lay 3, overpaint 2, finish 1 for an authentic tag.">◍ spread 1</div>
 <div id="ownOffer"><span id="ownMsg"></span><button id="ownGo">Own / remix</button><button id="ownX" title="dismiss">✕</button></div>
 <div id="inv"></div>
 
@@ -700,6 +704,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
 
   // ── STENCILS: spraying a face DEPOSITS the active stencil's own dabs (fixed on the face) → spray anywhere on it and the mark fills in + builds up. Recorded dabs → faithful mint replay. Sources are pluggable (text · embedded logo · future: user uploads). ──
   let activeStencil=null, _stPts=null, _evImg=null;
+  let stencilSpread=1; const SPREAD_JITTER={1:0, 2:0.022, 3:0.05};   // 1 crisp · 2 wide · 3 very wide — authentic tag: lay 3, overpaint 2, finish 1
   const EVIDNUS_SRC='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWgAAABbCAMAAABpou9QAAAABlBMVEX///8AAABVwtN+AAAAAWJLR0QAiAUdSAAAAAlwSFlzAAAuIwAALiMBeKU/dgAAAAd0SU1FB+oIBgsOAhLIJRoAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMDctMjBUMDM6NDg6MDQrMDA6MDAK5FxVAAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTA3LTIwVDAzOjQ4OjA0KzAwOjAwe7nk6QAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0wOC0wNlQxMToxNDowMSswMDowMCyenY0AAAAhdEVYdGhpc3RvZ3JhbTpjb250cmFzdC1zdHJldGNoADB4MTAwJXXjKWEAAAMgSURBVHja7dpJdsMgEARQc/9LZxsHRFWPSFHV1kz9QX6y5M/HljGMHRRPxohAhzq/KmOEpGPb9J6MEYMOdn9NxohJR/u/J0EpQbOJScmZT8hKznwi0DrQlvi15GxLDbT2YIr3YO77CXrOc6DxoFMLRxeXwTaUmM8ZL59c49cQFdDLMtiVGStwSYM+gk6CRn0EvarAIU06C3pdAQ09DeKf8p3QrPTUXtBUBdYjPY8haCM0Jz23FjTlbDzSizEie3s/aI8gGVPvjUHe0o5CfxXk8TTVZdmUVmjMFocukzYMu2rZC305kBl6M+LxI80sIGGN4LLJgR4UdNGRTmlYDk0+y+L2Zd3isDQ3u/+7kYXm3jfsZqFHS5a2QlOtKqE3h5BZB962qq9p01G9A/TA01JfDMyZPwfNjVULfXn3C9cBR6qUZgZlJ+6CHmBasCEQslg61KQXeuyn3e8Hhube9YPYBiVbfDcM7BgLvfzdtIUmNYiFeqFd1TsTgb6+M2OgaQ1DEdnQsWUlQl9JE9B/ep6Bjr8K7IK+kIbQUzdBA+g1NYKe+5yG3t+/x50ToFfSAHrToxn64/+wH3pzPtddVtXfETrTOQV6pt5Br4tvgDYDWNYEm+ZAw3u1eQ8uGqQ8s3RtUmyuLmj06wMeMjN0lvT1gKaZ2qDB72l4LbNVFUo/BXr7hAg5577BS4G2zdMJvXvmiZw90MXSN4bePMUHzJay0qWfCH35Xgo5+/7PkiMd/C47Aw3v3uC1YJGpPNK+Ax154Dp/vu1CQPvWsZyiDBrNMLj4CqSg1w7I2XcvVfjr+AnQq+sI0niv1CrpR0AvBoXTGNfxXYq56sT1HoX+BBbuqeZR0I4+DmhDrY3Q8+yC7oHGXQQt6DtD/52e6QIqdu7MS6FpZ0G7oJkegvY4X709fgt0hqARyvsnk8y1lELXrNRek/dfU4eX/5wIuitBaIXNL105V2ZxD3N6Sf8zgu6KoJtSc3+uTJFzUwTdFUE3RdBNEXRT5NwUQTdF0D3R7V1TBN0UQTdF0E0RdFME3RU5N0XQXZFzVwTdFTF3Rc67/AAEUx7aUW5cZAAAAABJRU5ErkJggg==';
   { const im=new Image(); im.onload=()=>{ _evImg=im; if(activeStencil==='evidnus') buildStencil('evidnus'); }; im.src=EVIDNUS_SRC; }   // load the Evidnus logo once
   function _sampleDark(g,S){ const d=g.getImageData(0,0,S,S).data, pts=[];                          // dark, opaque pixels → UV dab-points (works for black text AND black-on-white logos)
@@ -712,16 +717,24 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const w=g.measureText('grafverse').width||1; fs=Math.max(10,Math.floor(fs*(S*0.86)/w)); g.font='800 '+fs+'px system-ui,Arial,sans-serif'; g.fillText('grafverse',S/2,S/2); }
     _stPts=_sampleDark(g,S);
   }
+  function _updateSpreadChip(){ const el=document.getElementById('spreadTog'); if(!el) return;   // spread selector shows only while a stencil is active
+    el.textContent='◍ spread '+stencilSpread; el.classList.toggle('show', !!activeStencil); }
   function _applyStencil(){ if(activeStencil) buildStencil(activeStencil); else _stPts=null;
     const a=document.getElementById('stencilTog'), b=document.getElementById('stencilTog2');
     if(a) a.classList.toggle('on', activeStencil==='grafverse'); if(b) b.classList.toggle('on', activeStencil==='evidnus');
-    showHint(activeStencil ? ('▦ '+activeStencil+' stencil ON — spray any solid; it fills in') : 'stencil off'); }
+    _updateSpreadChip();
+    showHint(activeStencil ? ('▦ '+activeStencil+' stencil ON — spray any solid; it fills in (◍ spread '+stencilSpread+')') : 'stencil off'); }
   function setStencil(kind){ activeStencil=(activeStencil===kind)?null:kind; _applyStencil(); }                 // chip → select/toggle that stencil
   function cycleStencil(){ activeStencil = activeStencil===null?'grafverse':(activeStencil==='grafverse'?'evidnus':null); _applyStencil(); }   // G key → off → grafverse → evidnus → off
-  { const a=document.getElementById('stencilTog'), b=document.getElementById('stencilTog2');
+  function cycleSpread(){ stencilSpread = stencilSpread>=3?1:stencilSpread+1; _updateSpreadChip();              // H key / chip → 1 crisp → 2 wide → 3 very wide
+    showHint('◍ stencil spread '+stencilSpread+(stencilSpread===1?' — crisp & clear':stencilSpread===2?' — wide':' — very wide (lay this first, overpaint down to 1)')); }
+  { const a=document.getElementById('stencilTog'), b=document.getElementById('stencilTog2'), s=document.getElementById('spreadTog');
     if(a){ a.addEventListener('click',()=>setStencil('grafverse')); a.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); setStencil('grafverse'); },{passive:false}); }
-    if(b){ b.addEventListener('click',()=>setStencil('evidnus')); b.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); setStencil('evidnus'); },{passive:false}); } }
-  addEventListener('keydown', e=>{ if(e.code==='KeyG' && buildUnlocked && !talking && !keepOpen && !shaping){ e.preventDefault(); cycleStencil(); } });
+    if(b){ b.addEventListener('click',()=>setStencil('evidnus')); b.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); setStencil('evidnus'); },{passive:false}); }
+    if(s){ s.addEventListener('click',cycleSpread); s.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); cycleSpread(); },{passive:false}); } }
+  addEventListener('keydown', e=>{ if(!buildUnlocked || talking || keepOpen || shaping) return;
+    if(e.code==='KeyG'){ e.preventDefault(); cycleStencil(); }
+    else if(e.code==='KeyH' && activeStencil){ e.preventDefault(); cycleSpread(); } });
 
   // ---------- two-colour paint inventory: the leftover can's colour + the full can's colour ----------
   const inv=[]; let activeSlot=0;                 // up to 2 slots: {ci, amt(0..100)}; colorIdx/paint mirror the active slot
@@ -1177,7 +1190,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
             const key=targetKey(o,si);
             if(curKey!==key){ endStroke(); beginStroke(o,si); }
             if(activeStencil && _stPts && _stPts.length){                                          // stencil ON → deposit the mark's dabs (fixed on the face); spray anywhere on it → it fills in
-              for(let k=0;k<10;k++){ const p=_stPts[(Math.random()*_stPts.length)|0]; if(addDab(p[0],p[1],dn)) sprayShapeAt(surf,p[0],p[1],dn); } }
+              const jit=SPREAD_JITTER[stencilSpread]||0;                                              // spread: scatter each dab within a disc (overspray) — recorded, so mint replays it
+              for(let k=0;k<10;k++){ const p=_stPts[(Math.random()*_stPts.length)|0]; let u=p[0], v=p[1];
+                if(jit){ const a=Math.random()*6.2832, r=Math.sqrt(Math.random())*jit; u+=Math.cos(a)*r; v+=Math.sin(a)*r; }
+                if(u<0||u>1||v<0||v>1) continue;                                                       // stay on the face
+                if(addDab(u,v,dn)) sprayShapeAt(surf,u,v,dn); } }
             else if(addDab(shot.uv.x, shot.uv.y, dn)) sprayShapeAt(surf, shot.uv.x, shot.uv.y, dn);   // record + spray on each dab
             materializeShape(o); hasPainted=true;
             o.userData.paintAmt=(o.userData.paintAmt||0)+PAINT_DRAIN;                 // paint-to-earn: ~half-cover a solid shape → a can's pay
