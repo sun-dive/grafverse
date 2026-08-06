@@ -1346,6 +1346,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       r.appendChild(sbtn('↺',()=>rotY(-Math.PI/12))); r.appendChild(sbtn('↻',()=>rotY(Math.PI/12)));
       r.appendChild(sbtn('◣',()=>lean(Math.PI/12)));  r.appendChild(sbtn('◢',()=>lean(-Math.PI/12))); box.appendChild(r);
       const d=document.createElement('div'); d.className='srow'; d.appendChild(sbtn('⎌ reset',resetShape,'wide')); d.appendChild(sbtn('⧉ clone',cloneActive,'wide')); box.appendChild(d);
+      const dl=document.createElement('div'); dl.className='srow'; dl.appendChild(sbtn('🗑 delete', ()=>{ if(activeShape) deleteShape(activeShape); }, 'wide')); box.appendChild(dl);   // remove this object from the world (undoable)
       const bcr=document.createElement('div'); bcr.className='srow'; bcr.style.flexWrap='wrap'; bcr.style.gap='4px';   // base LAYER colour — in-panel swatch grid
       const bcl=document.createElement('span'); bcl.textContent='base'; bcl.style.width='100%'; bcr.appendChild(bcl);
       const curBase=activeShape.userData.base!=null?activeShape.userData.base:0x0c1526, bsw=[];
@@ -2292,6 +2293,12 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(m.userData.surfaces) m.userData.surfaces.forEach(s=>{ if(s&&s.tex) s.tex.dispose(); });
     m.children.forEach(ch=>{ if(ch.geometry) ch.geometry.dispose(); if(ch.material)(Array.isArray(ch.material)?ch.material:[ch.material]).forEach(mt=>mt&&mt.dispose&&mt.dispose()); }); }
   function clearShapes(){ for(const m of bShapes) _disposeShape(m); bShapes.length=0; activeShape=null; heldGhost=null; placeMarker=null; if(placeRing) placeRing.visible=false; setMode(); }
+  function deleteShape(m){                                                  // remove ANY object (solid / crystal / fractal / ghost) from the world — undoable via history
+    if(!m) return; const i=bShapes.indexOf(m); if(i>=0) bShapes.splice(i,1);
+    try{ _disposeShape(m); }catch(_){ try{ scene.remove(m); }catch(__){} }
+    if(activeShape===m) activeShape=null; if(heldGhost===m) heldGhost=null;
+    placeMarker=null; if(placeRing) placeRing.visible=false; setMode(); if(shaping) buildShapeTools(null); scheduleSave();
+  }
   function restoreShapes(shapes){ clearShapes(); (shapes||[]).forEach(addShapeFromData); if(shaping) buildShapeTools(null); }
   function _shapesJSON(){ try{ return JSON.stringify(serializeWorld().shapes); }catch(_){ return _snap; } }
   function recordHistory(){ const s=_shapesJSON(); if(s===_snap) return; if(_snap!=null){ _hist.push(_snap); if(_hist.length>80) _hist.shift(); } _snap=s; _redoStk.length=0; refreshUndo(); }
