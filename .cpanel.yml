@@ -10,8 +10,10 @@ deployment:
     - /bin/cp og.jpg "$DEPLOYPATH"                        # social / link-preview card
     - /bin/cp grafverse-splash.jpg "$DEPLOYPATH"          # entry/splash background (from the #05 hero)
     - /bin/cp -r vendor "$DEPLOYPATH"                     # vendored three.min.js + grafmint.js (offline, no CDN)
-    - /bin/cp -r wallet "$DEPLOYPATH"                     # wallet/immortalize app — TESTING at /wallet/ for now;
-                                                          # real home is the wallet.grafverse.com SUBDOMAIN (key isolation)
+    # WALLET → its OWN isolated subdomain docroot (served ONLY at wallet.grafverse.com, NEVER grafverse.com/wallet/ — key isolation).
+    # Only index.html goes here; it pulls bmf-codec.js / grafmint.js / handoff.php from grafverse.com cross-origin (CORS-allowed).
+    - export WALLETPATH="$HOME/wallet.grafverse.com"     # mirrors $HOME/grafverse.com/ — if cPanel's actual docroot differs, change this ONE path
+    - /bin/mkdir -p "$WALLETPATH" && /bin/cp wallet/index.html "$WALLETPATH/index.html" && echo "wallet → $WALLETPATH/index.html"
     - /bin/cp handoff.php "$DEPLOYPATH"                   # transient game→wallet atom bridge (POST bytes → id → GET)
     - /bin/cp world.php "$DEPLOYPATH"                     # persistent public store for shared FREE worlds (POST .bmf → short id → GET; 12-mo no-view expiry)
     - /bin/cp w.php "$DEPLOYPATH"                         # shareable, crawlable OG/SEO landing page per shared world (→ ./?w=<id>)
