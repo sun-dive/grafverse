@@ -188,9 +188,9 @@
         <input id="mBond" type="number" min="1" step="1" value="1">
         <div class="hint">Locked inside the token (recoverable only by burning it). This <b>is</b> part of your mint cost — 1 keeps it cheapest.</div>
         <label style="display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--ink)">
-          <input type="checkbox" id="mEncrypt" style="width:auto"> Keep private (encrypt the content)
+          <input type="checkbox" id="mEncrypt" style="width:auto" checked> Encrypt the file <span style="opacity:.7">(holders decrypt; an inconvenience, not DRM)</span>
         </label>
-        <div class="hint">Only for owned/private atoms. An <b>open licence needs to stay unencrypted</b> so anyone can pull it from chain for free — the checkbox is ignored for open licences.</div>
+        <div class="hint">Owned/private atoms only. An <b>open licence stays unencrypted</b> so anyone can pull it from chain for free — the checkbox is ignored for open licences.</div>
       </details>
 
       <div class="btnrow" style="margin-top:16px">
