@@ -9,7 +9,9 @@ import { unwrapContentKey, decryptContent } from './contentCrypto.ts'
 import { decompress } from './compress.ts'
 
 // ── licence tiers (see the wallet mint form) — OPEN = free to import (read-only); anything else = rights-reserved (purchase) ──
-const OPEN_LICENSES = new Set(['OPEN-BSV', 'CC0', 'CC0-1.0', 'PD', 'CC-BY-4.0'])
+// Must match the wallet mint form's data-open="1" options. Rights-reserved (COV-ROY-1, our Covenant Royalty Licence) is
+// intentionally absent → open===false → resale/reuse pays the creator; the "Own / remix" acquire offer fires for it.
+const OPEN_LICENSES = new Set(['OPEN-BSV', 'CC0', 'CC0-1.0', 'PD', 'CC-BY-4.0', 'CC-BY-SA-4.0'])
 /** True if an atom may be imported FREE (read-only). Missing/unknown licence defaults permissive (legacy atoms). */
 export function isOpenLicense(code?: string | null): boolean {
   if (code == null || code === '') return true
