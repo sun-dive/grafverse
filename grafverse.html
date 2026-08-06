@@ -55,6 +55,13 @@
   #ownGo:hover{filter:brightness(1.08);}
   #ownX{cursor:pointer;background:none;border:0;color:#7f97bf;font-size:16px;line-height:1;padding:4px 6px;}
   #ownX:hover{color:#dbe8ff;}
+  #worldNameInput{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:8;width:min(48vw,320px);padding:8px 14px;border-radius:20px;border:1px solid rgba(120,170,255,.3);background:rgba(10,20,38,.72);color:#eaf2ff;font:600 13.5px system-ui;text-align:center;outline:none;opacity:0;transition:opacity .3s;pointer-events:none;}
+  #worldNameInput::placeholder{color:#6f88b5;font-weight:500;}
+  #worldNameInput:focus{border-color:#5fd8ff;background:rgba(10,20,38,.94);box-shadow:0 0 0 3px rgba(56,225,255,.12);}
+  body.building #worldNameInput{opacity:.92;pointer-events:auto;}
+  body.shaping #worldNameInput,body.keep #worldNameInput,body.mtalk #worldNameInput{opacity:0!important;pointer-events:none!important;}
+  #worldNameTag{position:fixed;top:13px;left:16px;z-index:7;max-width:44vw;padding:6px 12px;border-radius:10px;background:rgba(10,20,38,.5);color:#eaf2ff;font:700 15px system-ui;text-shadow:0 1px 3px rgba(0,0,0,.7);display:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;}
+  #worldNameTag.show{display:block;}
   #undoBar{position:fixed;left:24px;top:16px;display:none;gap:8px;z-index:7;}
   body.building #undoBar{display:flex;}
   .ubtn{width:40px;height:40px;border-radius:10px;background:rgba(24,46,82,.92);border:1px solid rgba(120,170,255,.45);color:#cfe0ff;font-size:22px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;backdrop-filter:blur(4px);}
@@ -202,6 +209,8 @@
 
 <div id="reticle"></div>
 <div id="hint"></div>
+<input id="worldNameInput" type="text" maxlength="60" placeholder="✎ Name your world…" autocomplete="off" spellcheck="false">
+<div id="worldNameTag"></div>
 
 <div id="meterWrap"><div id="meterLbl">paint</div><div id="meterBar"><div id="meterFill"></div></div></div>
 <div id="swatches"></div>
@@ -1518,6 +1527,18 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // ── immortalize: pack the world (binary BMF) → hand off to the wallet to mint (the key never touches the game) ──
   const HANDOFF_URL = 'handoff.php';   // same-origin bridge: POST packed bytes → { id }
   const WORLD_URL   = 'world.php';     // persistent public store for shared FREE worlds → grafverse.com/?w=<id>
+  // ── WORLD NAME — one global label the player sets once; it brands every share (solid/world) and mint. Travels in the local world state; shown top-left, edited top-centre. ──
+  let worldName='';
+  function updateWorldNameUI(){
+    const inp=document.getElementById('worldNameInput'); if(inp && document.activeElement!==inp && inp.value!==worldName) inp.value=worldName;
+    const tag=document.getElementById('worldNameTag'); if(tag){ tag.textContent=worldName; tag.classList.toggle('show', !!worldName.trim()); }
+  }
+  function setWorldName(v){ worldName=(v||'').replace(/[\x00-\x1f\x7f]/g,'').slice(0,60); updateWorldNameUI(); saveWorld(); }
+  function _adoptWorldName(v){ worldName=(v||'').replace(/[\x00-\x1f\x7f]/g,'').slice(0,60); updateWorldNameUI(); }   // on a load: set the name WITHOUT re-saving (the load persists it)
+  { const inp=document.getElementById('worldNameInput');
+    if(inp){ inp.addEventListener('input', ()=>setWorldName(inp.value));
+      ['keydown','keyup','keypress'].forEach(ev=>inp.addEventListener(ev, e=>{ e.stopPropagation(); if(e.code==='Enter') inp.blur(); }));   // typing must NOT trigger game keybinds (colours, G, etc.)
+      ['mousedown','click','touchstart','pointerdown'].forEach(ev=>inp.addEventListener(ev, e=>e.stopPropagation())); } }   // clicking to edit must not grab pointer-lock / place a shape
   const WALLET_URL  = (function(){ var h=location.hostname; if(!h || h.indexOf('.')<0 || /^(localhost|127\.|10\.|192\.168\.|\[)/.test(h)) return 'wallet/'; return location.protocol+'//wallet.'+h.replace(/^www\./,'')+'/'; })();   // production → wallet.<domain> subdomain (key isolation); dev/local → same-origin subfolder
   function myPubKey(){ try{ var m=document.cookie.match(/(?:^|;\s*)gvpub=([0-9a-fA-F]+)/); if(m&&m[1]) return m[1]; }catch(_){} try{ return localStorage.getItem('grafverse-mypub')||''; }catch(_){ return ''; } }   // wallet's PUBLIC key: cross-subdomain cookie, else same-origin localStorage
   // pack the live world to packed BMF bytes — the ONE source of truth for both mint + download. Returns {bytes} or {err}.
@@ -1595,7 +1616,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const coverB64 = captureCoverWebP();                         // capture NOW, before we navigate away to the wallet
     showHint('Handing your solid to the wallet to mint…');
     try{
-      const res = await fetch(HANDOFF_URL+'?name='+encodeURIComponent(meta.title)+'&desc='+encodeURIComponent(meta.desc), { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: bytesToB64(p.bytes) });
+      const res = await fetch(HANDOFF_URL+'?name='+encodeURIComponent(worldName||meta.title)+'&desc='+encodeURIComponent(meta.desc), { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: bytesToB64(p.bytes) });
       const data = await res.json().catch(()=>({}));
       if(!res.ok || !data.id) throw new Error(data.error || ('HTTP '+res.status));
       let coverParam='';
@@ -1621,8 +1642,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const p=packSoloBytes(m); if(p.err){ showHint(p.err); return; }
     showHint('Making your share link…');
     try{
-      const u=m.userData, obj=(LABELS[u.type]||u.type||'creation');                          // per-share OG card: name + description + wide cover
-      const name='Hand-painted '+obj, desc='A hand-painted '+obj+' you can walk up to, remix, and own — made in grafverse. Owned, not claimed.';
+      const u=m.userData, obj=(LABELS[u.type]||u.type||'creation');                          // per-share OG card: name (world name if set) + description + wide cover
+      const name=worldName||('Hand-painted '+obj), desc=(worldName?('“'+worldName+'” — a'):'A')+' hand-painted '+obj+' you can walk up to, remix, and own — made in grafverse. Owned, not claimed.';
       const cover=captureShareCover();                                                        // snapshot NOW (renders) — before any await
       const env=JSON.stringify({ bmf:bytesToB64(p.bytes), cover:cover||undefined, name, desc, type:'s' });
       const res=await fetch(WORLD_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: env });   // text/plain → no CORS preflight; world.php json_decodes it
@@ -1651,7 +1672,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       let coverParam='';
       if(coverB64){ try{ const cr=await fetch(HANDOFF_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: coverB64 }); const cd=await cr.json().catch(()=>({})); if(cr.ok && cd.id) coverParam='&cover='+encodeURIComponent(cd.id); }catch(_){} }
       const ret = location.origin + location.pathname;
-      location.href = WALLET_URL + '?bundle=' + encodeURIComponent(data.id) + coverParam + '&return=' + encodeURIComponent(ret);
+      const nameParam = worldName ? ('&name='+encodeURIComponent(worldName)) : '';   // brand the world mint with the player's world name
+      location.href = WALLET_URL + '?bundle=' + encodeURIComponent(data.id) + coverParam + nameParam + '&return=' + encodeURIComponent(ret);
     }catch(e){ _kNote().textContent='Handoff failed: '+(e.message||e)+'. (Is handoff.php deployed?)'; }
   });
   // ── save to file: pack the world → write a .bmf file (local, so a scene round-trips entirely in the browser) ──
@@ -1673,7 +1695,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     try{
       const bytes=Array.from(new Uint8Array(await f.arrayBuffer()));
       let dec; try{ dec=BMF.scene.unpack(bytes); }catch(_){ dec=null; }
-      setMyShare('');                                                          // loaded a different world → a later Share makes a NEW link (a fork), never overwrites your previous share
+      setMyShare(''); _adoptWorldName('');                                     // loaded a different world → a later Share makes a NEW link (a fork), never overwrites your previous share; starts unnamed
       if(dec && dec.members && dec.members.length){ await fileAcquire(bytes, dec.members.length, f.name); }   // owned paint refs → the wallet checks ownership + acquires the missing → reassemble on return
       else { const additive=!(dec.ground&&dec.ground.length) && bShapes.length>0; const r=importScene(bytes, additive); _kNote().textContent=(additive?'Imported ':'Loaded ')+r.shapes+' free shape'+(r.shapes===1?'':'s')+(additive?' into your world':(r.ground?' + ground':''))+' from '+f.name+'.'; }   // no-ground file (a solo) while you're in a world → ADD it · a world → load (replace)
     }catch(err){ _kNote().textContent='Load failed: '+(err.message||err)+' (not a valid .bmf scene?)'; }
@@ -1740,6 +1762,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function restoreWorldData(data){                                 // rebuild a snapshotted world into the scene (mirrors loadWorld, from a given snapshot)
     clearShapes();
     pctx.clearRect(0,0,TEX,TEX); paintTex.needsUpdate=true; groundStrokes.length=0;
+    _adoptWorldName(data.name||'');                                    // a snapshot (back-stack) carries its name
     _provenance=Array.isArray(data.prov)?data.prov:[];
     (data.shapes||[]).forEach(addShapeFromData);
     (data.ground||[]).forEach(stroke=>{ colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0; for(const d of stroke.dabs) spray({x:d[0], y:d[1]}); groundStrokes.push(stroke); });
@@ -1812,7 +1835,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const dec=BMF.scene.unpack(atom.bytes);
       const r = (dec.members&&dec.members.length) ? await importMembersWorld(dec, GM, provider)   // a MEMBERS world → fetch each owned paint atom
                                                   : importScene(atom.bytes);                       // an inline scene (single-atom world)
-      _provenance=[txid]; saveWorld(); unlockBuild(true); setMyShare('');   // a chain-loaded world → Share creates a fresh link (you don't hold its edit token)   // you loaded a world → drop straight into it, build-ready (paint kit + manifest live)                             // this world now DERIVES from `txid` (its immediate parent) → recorded at mint
+      _provenance=[txid]; _adoptWorldName(''); saveWorld(); unlockBuild(true); setMyShare('');   // a chain-loaded world → Share creates a fresh link (you don't hold its edit token)   // you loaded a world → drop straight into it, build-ready (paint kit + manifest live)                             // this world now DERIVES from `txid` (its immediate parent) → recorded at mint
       _kNote().textContent=(owned?'Purchased & loaded ':'Loaded ')+r.shapes+(r.members?' owned paint atom'+(r.members===1?'':'s'):' shape'+(r.shapes===1?'':'s'))+(r.ground?' + ground':'')+' from chain.';
     }catch(e){ _kNote().textContent='Load from chain failed: '+(e.message||e); }
   }
@@ -1861,8 +1884,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     _kNote().textContent = editing ? 'Saving & updating your link…' : 'Saving & making your share link…';
     try{
       const cover=captureShareCover();                                                        // wide JPEG snapshot for the social card (renders — before any await)
-      const env=JSON.stringify({ bmf:bytesToB64(p.bytes), cover:cover||undefined, name:'A grafverse world',
-        desc:'A hand-painted 3D world — explore it free in your browser, paint on it, and own what you make. Owned, not claimed.', type:'w' });
+      const env=JSON.stringify({ bmf:bytesToB64(p.bytes), cover:cover||undefined, name:(worldName||'A grafverse world'),
+        desc:(worldName?('“'+worldName+'” — a'):'A')+' hand-painted 3D world — explore it free in your browser, paint on it, and own what you make. Owned, not claimed.', type:'w' });
       const u = editing ? (WORLD_URL+'?id='+encodeURIComponent(cur)+'&edit='+encodeURIComponent(shares[cur])) : WORLD_URL;
       const res=await fetch(u, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: env });   // text/plain → no CORS preflight; world.php json_decodes the envelope
       const data=await res.json().catch(()=>({}));
@@ -1876,6 +1899,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   async function openSharedWorld(id){                                     // opened via ?w=<id> — fetch the shared world + drop the visitor into it
     _welcomeBack();                                                       // splash → one tap → in the world, build-ready
     const shares=sharesGet(); setMyShare(shares[id]?id:'');               // YOUR shared world → Share = update · someone else's → editing forks to a NEW link
+    _adoptWorldName('');                                                  // a loaded world starts unnamed (its name lives on the share card, not in the .bmf) — rename to re-brand
     try{
       const r=await fetch(WORLD_URL+'?id='+encodeURIComponent(id)); if(!r.ok) throw new Error('HTTP '+r.status);
       const bytes=Array.from(new Uint8Array(await r.arrayBuffer()));
@@ -2371,7 +2395,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   function serializeWorld(){
     const shapes=[]; for(const m of bShapes){ const rec=shapeToSave(m); if(rec) shapes.push(rec); }
-    return { v:2, ground:groundStrokes, shapes, prov:_provenance };
+    return { v:2, ground:groundStrokes, shapes, prov:_provenance, name:worldName||undefined };
   }
   function saveWorld(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(serializeWorld())); }catch(e){} recordHistory(); }
   let _saveT=null;
@@ -2410,6 +2434,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function loadWorld(){
     let data; try{ data=JSON.parse(localStorage.getItem(SAVE_KEY)||'null'); }catch(e){ data=null; }
     if(!data) return;
+    _adoptWorldName(data.name||'');                                    // restore the world's name across reloads
     _provenance=Array.isArray(data.prov)?data.prov:[];                 // restore fork lineage across reloads
     (data.shapes||[]).forEach(addShapeFromData);
     (data.ground||[]).forEach(stroke=>{

@@ -608,7 +608,7 @@ const PARENT = window.GV_PARENT || '..';   // parent-origin base: '..' same-orig
     try{
       const r=await fetch(PARENT+'/handoff.php?id='+encodeURIComponent(id)); if(!r.ok) throw 0;
       const d=await r.json(); _bundle=JSON.parse(new TextDecoder().decode(new Uint8Array(d.bytes)));
-      if(!$('mName').value) $('mName').value='grafverse world';
+      const bn=(params.get('name')||'').trim(); $('mName').value = bn || $('mName').value || 'grafverse world';   // brand the world mint with the game's world name (player can still edit)
       $('testRow').classList.add('hidden'); $('mintForm').classList.remove('hidden');
       $('mintBtn').style.display='none'; $('mintCost').textContent='';   // the bundle has its own per-layer + world mint buttons
       renderBundle();
