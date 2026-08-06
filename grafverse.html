@@ -289,7 +289,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   const REST_ANGLE = 0.60, SLIDE_G = 22, SLIDE_FRIC = 0.94, AIR_FRIC = 0.995;
   const WET_REST = 0.42, WET_FRIC = 0.985;   // WET paint = slippier: slips at a gentler angle (~24°) + slides further
   const GROUND = 500;          // ground plane size (units)
-  const TEX = 2048;            // paint canvas resolution
+  const TEX = window.matchMedia('(pointer: coarse)').matches ? 1024 : 2048;   // ground paint res — mobile halves it (¼ the memory; lossless for mints, ground is stored as strokes)
   const PAINT_DRAIN = 0.22;    // per frame while spraying
   const CAN_POS = new THREE.Vector3(0, 0.35, -9);      // first can, a few steps ahead
   const MACHINE_POS = new THREE.Vector3(3, 0, -26);    // the glowing box in the (nearer) distance
@@ -300,8 +300,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
 
   // ---------- renderer / scene / camera ----------
   const app = document.getElementById('app');
-  const renderer = new THREE.WebGLRenderer({ antialias:true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const renderer = new THREE.WebGLRenderer({ antialias:!MOBILE, powerPreference:'high-performance' });   // mobile: skip MSAA (big fill-rate saving)
+  renderer.setPixelRatio(Math.min(devicePixelRatio, MOBILE ? 1.5 : 2));                                   // mobile: render fewer pixels (dpr is often 2.5–3 → huge saving); still crisp
   renderer.setSize(innerWidth, innerHeight);
   app.appendChild(renderer.domElement);
 
@@ -2180,7 +2180,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // ceiling just caps a single runaway face. Brush sizes stay in TEXELS → a constant world-size brush across every face.
   // (True map-scale optimum, for the per-face-panel pass: one ATLAS texture per object — 1 material / 1 draw call —
   //  memory = object area × D², with faces as sub-rects. This per-surface version is the stepping stone.)
-  const TEXEL_D=731, TEX_MIN=64, TEX_MAX=1024;   // texels/world-unit · floor · ceiling (a 1.4-unit face → 1024, as before)
+  const TEXEL_D=731, TEX_MIN=64, TEX_MAX=(MOBILE?512:1024);   // texels/world-unit · floor · ceiling. MOBILE caps faces at 512² (¼ the texture memory per face) — LOSSLESS for mints (paint is stored as strokes, replayed at any resolution)
   function paintCanvas(dim){ const c=document.createElement('canvas'); c.width=c.height=dim; return c; }
   const _pa=new THREE.Vector3(),_pb=new THREE.Vector3(),_pc=new THREE.Vector3(),_pab=new THREE.Vector3(),_pac=new THREE.Vector3();
   function surfaceAreas(geo){                                      // total triangle area per materialIndex (local space)
