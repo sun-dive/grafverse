@@ -1582,12 +1582,15 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const nNew=plan.toMint.length, nRef=plan.members.length, nFree=plan.freeShapes.length;
     _kNote().textContent='Bundling '+nNew+' new paint layer'+(nNew===1?'':'s')+(nRef?(' + '+nRef+' owned'):'')+(nFree?(' + '+nFree+' free shape'+(nFree===1?'':'s')):'')+' — handing to your wallet…';
     const body = btoa(unescape(encodeURIComponent(JSON.stringify(pkg))));      // base64(JSON), utf8-safe (like the single-atom path)
+    const coverB64 = captureCoverWebP();                                       // snapshot the world AS SEEN → the manifest's storefront cover (wallet thumbnail + NFT.sale)
     try{
       const res = await fetch(HANDOFF_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body });
       const data = await res.json().catch(()=>({}));
       if(!res.ok || !data.id) throw new Error(data.error || ('HTTP '+res.status));
+      let coverParam='';
+      if(coverB64){ try{ const cr=await fetch(HANDOFF_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: coverB64 }); const cd=await cr.json().catch(()=>({})); if(cr.ok && cd.id) coverParam='&cover='+encodeURIComponent(cd.id); }catch(_){} }
       const ret = location.origin + location.pathname;
-      location.href = WALLET_URL + '?bundle=' + encodeURIComponent(data.id) + '&return=' + encodeURIComponent(ret);
+      location.href = WALLET_URL + '?bundle=' + encodeURIComponent(data.id) + coverParam + '&return=' + encodeURIComponent(ret);
     }catch(e){ _kNote().textContent='Handoff failed: '+(e.message||e)+'. (Is handoff.php deployed?)'; }
   });
   // ── save to file: pack the world → write a .bmf file (local, so a scene round-trips entirely in the browser) ──

@@ -650,6 +650,7 @@ const PARENT = window.GV_PARENT || '..';   // parent-origin base: '..' same-orig
     const nFree=(_bundle.freeShapes||[]).length;
     try{
       const res=await G.mintAtom(provider, wallet, { ...bundleOpts(name), bytes:manifest,
+        cover: coverBytes ? { mimeType:'image/webp', fileName:'cover.webp', bytes:coverBytes } : undefined,   // world-view snapshot → storefront cover (wallet thumbnail + NFT.sale)
         confirmSpend:(s)=>confirm('Immortalize “'+name+'” ('+members.length+' owned paint layer'+(members.length===1?'':'s')+(nFree?(' + '+nFree+' free shape'+(nFree===1?'':'s')):'')+') for '+s.toLocaleString()+' sats?') });
       status('World immortalized ✓','ok'); refreshBalance(); showResult(res, name);   // showResult logs + shows collection id + back-to-game
     }catch(e){ const m=e&&e.message||String(e); status(/cancel/i.test(m)?'World mint cancelled.':'World mint failed: '+m,'error'); }
