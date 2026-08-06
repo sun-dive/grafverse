@@ -34,8 +34,9 @@ if ($method === 'POST') {
   if ($len < 4 || $len > 3000000) { http_response_code(413); echo '{"error":"size"}'; exit; } // base64 ≈ 1.33× bytes
   if (!preg_match('#^[A-Za-z0-9+/=\s]+$#', $b64) || base64_decode($b64, true) === false) { http_response_code(400); echo '{"error":"bad payload"}'; exit; }
   $name = isset($_GET['name']) ? substr(preg_replace('/[\x00-\x1f\x7f]/', '', (string)$_GET['name']), 0, 80) : '';
+  $desc = isset($_GET['desc']) ? substr(preg_replace('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/', '', (string)$_GET['desc']), 0, 400) : '';   // keep \t \n \r; strip other control chars
   $id = substr(bin2hex(random_bytes(8)), 0, 12);
-  $rec = json_encode(['name' => $name, 'b64' => $b64, 'ts' => time()]);
+  $rec = json_encode(['name' => $name, 'desc' => $desc, 'b64' => $b64, 'ts' => time()]);
   if (@file_put_contents($dir . '/' . $id . '.json', $rec, LOCK_EX) === false) { http_response_code(500); echo '{"error":"store"}'; exit; }
   echo json_encode(['id' => $id]);
   exit;
@@ -50,4 +51,4 @@ $rec = json_decode(@file_get_contents($f), true);
 if (!is_array($rec) || !isset($rec['b64'])) { http_response_code(500); echo '{"error":"corrupt"}'; exit; }
 $raw = base64_decode($rec['b64'], true);
 if ($raw === false || $raw === '') { http_response_code(500); echo '{"error":"decode"}'; exit; }
-echo json_encode(['bytes' => array_values(unpack('C*', $raw)), 'name' => $rec['name'] ?? '']);
+echo json_encode(['bytes' => array_values(unpack('C*', $raw)), 'name' => $rec['name'] ?? '', 'description' => $rec['desc'] ?? '']);

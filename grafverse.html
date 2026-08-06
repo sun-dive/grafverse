@@ -1500,6 +1500,15 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     try{ return { bytes: BMF.scene.pack({ shapes:inl, members, ground:[], provenance:[] }) }; }   // a ONE-SOLID scene = one Smart NFT
     catch(e){ return { err:'Could not pack the solid.' }; }
   }
+  function soloMeta(m){                                          // default title + description built from the solid's own properties
+    const u=m.userData, obj=(LABELS[u.type]||u.type||'solid'), title='grafverse — '+obj;
+    let mat='plain'; const tx=u.tex; if(tx){ const e=(METALS[tx]||STONES[tx]||WOODS[tx]); if(e&&e.n) mat=e.n; }
+    const bh=(u.base!=null?u.base:0x0c1526), baseHex='#'+('000000'+(bh>>>0).toString(16)).slice(-6);
+    const t=u.target, r=n=>Math.round(n*10)/10, dims=t?(r(t.x)+'×'+r(t.y)+'×'+r(t.z)):'';
+    const bits=[mat, baseHex, dims].filter(Boolean); if(u.bob||u.spin) bits.push('animated');
+    let d=''; try{ d=new Date().toISOString().slice(0,10); }catch(_){} if(d) bits.push(d);   // creation date (YYYY-MM-DD)
+    return { title, desc: title+'\n'+bits.join(' · ') };
+  }
   function captureCoverWebP(){                                   // snapshot the live view (the solid AS SEEN, right now) → base64 WebP, or null
     try{
       renderer.render(scene, camera);                            // fresh frame — must read it THIS tick (preserveDrawingBuffer is off)
@@ -1512,11 +1521,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   async function sellSolo(m){
     const p = packSoloBytes(m); if(p.err){ showHint(p.err); return; }
-    const name = 'Painted '+(LABELS[m.userData.type]||m.userData.type||'solid');
+    const meta = soloMeta(m);
     const coverB64 = captureCoverWebP();                         // capture NOW, before we navigate away to the wallet
     showHint('Handing your solid to the wallet to mint…');
     try{
-      const res = await fetch(HANDOFF_URL+'?name='+encodeURIComponent(name), { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: bytesToB64(p.bytes) });
+      const res = await fetch(HANDOFF_URL+'?name='+encodeURIComponent(meta.title)+'&desc='+encodeURIComponent(meta.desc), { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: bytesToB64(p.bytes) });
       const data = await res.json().catch(()=>({}));
       if(!res.ok || !data.id) throw new Error(data.error || ('HTTP '+res.status));
       let coverParam='';
