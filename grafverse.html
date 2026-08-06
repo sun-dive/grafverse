@@ -58,11 +58,9 @@
   #ownGo:hover{filter:brightness(1.08);}
   #ownX{cursor:pointer;background:none;border:0;color:#7f97bf;font-size:16px;line-height:1;padding:4px 6px;}
   #ownX:hover{color:#dbe8ff;}
-  #worldNameInput{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:8;width:min(48vw,320px);padding:8px 14px;border-radius:20px;border:1px solid rgba(120,170,255,.3);background:rgba(10,20,38,.72);color:#eaf2ff;font:600 13.5px system-ui;text-align:center;outline:none;opacity:0;transition:opacity .3s;pointer-events:none;}
+  #worldNameInput{width:100%;box-sizing:border-box;padding:11px 14px;border-radius:12px;border:1px solid rgba(120,170,255,.45);background:rgba(10,20,38,.85);color:#eaf2ff;font:600 14px system-ui;text-align:center;outline:none;}
   #worldNameInput::placeholder{color:#6f88b5;font-weight:500;}
-  #worldNameInput:focus{border-color:#5fd8ff;background:rgba(10,20,38,.94);box-shadow:0 0 0 3px rgba(56,225,255,.12);}
-  body.building #worldNameInput{opacity:.92;pointer-events:auto;}
-  body.shaping #worldNameInput,body.keep #worldNameInput,body.mtalk #worldNameInput{opacity:0!important;pointer-events:none!important;}
+  #worldNameInput:focus{border-color:#5fd8ff;background:rgba(10,20,38,.96);box-shadow:0 0 0 3px rgba(56,225,255,.12);}
   #worldNameTag{position:fixed;top:13px;left:16px;z-index:7;max-width:44vw;padding:6px 12px;border-radius:10px;background:rgba(10,20,38,.5);color:#eaf2ff;font:700 15px system-ui;text-shadow:0 1px 3px rgba(0,0,0,.7);display:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;}
   #worldNameTag.show{display:block;}
   #undoBar{position:fixed;left:24px;top:16px;display:none;gap:8px;z-index:7;}
@@ -214,7 +212,6 @@
 
 <div id="reticle"></div>
 <div id="hint"></div>
-<input id="worldNameInput" type="text" maxlength="60" placeholder="✎ Name your world…" autocomplete="off" spellcheck="false">
 <div id="worldNameTag"></div>
 
 <div id="meterWrap"><div id="meterLbl">paint</div><div id="meterBar"><div id="meterFill"></div></div></div>
@@ -250,6 +247,7 @@
 <div id="keepTab">◆ keep</div>
 <div id="keepPanel">
   <div class="kh">Your world</div>
+  <input id="worldNameInput" type="text" maxlength="60" placeholder="✎ Name your world…" autocomplete="off" spellcheck="false">
   <div class="kbtn" id="kSave">☁ Save &amp; Share</div>
   <div class="kbtn" id="kReload">↻ Reload world</div>
   <div class="kbtn" id="kExport">📤 Save to File (.bmf)</div>
@@ -1546,7 +1544,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // ---------- top "Keep / Immortalize" HUD — save, reload, and (soon) mint your world ----------
   let keepOpen=false;
   const _kNote=()=>document.getElementById('kNote');
-  function openKeep(){ keepOpen=true; document.body.classList.add('keep'); _kNote().textContent='';
+  function openKeep(){ keepOpen=true; document.body.classList.add('keep'); _kNote().textContent=''; updateWorldNameUI();
     if(!MOBILE) document.exitPointerLock(); }
   function closeKeep(){ keepOpen=false; document.body.classList.remove('keep');
     if(!MOBILE) el.requestPointerLock(); }
