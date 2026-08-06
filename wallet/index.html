@@ -685,6 +685,34 @@ const PARENT = window.GV_PARENT || '..';   // parent-origin base: '..' same-orig
     $('nftScan').innerHTML='✓ Added to your world. <button class="sm" id="goPlace" style="margin-left:6px">▸ Place it now</button>';
     const g=$('goPlace'); if(g) g.onclick=returnToGame;
   }
+  // ── Publish to NFT.sale (1b): REPLICATE a copy of a PAID, eligible atom to the curator (you keep your original) + post an auto listing note. BigRed's cron then lists it. ──
+  const NFTSALE_CURATOR='0225223658d4a5f9f24c4d14985c448ba94dc1cadec9b22448b9c2f7db141d97b8';   // NFT.sale curator public key (listing-page footer) — the listing copy is replicated TO this key
+  const LIST_MIN_HOLDER_SATS=10000, LIST_MIN_HOLDER_PCT=0.05;                                     // anti-spam floors: reseller reward ≥10k sats AND ≥5%
+  function hexBytes(h){ const a=[]; for(let i=0;i+1<h.length;i+=2) a.push(parseInt(h.substr(i,2),16)); return a; }
+  async function publishToNftSale(col, info){
+    if(!wallet || wallet.watchOnly || !wallet.key){ status('Restore your key to publish a listing.','error'); return; }
+    if(info.open){ status('Free (CC0/open) atoms can’t be listed — a listing needs a paid licence.','error'); return; }
+    status('Checking listing eligibility…');
+    try{
+      const tip = await G.resolveHolderEdition(provider, { tx1RefHex: col, holderPubKeyHex: wallet.pubKeyHex, templateCovenantHex: info.covenantScript });
+      if(!tip){ status('Couldn’t find your edition of this collection to list.','error'); return; }
+      const pf=tip.terms.publisherFeeSats||0, hf=tip.terms.holderFeeSats||0, pct=hf/Math.max(1,pf+hf);
+      if(hf < LIST_MIN_HOLDER_SATS || pct < LIST_MIN_HOLDER_PCT){
+        status('Not eligible: the reseller reward must be ≥ '+LIST_MIN_HOLDER_SATS.toLocaleString()+' sats AND ≥ '+(LIST_MIN_HOLDER_PCT*100)+'%. Yours is '+hf.toLocaleString()+' sats / '+(pct*100).toFixed(1)+'%.','error'); return;
+      }
+      if(!confirm('List “'+(info.tokenName||'this')+'” on NFT.sale?\n\nReplicates a copy to the NFT.sale curator (you KEEP your original) and posts the listing. NFT.sale earns the '+hf.toLocaleString()+'-sat reseller reward on each sale it drives; you keep your creator royalty on every sale.')){ status(''); return; }
+      status('Replicating a listing copy to NFT.sale…');
+      const base={ editionTxId:tip.txId, editionOutputIndex:tip.outputIndex, editionLockHex:tip.lockHex, ownerPubKey:hexBytes(NFTSALE_CURATOR),
+        confirmSpend:(s)=>confirm('Replicate the listing copy for '+s.toLocaleString()+' sats? (permanent)') };
+      const rep = tip.isV2 ? await G.replicateEditionV2(provider, wallet.key, base)
+                           : await G.replicateEdition(provider, wallet.key, { ...base, terms:tip.terms });
+      status('Posting the listing…');
+      const tags=['grafverse','handpainted','graffiti','BSV','BMF','ownednotclaimed'];
+      try{ await G.publishSellerNote(provider, wallet.key, col, { heading:(info.tokenName||'grafverse creation').slice(0,80), description:(info.description||'').slice(0,300), tags }); }catch(_){}
+      refreshBalance();
+      status('✓ Listed on NFT.sale — BigRed will surface it on its next scan.','ok');
+    }catch(e){ const m=e&&e.message||String(e); status(/cancel/i.test(m)?'Listing cancelled.':'List failed: '+m,'error'); }
+  }
   function renderNfts(held){
     const list=$('nftList'), groups=new Map();
     held.forEach(e=>{ const k=e.col||e.tx1RefHex||e.txId; const g=groups.get(k); if(g) g.push(e); else groups.set(k,[e]); });
@@ -700,6 +728,10 @@ const PARENT = window.GV_PARENT || '..';   // parent-origin base: '..' same-orig
         if(info.tokenName){ const a=list.querySelector('[data-col="'+col+'"] a'); if(a) a.textContent=info.tokenName+(info.open?'':' 🔒'); }
         if(!_coverCache.get(col) && info.cover && info.cover.bytes && info.cover.bytes.length){    // storefront cover → thumbnail
           try{ const u=URL.createObjectURL(new Blob([new Uint8Array(info.cover.bytes)],{type:info.cover.mimeType||'image/webp'})); _coverCache.set(col,u); setThumb(col,u); }catch(_){}
+        }
+        if(!info.open){                                                                            // PAID atom → offer to publish it to NFT.sale (eligibility floors checked on click)
+          const it=list.querySelector('.nft-item[data-col="'+col+'"]');
+          if(it && !it.querySelector('.nft-list-btn')){ const b=document.createElement('button'); b.className='sm ghost nft-list-btn'; b.style.cssText='flex:0 0 auto'; b.textContent='↗ List'; b.title='Publish to NFT.sale'; b.onclick=()=>publishToNftSale(col, info); it.appendChild(b); }
         }
       }).catch(()=>{});
     }
