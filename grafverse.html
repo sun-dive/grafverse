@@ -799,7 +799,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   { const q=new URLSearchParams(location.search);
     const shared=q.has('w')||q.has('buy')||q.has('bundle')||q.has('acquire')||q.has('minted');
     let seen=false; try{ seen=localStorage.getItem('gv-intro-seen')==='1'; }catch(_){}
-    if(!shared && !seen){ introActive=true; if(machine) machine.visible=false; monolith.visible=true;
+    const forceIntro=q.has('intro');                         // ?intro → always play the cold open (testing aid: bypasses the seen-flag AND cache-busts stale HTML)
+    if(forceIntro || (!shared && !seen)){ introActive=true; if(machine) machine.visible=false; monolith.visible=true;
       if(manifestTool) manifestTool.visible=false; if(mtRing) mtRing.visible=false; startBeacon(); }   // cold open: only the monolith — the conjuring item arrives at the reveal
   }
 
