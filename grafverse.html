@@ -529,6 +529,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   const mtRing = new THREE.Mesh(new THREE.RingGeometry(0.5,0.74,36),
     new THREE.MeshBasicMaterial({ color:0x9a6cff, transparent:true, opacity:.35, side:THREE.DoubleSide, depthWrite:false }));
   mtRing.rotation.x = -Math.PI/2; mtRing.position.set(OBJ2_POS.x, 0.02, OBJ2_POS.z); scene.add(mtRing);
+  let toolHome = OBJ2_POS.clone(), _toolReady=false;   // mutable — the monolith intro re-homes the conjuring item BEHIND the droid at the reveal
 
   // ---------- scavenge can: there is ALWAYS one full can stashed behind the machine (random spot, random colour) ----------
   let scavCan=null, scavRing=null, scavColor=0, scavRespawn=0;
@@ -762,12 +763,19 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     _revealT0=performance.now();
     try{ localStorage.setItem('gv-intro-seen','1'); }catch(_){}
     showIntroCard(); try{ speakMorse('OMG PAINT'); }catch(_){}            // the droid's Morse exclaim — echoes the beacon (full sentence would drone ~18s)
+    // the conjuring item materializes BEHIND the droid — turn around and it's there
+    const _bx=Math.sin(yaw), _bz=Math.cos(yaw), _tx=camera.position.x+_bx*3.6, _tz=camera.position.z+_bz*3.6;
+    toolHome.set(_tx,0.7,_tz); _toolReady=true;
+    if(manifestTool){ manifestTool.position.set(_tx,0.7,_tz); manifestTool.visible=true; manifestTool.scale.setScalar(0.01); }
+    if(mtRing){ mtRing.position.set(_tx,0.02,_tz); mtRing.visible=true; }
+    setTimeout(()=>{ try{ powerup(); }catch(_){} }, 550);                 // the device wakes a beat after the reveal
   }
   monolith=makeMonolith(); monolith.visible=false; scene.add(monolith);
   { const q=new URLSearchParams(location.search);
     const shared=q.has('w')||q.has('buy')||q.has('bundle')||q.has('acquire')||q.has('minted');
     let seen=false; try{ seen=localStorage.getItem('gv-intro-seen')==='1'; }catch(_){}
-    if(!shared && !seen){ introActive=true; if(machine) machine.visible=false; monolith.visible=true; startBeacon(); }   // cold open on the monolith
+    if(!shared && !seen){ introActive=true; if(machine) machine.visible=false; monolith.visible=true;
+      if(manifestTool) manifestTool.visible=false; if(mtRing) mtRing.visible=false; startBeacon(); }   // cold open: only the monolith — the conjuring item arrives at the reveal
   }
 
   // ---------- input ----------
@@ -1427,11 +1435,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     } else if(scavRespawn && performance.now()>scavRespawn){ scavRespawn=0; spawnScav(); }
 
     // manifest tool: the second thing the last droid left — picking it up wakes the builder in you
-    if(manifestTool && hasCan){                                    // only findable once you've got a can in hand
+    if(manifestTool && manifestTool.visible && (hasCan || _toolReady)){   // findable with a can — or once the monolith reveal drops it behind you
       manifestTool.rotation.y += dt*1.0;
-      manifestTool.position.y = OBJ2_POS.y + Math.sin(performance.now()*0.003)*0.09;
+      manifestTool.position.y = toolHome.y + Math.sin(performance.now()*0.003)*0.09;
       mtRing.material.opacity = 0.22 + Math.sin(performance.now()*0.004)*0.12;
-      if(planarDist(OBJ2_POS) < 3.4){
+      if(planarDist(toolHome) < 3.4){
         powerup();
         scene.remove(manifestTool); scene.remove(mtRing); manifestTool=null;
         unlockBuild();                                             // reveals the Manifest HUD + holsters the can
@@ -1505,8 +1513,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     }
     if(_revealT0){                                                         // transform: slab shrinks into the ground as Unit 21 rises
       const p=(performance.now()-_revealT0)/750;
-      if(p<1){ if(monolith) monolith.scale.setScalar(Math.max(0.001,1-p*p)); if(machine) machine.scale.setScalar(Math.min(1,p*1.2)); }
-      else { if(monolith){ monolith.visible=false; monolith.scale.setScalar(1); } if(machine) machine.scale.setScalar(1); _revealT0=0; }
+      if(p<1){ if(monolith) monolith.scale.setScalar(Math.max(0.001,1-p*p)); if(machine) machine.scale.setScalar(Math.min(1,p*1.2)); if(manifestTool&&manifestTool.visible) manifestTool.scale.setScalar(Math.min(1,p*1.2)); }
+      else { if(monolith){ monolith.visible=false; monolith.scale.setScalar(1); } if(machine) machine.scale.setScalar(1); if(manifestTool) manifestTool.scale.setScalar(1); _revealT0=0; }
     }
     nearMachine = !introActive && md < 7;
     if(!greeted && !introActive && md < 7){
