@@ -406,7 +406,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // helper: uv -> canvas px
   function toPx(uv){ return { x: uv.x*TEX, y:(1-uv.y)*TEX }; }
 
-  // spray a glowing splat (additive within the canvas so overlaps go white-hot).
+  // spray a splat (NORMAL blend — paint builds toward its own colour and goes opaque; overlapping layers,
+  // e.g. a stencil stacking 3→2→1, never blow out to white the way additive 'lighter' did).
   // dwell = how long you've lingered on one spot → paint pools & spatters (rewards a confident stroke).
   let lastPx=null, dwell=0;
   let soleColor=null, soleCharge=0;            // wet paint picked up on the soles → tracked footprints
@@ -417,7 +418,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     lastPx={x,y};
     const col = new THREE.Color(COLORS[colorIdx]);
     const cr = (col.r*255)|0, cg=(col.g*255)|0, cb=(col.b*255)|0;
-    pctx.globalCompositeOperation = 'lighter';
+    pctx.globalCompositeOperation = 'source-over';   // ← was 'lighter' (additive → white-hot on overpaint); normal blend builds to the true colour
     const main = (32 + rnd()*8) * (1 + dwell*0.9);   // pools outward when you linger
     const core = 0.55 + dwell*0.35;                          // brighter, wetter core on dwell
     const g = pctx.createRadialGradient(x,y,0, x,y,main);
