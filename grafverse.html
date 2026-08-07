@@ -785,6 +785,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(!introActive) return; introActive=false;
     if(_beacon) _beacon.material.emissiveIntensity=6; if(_beaconLight) _beaconLight.intensity=9;   // the beacon flares
     if(machine){ machine.visible=true; machine.scale.setScalar(0.01); }                            // Unit 21 grows in as the slab shrinks (tween in the loop)
+    if(canPickup) canPickup.visible=true; if(ring) ring.visible=true;                              // the cans return to the world as it wakes
+    if(scavCan) scavCan.visible=true; if(scavRing) scavRing.visible=true;
     _revealT0=performance.now();
     try{ localStorage.setItem('gv-intro-seen','1'); }catch(_){}
     showIntroCard(); try{ speakMorseDroid('OMG PAINT'); }catch(_){}       // the droid's two-tone dialect (full sentence would drone ~18s)
@@ -801,7 +803,10 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     let seen=false; try{ seen=localStorage.getItem('gv-intro-seen')==='1'; }catch(_){}
     const forceIntro=q.has('intro');                         // ?intro → always play the cold open (testing aid: bypasses the seen-flag AND cache-busts stale HTML)
     if(forceIntro || (!shared && !seen)){ introActive=true; if(machine) machine.visible=false; monolith.visible=true;
-      if(manifestTool) manifestTool.visible=false; if(mtRing) mtRing.visible=false; startBeacon(); }   // cold open: only the monolith — the conjuring item arrives at the reveal
+      if(manifestTool) manifestTool.visible=false; if(mtRing) mtRing.visible=false;
+      if(canPickup) canPickup.visible=false; if(ring) ring.visible=false;                 // pure void: no cans in sight —
+      if(scavCan) scavCan.visible=false; if(scavRing) scavRing.visible=false;             // only the monolith and its one beacon
+      startBeacon(); }   // cold open: the conjuring item + the paint cans all arrive at the reveal
   }
 
   // ---------- input ----------
@@ -1113,8 +1118,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     { q:"But why do I paint?", needs:'paint', spend:111, a:WHYPAINT },
     // gated on ACTION: the crystal chip only appears once the droid has CONJURED a crystal (seen.has('crystal')). Unit 21 denies the gates (toes the BGC line).
     { q:"What are these crystals?", flag:'crystal', a:"{{The crystals? Rare and precious, gentlebot|Ah, you cut a crystal}. {Best not conjure too many|Don't cut too many} — {they're unpaintable|no paint'll stick to 'em}, {no real value|worth nothing}.|There are no crystal gates, whatever you've heard. {That kind of chatter gets a droid marked for compaction|Talk like that means trouble, gentlebot}.|{Only solids take paint|Crystals stay ethereal} — {don't waste your time with them|they're just unsolidified matter}.}" },
-    // PINNED practical chip — always easy to reach: what's on the rack right now (lists the live palette)
-    { q:"What colours do you have?", pin:true, colours:true, a:function(){ return "{Let's see now|Well now, gentlebot}, I've got "+COLNAMES.slice(0,-1).join(', ')+" and "+COLNAMES[COLNAMES.length-1]+". {Genuine Bit Graf acrylic — 111 sats a can|111 sats each, finest in the sector}. {Which'll it be|Take your pick}?"; } },
+    // practical chip — ungated (reachable from the first exchange) but NOT pinned, so the openers ("Who are you?" etc.) lead
+    { q:"What colours do you have?", colours:true, a:function(){ return "{Let's see now|Well now, gentlebot}, I've got "+COLNAMES.slice(0,-1).join(', ')+" and "+COLNAMES[COLNAMES.length-1]+". {Genuine Bit Graf acrylic — 111 sats a can|111 sats each, finest in the sector}. {Which'll it be|Take your pick}?"; } },
     // ambient-LORE chips — mobile can't type these topics, so each gets a chip; shown a few at a time via the rotating cap in buildChips. Each reuses its typed RULE (ruleAns) so there's ONE source of the words.
     { q:"Sing me a song",          lore:true, a:ruleAns('sing') },
     { q:"Are you alive?",          lore:true, a:ruleAns('alive') },
@@ -1443,7 +1448,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       if(ph!==stepPhase){ stepPhase=ph; footstep(); if(floorY<0.1) leaveFootprint(px,pz,velX,velZ,ph); } }
 
     // can pickup
-    if(!hasCan){
+    if(!hasCan && !introActive){
       canPickup.rotation.y += dt*1.2;
       canPickup.position.y = 0.35 + Math.sin(performance.now()*0.003)*0.08;
       ring.material.opacity = 0.25 + Math.sin(performance.now()*0.004)*0.12;
@@ -1458,7 +1463,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     }
 
     // scavenge can (free fallback — never let a broke droid get stuck)
-    if(scavCan){
+    if(scavCan && !introActive){
       scavCan.rotation.y += dt*1.4;
       scavCan.position.y = 0.35 + Math.sin(performance.now()*0.0031)*0.08;
       scavRing.material.opacity = 0.25 + Math.sin(performance.now()*0.004)*0.12;
