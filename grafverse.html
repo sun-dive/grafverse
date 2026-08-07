@@ -755,7 +755,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     _stPts=_sampleDark(g,S);
   }
   function _updateSpreadChip(){ const el=document.getElementById('spreadTog'); if(!el) return;   // spread selector shows only while a stencil is active
-    el.textContent='◍ spread '+stencilSpread; el.classList.toggle('show', !!activeStencil); }
+    el.textContent='◍ '+(typeof t==='function'?t('spread'):'spread')+' '+stencilSpread; el.classList.toggle('show', !!activeStencil); }
   function _applyStencil(){ if(activeStencil) buildStencil(activeStencil); else _stPts=null;
     const a=document.getElementById('stencilTog'), b=document.getElementById('stencilTog2');
     if(a) a.classList.toggle('on', activeStencil==='grafverse'); if(b) b.classList.toggle('on', activeStencil==='evidnus');
@@ -812,14 +812,14 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       $('splash').classList.add('hidden');
       reticle.style.opacity=1;
       if(_resumeOnStart) unlockBuild(true);   // returned from the wallet → resume the world, skip the intro
-      showHint(MOBILE ? 'left stick to move  ·  drag anywhere to look' : 'WASD to move  ·  Space to jump  ·  move mouse to look');
+      showHint(MOBILE ? t('hintMoveM') : t('hintMove'));
     }
   }
   function _dropIntoWorld(){                   // a ?w= shared link → land STRAIGHT in the world (no splash tap). The "Enter" click on the OG page is lost on navigation, so audio + pointer-lock still need one gesture on desktop — but there's no separate splash step.
     const sp=$('splash'); if(sp) sp.classList.add('hidden');   // reveal the (already-composited) world
     reticle.style.opacity=1; unlockBuild(true);                // visitor is build-ready (walk free · paint if they like)
     if(MOBILE){ begin(); }                                     // mobile: full control now — no pointer-lock; audio arms on first touch
-    else if(firstStart){ firstStart=false; showHint('Click to look around  ·  WASD to move  ·  Space to jump'); }   // desktop: world's live; first click grabs the mouse + starts audio
+    else if(firstStart){ firstStart=false; showHint(t('hintClick')); }   // desktop: world's live; first click grabs the mouse + starts audio
   }
 
   // ---------- dialogue (typewriter) ----------
@@ -978,7 +978,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   window.GV = window.GV || {};
   window.GV.ruleAns = ruleAns; window.GV.spin = spin;                     // exposed so a lang pack (separate file) can build its own chips
   GV_LANG.en = { RULES, QUESTIONS, FALLBACK, DEFLECT, WHATCOLOUR, COMINGUP, REFUSE, SCAVENGE, TAUNT, COLNAMES,
-    ui:{ splashTag:"You are what you paint. Paint what you are.", splashTag2:"Nothing exists until it's painted.", splashBegin:"Click to begin", splashBeginM:"Tap to begin", splashResume:"↩ Resume last world", splashCreed:"In the covenant we trust" } };
+    ui:{ splashTag:"You are what you paint. Paint what you are.", splashTag2:"Nothing exists until it's painted.", splashBegin:"Click to begin", splashBeginM:"Tap to begin", splashResume:"↩ Resume last world", splashCreed:"In the covenant we trust",
+      worldHdr:"Your world", namePh:"✎ Name your world…", kSave:"☁ Save & Share", kReload:"↻ Reload world", kExport:"📤 Save to File (.bmf)", kImport:"📥 Load from File (.bmf)", kMint:"⬆ Save to Chain", kChain:"⬇ Load from Chain", kBack:"← Back to previous world", kWallet:"👛 Open Wallet — balance & NFTs", kDone:"✓ close",
+      keepTab:"◆ keep", exitBtn:"⏻ Exit", makeTab:"◆ make", spray:"Spray", grab:"Grab", talk:"Talk", own:"Own / remix", spread:"spread",
+      merchTag:"grafverse merch", merchH:"Wear the graffiti.", merchSub:"Grafverse tees, posters & more.", merchCta:"🛍 Shop the merch →", merchTeaser:"👕 Coming soon — wear the world YOU painted.", merchSkip:"No thanks — continue →",
+      hintMove:"WASD to move  ·  Space to jump  ·  move mouse to look", hintMoveM:"left stick to move  ·  drag anywhere to look", hintClick:"Click to look around  ·  WASD to move  ·  Space to jump" } };
   window.GV.registerLang = function(code, pack){ GV_LANG[code] = pack || {}; };   // a lang-<code>.js file calls GV.registerLang('ja', {...})
   let LANG='en', GV_UI={};
   function t(k){ return (GV_UI && GV_UI[k]!=null) ? GV_UI[k] : ((GV_LANG.en.ui && GV_LANG.en.ui[k]!=null) ? GV_LANG.en.ui[k] : k); }   // UI string lookup (step 3 fills each pack's ui{})
@@ -998,6 +1002,15 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     var rb=document.getElementById('resumeBtn'); var rv=val('splashResume'); if(rb && rv!=null) rb.textContent=rv;
     var go=document.querySelector('#splash .go:not(.resume)');
     if(go){ var bv = MOBILE ? (GV_UI.splashBeginM||GV_UI.splashBegin||enui.splashBeginM||enui.splashBegin) : (GV_UI.splashBegin||enui.splashBegin); if(bv!=null) go.textContent=bv; }
+    var setId=function(id,k){ var el=document.getElementById(id); var v=val(k); if(el && v!=null) el.textContent=v; };
+    setSel('#keepPanel .kh','worldHdr');                                             // keep menu
+    ['kSave','kReload','kExport','kImport','kMint','kChain','kBack','kWallet','kDone'].forEach(function(id){ setId(id,id); });
+    var np=document.getElementById('worldNameInput'); var npv=val('namePh'); if(np && npv!=null) np.placeholder=npv;
+    setId('keepTab','keepTab'); setId('exitBtn','exitBtn'); setId('shapeTab','makeTab');   // HUD tabs
+    setId('sprayBtn','spray'); setId('grabBtn','grab'); setId('talkBtn','talk'); setId('ownGo','own');
+    setSel('#exitAd .adtag','merchTag'); setSel('#exitAd h2','merchH'); setSel('#exitAd .adsub','merchSub'); setSel('#exitAd .adteaser','merchTeaser');   // merch ad
+    setId('adShop','merchCta'); setId('adContinue','merchSkip');
+    try{ if(typeof _updateSpreadChip==='function') _updateSpreadChip(); }catch(_){}   // ◍ spread N
   }
   const _langTried={en:true};
   function loadLang(code, done){
