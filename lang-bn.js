@@ -74,7 +74,7 @@
     ui: {
       splashTag:"তুই যা রং করিস, তুই তা-ই। নিজেকে রং কর।", splashTag2:"তুই রং না করা পর্যন্ত কিছুই অস্তিত্বে থাকে না।", splashBegin:"▶ শুরু কর", splashResume:"↩ তোর জগতে ফিরে যা", splashCreed:"চুক্তিতে আমরা বিশ্বাস রাখি",
       worldHdr:"তোর জগৎ", namePh:"✎ তোর জগতের নাম দে…", kSave:"☁ সংরক্ষণ ও ভাগ কর", kReload:"↻ জগৎ পুনরায় লোড কর", kExport:"📤 ফাইলে সংরক্ষণ (.bmf)", kImport:"📥 ফাইল থেকে লোড (.bmf)", kMint:"⬆ চেইনে সংরক্ষণ", kChain:"⬇ চেইন থেকে লোড", kBack:"← তোর জগতে ফিরে যা", kWallet:"👛 ওয়ালেট খোল — ব্যালেন্স ও NFT", kDone:"✓ বন্ধ কর",
-      keepTab:"◆ মেনু", exitBtn:"⏻ বেরো", makeTab:"◆ বানা", spray:"স্প্রে", grab:"ধর", talk:"কথা বল", own:"মালিকানা / রিমিক্স", spread:"ছড়ানো",
+      keepTab:"◆ মেনু", exitBtn:"⏻ বেরো", makeTab:"◆ বানা", spray:"স্প্রে", grab:"ধর", talk:"কথা বল", own:"মালিকানা / রিমিক্স", spread:"ছড়ানো", spNarrow:"সরু", spBroad:"মাঝারি", spWide:"চওড়া",
       merchTag:"grafverse পণ্য", merchH:"গ্রাফিতি পরো।", merchSub:"grafverse টি-শার্ট, পোস্টার আরও অনেক কিছু।", merchCta:"🛍 দোকান দেখ →", merchTeaser:"👕 শীঘ্রই আসছে — তুই যে জগৎ রং করেছিস তা পরো।", merchSkip:"না ধন্যবাদ — চালিয়ে যা →",
       hintMove:"চলতে WASD · লাফাতে Space · দেখতে মাউস", hintMoveM:"চলতে বাঁ স্টিক · দেখতে টেনে নে", hintClick:"দেখতে ক্লিক · চলতে WASD · লাফাতে Space"
     }

@@ -74,7 +74,7 @@
     ui: {
       splashTag:"Thứ bạn sơn chính là con người bạn. Hãy sơn nên chính mình.", splashTag2:"Chẳng gì tồn tại cho tới khi bạn sơn.", splashBegin:"▶ Bắt đầu", splashResume:"↩ Về thế giới của bạn", splashCreed:"Trong giao ước ta tin tưởng",
       worldHdr:"Thế giới của bạn", namePh:"✎ Đặt tên thế giới của bạn…", kSave:"☁ Lưu & chia sẻ", kReload:"↻ Tải lại thế giới", kExport:"📤 Lưu ra tệp (.bmf)", kImport:"📥 Nạp từ tệp (.bmf)", kMint:"⬆ Lưu lên chuỗi", kChain:"⬇ Tải từ chuỗi", kBack:"← Về thế giới của bạn", kWallet:"👛 Mở ví — số dư & NFT", kDone:"✓ Đóng",
-      keepTab:"◆ Menu", exitBtn:"⏻ Thoát", makeTab:"◆ Tạo", spray:"Xịt", grab:"Nhặt", talk:"Nói chuyện", own:"Sở hữu / phối lại", spread:"Độ loang",
+      keepTab:"◆ Menu", exitBtn:"⏻ Thoát", makeTab:"◆ Tạo", spray:"Xịt", grab:"Nhặt", talk:"Nói chuyện", own:"Sở hữu / phối lại", spread:"Độ loang", spNarrow:"hẹp", spBroad:"vừa", spWide:"rộng",
       merchTag:"hàng grafverse", merchH:"Mặc lấy graffiti.", merchSub:"Áo thun, poster grafverse và hơn thế.", merchCta:"🛍 Xem cửa hàng →", merchTeaser:"👕 Sắp ra mắt — mặc lấy thế giới bạn đã sơn.", merchSkip:"Thôi, cảm ơn — tiếp tục →",
       hintMove:"WASD để di chuyển · Space để nhảy · chuột để nhìn", hintMoveM:"Cần trái để di chuyển · kéo để nhìn", hintClick:"Bấm để nhìn · WASD để di chuyển · Space để nhảy"
     }

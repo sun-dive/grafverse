@@ -74,7 +74,7 @@
     ui: {
       splashTag:"O que você pinta é o que você é. Pinte a si mesmo.", splashTag2:"Nada existe até você pintar.", splashBegin:"▶ Começar", splashResume:"↩ Voltar ao seu mundo", splashCreed:"No pacto confiamos",
       worldHdr:"Seu mundo", namePh:"✎ Dê um nome ao seu mundo…", kSave:"☁ Salvar e compartilhar", kReload:"↻ Recarregar mundo", kExport:"📤 Salvar em arquivo (.bmf)", kImport:"📥 Carregar de arquivo (.bmf)", kMint:"⬆ Salvar na cadeia", kChain:"⬇ Carregar da cadeia", kBack:"← Voltar ao seu mundo", kWallet:"👛 Abrir carteira — saldo e NFT", kDone:"✓ Fechar",
-      keepTab:"◆ Menu", exitBtn:"⏻ Sair", makeTab:"◆ Criar", spray:"Borrifar", grab:"Pegar", talk:"Falar", own:"Possuir / remix", spread:"Difusão",
+      keepTab:"◆ Menu", exitBtn:"⏻ Sair", makeTab:"◆ Criar", spray:"Borrifar", grab:"Pegar", talk:"Falar", own:"Possuir / remix", spread:"Difusão", spNarrow:"estreito", spBroad:"médio", spWide:"largo",
       merchTag:"produtos grafverse", merchH:"Vista o grafite.", merchSub:"Camisetas, pôsteres grafverse e mais.", merchCta:"🛍 Ver a loja →", merchTeaser:"👕 Em breve — vista o mundo que você pintou.", merchSkip:"Não, obrigado — continuar →",
       hintMove:"WASD pra mover · Espaço pra pular · mouse pra olhar", hintMoveM:"Analógico esquerdo pra mover · arrasta pra olhar", hintClick:"Clica pra olhar · WASD pra mover · Espaço pra pular"
     }

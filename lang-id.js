@@ -74,7 +74,7 @@
     ui: {
       splashTag:"Yang kamu cat adalah dirimu. Catlah dirimu sendiri.", splashTag2:"Tak ada yang ada sampai kamu mengecat.", splashBegin:"▶ Mulai", splashResume:"↩ Kembali ke duniamu", splashCreed:"Dalam ikrar kita percaya",
       worldHdr:"Duniamu", namePh:"✎ Beri nama duniamu…", kSave:"☁ Simpan & bagikan", kReload:"↻ Muat ulang dunia", kExport:"📤 Simpan ke berkas (.bmf)", kImport:"📥 Muat dari berkas (.bmf)", kMint:"⬆ Simpan ke rantai", kChain:"⬇ Muat dari rantai", kBack:"← Kembali ke duniamu", kWallet:"👛 Buka dompet — saldo & NFT", kDone:"✓ Tutup",
-      keepTab:"◆ Menu", exitBtn:"⏻ Keluar", makeTab:"◆ Buat", spray:"Semprot", grab:"Ambil", talk:"Bicara", own:"Miliki / remix", spread:"Sebaran",
+      keepTab:"◆ Menu", exitBtn:"⏻ Keluar", makeTab:"◆ Buat", spray:"Semprot", grab:"Ambil", talk:"Bicara", own:"Miliki / remix", spread:"Sebaran", spNarrow:"sempit", spBroad:"sedang", spWide:"lebar",
       merchTag:"produk grafverse", merchH:"Kenakan grafiti.", merchSub:"Kaus, poster grafverse, dan lainnya.", merchCta:"🛍 Lihat toko →", merchTeaser:"👕 Segera hadir — kenakan dunia yang kamu cat.", merchSkip:"Tidak, terima kasih — lanjut →",
       hintMove:"WASD untuk gerak · Spasi untuk lompat · mouse untuk melihat", hintMoveM:"Stik kiri untuk gerak · seret untuk melihat", hintClick:"Klik untuk melihat · WASD untuk gerak · Spasi untuk lompat"
     }

@@ -74,7 +74,7 @@
     ui: {
       splashTag:"Lo que pintas es lo que eres. Píntate a ti mismo.", splashTag2:"Nada existe hasta que lo pintas.", splashBegin:"▶ Comenzar", splashResume:"↩ Volver a tu mundo", splashCreed:"En el pacto confiamos",
       worldHdr:"Tu mundo", namePh:"✎ Nombra tu mundo…", kSave:"☁ Guardar y compartir", kReload:"↻ Recargar mundo", kExport:"📤 Guardar en archivo (.bmf)", kImport:"📥 Cargar desde archivo (.bmf)", kMint:"⬆ Guardar en la cadena", kChain:"⬇ Cargar desde la cadena", kBack:"← Volver a tu mundo", kWallet:"👛 Abrir billetera — saldo y NFT", kDone:"✓ Cerrar",
-      keepTab:"◆ Menú", exitBtn:"⏻ Salir", makeTab:"◆ Crear", spray:"Rociar", grab:"Agarrar", talk:"Hablar", own:"Poseer / remix", spread:"Difusión",
+      keepTab:"◆ Menú", exitBtn:"⏻ Salir", makeTab:"◆ Crear", spray:"Rociar", grab:"Agarrar", talk:"Hablar", own:"Poseer / remix", spread:"Difusión", spNarrow:"estrecho", spBroad:"medio", spWide:"ancho",
       merchTag:"productos grafverse", merchH:"Viste el grafiti.", merchSub:"Camisetas, pósters grafverse y más.", merchCta:"🛍 Ver la tienda →", merchTeaser:"👕 Muy pronto — viste el mundo que pintaste.", merchSkip:"No, gracias — continuar →",
       hintMove:"WASD para moverte · Espacio para saltar · ratón para mirar", hintMoveM:"Stick izquierdo para moverte · arrastra para mirar", hintClick:"Clic para mirar · WASD para moverte · Espacio para saltar"
     }

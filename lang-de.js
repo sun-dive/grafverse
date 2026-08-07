@@ -74,7 +74,7 @@
     ui: {
       splashTag:"Was du malst, das bist du. Mal dich selbst.", splashTag2:"Nichts existiert, bis du es malst.", splashBegin:"▶ Beginnen", splashResume:"↩ Zurück zu deiner Welt", splashCreed:"Im Bund vertrauen wir",
       worldHdr:"Deine Welt", namePh:"✎ Benenne deine Welt…", kSave:"☁ Speichern & teilen", kReload:"↻ Welt neu laden", kExport:"📤 In Datei speichern (.bmf)", kImport:"📥 Aus Datei laden (.bmf)", kMint:"⬆ Auf der Kette speichern", kChain:"⬇ Von der Kette laden", kBack:"← Zurück zu deiner Welt", kWallet:"👛 Börse öffnen — Guthaben & NFT", kDone:"✓ Schließen",
-      keepTab:"◆ Menü", exitBtn:"⏻ Verlassen", makeTab:"◆ Erstellen", spray:"Sprühen", grab:"Greifen", talk:"Reden", own:"Besitzen / Remix", spread:"Streuung",
+      keepTab:"◆ Menü", exitBtn:"⏻ Verlassen", makeTab:"◆ Erstellen", spray:"Sprühen", grab:"Greifen", talk:"Reden", own:"Besitzen / Remix", spread:"Streuung", spNarrow:"schmal", spBroad:"mittel", spWide:"breit",
       merchTag:"grafverse Merch", merchH:"Trag das Graffiti.", merchSub:"grafverse T-Shirts, Poster und mehr.", merchCta:"🛍 Zum Shop →", merchTeaser:"👕 Bald — trag die Welt, die du gemalt hast.", merchSkip:"Nein danke — weiter →",
       hintMove:"WASD zum Bewegen · Leertaste zum Springen · Maus zum Umsehen", hintMoveM:"Linker Stick zum Bewegen · ziehen zum Umsehen", hintClick:"Klick zum Umsehen · WASD zum Bewegen · Leertaste zum Springen"
     }

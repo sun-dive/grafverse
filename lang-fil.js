@@ -74,7 +74,7 @@
     ui: {
       splashTag:"Ang pinipinta mo ay kung sino ka. Ipinta mo ang iyong sarili.", splashTag2:"Walang umiiral hangga't hindi mo pinipinta.", splashBegin:"▶ Magsimula", splashResume:"↩ Bumalik sa mundo mo", splashCreed:"Sa kasunduan tayo nananalig",
       worldHdr:"Ang mundo mo", namePh:"✎ Pangalanan ang mundo mo…", kSave:"☁ I-save at ibahagi", kReload:"↻ I-reload ang mundo", kExport:"📤 I-save sa file (.bmf)", kImport:"📥 I-load mula sa file (.bmf)", kMint:"⬆ I-save sa chain", kChain:"⬇ I-load mula sa chain", kBack:"← Bumalik sa mundo mo", kWallet:"👛 Buksan ang wallet — balanse at NFT", kDone:"✓ Isara",
-      keepTab:"◆ Menu", exitBtn:"⏻ Lumabas", makeTab:"◆ Gumawa", spray:"Iwisik", grab:"Kunin", talk:"Makipag-usap", own:"Ariin / remix", spread:"Kalat",
+      keepTab:"◆ Menu", exitBtn:"⏻ Lumabas", makeTab:"◆ Gumawa", spray:"Iwisik", grab:"Kunin", talk:"Makipag-usap", own:"Ariin / remix", spread:"Kalat", spNarrow:"makitid", spBroad:"katamtaman", spWide:"malapad",
       merchTag:"grafverse merch", merchH:"Isuot ang graffiti.", merchSub:"grafverse tees, poster at higit pa.", merchCta:"🛍 Bisitahin ang tindahan →", merchTeaser:"👕 Malapit na — isuot ang mundong ipininta mo.", merchSkip:"Salamat na lang — magpatuloy →",
       hintMove:"WASD para gumalaw · Space para tumalon · mouse para tumingin", hintMoveM:"Kaliwang stick para gumalaw · i-drag para tumingin", hintClick:"I-click para tumingin · WASD para gumalaw · Space para tumalon"
     }

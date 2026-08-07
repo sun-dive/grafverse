@@ -74,7 +74,7 @@
     ui: {
       splashTag:"네가 칠한 것이 곧 너다. 너 자신을 칠하라.", splashTag2:"칠하기 전엔 아무것도 존재하지 않는다.", splashBegin:"▶ 시작하기", splashResume:"↩ 이전 세계로", splashCreed:"계약 안에서 우리는 믿는다",
       worldHdr:"너의 세계", namePh:"✎ 세계 이름 짓기…", kSave:"☁ 저장 & 공유", kReload:"↻ 세계 다시 불러오기", kExport:"📤 파일로 저장 (.bmf)", kImport:"📥 파일에서 불러오기 (.bmf)", kMint:"⬆ 체인에 저장", kChain:"⬇ 체인에서 불러오기", kBack:"← 이전 세계로 돌아가기", kWallet:"👛 지갑 열기 — 잔액 & NFT", kDone:"✓ 닫기",
-      keepTab:"◆ 메뉴", exitBtn:"⏻ 종료", makeTab:"◆ 만들기", spray:"분사", grab:"잡기", talk:"대화", own:"소유 / 리믹스", spread:"번짐",
+      keepTab:"◆ 메뉴", exitBtn:"⏻ 종료", makeTab:"◆ 만들기", spray:"분사", grab:"잡기", talk:"대화", own:"소유 / 리믹스", spread:"번짐", spNarrow:"좁게", spBroad:"중간", spWide:"넓게",
       merchTag:"grafverse 굿즈", merchH:"그래피티를 입어라.", merchSub:"grafverse 티셔츠, 포스터 등.", merchCta:"🛍 굿즈 보러가기 →", merchTeaser:"👕 곧 출시 — 네가 칠한 세계를 입어라.", merchSkip:"괜찮아요 — 계속 →",
       hintMove:"WASD 이동 · 스페이스 점프 · 마우스로 시점", hintMoveM:"왼쪽 스틱 이동 · 드래그로 시점", hintClick:"클릭해서 시점 · WASD 이동 · 스페이스 점프"
     }

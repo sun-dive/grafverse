@@ -74,7 +74,7 @@
     ui: {
       splashTag:"Quod pingis, id es. Te ipsum pinge.", splashTag2:"Nihil exsistit donec id pingas.", splashBegin:"▶ Incipe", splashResume:"↩ Redi ad mundum tuum", splashCreed:"In pacto confidimus",
       worldHdr:"Mundus tuus", namePh:"✎ Nomina mundum tuum…", kSave:"☁ Serva et communica", kReload:"↻ Mundum recarga", kExport:"📤 In tabellam serva (.bmf)", kImport:"📥 E tabella onera (.bmf)", kMint:"⬆ In catena serva", kChain:"⬇ E catena onera", kBack:"← Redi ad mundum tuum", kWallet:"👛 Aperi crumenam — pensum et NFT", kDone:"✓ Claude",
-      keepTab:"◆ Index", exitBtn:"⏻ Exi", makeTab:"◆ Crea", spray:"Asperge", grab:"Cape", talk:"Loquere", own:"Posside / remisce", spread:"Dispersio",
+      keepTab:"◆ Index", exitBtn:"⏻ Exi", makeTab:"◆ Crea", spray:"Asperge", grab:"Cape", talk:"Loquere", own:"Posside / remisce", spread:"Dispersio", spNarrow:"angustus", spBroad:"medius", spWide:"latus",
       merchTag:"merces grafverse", merchH:"Indue graphidem.", merchSub:"grafverse tunicae, tabulae et plura.", merchCta:"🛍 Vise tabernam →", merchTeaser:"👕 Mox — indue mundum quem pinxisti.", merchSkip:"Non, gratias — perge →",
       hintMove:"WASD ut movearis · Spatium ut salias · mus ut spectes", hintMoveM:"Bacillus sinister ut movearis · trahe ut spectes", hintClick:"Preme ut spectes · WASD ut movearis · Spatium ut salias"
     }

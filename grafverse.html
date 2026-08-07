@@ -793,8 +793,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const w=g.measureText('grafverse').width||1; fs=Math.max(10,Math.floor(fs*(S*0.86)/w)); g.font='800 '+fs+'px system-ui,Arial,sans-serif'; g.fillText('grafverse',S/2,S/2); }
     _stPts=_sampleDark(g,S);
   }
+  function _spreadWord(){ const k=stencilSpread===1?'spNarrow':stencilSpread===2?'spBroad':'spWide'; return (typeof t==='function')?t(k):(stencilSpread===1?'narrow':stencilSpread===2?'broad':'wide'); }
   function _updateSpreadChip(){ const el=document.getElementById('spreadTog'); if(!el) return;   // spread selector shows only while a stencil is active
-    el.textContent='◍ '+(typeof t==='function'?t('spread'):'spread')+' '+stencilSpread; el.classList.toggle('show', !!activeStencil); }
+    el.textContent='◍ '+stencilSpread+' '+_spreadWord(); el.classList.toggle('show', !!activeStencil); }   // e.g. "◍ 1 narrow" (localized)
   function _applyStencil(){ if(activeStencil) buildStencil(activeStencil); else _stPts=null;
     const a=document.getElementById('stencilTog'), b=document.getElementById('stencilTog2'), c=document.getElementById('stencilTog3');
     if(a) a.classList.toggle('on', activeStencil==='grafverse'); if(b) b.classList.toggle('on', activeStencil==='evidnus'); if(c) c.classList.toggle('on', activeStencil==='satoshi');
@@ -802,8 +803,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     showHint(activeStencil ? ('▦ '+activeStencil+' stencil ON — spray any solid; it fills in (◍ spread '+stencilSpread+')') : 'stencil off'); }
   function setStencil(kind){ activeStencil=(activeStencil===kind)?null:kind; _applyStencil(); }                 // chip → select/toggle that stencil
   function cycleStencil(){ activeStencil = activeStencil===null?'grafverse':(activeStencil==='grafverse'?'evidnus':(activeStencil==='evidnus'?'satoshi':null)); _applyStencil(); }   // G key → off → grafverse → evidnus → サトシ → off
-  function cycleSpread(){ stencilSpread = stencilSpread>=3?1:stencilSpread+1; _updateSpreadChip();              // H key / chip → 1 crisp → 2 wide → 3 very wide
-    showHint('◍ stencil spread '+stencilSpread+(stencilSpread===1?' — crisp & clear':stencilSpread===2?' — wide':' — very wide (lay this first, overpaint down to 1)')); }
+  function cycleSpread(){ stencilSpread = stencilSpread>=3?1:stencilSpread+1; _updateSpreadChip();              // H key / chip → 1 narrow → 2 broad → 3 wide (lay 3, overpaint 2, finish 1)
+    showHint('◍ '+stencilSpread+' — '+_spreadWord()); }
   { const a=document.getElementById('stencilTog'), b=document.getElementById('stencilTog2'), c=document.getElementById('stencilTog3'), s=document.getElementById('spreadTog');
     if(a){ a.addEventListener('click',()=>setStencil('grafverse')); a.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); setStencil('grafverse'); },{passive:false}); }
     if(b){ b.addEventListener('click',()=>setStencil('evidnus')); b.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); setStencil('evidnus'); },{passive:false}); }
@@ -1021,7 +1022,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   GV_LANG.en = { RULES, QUESTIONS, FALLBACK, DEFLECT, WHATCOLOUR, COMINGUP, REFUSE, SCAVENGE, TAUNT, COLNAMES,
     ui:{ splashTag:"You are what you paint. Paint what you are.", splashTag2:"Nothing exists until it's painted.", splashBegin:"Click to begin", splashBeginM:"Tap to begin", splashResume:"↩ Resume last world", splashCreed:"In the covenant we trust",
       worldHdr:"Your world", namePh:"✎ Name your world…", kSave:"☁ Save & Share", kReload:"↻ Reload world", kExport:"📤 Save to File (.bmf)", kImport:"📥 Load from File (.bmf)", kMint:"⬆ Save to Chain", kChain:"⬇ Load from Chain", kBack:"← Back to previous world", kWallet:"👛 Open Wallet — balance & NFTs", kDone:"✓ close",
-      keepTab:"◆ keep", exitBtn:"⏻ Exit", makeTab:"◆ make", spray:"Spray", grab:"Grab", talk:"Talk", own:"Own / remix", spread:"spread",
+      keepTab:"◆ keep", exitBtn:"⏻ Exit", makeTab:"◆ make", spray:"Spray", grab:"Grab", talk:"Talk", own:"Own / remix", spread:"spread", spNarrow:"narrow", spBroad:"broad", spWide:"wide",
       merchTag:"grafverse merch", merchH:"Wear the graffiti.", merchSub:"Grafverse tees, posters & more.", merchCta:"🛍 Shop the merch →", merchTeaser:"👕 Coming soon — wear the world YOU painted.", merchSkip:"No thanks — continue →",
       hintMove:"WASD to move  ·  Space to jump  ·  move mouse to look", hintMoveM:"left stick to move  ·  drag anywhere to look", hintClick:"Click to look around  ·  WASD to move  ·  Space to jump" } };
   window.GV.registerLang = function(code, pack){ GV_LANG[code] = pack || {}; };   // a lang-<code>.js file calls GV.registerLang('ja', {...})

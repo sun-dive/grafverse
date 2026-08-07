@@ -74,7 +74,7 @@
     ui: {
       splashTag:"Wat je schildert, ben je. Schilder jezelf.", splashTag2:"Niets bestaat tot je het schildert.", splashBegin:"▶ Begin", splashResume:"↩ Terug naar je wereld", splashCreed:"In het verbond vertrouwen wij",
       worldHdr:"Jouw wereld", namePh:"✎ Geef je wereld een naam…", kSave:"☁ Opslaan en delen", kReload:"↻ Wereld herladen", kExport:"📤 Opslaan als bestand (.bmf)", kImport:"📥 Laden uit bestand (.bmf)", kMint:"⬆ Opslaan op keten", kChain:"⬇ Laden van keten", kBack:"← Terug naar je wereld", kWallet:"👛 Portemonnee openen — saldo en NFT", kDone:"✓ Sluiten",
-      keepTab:"◆ Menu", exitBtn:"⏻ Afsluiten", makeTab:"◆ Maken", spray:"Spuiten", grab:"Pakken", talk:"Praten", own:"Bezitten / remix", spread:"Spreiding",
+      keepTab:"◆ Menu", exitBtn:"⏻ Afsluiten", makeTab:"◆ Maken", spray:"Spuiten", grab:"Pakken", talk:"Praten", own:"Bezitten / remix", spread:"Spreiding", spNarrow:"smal", spBroad:"gemiddeld", spWide:"breed",
       merchTag:"grafverse merch", merchH:"Draag de graffiti.", merchSub:"grafverse T-shirts, posters en meer.", merchCta:"🛍 Naar de winkel →", merchTeaser:"👕 Binnenkort — draag de wereld die je schilderde.", merchSkip:"Nee, bedankt — verder →",
       hintMove:"WASD om te bewegen · Spatie om te springen · muis om rond te kijken", hintMoveM:"Linkerstick om te bewegen · sleep om rond te kijken", hintClick:"Klik om te kijken · WASD om te bewegen · Spatie om te springen"
     }

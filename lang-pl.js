@@ -74,7 +74,7 @@
     ui: {
       splashTag:"Czym malujesz, tym jesteś. Zamaluj samego siebie.", splashTag2:"Nic nie istnieje, dopóki tego nie zamalujesz.", splashBegin:"▶ Zacznij", splashResume:"↩ Wróć do swojego świata", splashCreed:"W przymierzu ufamy",
       worldHdr:"Twój świat", namePh:"✎ Nazwij swój świat…", kSave:"☁ Zapisz i udostępnij", kReload:"↻ Wczytaj świat ponownie", kExport:"📤 Zapisz do pliku (.bmf)", kImport:"📥 Wczytaj z pliku (.bmf)", kMint:"⬆ Zapisz na łańcuch", kChain:"⬇ Wczytaj z łańcucha", kBack:"← Wróć do swojego świata", kWallet:"👛 Otwórz portfel — saldo i NFT", kDone:"✓ Zamknij",
-      keepTab:"◆ Menu", exitBtn:"⏻ Wyjdź", makeTab:"◆ Twórz", spray:"Spryskaj", grab:"Chwyć", talk:"Rozmawiaj", own:"Posiądź / remiks", spread:"Rozrzut",
+      keepTab:"◆ Menu", exitBtn:"⏻ Wyjdź", makeTab:"◆ Twórz", spray:"Spryskaj", grab:"Chwyć", talk:"Rozmawiaj", own:"Posiądź / remiks", spread:"Rozrzut", spNarrow:"wąski", spBroad:"średni", spWide:"szeroki",
       merchTag:"produkty grafverse", merchH:"Noś graffiti.", merchSub:"Koszulki, plakaty grafverse i więcej.", merchCta:"🛍 Do sklepu →", merchTeaser:"👕 Wkrótce — noś świat, który namalowałeś.", merchSkip:"Nie, dzięki — dalej →",
       hintMove:"WASD do ruchu · Spacja do skoku · mysz do rozglądania", hintMoveM:"Lewy drążek do ruchu · przeciągnij, by się rozglądać", hintClick:"Kliknij, by patrzeć · WASD do ruchu · Spacja do skoku"
     }

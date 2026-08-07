@@ -74,7 +74,7 @@
     ui: {
       splashTag:"Quello che dipingi è ciò che sei. Dipingi te stesso.", splashTag2:"Niente esiste finché non lo dipingi.", splashBegin:"▶ Inizia", splashResume:"↩ Torna al tuo mondo", splashCreed:"Nel patto confidiamo",
       worldHdr:"Il tuo mondo", namePh:"✎ Dai un nome al tuo mondo…", kSave:"☁ Salva e condividi", kReload:"↻ Ricarica il mondo", kExport:"📤 Salva su file (.bmf)", kImport:"📥 Carica da file (.bmf)", kMint:"⬆ Salva sulla catena", kChain:"⬇ Carica dalla catena", kBack:"← Torna al tuo mondo", kWallet:"👛 Apri portafoglio — saldo e NFT", kDone:"✓ Chiudi",
-      keepTab:"◆ Menu", exitBtn:"⏻ Esci", makeTab:"◆ Crea", spray:"Spruzza", grab:"Prendi", talk:"Parla", own:"Possiedi / remix", spread:"Diffusione",
+      keepTab:"◆ Menu", exitBtn:"⏻ Esci", makeTab:"◆ Crea", spray:"Spruzza", grab:"Prendi", talk:"Parla", own:"Possiedi / remix", spread:"Diffusione", spNarrow:"stretto", spBroad:"medio", spWide:"largo",
       merchTag:"prodotti grafverse", merchH:"Indossa il graffito.", merchSub:"T-shirt, poster grafverse e altro.", merchCta:"🛍 Vai al negozio →", merchTeaser:"👕 Presto — indossa il mondo che hai dipinto.", merchSkip:"No grazie — continua →",
       hintMove:"WASD per muoverti · Spazio per saltare · mouse per guardare", hintMoveM:"Stick sinistro per muoverti · trascina per guardare", hintClick:"Clicca per guardare · WASD per muoverti · Spazio per saltare"
     }

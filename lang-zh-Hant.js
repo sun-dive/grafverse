@@ -74,7 +74,7 @@
     ui: {
       splashTag:"你塗的，就是你。塗出你自己。", splashTag2:"沒塗之前，什麼都不存在。", splashBegin:"▶ 開始", splashResume:"↩ 回到上個世界", splashCreed:"契約之中，我們信之",
       worldHdr:"你的世界", namePh:"✎ 為世界命名…", kSave:"☁ 儲存並分享", kReload:"↻ 重新載入世界", kExport:"📤 儲存成檔案 (.bmf)", kImport:"📥 從檔案載入 (.bmf)", kMint:"⬆ 儲存到鏈上", kChain:"⬇ 從鏈上載入", kBack:"← 回到上個世界", kWallet:"👛 開啟錢包 — 餘額與NFT", kDone:"✓ 關閉",
-      keepTab:"◆ 選單", exitBtn:"⏻ 離開", makeTab:"◆ 製作", spray:"噴漆", grab:"抓取", talk:"對話", own:"擁有 / 改作", spread:"擴散",
+      keepTab:"◆ 選單", exitBtn:"⏻ 離開", makeTab:"◆ 製作", spray:"噴漆", grab:"抓取", talk:"對話", own:"擁有 / 改作", spread:"擴散", spNarrow:"窄", spBroad:"中", spWide:"寬",
       merchTag:"grafverse 周邊", merchH:"把塗鴉穿上身。", merchSub:"grafverse T恤、海報等等。", merchCta:"🛍 逛周邊 →", merchTeaser:"👕 敬請期待 — 把你塗的世界穿上身。", merchSkip:"先不用 — 繼續 →",
       hintMove:"WASD 移動  ·  空白鍵跳躍  ·  滑鼠看四周", hintMoveM:"左搖桿移動  ·  拖曳看四周", hintClick:"點擊看四周  ·  WASD 移動  ·  空白鍵跳躍"
     }

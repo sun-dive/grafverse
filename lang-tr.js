@@ -74,7 +74,7 @@
     ui: {
       splashTag:"Ne boyarsan osun. Kendini boya.", splashTag2:"Sen boyamadıkça hiçbir şey var olmaz.", splashBegin:"▶ Başla", splashResume:"↩ Dünyana dön", splashCreed:"Ahitte güveniriz",
       worldHdr:"Senin dünyan", namePh:"✎ Dünyana ad ver…", kSave:"☁ Kaydet ve paylaş", kReload:"↻ Dünyayı yeniden yükle", kExport:"📤 Dosyaya kaydet (.bmf)", kImport:"📥 Dosyadan yükle (.bmf)", kMint:"⬆ Zincire kaydet", kChain:"⬇ Zincirden yükle", kBack:"← Dünyana dön", kWallet:"👛 Cüzdanı aç — bakiye ve NFT", kDone:"✓ Kapat",
-      keepTab:"◆ Menü", exitBtn:"⏻ Çık", makeTab:"◆ Oluştur", spray:"Püskürt", grab:"Al", talk:"Konuş", own:"Sahiplen / remix", spread:"Yayılım",
+      keepTab:"◆ Menü", exitBtn:"⏻ Çık", makeTab:"◆ Oluştur", spray:"Püskürt", grab:"Al", talk:"Konuş", own:"Sahiplen / remix", spread:"Yayılım", spNarrow:"dar", spBroad:"orta", spWide:"geniş",
       merchTag:"grafverse ürünleri", merchH:"Grafitiyi giy.", merchSub:"grafverse tişörtleri, posterler ve dahası.", merchCta:"🛍 Mağazaya git →", merchTeaser:"👕 Yakında — boyadığın dünyayı giy.", merchSkip:"Hayır, sağ ol — devam →",
       hintMove:"Hareket için WASD · Zıplamak için Boşluk · bakmak için fare", hintMoveM:"Hareket için sol çubuk · bakmak için sürükle", hintClick:"Bakmak için tıkla · Hareket için WASD · Zıplamak için Boşluk"
     }

@@ -74,7 +74,7 @@
     ui: {
       splashTag:"Ce que tu peins, c'est ce que tu es. Peins-toi toi-même.", splashTag2:"Rien n'existe tant que tu ne l'as pas peint.", splashBegin:"▶ Commencer", splashResume:"↩ Retour à ton monde", splashCreed:"Dans le pacte nous croyons",
       worldHdr:"Ton monde", namePh:"✎ Nomme ton monde…", kSave:"☁ Enregistrer & partager", kReload:"↻ Recharger le monde", kExport:"📤 Enregistrer en fichier (.bmf)", kImport:"📥 Charger depuis un fichier (.bmf)", kMint:"⬆ Enregistrer sur la chaîne", kChain:"⬇ Charger depuis la chaîne", kBack:"← Retour à ton monde", kWallet:"👛 Ouvrir le portefeuille — solde & NFT", kDone:"✓ Fermer",
-      keepTab:"◆ Menu", exitBtn:"⏻ Quitter", makeTab:"◆ Créer", spray:"Pulvériser", grab:"Prendre", talk:"Parler", own:"Posséder / remix", spread:"Diffusion",
+      keepTab:"◆ Menu", exitBtn:"⏻ Quitter", makeTab:"◆ Créer", spray:"Pulvériser", grab:"Prendre", talk:"Parler", own:"Posséder / remix", spread:"Diffusion", spNarrow:"fin", spBroad:"moyen", spWide:"large",
       merchTag:"produits grafverse", merchH:"Porte le graffiti.", merchSub:"T-shirts, posters grafverse et plus.", merchCta:"🛍 Voir la boutique →", merchTeaser:"👕 Bientôt — porte le monde que tu as peint.", merchSkip:"Non merci — continuer →",
       hintMove:"WASD pour bouger · Espace pour sauter · souris pour regarder", hintMoveM:"Stick gauche pour bouger · glisser pour regarder", hintClick:"Clique pour regarder · WASD pour bouger · Espace pour sauter"
     }
