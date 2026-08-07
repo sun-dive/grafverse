@@ -70,6 +70,7 @@
       { q:"Bir dünya nasıl yapılır?",  lore:true, a:R('world') },
       { q:"Nasıl paylaşırım?",         lore:true, a:R('share') }
     ],
+    wallet: { wBack:"← Oyuna dön", wWallet:"🔑 Cüzdan", wYourAddr:"Adresin", wWatchOnly:"yalnızca izleme", wCopy:"kopyala", wBalance:"Bakiye", wFund:"＋ Yüklemek için BSV al", wMyNfts:"🎨 NFT’lerim ▾", wSend:"💸 BSV gönder", wSendAddrPh:"alıcının BSV adresi (1…)", wSendAmtPh:"miktar (satoshi)", wSendMax:"tümünü gönder", wSendBtn:"Gönder", wSendHint:"Herhangi bir adrese sıradan bir BSV ödemesi. Para üstü bu cüzdana döner. İmzalama bu sayfada olur — anahtarın burayı asla terk etmez.", wRecovery:"Kurtarma ifadesi — 12 kelime", wReveal:"👁 Göster", wCopyBtn:"Kopyala", wWritten:"✓ Not aldım", wPrivKey:"Özel anahtar (WIF)", wAdvanced:"Gelişmiş — geri yükle, yalnızca izleme, dışa aktar", wRestoreLbl:"12 kelimelik ifade veya WIF anahtarıyla geri yükle", wRestoreBtn:"Cüzdanı geri yükle", wWatchBtn:"Yalnızca izleme (açık anahtar)", wImmortalize:"✦ Ölümsüzleştir", wFooter:"grafspace · Bitcoin SV blok zincirinde" },
     ui: {
       splashTag:"Ne boyarsan osun. Kendini boya.", splashTag2:"Sen boyamadıkça hiçbir şey var olmaz.", splashBegin:"▶ Başla", splashResume:"↩ Dünyana dön", splashCreed:"Ahitte güveniriz",
       worldHdr:"Senin dünyan", namePh:"✎ Dünyana ad ver…", kSave:"☁ Kaydet ve paylaş", kReload:"↻ Dünyayı yeniden yükle", kExport:"📤 Dosyaya kaydet (.bmf)", kImport:"📥 Dosyadan yükle (.bmf)", kMint:"⬆ Zincire kaydet", kChain:"⬇ Zincirden yükle", kBack:"← Dünyana dön", kWallet:"👛 Cüzdanı aç — bakiye ve NFT", kDone:"✓ Kapat",

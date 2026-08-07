@@ -70,6 +70,7 @@
       { q:"জগৎ কীভাবে বানায়?",         lore:true, a:R('world') },
       { q:"কীভাবে ভাগ করব?",           lore:true, a:R('share') }
     ],
+    wallet: { wBack:"← খেলায় ফিরুন", wWallet:"🔑 ওয়ালেট", wYourAddr:"আপনার ঠিকানা", wWatchOnly:"শুধু-দেখা", wCopy:"কপি", wBalance:"ব্যালেন্স", wFund:"＋ ভরার জন্য BSV কিনুন", wMyNfts:"🎨 আমার NFT ▾", wSend:"💸 BSV পাঠান", wSendAddrPh:"প্রাপকের BSV ঠিকানা (1…)", wSendAmtPh:"পরিমাণ (সাতোশি)", wSendMax:"সব পাঠান", wSendBtn:"পাঠান", wSendHint:"যেকোনো ঠিকানায় একটি সাধারণ BSV পেমেন্ট। বাকি টাকা এই ওয়ালেটে ফিরে আসে। সই এই পাতাতেই হয় — আপনার চাবি কখনো এটি ছাড়ে না।", wRecovery:"পুনরুদ্ধার বাক্যাংশ — ১২ শব্দ", wReveal:"👁 দেখান", wCopyBtn:"কপি", wWritten:"✓ লিখে রেখেছি", wPrivKey:"ব্যক্তিগত চাবি (WIF)", wAdvanced:"উন্নত — পুনরুদ্ধার, শুধু-দেখা, রপ্তানি", wRestoreLbl:"১২-শব্দের বাক্যাংশ বা WIF চাবি দিয়ে পুনরুদ্ধার করুন", wRestoreBtn:"ওয়ালেট পুনরুদ্ধার করুন", wWatchBtn:"শুধু-দেখা (পাবলিক চাবি)", wImmortalize:"✦ অমর করুন", wFooter:"grafspace · Bitcoin SV ব্লকচেইনে" },
     ui: {
       splashTag:"তুই যা রং করিস, তুই তা-ই। নিজেকে রং কর।", splashTag2:"তুই রং না করা পর্যন্ত কিছুই অস্তিত্বে থাকে না।", splashBegin:"▶ শুরু কর", splashResume:"↩ তোর জগতে ফিরে যা", splashCreed:"চুক্তিতে আমরা বিশ্বাস রাখি",
       worldHdr:"তোর জগৎ", namePh:"✎ তোর জগতের নাম দে…", kSave:"☁ সংরক্ষণ ও ভাগ কর", kReload:"↻ জগৎ পুনরায় লোড কর", kExport:"📤 ফাইলে সংরক্ষণ (.bmf)", kImport:"📥 ফাইল থেকে লোড (.bmf)", kMint:"⬆ চেইনে সংরক্ষণ", kChain:"⬇ চেইন থেকে লোড", kBack:"← তোর জগতে ফিরে যা", kWallet:"👛 ওয়ালেট খোল — ব্যালেন্স ও NFT", kDone:"✓ বন্ধ কর",

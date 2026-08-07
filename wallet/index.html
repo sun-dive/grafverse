@@ -97,34 +97,35 @@
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <button class="sm ghost" id="backGameTop" style="margin-bottom:10px">← Back to the game</button>
+  <header style="position:relative">
+    <button class="sm ghost" id="backGameTop" style="margin-bottom:10px" data-i18n="wBack">← Back to the game</button>
+    <select id="walletLang" title="Language / 语言 / 言語" style="position:absolute;top:0;right:0;font:inherit;font-size:12px;color:var(--ink);background:rgba(8,14,26,.7);border:1px solid var(--line);border-radius:8px;padding:4px 8px;"><option value="en">English</option><option value="es">Español</option><option value="pt-BR">Português</option><option value="vi">Tiếng Việt</option><option value="id">Bahasa Indonesia</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="it">Italiano</option><option value="ru">Русский</option><option value="tr">Türkçe</option><option value="pl">Polski</option><option value="nl">Nederlands</option><option value="uk">Українська</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="zh-Hant">繁體中文</option><option value="zh-Hans">简体中文</option><option value="th">ไทย</option><option value="fil">Filipino</option><option value="hi">हिन्दी</option><option value="bn">বাংলা</option><option value="la">Latina</option></select>
     <h1>graf<span>space</span> wallet</h1>
     <p>Your key lives here, on its own origin — never on the game or ad pages. <span class="pill">self-custody</span> <span class="pill" id="buildTag" style="opacity:.55">build · mynfts-panel</span></p>
   </header>
 
   <!-- ── WALLET ─────────────────────────────────────────── -->
   <section class="card" id="walletCard">
-    <h2>🔑 Wallet</h2>
-    <div class="row"><span class="k">Your address</span><span class="pill" id="watchPill" hidden>watch-only</span></div>
-    <div class="addr"><span class="mono" id="addr">…</span><button class="sm ghost" id="copyAddr">copy</button></div>
-    <div class="row" style="margin-top:14px"><span class="k">Balance</span>
+    <h2 data-i18n="wWallet">🔑 Wallet</h2>
+    <div class="row"><span class="k" data-i18n="wYourAddr">Your address</span><span class="pill" id="watchPill" hidden data-i18n="wWatchOnly">watch-only</span></div>
+    <div class="addr"><span class="mono" id="addr">…</span><button class="sm ghost" id="copyAddr" data-i18n="wCopy">copy</button></div>
+    <div class="row" style="margin-top:14px"><span class="k" data-i18n="wBalance">Balance</span>
       <span><span class="bal" id="bal">—</span> <button class="sm ghost" id="refreshBal">↻</button></span></div>
     <div class="btnrow" style="margin-top:8px">
-      <button class="gold" id="fundBtn">＋ Buy BSV to fund</button>
-      <button class="sm ghost" id="scanBtn">🎨 My NFTs ▾</button>
+      <button class="gold" id="fundBtn" data-i18n="wFund">＋ Buy BSV to fund</button>
+      <button class="sm ghost" id="scanBtn" data-i18n="wMyNfts">🎨 My NFTs ▾</button>
     </div>
 
     <!-- ── Send BSV — a plain P2PKH payment; recipient box gets a 📷 scan button injected beside it ── -->
     <div id="sendCard" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
-      <div class="row" style="margin:0 0 8px"><span class="k" id="sendLbl">💸 Send BSV</span></div>
-      <input id="sendAddr" placeholder="recipient BSV address (1…)" autocomplete="off" spellcheck="false" data-scan="addr">
+      <div class="row" style="margin:0 0 8px"><span class="k" id="sendLbl" data-i18n="wSend">💸 Send BSV</span></div>
+      <input id="sendAddr" data-i18n-ph="wSendAddrPh" placeholder="recipient BSV address (1…)" autocomplete="off" spellcheck="false" data-scan="addr">
       <div class="btnrow" style="margin-top:8px">
-        <input id="sendAmt" type="number" min="1" step="1" placeholder="amount (sats)" style="flex:2 1 150px">
-        <label style="flex:1 1 90px;display:flex;align-items:center;gap:6px;margin:0;color:var(--dim);font-size:12.5px;white-space:nowrap"><input type="checkbox" id="sendMax" style="width:auto;flex:none"> <span id="sendMaxLbl">send max</span></label>
+        <input id="sendAmt" type="number" min="1" step="1" data-i18n-ph="wSendAmtPh" placeholder="amount (sats)" style="flex:2 1 150px">
+        <label style="flex:1 1 90px;display:flex;align-items:center;gap:6px;margin:0;color:var(--dim);font-size:12.5px;white-space:nowrap"><input type="checkbox" id="sendMax" style="width:auto;flex:none"> <span id="sendMaxLbl" data-i18n="wSendMax">send max</span></label>
       </div>
-      <button class="primary" id="sendBtn" style="margin-top:8px;width:100%">Send</button>
-      <div class="hint" id="sendHint">A plain BSV payment to any address. Change returns to this wallet. Signing happens on this page — your key never leaves it.</div>
+      <button class="primary" id="sendBtn" style="margin-top:8px;width:100%" data-i18n="wSendBtn">Send</button>
+      <div class="hint" id="sendHint" data-i18n="wSendHint">A plain BSV payment to any address. Change returns to this wallet. Signing happens on this page — your key never leaves it.</div>
     </div>
     <!-- My NFTs — floating dropdown window (built in #nftOverlay below) -->
     <div id="nftOverlay" class="nft-overlay hidden">
@@ -140,29 +141,29 @@
       ⚠️ <b>Not backed up yet.</b> Reveal your 12 words below and write them on paper, in order — they're the only way back into this wallet.
     </div>
 
-    <label>Recovery phrase — 12 words</label>
+    <label data-i18n="wRecovery">Recovery phrase — 12 words</label>
     <div class="secret" id="seedField">•••• •••• •••• •••• •••• ••••</div>
     <div class="btnrow" style="margin-top:6px">
-      <button class="sm" id="seedReveal">👁 Reveal</button>
-      <button class="sm" id="seedCopy">Copy</button>
-      <button class="sm cyan hidden" id="seedAck">✓ Written down</button>
+      <button class="sm" id="seedReveal" data-i18n="wReveal">👁 Reveal</button>
+      <button class="sm" id="seedCopy" data-i18n="wCopyBtn">Copy</button>
+      <button class="sm cyan hidden" id="seedAck" data-i18n="wWritten">✓ Written down</button>
     </div>
 
-    <label>Private key (WIF)</label>
+    <label data-i18n="wPrivKey">Private key (WIF)</label>
     <div class="secret" id="wifField">••••••••••••••••••••••••••••</div>
     <div class="btnrow" style="margin-top:6px">
-      <button class="sm" id="wifReveal">👁 Reveal</button>
-      <button class="sm" id="wifCopy">Copy</button>
+      <button class="sm" id="wifReveal" data-i18n="wReveal">👁 Reveal</button>
+      <button class="sm" id="wifCopy" data-i18n="wCopyBtn">Copy</button>
     </div>
     <div class="hint">⚠️ Anyone with these can open your wallet — never share them or paste them anywhere but your own wallet. We can't recover them for you; that's what makes it truly yours.</div>
 
     <details>
-      <summary>Advanced — restore, watch-only, export</summary>
-      <label for="restoreIn">Restore from 12-word phrase or a WIF key</label>
+      <summary data-i18n="wAdvanced">Advanced — restore, watch-only, export</summary>
+      <label for="restoreIn" data-i18n="wRestoreLbl">Restore from 12-word phrase or a WIF key</label>
       <textarea id="restoreIn" placeholder="twelve words …  — or —  L1a2b3c… (WIF)"></textarea>
       <div class="btnrow" style="margin-top:8px">
-        <button class="sm" id="restoreBtn">Restore wallet</button>
-        <button class="sm ghost" id="watchBtn">Watch-only (pubkey)</button>
+        <button class="sm" id="restoreBtn" data-i18n="wRestoreBtn">Restore wallet</button>
+        <button class="sm ghost" id="watchBtn" data-i18n="wWatchBtn">Watch-only (pubkey)</button>
       </div>
       <div class="hint">Restoring replaces the wallet on this device. Your current one is only recoverable from its own phrase — make sure it's backed up first.</div>
     </details>
@@ -170,7 +171,7 @@
 
   <!-- ── IMMORTALIZE / MINT ─────────────────────────────── -->
   <section class="card" id="mintCard">
-    <h2>✦ Immortalize</h2>
+    <h2 data-i18n="wImmortalize">✦ Immortalize</h2>
     <div id="payloadStatus" class="hint">No creation loaded yet.</div>
     <img id="coverPreview" alt="cover snapshot" style="display:none;max-width:200px;width:100%;border-radius:10px;margin:8px auto 4px;box-shadow:0 6px 22px rgba(0,0,0,.45)">
     <div class="btnrow" style="margin-top:8px" id="testRow">
@@ -221,7 +222,7 @@
     <div id="mintResult" class="result hidden" style="margin-top:14px"></div>
   </section>
 
-  <p style="text-align:center;color:var(--dim);font-size:11px">grafspace · on the Bitcoin SV blockchain</p>
+  <p style="text-align:center;color:var(--dim);font-size:11px"><span data-i18n="wFooter">grafspace · on the Bitcoin SV blockchain</span></p>
 </div>
 
 <div id="status"></div>
@@ -846,7 +847,53 @@ const PARENT = window.GV_PARENT || '..';   // parent-origin base: '..' same-orig
     }
   }
 
+  // ── i18n ── the wallet is its own origin, so it carries a compact copy of the game's lang system.
+  //   Translations live in the SAME lang-<code>.js packs the game uses (loaded cross-origin from PARENT),
+  //   under a `wallet:{}` block — one canonical source per language. English is the built-in default.
+  const WEN = {
+    wBack:'← Back to the game', wWallet:'🔑 Wallet', wYourAddr:'Your address', wWatchOnly:'watch-only',
+    wCopy:'copy', wBalance:'Balance', wFund:'＋ Buy BSV to fund', wMyNfts:'🎨 My NFTs ▾',
+    wSend:'💸 Send BSV', wSendAddrPh:'recipient BSV address (1…)', wSendAmtPh:'amount (sats)', wSendMax:'send max',
+    wSendBtn:'Send', wSendHint:'A plain BSV payment to any address. Change returns to this wallet. Signing happens on this page — your key never leaves it.',
+    wRecovery:'Recovery phrase — 12 words', wReveal:'👁 Reveal', wCopyBtn:'Copy', wWritten:'✓ Written down',
+    wPrivKey:'Private key (WIF)', wAdvanced:'Advanced — restore, watch-only, export', wRestoreLbl:'Restore from 12-word phrase or a WIF key',
+    wRestoreBtn:'Restore wallet', wWatchBtn:'Watch-only (pubkey)', wImmortalize:'✦ Immortalize',
+    wFooter:'grafspace · on the Bitcoin SV blockchain',
+  };
+  window.GV = window.GV || {};
+  const GV_LANG = { en:{ wallet:WEN } };
+  GV.registerLang = (code,pack)=>{ GV_LANG[code]=pack||{}; };     // the shared lang-<code>.js packs call this
+  GV.ruleAns = GV.ruleAns || (k=>(()=>''));                        // stubs so a full game dialogue pack loads cleanly here
+  GV.spin = GV.spin || (s=>s);
+  let WLANG='en';
+  function wt(k){ const p=GV_LANG[WLANG]&&GV_LANG[WLANG].wallet; return (p&&p[k]!=null)?p[k]:(WEN[k]!=null?WEN[k]:k); }
+  function applyWalletUI(){
+    document.querySelectorAll('[data-i18n]').forEach(el=>{ const v=wt(el.getAttribute('data-i18n')); if(v!=null) el.textContent=v; });
+    document.querySelectorAll('[data-i18n-ph]').forEach(el=>{ const v=wt(el.getAttribute('data-i18n-ph')); if(v!=null) el.placeholder=v; });
+    document.documentElement.lang=WLANG; const sel=$('walletLang'); if(sel) sel.value=WLANG;
+  }
+  function loadWalletLang(code,done){
+    if(code==='en'||GV_LANG[code]){ done&&done(); return; }
+    const s=document.createElement('script'); s.src=PARENT+'/lang-'+code+'.js'; s.async=true;
+    s.onload=()=>done&&done(); s.onerror=()=>{ done&&done(); };   // graceful: stay English if the pack is missing
+    document.head.append(s);
+  }
+  function setWalletLang(code,persist){
+    loadWalletLang(code,()=>{ WLANG=GV_LANG[code]?code:'en'; applyWalletUI();
+      if(persist!==false){ try{ localStorage.setItem('grafverse-lang',WLANG); }catch(_){} } });
+  }
+  function detectWalletLang(){
+    try{ const sv=localStorage.getItem('grafverse-lang'); if(sv) return sv; }catch(_){}
+    const l=(navigator.language||'en').toLowerCase();
+    if(l.indexOf('zh')===0) return /(tw|hk|mo|hant)/.test(l)?'zh-Hant':'zh-Hans';
+    if(l.indexOf('fil')===0||l.indexOf('tl')===0) return 'fil';
+    const m={es:'es',pt:'pt-BR',vi:'vi',id:'id',fr:'fr',de:'de',it:'it',ru:'ru',tr:'tr',pl:'pl',nl:'nl',uk:'uk',ja:'ja',ko:'ko',th:'th',hi:'hi',bn:'bn',la:'la'};
+    return m[l.slice(0,2)]||'en';
+  }
+  $('walletLang').onchange=e=>setWalletLang(e.target.value,true);
+
   loadWallet();
+  setWalletLang(detectWalletLang(), false);   // detect + apply the wallet's language (English until a pack ships wallet:{})
   $('scanBtn').onclick=toggleNfts;
   $('nftClose').onclick=closeNfts;
   $('nftOverlay').addEventListener('click', e=>{ if(e.target===$('nftOverlay')) closeNfts(); });   // click backdrop to close

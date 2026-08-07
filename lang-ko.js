@@ -70,6 +70,7 @@
       { q:"세계는 어떻게 만들어?",    lore:true, a:R('world') },
       { q:"어떻게 공유해?",          lore:true, a:R('share') }
     ],
+    wallet: { wBack:"← 게임으로 돌아가기", wWallet:"🔑 지갑", wYourAddr:"내 주소", wWatchOnly:"조회 전용", wCopy:"복사", wBalance:"잔액", wFund:"＋ 충전용 BSV 구매", wMyNfts:"🎨 내 NFT ▾", wSend:"💸 BSV 보내기", wSendAddrPh:"받는 사람 BSV 주소 (1…)", wSendAmtPh:"금액 (사토시)", wSendMax:"전액 보내기", wSendBtn:"보내기", wSendHint:"아무 주소로 보내는 일반 BSV 결제입니다. 거스름돈은 이 지갑으로 돌아옵니다. 서명은 이 페이지에서 이뤄지며, 키는 이곳을 절대 떠나지 않습니다.", wRecovery:"복구 문구 — 12단어", wReveal:"👁 표시", wCopyBtn:"복사", wWritten:"✓ 적어 뒀음", wPrivKey:"개인 키 (WIF)", wAdvanced:"고급 — 복원, 조회 전용, 내보내기", wRestoreLbl:"12단어 문구 또는 WIF 키로 복원", wRestoreBtn:"지갑 복원", wWatchBtn:"조회 전용 (공개 키)", wImmortalize:"✦ 불멸로 남기기", wFooter:"grafspace · Bitcoin SV 블록체인 위에서" },
     ui: {
       splashTag:"네가 칠한 것이 곧 너다. 너 자신을 칠하라.", splashTag2:"칠하기 전엔 아무것도 존재하지 않는다.", splashBegin:"▶ 시작하기", splashResume:"↩ 이전 세계로", splashCreed:"계약 안에서 우리는 믿는다",
       worldHdr:"너의 세계", namePh:"✎ 세계 이름 짓기…", kSave:"☁ 저장 & 공유", kReload:"↻ 세계 다시 불러오기", kExport:"📤 파일로 저장 (.bmf)", kImport:"📥 파일에서 불러오기 (.bmf)", kMint:"⬆ 체인에 저장", kChain:"⬇ 체인에서 불러오기", kBack:"← 이전 세계로 돌아가기", kWallet:"👛 지갑 열기 — 잔액 & NFT", kDone:"✓ 닫기",

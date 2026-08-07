@@ -70,6 +70,7 @@
       { q:"怎麼創造世界？",        lore:true, a:R('world') },
       { q:"怎麼分享？",            lore:true, a:R('share') }
     ],
+    wallet: { wBack:"← 返回遊戲", wWallet:"🔑 錢包", wYourAddr:"你的地址", wWatchOnly:"僅檢視", wCopy:"複製", wBalance:"餘額", wFund:"＋ 購買 BSV 儲值", wMyNfts:"🎨 我的 NFT ▾", wSend:"💸 傳送 BSV", wSendAddrPh:"收款人 BSV 地址 (1…)", wSendAmtPh:"金額（聰）", wSendMax:"全部傳送", wSendBtn:"傳送", wSendHint:"一筆傳送到任何地址的普通 BSV 付款。找零會回到這個錢包。簽章在本頁面進行——你的金鑰永遠不會離開這裡。", wRecovery:"復原助記詞 — 12 個字", wReveal:"👁 顯示", wCopyBtn:"複製", wWritten:"✓ 已抄下", wPrivKey:"私鑰（WIF）", wAdvanced:"進階 — 復原、僅檢視、匯出", wRestoreLbl:"用 12 字助記詞或 WIF 金鑰復原", wRestoreBtn:"復原錢包", wWatchBtn:"僅檢視（公鑰）", wImmortalize:"✦ 永久保存", wFooter:"grafspace · 於 Bitcoin SV 區塊鏈" },
     ui: {
       splashTag:"你塗的，就是你。塗出你自己。", splashTag2:"沒塗之前，什麼都不存在。", splashBegin:"▶ 開始", splashResume:"↩ 回到上個世界", splashCreed:"契約之中，我們信之",
       worldHdr:"你的世界", namePh:"✎ 為世界命名…", kSave:"☁ 儲存並分享", kReload:"↻ 重新載入世界", kExport:"📤 儲存成檔案 (.bmf)", kImport:"📥 從檔案載入 (.bmf)", kMint:"⬆ 儲存到鏈上", kChain:"⬇ 從鏈上載入", kBack:"← 回到上個世界", kWallet:"👛 開啟錢包 — 餘額與NFT", kDone:"✓ 關閉",

@@ -70,6 +70,7 @@
       { q:"สร้างโลกยังไง?",            lore:true, a:R('world') },
       { q:"แบ่งปันยังไง?",             lore:true, a:R('share') }
     ],
+    wallet: { wBack:"← กลับสู่เกม", wWallet:"🔑 กระเป๋าเงิน", wYourAddr:"ที่อยู่ของคุณ", wWatchOnly:"ดูอย่างเดียว", wCopy:"คัดลอก", wBalance:"ยอดคงเหลือ", wFund:"＋ ซื้อ BSV เพื่อเติมเงิน", wMyNfts:"🎨 NFT ของฉัน ▾", wSend:"💸 ส่ง BSV", wSendAddrPh:"ที่อยู่ BSV ผู้รับ (1…)", wSendAmtPh:"จำนวน (ซาโตชิ)", wSendMax:"ส่งทั้งหมด", wSendBtn:"ส่ง", wSendHint:"การจ่าย BSV ธรรมดาไปยังที่อยู่ใดก็ได้ เงินทอนกลับมาที่กระเป๋านี้ การเซ็นเกิดขึ้นบนหน้านี้ — กุญแจของคุณไม่เคยออกไปจากที่นี่", wRecovery:"วลีกู้คืน — 12 คำ", wReveal:"👁 แสดง", wCopyBtn:"คัดลอก", wWritten:"✓ จดไว้แล้ว", wPrivKey:"กุญแจส่วนตัว (WIF)", wAdvanced:"ขั้นสูง — กู้คืน, ดูอย่างเดียว, ส่งออก", wRestoreLbl:"กู้คืนด้วยวลี 12 คำหรือกุญแจ WIF", wRestoreBtn:"กู้คืนกระเป๋าเงิน", wWatchBtn:"ดูอย่างเดียว (กุญแจสาธารณะ)", wImmortalize:"✦ ทำให้เป็นอมตะ", wFooter:"grafspace · บนบล็อกเชน Bitcoin SV" },
     ui: {
       splashTag:"สิ่งที่เจ้าพ่น คือสิ่งที่เจ้าเป็น จงพ่นสีตัวเจ้าเอง", splashTag2:"ไม่มีสิ่งใดมีอยู่ จนกว่าเจ้าจะพ่นสีมัน", splashBegin:"▶ เริ่ม", splashResume:"↩ กลับสู่โลกของเจ้า", splashCreed:"ในพันธะเราศรัทธา",
       worldHdr:"โลกของเจ้า", namePh:"✎ ตั้งชื่อโลกของเจ้า…", kSave:"☁ บันทึกและแบ่งปัน", kReload:"↻ โหลดโลกใหม่", kExport:"📤 บันทึกเป็นไฟล์ (.bmf)", kImport:"📥 โหลดจากไฟล์ (.bmf)", kMint:"⬆ บันทึกลงเชน", kChain:"⬇ โหลดจากเชน", kBack:"← กลับสู่โลกของเจ้า", kWallet:"👛 เปิดกระเป๋าเงิน — ยอดคงเหลือและ NFT", kDone:"✓ ปิด",
