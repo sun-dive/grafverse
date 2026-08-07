@@ -15,6 +15,7 @@ deployment:
     # Only index.html goes here; it pulls bmf-codec.js / grafmint.js / handoff.php from grafverse.com cross-origin (CORS-allowed).
     - export WALLETPATH="$HOME/wallet.grafverse.com"     # mirrors $HOME/grafverse.com/ — if cPanel's actual docroot differs, change this ONE path
     - /bin/mkdir -p "$WALLETPATH" && /bin/cp wallet/index.html "$WALLETPATH/index.html" && echo "wallet → $WALLETPATH/index.html"
+    - /bin/cp wallet/jsqr.min.js "$WALLETPATH/jsqr.min.js"    # vendored QR decoder — lazy-loaded same-origin for the 📷 Send-address scanner (jsQR fallback where BarcodeDetector is absent)
     - /bin/cp handoff.php "$DEPLOYPATH"                   # transient game→wallet atom bridge (POST bytes → id → GET)
     - /bin/cp world.php "$DEPLOYPATH"                     # persistent public store for shared FREE worlds (POST .bmf → short id → GET; 12-mo no-view expiry)
     - /bin/cp w.php "$DEPLOYPATH"                         # shareable, crawlable OG/SEO landing page per shared world/solid (→ ./?w=<id>)

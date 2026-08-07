@@ -20,6 +20,11 @@ export { WalletProvider } from './walletProvider.ts'
 // ── high-level mint (grafspace-friendly wrapper) ──
 export { mintAtom } from './mintApi.ts'
 
+// ── plain BSV payment (ordinary P2PKH send to any address; change back to self; signing stays local) ──
+export {
+  sendPayment, buildPaymentTx, gatherPaymentFunding, assertValidAddress, type PaymentTxResult,
+} from './payment.ts'
+
 // ── read-only chain import (no key): txid → embedded payload bytes (gunzipped) + licence gate ──
 export { loadAtomBytes, readCollection, isOpenLicense } from './sceneRead.ts'
 

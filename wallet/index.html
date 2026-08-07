@@ -88,6 +88,11 @@
   .nft-item a{color:var(--ink);text-decoration:none;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .nft-item a:hover{color:var(--cyan);}
   .warn-box{border-color:rgba(255,107,107,.4);background:rgba(255,107,107,.07);}
+  /* 📷 QR scan button + camera modal (recipient box gets a scan button injected beside it) */
+  .scan-row{display:flex;gap:6px;align-items:stretch;}
+  .scan-row>input{flex:1 1 auto;min-width:0;}
+  .scan-btn{flex:none;padding:0 13px;}
+  .qr-scan-video{width:100%;border-radius:10px;background:#000;aspect-ratio:1/1;object-fit:cover;}
 </style>
 </head>
 <body>
@@ -108,6 +113,18 @@
     <div class="btnrow" style="margin-top:8px">
       <button class="gold" id="fundBtn">＋ Buy BSV to fund</button>
       <button class="sm ghost" id="scanBtn">🎨 My NFTs ▾</button>
+    </div>
+
+    <!-- ── Send BSV — a plain P2PKH payment; recipient box gets a 📷 scan button injected beside it ── -->
+    <div id="sendCard" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+      <div class="row" style="margin:0 0 8px"><span class="k" id="sendLbl">💸 Send BSV</span></div>
+      <input id="sendAddr" placeholder="recipient BSV address (1…)" autocomplete="off" spellcheck="false" data-scan="addr">
+      <div class="btnrow" style="margin-top:8px">
+        <input id="sendAmt" type="number" min="1" step="1" placeholder="amount (sats)" style="flex:2 1 150px">
+        <label style="flex:1 1 90px;display:flex;align-items:center;gap:6px;margin:0;color:var(--dim);font-size:12.5px;white-space:nowrap"><input type="checkbox" id="sendMax" style="width:auto;flex:none"> <span id="sendMaxLbl">send max</span></label>
+      </div>
+      <button class="primary" id="sendBtn" style="margin-top:8px;width:100%">Send</button>
+      <div class="hint" id="sendHint">A plain BSV payment to any address. Change returns to this wallet. Signing happens on this page — your key never leaves it.</div>
     </div>
     <!-- My NFTs — floating dropdown window (built in #nftOverlay below) -->
     <div id="nftOverlay" class="nft-overlay hidden">
@@ -237,6 +254,7 @@ const PARENT = window.GV_PARENT || '..';   // parent-origin base: '..' same-orig
     try{ if(wallet.pubKeyHex){ localStorage.setItem('grafverse-mypub', wallet.pubKeyHex);                         // same-origin path
       var rd=location.hostname.replace(/^wallet\./,''); if(rd.indexOf('.')>0) document.cookie='gvpub='+wallet.pubKeyHex+';path=/;max-age=31536000;domain=.'+rd+';samesite=lax'; } }catch(_){}   // cross-subdomain: share the PUBLIC key with the game origin so it can stamp YOU as reseller in a .bmf (the private key never leaves this origin)
     $('watchPill').hidden = !wallet.watchOnly;
+    $('sendCard').style.display = wallet.watchOnly ? 'none' : '';   // watch-only has no key to sign with — hide Send
     // recovery secrets: real values kept in memory, always shown MASKED, re-masked on every (re)load
     realSeed = wallet.watchOnly ? '' : (G.savedMnemonic() || '');
     realWif  = (!wallet.watchOnly && wallet.key) ? wallet.key.toWif() : '';
@@ -292,6 +310,97 @@ const PARENT = window.GV_PARENT || '..';   // parent-origin base: '..' same-orig
     try{ G.saveWatch(raw); $('restoreIn').value=''; loadWallet(); status('Watch-only wallet loaded.','ok'); }
     catch(e){ status('Not a valid public key.','error'); }
   };
+
+  // ── Send BSV ── a plain P2PKH payment via grafmint's G.sendPayment. Signing is LOCAL (wallet.key never leaves
+  //    this origin); only the signed tx is broadcast. Change returns to this wallet.
+  $('sendMax').onchange = ()=>{ $('sendAmt').disabled = $('sendMax').checked; if($('sendMax').checked) $('sendAmt').value=''; };
+  $('sendBtn').onclick = async ()=>{
+    if(wallet.watchOnly || !wallet.key){ status('Watch-only wallet — no private key on this device to sign with.','error'); return; }
+    const to = $('sendAddr').value.trim();
+    const sendMax = $('sendMax').checked;
+    const amt = parseInt($('sendAmt').value, 10);
+    if(!to){ status('Enter a recipient BSV address.','error'); return; }
+    try{ G.assertValidAddress(to); }catch(_){ status('That doesn’t look like a valid BSV address.','error'); return; }
+    if(!sendMax && (!Number.isFinite(amt) || amt < 1)){ status('Enter an amount of at least 1 sat.','error'); return; }
+    const human = sendMax ? 'your ENTIRE balance' : amt.toLocaleString()+' sats';
+    if(!confirm('Send '+human+' to:\n\n'+to+'\n\nThis is final — on-chain payments can’t be reversed.')) return;
+    const btn=$('sendBtn'), old=btn.textContent; btn.disabled=true; btn.textContent='Sending…'; status('Building transaction…');
+    try{
+      const res = await G.sendPayment(provider, wallet.key, { toAddress: to, amountSats: sendMax ? 0 : amt, sendMax });
+      status('Sent '+res.sentSats.toLocaleString()+' sats ✓', 'ok');
+      $('sendAddr').value=''; $('sendAmt').value=''; $('sendMax').checked=false; $('sendAmt').disabled=false;
+      setTimeout(refreshBalance, 1200);   // give the mempool a moment, then reflect the new balance
+    }catch(e){ status('Send failed — '+(e && e.message || e), 'error'); }
+    finally{ btn.disabled=false; btn.textContent=old; }
+  };
+
+  // ── QR scanning (camera) ── ported from Phar Lap. Native BarcodeDetector where available; else lazy-load jsQR.
+  //    A 📷 button is injected beside every input[data-scan]; scanning fills the field (e.g. a recipient address).
+  let jsqrFn=null;
+  async function loadJsqr(){
+    if(jsqrFn!=null) return jsqrFn;
+    try{ await new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='./jsqr.min.js'; s.async=true;
+        s.onload=()=>res(); s.onerror=()=>rej(new Error('load failed')); document.head.append(s); });
+      const g=window.jsQRlib; jsqrFn=(g && g.default) || g || null;
+    }catch(_){ jsqrFn=null; }
+    return jsqrFn;
+  }
+  async function scanQrModal(title){
+    if(!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)){ status('This browser can’t access a camera (needs HTTPS + camera support).','error'); return null; }
+    let stream;
+    try{ stream=await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false }); }
+    catch(_){ status('Camera unavailable — allow camera access (and use HTTPS) to scan.','error'); return null; }
+    const overlay=document.createElement('div'); overlay.className='nft-overlay';
+    overlay.innerHTML='<div class="nft-panel" role="dialog" aria-modal="true" style="width:min(380px,100%)">'
+      +'<div class="nft-head"><span>'+title+'</span><button class="sm ghost qr-close" aria-label="Close">✕</button></div>'
+      +'<video class="qr-scan-video" playsinline muted></video>'
+      +'<div class="hint" style="margin-top:8px">Point the camera at a QR code.</div></div>';
+    document.body.append(overlay);
+    const video=overlay.querySelector('video'); video.srcObject=stream;
+    await video.play().catch(()=>{});
+    const canvas=document.createElement('canvas'); const ctx=canvas.getContext('2d',{willReadFrequently:true});
+    const Detector=window.BarcodeDetector; const detector=Detector?new Detector({formats:['qr_code']}):null;
+    let decode=null;
+    if(!detector){ decode=await loadJsqr(); if(!decode){ stream.getTracks().forEach(t=>t.stop()); overlay.remove(); status('Couldn’t load the QR scanner — check your connection and retry.','error'); return null; } }
+    return new Promise(resolve=>{
+      let done=false;
+      const finish=val=>{ if(done)return; done=true; stream.getTracks().forEach(t=>t.stop()); overlay.remove(); resolve(val); };
+      const cl=overlay.querySelector('.qr-close'); if(cl) cl.addEventListener('click',()=>finish(null));
+      overlay.addEventListener('click',e=>{ if(e.target===overlay) finish(null); });
+      const tick=async()=>{
+        if(done)return;
+        if(video.readyState>=video.HAVE_ENOUGH_DATA && video.videoWidth>0){
+          canvas.width=video.videoWidth; canvas.height=video.videoHeight; ctx.drawImage(video,0,0,canvas.width,canvas.height);
+          try{
+            if(detector){ const codes=await detector.detect(canvas); if(codes.length>0 && codes[0].rawValue){ finish(codes[0].rawValue); return; } }
+            else { const img=ctx.getImageData(0,0,canvas.width,canvas.height); const r=decode(img.data,img.width,img.height,{inversionAttempts:'dontInvert'}); if(r && r.data){ finish(r.data); return; } }
+          }catch(_){}
+        }
+        requestAnimationFrame(()=>tick());
+      };
+      requestAnimationFrame(()=>tick());
+    });
+  }
+  function normalizeScan(kind,text){
+    let s=text.trim();
+    if(kind==='addr') s=s.replace(/^(bitcoin|bitcoinsv|bsv):/i,'').split('?')[0].trim();
+    else if(kind==='pubkey'){ const m=s.match(/[?&#]h=([0-9a-fA-F]{66,130})/); if(m) s=m[1]; }
+    return s;
+  }
+  async function onScanInto(input,kind){
+    const text=await scanQrModal('📷 Scan QR code'); if(text==null) return;
+    input.value=normalizeScan(kind,text); input.dispatchEvent(new Event('input',{bubbles:true})); status('Scanned ✓','ok');
+  }
+  function wireScanButtons(){
+    document.querySelectorAll('input[data-scan]').forEach(input=>{
+      if(input.dataset.scanWired==='1') return; input.dataset.scanWired='1';
+      const btn=document.createElement('button'); btn.type='button'; btn.className='sm ghost scan-btn'; btn.textContent='📷'; btn.title='Scan a QR code';
+      const wrap=document.createElement('div'); wrap.className='scan-row';
+      input.parentNode.insertBefore(wrap,input); wrap.append(input,btn);
+      btn.onclick=()=>onScanInto(input,input.dataset.scan);
+    });
+  }
+  wireScanButtons();
 
   // ── payload (the creation to mint) ──
   let payload = null; // { bytes:number[], name?, description?, est? }
