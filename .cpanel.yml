@@ -19,3 +19,4 @@ deployment:
     - /bin/cp w.php "$DEPLOYPATH"                         # shareable, crawlable OG/SEO landing page per shared world/solid (→ ./?w=<id>)
     - /bin/cp og.php "$DEPLOYPATH"                        # serves a share's rendered 1200×630 OG cover (falls back to og.jpg)
     - /bin/cp bmf-codec.js "$DEPLOYPATH"                  # shared thrifty BMF pack/unpack codec (game packs before mint)
+    - /bin/cp lang-*.js "$DEPLOYPATH"                     # i18n language packs (lang-ja.js, lang-zh-Hant.js, …) lazy-loaded by the game
