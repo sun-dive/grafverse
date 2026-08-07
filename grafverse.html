@@ -720,25 +720,29 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     o.start(on[0][0]); o.stop(t+0.05); _morseOsc=o;
   }
   // the DROID's dialect — TWO-TONE Morse: every symbol EQUAL length, PITCH carries it
-  // (dot = high · dash = a perfect fifth lower, 660:440 = 3:2). Unit 21 grumbles in one tone; the droid sings.
+  // (dot = high · dash = a perfect fifth lower, 660:440 = 3:2). Asian-speech flourish: the FINAL tone is held 4×
+  // (the falling cadence). Unit 21 grumbles in one flat tone; the droid sings. Returns the utterance length in sec.
   function speakMorseDroid(text){
-    if(!morseVoice || !actx) return;
+    if(!morseVoice || !actx) return 0;
     stopMorse();
     if(actx.state==='suspended'){ try{ actx.resume(); }catch(e){} }
-    const chars=(String(text).toUpperCase().match(/[A-Z0-9]/g)||[]).slice(0,24);
-    const u=0.085, HI=660, LO=440;                                 // HI:LO = 3:2 = a perfect fifth
+    const chars=(String(text).toUpperCase().match(/[A-Z0-9]/g)||[]).slice(0,18);   // a chirp, not a drone
+    const u=0.08, HI=660, LO=440;                                  // HI:LO = 3:2 = a perfect fifth
     const seq=[]; let t=actx.currentTime+0.03;
-    for(const ch of chars){ const code=MORSE_TABLE[ch]; if(!code){ t+=u*5; continue; }
+    for(const ch of chars){ const code=MORSE_TABLE[ch]; if(!code){ t+=u*4; continue; }
       for(let j=0;j<code.length;j++){ seq.push([t, u, code[j]==='-'?LO:HI]); t+=u+u*0.9; }   // equal-length symbol + short intra gap
-      t+=u*2; }                                                    // letter gap
-    if(!seq.length) return;
+      t+=u*1.8; }                                                  // letter gap
+    if(!seq.length) return 0;
+    seq[seq.length-1][1] = u*4;                                    // hold the very last tone 4× — the falling cadence
     const o=actx.createOscillator(), g=actx.createGain();
     o.type='sine'; g.gain.value=0.0001; o.connect(g); g.connect(actx.destination);
     for(let k=0;k<seq.length;k++){ const s=seq[k][0], d=seq[k][1], f=seq[k][2];
       o.frequency.setValueAtTime(f, s);
       g.gain.setValueAtTime(0.0001,s); g.gain.exponentialRampToValueAtTime(0.085,s+0.006);
-      g.gain.setValueAtTime(0.085,s+d-0.01); g.gain.exponentialRampToValueAtTime(0.0001,s+d); }
-    o.start(seq[0][0]); o.stop(t+0.05); _morseOsc=o;
+      g.gain.setValueAtTime(0.085,s+d-0.02); g.gain.exponentialRampToValueAtTime(0.0001,s+d); }
+    const last=seq[seq.length-1], end=last[0]+last[1];
+    o.start(seq[0][0]); o.stop(end+0.08); _morseOsc=o;
+    return (end - actx.currentTime) + 0.05;
   }
   { const mt=document.getElementById('morseTog');
     if(mt){ mt.classList.toggle('off', !morseVoice);
@@ -1244,17 +1248,28 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const bye=document.createElement('div'); bye.className='chip'; bye.style.opacity='.7'; bye.textContent='(walk away)';
     bye.addEventListener('click', ()=>leaveTalk(true)); box.appendChild(bye);
   }
+  // the droid ASKS in its two-tone dialect, THEN Unit 21 answers once the chirp finishes (two distinct Morse voices, never overlapping)
+  function askThenReply(qText, replyThunk){
+    let d=0; try{ d=speakMorseDroid(qText)||0; }catch(_){}
+    if(d>0.06) setTimeout(replyThunk, Math.min(d, 2.8)*1000); else replyThunk();
+  }
   function ask(Q){ talkedU21=true; asked.add(Q.q);
     if(Q.buy){                                             // buying a can → colour sub-menu (or the broke brush-off)
-      if(custodial < 111){ speak(spin(brokeReply()),''); buildChips(); return; }
-      speak(spin(WHATCOLOUR),''); buildColourChips(); return;
+      askThenReply(Q.q, ()=>{
+        if(custodial < 111){ speak(spin(brokeReply()),''); buildChips(); return; }
+        speak(spin(WHATCOLOUR),''); buildColourChips();
+      }); return;
     }
     if(Q.colours){                                         // "What colours?" → list them, then show the swatches to pick/buy (shop always one tap away)
-      const raw=(typeof Q.a==='function')?Q.a():Q.a; const line=spin(raw); speak(line,''); absorb(line); buildColourChips(); return;
+      askThenReply(Q.q, ()=>{
+        const raw=(typeof Q.a==='function')?Q.a():Q.a; const line=spin(raw); speak(line,''); absorb(line); buildColourChips();
+      }); return;
     }
-    const raw = (typeof Q.a==='function') ? Q.a() : Q.a;   // answers can be conditional (e.g. broke vs flush)
-    const d=maybeDeflect();                                 // ~1 in 5 → Unit 21 brushes the question off instead of answering (no absorb → doesn't unlock follow-ups)
-    const line=d||spin(raw); speak(line,''); if(!d) absorb(line); buildChips(); }
+    askThenReply(Q.q, ()=>{
+      const raw = (typeof Q.a==='function') ? Q.a() : Q.a;   // answers can be conditional (e.g. broke vs flush)
+      const d=maybeDeflect();                                 // ~1 in 5 → Unit 21 brushes the question off instead of answering (no absorb → doesn't unlock follow-ups)
+      const line=d||spin(raw); speak(line,''); if(!d) absorb(line); buildChips();
+    }); }
   function buildColourChips(){                             // the "What colour?" sub-menu
     const box=$('chips'); box.innerHTML='';
     COLORS.forEach((c,i)=>{ const b=document.createElement('div'); b.className='chip';
@@ -1283,7 +1298,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }                                                       // note: talking is OPTIONAL — the FULL can behind the machine is what unlocks the kit, not conversation
   chatInput.addEventListener('keydown', e=>{
     e.stopPropagation();
-    if(e.code==='Enter'){ const v=chatInput.value.trim(); if(!v) return; const res=respond(v); speak(res.reply,''); chatInput.value=''; if(res.bye) setTimeout(()=>leaveTalk(false),1500); }
+    if(e.code==='Enter'){ const v=chatInput.value.trim(); if(!v) return; chatInput.value='';
+      askThenReply(v, ()=>{ const res=respond(v); speak(res.reply,''); if(res.bye) setTimeout(()=>leaveTalk(false),1500); }); }
     else if(e.code==='Escape'){ leaveTalk(true); }
   });
 
