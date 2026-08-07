@@ -32,6 +32,10 @@
   #reticle{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;
            border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 0 6px #fff;
            pointer-events:none;opacity:0;transition:opacity .3s;}
+  #introCard{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);z-index:30;pointer-events:none;text-align:center;
+         font:700 clamp(22px,5.2vw,46px) Georgia,'Times New Roman',serif;color:#eef5ff;letter-spacing:.02em;
+         text-shadow:0 2px 26px rgba(56,225,255,.55),0 0 60px rgba(0,0,0,.85);opacity:0;transition:opacity 1.1s ease;}
+  #introCard.show{opacity:1;}
   #hint{position:fixed;left:50%;bottom:8%;transform:translateX(-50%);
         font-size:15px;letter-spacing:.02em;color:#cfe0ff;text-shadow:0 1px 6px #000;
         padding:6px 14px;background:rgba(10,16,30,.35);border-radius:20px;
@@ -237,6 +241,7 @@
 
 <div id="reticle"></div>
 <div id="hint"></div>
+<div id="introCard"></div>
 <div id="worldNameTag"></div>
 
 <div id="meterWrap"><div id="meterLbl">paint</div><div id="meterBar"><div id="meterFill"></div></div></div>
@@ -721,6 +726,50 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
         if(morseVoice){ speakMorse('OK'); } else { stopMorse(); } };
       mt.addEventListener('click',flip); mt.addEventListener('touchstart',flip,{passive:false}); } }
 
+  // ── INTRO ── Unit 21 first appears as a 2001-style MONOLITH on the unpainted moon: one light in its
+  //   middle blinking Morse "PAINT". Walk up + touch → it reveals the vending machine + "…it's full of
+  //   paint." First-timers only — shared links (?w=/buy/…) and returning players skip straight in.
+  let introActive=false, monolith=null, _beacon=null, _beaconLight=null, _mSeg=null, _mCycle=0, _mT0=0, _revealT0=0;
+  function makeMonolith(){
+    const grp=new THREE.Group(), H=5.4, W=2.4, D=0.6;                     // 2001 ratio ≈ 1:4:9 (depth:width:height)
+    const slab=new THREE.Mesh(new THREE.BoxGeometry(W,H,D),
+      new THREE.MeshStandardMaterial({ color:0x050506, roughness:0.26, metalness:0.55 }));
+    slab.position.y=H/2; grp.add(slab);
+    _beacon=new THREE.Mesh(new THREE.SphereGeometry(0.13,16,12),
+      new THREE.MeshStandardMaterial({ color:0x0a0a0a, emissive:0x38e1ff, emissiveIntensity:0 }));
+    _beacon.position.set(0, H/2, D/2+0.06); grp.add(_beacon);             // centre of the FRONT (+z) face — toward spawn
+    _beaconLight=new THREE.PointLight(0x38e1ff, 0, 10, 2); _beaconLight.position.copy(_beacon.position); grp.add(_beaconLight);
+    grp.position.set(MACHINE_POS.x, 0, MACHINE_POS.z);
+    return grp;
+  }
+  function _morseTimeline(text, unit){                                    // → on/off segments (+ trailing word gap) that drive the blink
+    const seg=[], push=(on,d)=>seg.push({on,dur:d}), chars=text.toUpperCase().split('');
+    chars.forEach((ch,ci)=>{ const code=MORSE_TABLE[ch]; if(!code) return;
+      for(let i=0;i<code.length;i++){ push(true, code[i]==='-'?unit*3:unit); if(i<code.length-1) push(false, unit); }
+      if(ci<chars.length-1) push(false, unit*3); });
+    push(false, unit*7);
+    let c=0; seg.forEach(s=>{ s.until=(c+=s.dur); }); return {seg, cycle:c};
+  }
+  function _beaconOn(tsec){ if(!_mSeg||!_mCycle) return 0; const t=tsec%_mCycle; for(const s of _mSeg){ if(t<s.until) return s.on?1:0; } return 0; }
+  function startBeacon(){ const tl=_morseTimeline('PAINT', 0.17); _mSeg=tl.seg; _mCycle=tl.cycle; _mT0=performance.now(); }
+  function showIntroCard(){ const c=$('introCard'); if(!c) return;
+    c.textContent=(typeof t==='function' && t('introReveal')) || '…it’s full of paint.';
+    c.classList.add('show'); setTimeout(()=>c.classList.remove('show'), 2800); }
+  function revealMonolith(){
+    if(!introActive) return; introActive=false;
+    if(_beacon) _beacon.material.emissiveIntensity=6; if(_beaconLight) _beaconLight.intensity=9;   // the beacon flares
+    if(machine){ machine.visible=true; machine.scale.setScalar(0.01); }                            // Unit 21 grows in as the slab shrinks (tween in the loop)
+    _revealT0=performance.now();
+    try{ localStorage.setItem('gv-intro-seen','1'); }catch(_){}
+    showIntroCard(); try{ speakMorse('OMG PAINT'); }catch(_){}            // the droid's Morse exclaim — echoes the beacon (full sentence would drone ~18s)
+  }
+  monolith=makeMonolith(); monolith.visible=false; scene.add(monolith);
+  { const q=new URLSearchParams(location.search);
+    const shared=q.has('w')||q.has('buy')||q.has('bundle')||q.has('acquire')||q.has('minted');
+    let seen=false; try{ seen=localStorage.getItem('gv-intro-seen')==='1'; }catch(_){}
+    if(!shared && !seen){ introActive=true; if(machine) machine.visible=false; monolith.visible=true; startBeacon(); }   // cold open on the monolith
+  }
+
   // ---------- input ----------
   const keys = {};
   addEventListener('keydown', e=>{
@@ -1054,7 +1103,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   window.GV = window.GV || {};
   window.GV.ruleAns = ruleAns; window.GV.spin = spin;                     // exposed so a lang pack (separate file) can build its own chips
   GV_LANG.en = { RULES, QUESTIONS, FALLBACK, DEFLECT, WHATCOLOUR, COMINGUP, REFUSE, SCAVENGE, TAUNT, COLNAMES,
-    ui:{ splashTag:"You are what you paint. Paint what you are.", splashTag2:"Nothing exists until it's painted.", splashBegin:"Click to begin", splashBeginM:"Tap to begin", splashResume:"↩ Resume last world", splashCreed:"In the covenant we trust",
+    ui:{ splashTag:"You are what you paint. Paint what you are.", splashTag2:"Nothing exists until it's painted.", splashBegin:"Click to begin", splashBeginM:"Tap to begin", splashResume:"↩ Resume last world", splashCreed:"In the covenant we trust", introReveal:"…it’s full of paint.",
       worldHdr:"Your world", namePh:"✎ Name your world…", kSave:"☁ Save & Share", kReload:"↻ Reload world", kExport:"📤 Save to File (.bmf)", kImport:"📥 Load from File (.bmf)", kMint:"⬆ Save to Chain", kChain:"⬇ Load from Chain", kBack:"← Back to previous world", kWallet:"👛 Open Wallet — balance & NFTs", kDone:"✓ close",
       keepTab:"◆ keep", exitBtn:"⏻ Exit", makeTab:"◆ make", spray:"Spray", grab:"Grab", talk:"Talk", own:"Own / remix", spread:"spread", spNarrow:"narrow", spBroad:"broad", spWide:"wide",
       merchTag:"grafverse merch", merchH:"Wear the graffiti.", merchSub:"Grafverse tees, posters & more.", merchCta:"🛍 Shop the merch →", merchTeaser:"👕 Coming soon — wear the world YOU painted.", merchSkip:"No thanks — continue →",
@@ -1448,8 +1497,19 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
 
     // vending machine: greet on approach, then offer chat while near
     const md = planarDist(MACHINE_POS);
-    nearMachine = md < 7;
-    if(!greeted && md < 7){
+    if(introActive){                                                        // beacon blinks Morse "PAINT"; walk up (touch) → reveal
+      const on=_beaconOn((performance.now()-_mT0)/1000);
+      if(_beacon) _beacon.material.emissiveIntensity = on?2.4:0.03;
+      if(_beaconLight) _beaconLight.intensity = on?2.6:0;
+      if(md < 3.6) revealMonolith();
+    }
+    if(_revealT0){                                                         // transform: slab shrinks into the ground as Unit 21 rises
+      const p=(performance.now()-_revealT0)/750;
+      if(p<1){ if(monolith) monolith.scale.setScalar(Math.max(0.001,1-p*p)); if(machine) machine.scale.setScalar(Math.min(1,p*1.2)); }
+      else { if(monolith){ monolith.visible=false; monolith.scale.setScalar(1); } if(machine) machine.scale.setScalar(1); _revealT0=0; }
+    }
+    nearMachine = !introActive && md < 7;
+    if(!greeted && !introActive && md < 7){
       greeted=true;
       speak("Hello young gentlebot, what can I do you for today sir?", MOBILE ? "▸ Tap Talk to chat with me." : "▸ Press T to talk to me.");
     }
