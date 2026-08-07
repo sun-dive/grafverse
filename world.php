@@ -19,6 +19,7 @@ if (in_array($origin, $ALLOW, true)) {
   header('Access-Control-Allow-Origin: ' . $origin);
   header('Vary: Origin');
   header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+  header('Access-Control-Expose-Headers: X-World-Name');   // so a cross-origin game can read the world name on load
 }
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') { http_response_code(204); exit; }
 
@@ -122,6 +123,8 @@ if (!preg_match('/^[0-9a-f]{6,16}$/', $id)) { http_response_code(400); echo 'bad
 $f = $dir . '/' . $id . '.bmf';
 if (!is_file($f)) { http_response_code(404); echo 'not found or expired'; exit; }
 @touch($f);
+$mf = $dir . '/' . $id . '.meta';                                   // hand the world's NAME back so the game can restore it on load (round-trip)
+if (is_file($mf)) { $m = json_decode((string)@file_get_contents($mf), true); if (is_array($m) && !empty($m['n'])) header('X-World-Name: ' . rawurlencode((string)$m['n'])); }
 header('Content-Type: application/octet-stream');
 header('Content-Length: ' . filesize($f));
 header('Cache-Control: public, max-age=3600');

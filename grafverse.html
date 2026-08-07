@@ -1861,8 +1861,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     try{
       const GM=await loadGrafmint();
       const provider=new GM.WalletProvider('');                     // read-only — address unused for tx fetch
+      const info=await GM.readCollection(provider, txid).catch(()=>null);   // licence gate + the world's on-chain NAME (tokenName)
       if(!owned){
-        const info=await GM.readCollection(provider, txid).catch(()=>null);   // licence gate: open → free read · rights-reserved → purchase
         if(info && !info.open){                                     // ARR / must-own → importing means PURCHASING a copy (covenant pays the creator)
           _kNote().textContent='“'+(info.tokenName||'This world')+'” needs an owned copy ('+(info.license||'COV-ROY-1')+') — opening your wallet to acquire one (pays the creator)…';
           const ret=location.origin+location.pathname;
@@ -1874,7 +1874,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const dec=BMF.scene.unpack(atom.bytes);
       const r = (dec.members&&dec.members.length) ? await importMembersWorld(dec, GM, provider)   // a MEMBERS world → fetch each owned paint atom
                                                   : importScene(atom.bytes);                       // an inline scene (single-atom world)
-      _provenance=[txid]; _adoptWorldName(''); saveWorld(); unlockBuild(true); setMyShare('');   // a chain-loaded world → Share creates a fresh link (you don't hold its edit token)   // you loaded a world → drop straight into it, build-ready (paint kit + manifest live)                             // this world now DERIVES from `txid` (its immediate parent) → recorded at mint
+      _provenance=[txid]; _adoptWorldName(info&&info.tokenName?info.tokenName:''); saveWorld(); unlockBuild(true); setMyShare('');   // a chain-loaded world → restore its on-chain name · Share creates a fresh link (you don't hold its edit token)   // you loaded a world → drop straight into it, build-ready (paint kit + manifest live)                             // this world now DERIVES from `txid` (its immediate parent) → recorded at mint
       _kNote().textContent=(owned?'Purchased & loaded ':'Loaded ')+r.shapes+(r.members?' owned paint atom'+(r.members===1?'':'s'):' shape'+(r.shapes===1?'':'s'))+(r.ground?' + ground':'')+' from chain.';
     }catch(e){ _kNote().textContent='Load from chain failed: '+(e.message||e); }
   }
@@ -1938,9 +1938,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   async function openSharedWorld(id){                                     // opened via ?w=<id> — fetch the shared world + drop the visitor into it
     { const g=$('splash')&&$('splash').querySelector('.go'); if(g) g.textContent='Loading your world…'; const rb=$('resumeBtn'); if(rb) rb.style.display='none'; }   // load state, not "tap to begin" — we auto-enter below
     const shares=sharesGet(); setMyShare(shares[id]?id:'');               // YOUR shared world → Share = update · someone else's → editing forks to a NEW link
-    _adoptWorldName('');                                                  // a loaded world starts unnamed (its name lives on the share card, not in the .bmf) — rename to re-brand
     try{
       const r=await fetch(WORLD_URL+'?id='+encodeURIComponent(id)); if(!r.ok) throw new Error('HTTP '+r.status);
+      const nm=r.headers.get('X-World-Name'); _adoptWorldName(nm?decodeURIComponent(nm):'');   // restore the shared world's name (world.php returns it from the .meta sidecar)
       const bytes=Array.from(new Uint8Array(await r.arrayBuffer()));
       let dec; try{ dec=BMF.scene.unpack(bytes); }catch(_){ dec=null; }
       if(dec && dec.members && dec.members.length){                       // owned paint → WALK FREE (composite read-only from chain, no wallet), OWN OPTIONAL
