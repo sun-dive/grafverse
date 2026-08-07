@@ -2523,9 +2523,33 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const t2=$('tag2'); if(t2) t2.textContent='Welcome back.';
     const rb=$('resumeBtn'); if(rb) rb.style.display='none';  // don't show two resume affordances
   }
+  // ── after a WORLD mint: write the freshly-minted layer txids back onto the local layers, so editing + re-minting REFERENCES them (never re-mints the same paint → no double-pay). The minted manifest on-chain lists every layer txid in bundle order = the source of truth. ──
+  function stampLayerTxids(members){
+    let k=0, n=0;
+    for(const m of bShapes){
+      const layers = m.userData && m.userData.layers;
+      if(!layers || !layers.length) continue;                     // free shape (crystal / unpainted) — not in the bundle, contributes no member (matches worldBundlePlan)
+      for(const L of layers){
+        if(k>=members.length) break;
+        if(!L.txid && members[k] && members[k].tx){ L.txid=members[k].tx; n++; }   // stamp only WET (un-owned) layers; already-owned keep their txid, k still advances to stay aligned
+        k++;
+      }
+      if(layers[0]) m.userData.txid = layers[0].txid || m.userData.txid;            // refresh base-layer identity (back-compat readers)
+    }
+    if(n){ saveWorld(); showHint('✓ '+n+' paint layer'+(n===1?'':'s')+' now owned — editing & re-minting won’t re-mint them'); }
+  }
+  async function applyMintedWorld(oc){                             // fetch the just-minted world manifest → its members are every layer txid in bundle order → stamp them home
+    try{
+      const GM=await loadGrafmint(); const provider=new GM.WalletProvider('');
+      const atom=await loadAtomCached(GM, provider, oc);
+      const dec=BMF.scene.unpack(atom.bytes);
+      const members=(dec.members||[]).filter(m=>m&&m.tx);
+      if(members.length) stampLayerTxids(members);
+    }catch(_){ /* best-effort — worst case is the OLD behaviour (a re-mint), never data loss */ }
+  }
   { const _p = new URLSearchParams(location.search);
     const _minted=_p.get('minted'), _bought=_p.get('bought'), _resume=_p.get('resume');
-    if(_minted){ _welcomeBack(); showHint('✦ Immortalized on-chain — '+_minted.slice(0,8)+'… It’s yours forever.'); try{ history.replaceState(null,'',location.pathname); }catch(_){} }
+    if(_minted){ _welcomeBack(); showHint('✦ Immortalized on-chain — '+_minted.slice(0,8)+'… It’s yours forever.'); try{ history.replaceState(null,'',location.pathname); }catch(_){} if(/^[0-9a-f]{64}$/i.test(_minted)) applyMintedWorld(_minted.toLowerCase()); }
     else if(_bought && /^[0-9a-f]{64}$/i.test(_bought)){ _welcomeBack(); try{ history.replaceState(null,'',location.pathname); }catch(_){}
       openKeep(); loadFromChain(_bought.toLowerCase(), true); }
     else if(_resume){ _welcomeBack(); try{ history.replaceState(null,'',location.pathname); }catch(_){} }
