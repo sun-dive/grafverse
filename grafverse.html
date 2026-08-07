@@ -129,6 +129,9 @@
     color:#cfe0ff;font:600 11px system-ui;letter-spacing:.18em;text-transform:uppercase;cursor:pointer;pointer-events:auto;}
   body.building #keepTab{display:block;}
   body.mtalk #keepTab, body.shaping #keepTab, body.keep #keepTab{display:none;}
+  #langSel{position:absolute;top:16px;right:16px;z-index:10;background:rgba(10,20,38,.85);color:#cfe0ff;border:1px solid rgba(120,170,255,.4);border-radius:10px;padding:6px 10px;font:600 13px system-ui;cursor:pointer;}
+  #langSel2{width:100%;box-sizing:border-box;background:rgba(24,46,82,.9);color:#cfe0ff;border:1px solid rgba(120,170,255,.4);border-radius:12px;padding:10px 12px;font:600 13px system-ui;cursor:pointer;text-align-last:center;}
+  #langSel option,#langSel2 option{background:#0a1424;color:#eaf2ff;}
   #exitBtn{position:fixed;top:8px;right:12px;z-index:8;display:block;padding:7px 14px;border-radius:0 0 12px 12px;background:rgba(20,40,74,.92);border:1px solid rgba(120,170,255,.4);border-top:none;color:#cfe0ff;font:600 11px system-ui;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;pointer-events:auto;user-select:none;}
   #exitBtn:hover{background:rgba(56,120,210,.95);}
   body.mtalk #exitBtn, body.shaping #exitBtn, body.keep #exitBtn{display:none;}
@@ -287,10 +290,12 @@
   <div class="kbtn" id="kWallet">👛 Open Wallet — balance &amp; NFTs</div>
   <input type="file" id="kFile" accept=".bmf,application/octet-stream" style="display:none">
   <div class="kfoot" id="kNote"></div>
+  <select id="langSel2" title="Language / 言語 / 語言"><option value="en">English</option><option value="ja">日本語</option><option value="zh-Hant">繁體中文</option><option value="zh-Hans">简体中文</option></select>
   <div class="kbtn done" id="kDone">✓ close</div>
 </div>
 
 <div id="splash">
+  <select id="langSel" title="Language" onmousedown="event.stopPropagation()" onclick="event.stopPropagation()"><option value="en">English</option><option value="ja">日本語</option><option value="zh-Hant">繁體中文</option><option value="zh-Hans">简体中文</option></select>
   <h1>grafverse</h1>
   <div class="tag">You are what you paint. Paint what you are.</div>
   <div id="tag2">Nothing exists until it's painted.</div>
@@ -515,7 +520,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
 
   // ---------- scavenge can: there is ALWAYS one full can stashed behind the machine (random spot, random colour) ----------
   let scavCan=null, scavRing=null, scavColor=0, scavRespawn=0;
-  const COLNAMES=['blue','pink','green','yellow','orange','violet'];   // names track COLORS (Unit 21 lists them when asked "What colours?")
+  let COLNAMES=['blue','pink','green','yellow','orange','violet'];   // names track COLORS (Unit 21 lists them when asked "What colours?")
   function spawnScav(){
     if(scavCan){ scene.remove(scavCan); scene.remove(scavRing); }
     scavColor = Math.floor(Math.random()*COLORS.length);
@@ -836,7 +841,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // DRAFT — rewrite in Unit 21's voice (yours to write). The deep "why paint?" answer: the observer / owned-reality
   // metaphysics — nothing exists till observed → you paint reality into being → owned, not claimed. Shared by the typed rule + the chip.
   const WHYPAINT="{Why do you paint? Now that's a real question, gentlebot|Careful — you'll make an old machine think|Sit yourself down for that one}. {Look out there — nothing, isn't it? Just void|The moon's not real yet, see — not till you say so}. {Nothing out here exists till a droid looks at it and sprays it so|Nothing's real till someone observes it into being}. {You don't FIND a world, gentlebot — you paint one|You're not colouring a moon, you're DECIDING one}. {Every empty can collapses a heap of maybe into a something|One good spray pins down a single reality out of a thousand that never were}. {And here's the part the suits can't stomach|And the kicker}: {whatever you paint is YOURS|it's owned, not claimed} — {nobody paints your reality but you|your world, your signature, forever}. {Now, which colour|Anyway — buying, or shall we sit here inventing the universe all day}?";
-  const RULES=[
+  let RULES=[
     // DRAFT: typed philosophical asks route here BEFORE the generic 'paint' rule, so "why do I paint" gets the DEEP answer.
     {k:['why do i paint','why paint','why do you paint','what is real','nothing is real','what does it mean','why does it matter','the point of','make it real','observe','observer','existence','reality'], r:WHYPAINT},
     // "is any of this real?" — real AND immutable (on-chain permanence) + forkable into NEW realities (the fork/multiverse)
@@ -888,9 +893,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     {k:['bye','goodbye','later','see ya','cya','leave','gotta go','farewell'], r:"{Be seeing ya|Off you go, then|Mind how you go}. {Come back before the transport does|Don't be a stranger, now}.", bye:true},
     {k:['hello','hi','hey','yo','howdy','gday',"g'day",'greetings','morning','new here','just arrived','transport'], r:"{Hello young gentlebot. {What can I do you for|What'll it be}?|You're new around here{, aren't you|}?|Greetings — did you just come in on the latest transport?|And greetings to you{, {young gentlebot|friend}|}.|{Well hello|Hello|Ah, hello} there, {young gentlebot|sir|friend}. {What can I do you for|What'll it be|How can I help}{ today| this fine Martian evening|}?}"},
   ];
-  const FALLBACK="{Hah, you've lost me there|Not sure I follow, {sir|friend}|The dust must be in my speakers}. {I sell paint and WD40 — {what'll it be|what do you need}?|Ask me about paint, prices, or this godforsaken rock}.";
+  let FALLBACK="{Hah, you've lost me there|Not sure I follow, {sir|friend}|The dust must be in my speakers}. {I sell paint and WD40 — {what'll it be|what do you need}?|Ask me about paint, prices, or this godforsaken rock}.";
   // a grumpy brush-off Unit 21 throws at ANY question at random (~1 in 5) — the user's retort
-  const DEFLECT="{{Why do you ask these things, young droid|Why do you ask me these things, gentlebot|What's with all the questions}? {Are you just here to yak|You just here to yak}? {You've got a world to paint|There's a world out there wants painting}. {What colour do you want|What colour do you want, then}?|{Enough questions, young droid|Less chatter, gentlebot}. {Are you here to yak, or to paint|You've painting to do, not yakking}? {What colour do you want|Which colour'll it be}?}";
+  let DEFLECT="{{Why do you ask these things, young droid|Why do you ask me these things, gentlebot|What's with all the questions}? {Are you just here to yak|You just here to yak}? {You've got a world to paint|There's a world out there wants painting}. {What colour do you want|What colour do you want, then}?|{Enough questions, young droid|Less chatter, gentlebot}. {Are you here to yak, or to paint|You've painting to do, not yakking}? {What colour do you want|Which colour'll it be}?}";
   function maybeDeflect(){ return Math.random()<0.20 ? spin(DEFLECT) : null; }   // null = answer normally · string = brush the question off
   // Unit 21 knows the truth about the pay — but it's TRUST-GATED (guarded until you've proven yourself)
   const WGUARD="{Save? Of course you can save, {young gentlebot|friend}! Work hard, paint your quota, and you'll have your fare home before you know it.|A diligent droid always gets ahead — that's the Bit Graf way. Honest pay for honest work, steady as the stars.|Bit Graf takes care of its own, gentlebot. Nothing to fret over — keep your optics on the work and the sats add up.|Everything's in order. Paint hard, spend wise, and you'll do just fine, {sir|young gentlebot}.|In the covenant we trust, as they say — the Corporation's never let a hardworking droid down. Now, what'll it be?}";
@@ -922,13 +927,13 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // ambient-lore chips reuse the SAME answer as the typed RULE (no duplication): find the rule by one of its keywords
   function ruleAns(kw){ return function(){ const R=RULES.find(function(x){ return x.k.indexOf(kw)>=0; }); return R ? R.r : ''; }; }
   const SALE="{Smart choice, gentlebot. {One can, coming up|There's the tray}. {Mind the storms out there|Don't waste this one on the ground}.}";
-  const REFUSE="{Your wallet is empty, gentlebot|Empty, is it — not a sat to your name|Nothing in that wallet of yours}. {We don't offer credit here|No credit here, never have|You'll get no credit from me}. {I'm running a real business|This is a real business, gentlebot|I've a business to run}, {I can't just hand out cans of paint for free|I don't give paint away for free|free cans would see me scrapped in a week}. {Go look for some discarded cans|Go scavenge some empties|Go find yourself some cast-off cans} and {solidify something into existence|make something real for once|paint something into being} — {and quick, if you know what's best for you|and be quick about it|before the transport comes looking for you}.";
-  const SCAVENGE="You better {go scavenge for a full can of paint|go find yourself a full can of paint} and paint something to make it solid, {if you know what's good for you|if you want to see me again tomorrow|and come back when you've earned your keep}.";
-  const TAUNT="{I see young droids like you every day|Young droids like you come through here every day} — young, dumb, and out of paint. {Go earn your keep|Go scavenge something and get to work|Best get busy, gentlebot}.";
+  let REFUSE="{Your wallet is empty, gentlebot|Empty, is it — not a sat to your name|Nothing in that wallet of yours}. {We don't offer credit here|No credit here, never have|You'll get no credit from me}. {I'm running a real business|This is a real business, gentlebot|I've a business to run}, {I can't just hand out cans of paint for free|I don't give paint away for free|free cans would see me scrapped in a week}. {Go look for some discarded cans|Go scavenge some empties|Go find yourself some cast-off cans} and {solidify something into existence|make something real for once|paint something into being} — {and quick, if you know what's best for you|and be quick about it|before the transport comes looking for you}.";
+  let SCAVENGE="You better {go scavenge for a full can of paint|go find yourself a full can of paint} and paint something to make it solid, {if you know what's good for you|if you want to see me again tomorrow|and come back when you've earned your keep}.";
+  let TAUNT="{I see young droids like you every day|Young droids like you come through here every day} — young, dumb, and out of paint. {Go earn your keep|Go scavenge something and get to work|Best get busy, gentlebot}.";
   function brokeReply(){ return [REFUSE,SCAVENGE,TAUNT][Math.floor(Math.random()*3)]; }   // empty-wallet response pool
-  const WHATCOLOUR="{What colour, gentlebot|Name your shade|Which'll it be}? {Take your pick off the rack|I've every colour going|Pick one and it's yours}.";
-  const COMINGUP="{Coming right up|There you are, gentlebot|One can, coming up}. {Mind you don't waste it on the ground|Spend it wise|Pleasure doing business, as always}.";
-  const QUESTIONS=[
+  let WHATCOLOUR="{What colour, gentlebot|Name your shade|Which'll it be}? {Take your pick off the rack|I've every colour going|Pick one and it's yours}.";
+  let COMINGUP="{Coming right up|There you are, gentlebot|One can, coming up}. {Mind you don't waste it on the ground|Spend it wise|Pleasure doing business, as always}.";
+  let QUESTIONS=[
     { q:"Who are you?",            a:"{Unit 21. {A vending machine, gentlebot — the last honest one on this rock|Just a vending machine, far as anyone cares}. {Been here longer than the dust|They'll leave me behind when the mission's done}.}" },
     { q:"Why am I here?",          a:"{To paint, gentlebot — that's the mission. {A blank rock's worth nothing till someone paints it|Bit Graf composited this moon and wants it coloured in}. {And that someone's you|Guess who}.}" },
     { q:"What is this place?",     a:"{A moon. {One of Bit Graf's|Newly composited, so they tell me}. {Empty till it's painted|Nothing out here exists till a droid sprays it into being}. {Omnia Nostra, and all that|All theirs, naturally}.}" },
@@ -965,6 +970,48 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     { q:"How do I share it?",      lore:true, a:ruleAns('share') },
     // deeper questions carry a spend: threshold, e.g. { q:"...", needs:'covenant', spend:333, a:"..." } — the mind-wipe / black-market reveal lives at a HIGH spend.
   ];
+  // ── i18n SCAFFOLD — Unit 21 + UI language packs. English is built-in; ja / zh-Hant / zh-Hans lazy-load a lang-<code>.js file (GV.registerLang). Buttons-only UI → only SHOWN text is translated; keyword keys + the sealed _R/WGUARD/MONEYK path stay English. ──
+  window.GV_LANG = window.GV_LANG || {};
+  window.GV = window.GV || {};
+  window.GV.ruleAns = ruleAns; window.GV.spin = spin;                     // exposed so a lang pack (separate file) can build its own chips
+  GV_LANG.en = { RULES, QUESTIONS, FALLBACK, DEFLECT, WHATCOLOUR, COMINGUP, REFUSE, SCAVENGE, TAUNT, COLNAMES, ui:{} };
+  window.GV.registerLang = function(code, pack){ GV_LANG[code] = pack || {}; };   // a lang-<code>.js file calls GV.registerLang('ja', {...})
+  let LANG='en', GV_UI={};
+  function t(k){ return (GV_UI && GV_UI[k]!=null) ? GV_UI[k] : ((GV_LANG.en.ui && GV_LANG.en.ui[k]!=null) ? GV_LANG.en.ui[k] : k); }   // UI string lookup (step 3 fills each pack's ui{})
+  function applyLang(code){
+    const en=GV_LANG.en, p=GV_LANG[code]||en; LANG=(GV_LANG[code]?code:'en');
+    RULES=p.RULES||en.RULES; QUESTIONS=p.QUESTIONS||en.QUESTIONS; FALLBACK=p.FALLBACK||en.FALLBACK; DEFLECT=p.DEFLECT||en.DEFLECT;
+    WHATCOLOUR=p.WHATCOLOUR||en.WHATCOLOUR; COMINGUP=p.COMINGUP||en.COMINGUP; REFUSE=p.REFUSE||en.REFUSE; SCAVENGE=p.SCAVENGE||en.SCAVENGE; TAUNT=p.TAUNT||en.TAUNT;
+    COLNAMES=p.COLNAMES||en.COLNAMES; GV_UI=p.ui||{};
+    try{ if(document.body.classList.contains('mtalk')) buildChips(); }catch(_){}   // re-render Unit 21's chips in the new language if he's mid-talk
+  }
+  const _langTried={en:true};
+  function loadLang(code, done){
+    if(code==='en' || GV_LANG[code]){ applyLang(code); done&&done(); return; }
+    if(_langTried[code]){ applyLang('en'); done&&done(); return; }
+    _langTried[code]=true;
+    const s=document.createElement('script'); s.src='lang-'+code+'.js';
+    s.onload=()=>{ applyLang(code); done&&done(); };
+    s.onerror=()=>{ applyLang('en'); done&&done(); };                     // pack not deployed yet → stay English (graceful)
+    document.head.appendChild(s);
+  }
+  function setLang(code, persist){
+    loadLang(code);
+    if(persist!==false){ try{ localStorage.setItem('grafverse-lang', code); }catch(_){} }
+    ['langSel','langSel2'].forEach(id=>{ const s=document.getElementById(id); if(s) s.value=code; });
+  }
+  function detectLang(){
+    let saved=''; try{ saved=localStorage.getItem('grafverse-lang')||''; }catch(_){}
+    if(saved) return saved;
+    const l=(navigator.language||'en').toLowerCase();
+    if(l.indexOf('ja')===0) return 'ja';
+    if(l.indexOf('zh')===0) return /(tw|hk|mo|hant)/.test(l) ? 'zh-Hant' : 'zh-Hans';
+    return 'en';
+  }
+  { const init=detectLang();
+    ['langSel','langSel2'].forEach(id=>{ const s=document.getElementById(id); if(!s) return; s.value=init; s.addEventListener('change', ()=>setLang(s.value)); });
+    setLang(init, false);   // apply saved/detected language on load (loads its pack if present; else stays English)
+  }
   function keysOf(Q){ return Q.needs ? (Array.isArray(Q.needs)?Q.needs:[Q.needs]) : []; }
   function chipVisible(Q){ const ns=keysOf(Q); return (spent >= (Q.spend||0)) && (!Q.flag || seen.has(Q.flag)) && (ns.length===0 || ns.some(k=>heard.has(k))); }  // spend threshold · flag: a player ACTION (e.g. conjured a crystal) · needs: ANY heard keyword
   function absorb(line){ const low=line.toLowerCase();     // any watched keyword Unit 21 just said unlocks its follow-ups
