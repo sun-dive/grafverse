@@ -719,6 +719,27 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       g.gain.setValueAtTime(0.075,s+d-0.008); g.gain.exponentialRampToValueAtTime(0.0001,s+d); }
     o.start(on[0][0]); o.stop(t+0.05); _morseOsc=o;
   }
+  // the DROID's dialect — TWO-TONE Morse: every symbol EQUAL length, PITCH carries it
+  // (dot = high · dash = a perfect fifth lower, 660:440 = 3:2). Unit 21 grumbles in one tone; the droid sings.
+  function speakMorseDroid(text){
+    if(!morseVoice || !actx) return;
+    stopMorse();
+    if(actx.state==='suspended'){ try{ actx.resume(); }catch(e){} }
+    const chars=(String(text).toUpperCase().match(/[A-Z0-9]/g)||[]).slice(0,24);
+    const u=0.085, HI=660, LO=440;                                 // HI:LO = 3:2 = a perfect fifth
+    const seq=[]; let t=actx.currentTime+0.03;
+    for(const ch of chars){ const code=MORSE_TABLE[ch]; if(!code){ t+=u*5; continue; }
+      for(let j=0;j<code.length;j++){ seq.push([t, u, code[j]==='-'?LO:HI]); t+=u+u*0.9; }   // equal-length symbol + short intra gap
+      t+=u*2; }                                                    // letter gap
+    if(!seq.length) return;
+    const o=actx.createOscillator(), g=actx.createGain();
+    o.type='sine'; g.gain.value=0.0001; o.connect(g); g.connect(actx.destination);
+    for(let k=0;k<seq.length;k++){ const s=seq[k][0], d=seq[k][1], f=seq[k][2];
+      o.frequency.setValueAtTime(f, s);
+      g.gain.setValueAtTime(0.0001,s); g.gain.exponentialRampToValueAtTime(0.085,s+0.006);
+      g.gain.setValueAtTime(0.085,s+d-0.01); g.gain.exponentialRampToValueAtTime(0.0001,s+d); }
+    o.start(seq[0][0]); o.stop(t+0.05); _morseOsc=o;
+  }
   { const mt=document.getElementById('morseTog');
     if(mt){ mt.classList.toggle('off', !morseVoice);
       const flip=e=>{ e.preventDefault(); e.stopPropagation(); initAudio();
@@ -762,7 +783,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(machine){ machine.visible=true; machine.scale.setScalar(0.01); }                            // Unit 21 grows in as the slab shrinks (tween in the loop)
     _revealT0=performance.now();
     try{ localStorage.setItem('gv-intro-seen','1'); }catch(_){}
-    showIntroCard(); try{ speakMorse('OMG PAINT'); }catch(_){}            // the droid's Morse exclaim — echoes the beacon (full sentence would drone ~18s)
+    showIntroCard(); try{ speakMorseDroid('OMG PAINT'); }catch(_){}       // the droid's two-tone dialect (full sentence would drone ~18s)
     // the conjuring item materializes BEHIND the droid — turn around and it's there
     const _bx=Math.sin(yaw), _bz=Math.cos(yaw), _tx=camera.position.x+_bx*3.6, _tz=camera.position.z+_bz*3.6;
     toolHome.set(_tx,0.7,_tz); _toolReady=true;
