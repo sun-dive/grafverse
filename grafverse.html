@@ -171,6 +171,8 @@
             border-radius:14px;backdrop-filter:blur(6px);box-shadow:0 10px 40px rgba(0,0,0,.5);
             opacity:0;transition:opacity .5s;pointer-events:none;}
   #dspeaker{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#6fd3ff;margin-bottom:8px;}
+  #morseTog{float:right;cursor:pointer;font-size:14px;line-height:1;letter-spacing:0;text-transform:none;user-select:none;opacity:1;transition:opacity .2s;pointer-events:auto;}
+  #morseTog.off{opacity:.32;filter:grayscale(1);}
   #dtext{font-size:17px;line-height:1.45;color:#f3f7ff;min-height:1.4em;}
   #dsub{margin-top:10px;font-size:13px;color:#8fa6cc;font-style:italic;}
   #chatInput{position:fixed;left:50%;bottom:7%;transform:translateX(-50%);width:min(560px,84vw);
@@ -252,7 +254,7 @@
 </div>
 
 <div id="dialogue">
-  <div id="dspeaker">Vending Machine</div>
+  <div id="dspeaker">Vending Machine <span id="morseTog" title="Unit 21's Morse voice — ·−· −−− −··· −−− −">📻</span></div>
   <div id="dtext"></div>
   <div id="dsub"></div>
 </div>
@@ -685,6 +687,39 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t+0.06);
   }
 
+  // ---------- Unit 21's Morse voice ----------  a machine ought to beep. Its true "speech" is Morse;
+  // the on-screen text is the subtitle (in whatever of the 17 languages is active). In English/Latin/etc.
+  // the beeps actually DECODE to the line shown — a hidden ARG breadcrumb for anyone who transcribes them.
+  const MORSE_TABLE={A:'.-',B:'-...',C:'-.-.',D:'-..',E:'.',F:'..-.',G:'--.',H:'....',I:'..',J:'.---',K:'-.-',L:'.-..',M:'--',N:'-.',O:'---',P:'.--.',Q:'--.-',R:'.-.',S:'...',T:'-',U:'..-',V:'...-',W:'.--',X:'-..-',Y:'-.--',Z:'--..','0':'-----','1':'.----','2':'..---','3':'...--','4':'....-','5':'.....','6':'-....','7':'--...','8':'---..','9':'----.','.':'.-.-.-',',':'--..--','?':'..--..','/':'-..-.'};
+  let morseVoice = true; try{ morseVoice = localStorage.getItem('gv-morse')!=='0'; }catch(_){}   // default ON — "Unit 21 always speaks Morse"
+  let _morseOsc=null;
+  function stopMorse(){ if(_morseOsc){ try{ _morseOsc.stop(); }catch(e){} _morseOsc=null; } }
+  function speakMorse(text){
+    if(!morseVoice || !actx) return;
+    stopMorse();
+    if(actx.state==='suspended'){ try{ actx.resume(); }catch(e){} }
+    const chars=(String(text).toUpperCase().match(/[A-Z0-9.,?\/]/g)||[]).slice(0,18);   // a burst, not a drone
+    const u=0.05, dah=u*3, symGap=u, letterGap=u*3, wordGap=u*7;                          // ~24 WPM dit=50ms
+    const on=[]; let t=actx.currentTime+0.03;
+    for(const ch of chars){ const code=MORSE_TABLE[ch]; if(!code){ t+=wordGap; continue; }
+      for(let j=0;j<code.length;j++){ const dur=(code[j]==='-'?dah:u); on.push([t,dur]); t+=dur+symGap; }
+      t+=letterGap-symGap; }
+    if(!on.length) return;
+    const o=actx.createOscillator(), g=actx.createGain();
+    o.type='sine'; o.frequency.value=600; g.gain.value=0.0001; o.connect(g); g.connect(actx.destination);
+    for(let k=0;k<on.length;k++){ const s=on[k][0], d=on[k][1];
+      g.gain.setValueAtTime(0.0001,s); g.gain.exponentialRampToValueAtTime(0.075,s+0.006);
+      g.gain.setValueAtTime(0.075,s+d-0.008); g.gain.exponentialRampToValueAtTime(0.0001,s+d); }
+    o.start(on[0][0]); o.stop(t+0.05); _morseOsc=o;
+  }
+  { const mt=document.getElementById('morseTog');
+    if(mt){ mt.classList.toggle('off', !morseVoice);
+      const flip=e=>{ e.preventDefault(); e.stopPropagation(); initAudio();
+        morseVoice=!morseVoice; try{ localStorage.setItem('gv-morse', morseVoice?'1':'0'); }catch(_){}
+        mt.classList.toggle('off', !morseVoice);
+        if(morseVoice){ speakMorse('OK'); } else { stopMorse(); } };
+      mt.addEventListener('click',flip); mt.addEventListener('touchstart',flip,{passive:false}); } }
+
   // ---------- input ----------
   const keys = {};
   addEventListener('keydown', e=>{
@@ -836,10 +871,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function speak(line, sub){
     dlg.style.opacity=1;
     dtext.textContent=''; dsub.textContent='';
+    speakMorse(line);                              // Unit 21's true voice: beep the line in Morse
     let i=0; clearInterval(typing);
     typing=setInterval(()=>{
       const ch=line[i]; dtext.textContent=line.slice(0,++i);
-      if(ch && ch!==' ' && (i&1)) blip();          // chirp per spoken character
+      if(ch && ch!==' ' && (i&1) && !morseVoice) blip();   // chirps only as fallback when the Morse voice is off
       if(i>=line.length){ clearInterval(typing); if(sub) setTimeout(()=>dsub.textContent=sub, 400); }
     }, 34);
   }
