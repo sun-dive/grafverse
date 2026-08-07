@@ -8,6 +8,7 @@ deployment:
     - export DEPLOYPATH="$HOME/grafverse.com/"
     - /bin/cp grafverse.html "$DEPLOYPATH/index.html"    # the integrated first-person game (onboarding → manifest → paint-to-earn)
     - /bin/cp og.jpg "$DEPLOYPATH"                        # social / link-preview card
+    - /bin/cp merch-ad.jpg "$DEPLOYPATH"                  # ⏻ Exit merch-ad artwork (grafverse hero)
     - /bin/cp grafverse-splash.jpg "$DEPLOYPATH"          # entry/splash background (from the #05 hero)
     - /bin/cp -r vendor "$DEPLOYPATH"                     # vendored three.min.js + grafmint.js (offline, no CDN)
     # WALLET → its OWN isolated subdomain docroot (served ONLY at wallet.grafverse.com, NEVER grafverse.com/wallet/ — key isolation).
