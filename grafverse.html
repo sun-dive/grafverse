@@ -726,8 +726,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(!morseVoice || !actx) return 0;
     stopMorse();
     if(actx.state==='suspended'){ try{ actx.resume(); }catch(e){} }
-    const chars=(String(text).toUpperCase().match(/[A-Z0-9]/g)||[]).slice(0,18);   // a chirp, not a drone
-    const u=0.08, HI=660, LO=440;                                  // HI:LO = 3:2 = a perfect fifth
+    const chars=(String(text).toUpperCase().match(/[A-Z0-9]/g)||[]).slice(0,10);   // a chirp, not a drone
+    const u=0.065, HI=660, LO=440;                                 // HI:LO = 3:2 = a perfect fifth
     const seq=[]; let t=actx.currentTime+0.03;
     for(const ch of chars){ const code=MORSE_TABLE[ch]; if(!code){ t+=u*4; continue; }
       for(let j=0;j<code.length;j++){ seq.push([t, u, code[j]==='-'?LO:HI]); t+=u+u*0.9; }   // equal-length symbol + short intra gap
@@ -1252,7 +1252,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // the droid ASKS in its two-tone dialect, THEN Unit 21 answers once the chirp finishes (two distinct Morse voices, never overlapping)
   function askThenReply(qText, replyThunk){
     let d=0; try{ d=speakMorseDroid(qText)||0; }catch(_){}
-    if(d>0.06) setTimeout(replyThunk, Math.min(d, 2.8)*1000); else replyThunk();
+    if(d>0.06) setTimeout(replyThunk, (d+0.03)*1000); else replyThunk();   // wait out the WHOLE chirp incl. the held final tone — never clip it
   }
   function ask(Q){ talkedU21=true; asked.add(Q.q);
     if(Q.buy){                                             // buying a can → colour sub-menu (or the broke brush-off)
