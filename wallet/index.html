@@ -880,9 +880,11 @@ const PARENT = window.GV_PARENT || '..';   // parent-origin base: '..' same-orig
   }
   function setWalletLang(code,persist){
     loadWalletLang(code,()=>{ WLANG=GV_LANG[code]?code:'en'; applyWalletUI();
-      if(persist!==false){ try{ localStorage.setItem('grafverse-lang',WLANG); }catch(_){} } });
+      if(persist!==false){ try{ localStorage.setItem('grafverse-lang',WLANG); }catch(_){}
+        try{ var rd=location.hostname.replace(/^wallet\./,''); if(rd.indexOf('.')>0) document.cookie='gvlang='+encodeURIComponent(WLANG)+';path=/;max-age=31536000;domain=.'+rd+';samesite=lax'; }catch(_){} } });   // sync back to the shared cookie so the game inherits it too
   }
   function detectWalletLang(){
+    try{ const c=document.cookie.match(/(?:^|; )gvlang=([^;]+)/); if(c) return decodeURIComponent(c[1]); }catch(_){}   // inherit the game's chosen language (shared rootdomain cookie); Brave/etc. may drop it → fall through to detection
     try{ const sv=localStorage.getItem('grafverse-lang'); if(sv) return sv; }catch(_){}
     const l=(navigator.language||'en').toLowerCase();
     if(l.indexOf('zh')===0) return /(tw|hk|mo|hant)/.test(l)?'zh-Hant':'zh-Hans';

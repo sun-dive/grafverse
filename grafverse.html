@@ -1063,13 +1063,15 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     s.onerror=()=>{ applyLang('en'); done&&done(); };                     // pack not deployed yet → stay English (graceful)
     document.head.appendChild(s);
   }
+  function _setLangCookie(code){ try{ var rd=location.hostname.replace(/^wallet\./,''); if(rd.indexOf('.')>0) document.cookie='gvlang='+encodeURIComponent(code)+';path=/;max-age=31536000;domain=.'+rd+';samesite=lax'; }catch(_){} }   // share the chosen language across subdomains (the wallet reads it)
   function setLang(code, persist){
     loadLang(code);
-    if(persist!==false){ try{ localStorage.setItem('grafverse-lang', code); }catch(_){} }
+    if(persist!==false){ try{ localStorage.setItem('grafverse-lang', code); }catch(_){} _setLangCookie(code); }
     ['langSel','langSel2'].forEach(id=>{ const s=document.getElementById(id); if(s) s.value=code; });
   }
   function detectLang(){
-    let saved=''; try{ saved=localStorage.getItem('grafverse-lang')||''; }catch(_){}
+    let saved=''; try{ const c=document.cookie.match(/(?:^|; )gvlang=([^;]+)/); if(c) saved=decodeURIComponent(c[1]); }catch(_){}   // shared cross-subdomain cookie wins (survives even if this origin's localStorage is cleared)
+    if(!saved){ try{ saved=localStorage.getItem('grafverse-lang')||''; }catch(_){} }
     if(saved) return saved;
     const l=(navigator.language||'en').toLowerCase();
     if(l.indexOf('es')===0) return 'es';
