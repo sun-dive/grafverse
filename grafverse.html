@@ -294,12 +294,12 @@
   <div class="kbtn" id="kWallet">👛 Open Wallet — balance &amp; NFTs</div>
   <input type="file" id="kFile" accept=".bmf,application/octet-stream" style="display:none">
   <div class="kfoot" id="kNote"></div>
-  <select id="langSel2" title="Language / 言語 / 語言"><option value="en">English</option><option value="es">Español</option><option value="pt-BR">Português</option><option value="vi">Tiếng Việt</option><option value="id">Bahasa Indonesia</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="it">Italiano</option><option value="ru">Русский</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="zh-Hant">繁體中文</option><option value="zh-Hans">简体中文</option></select>
+  <select id="langSel2" title="Language / 言語 / 語言"><option value="en">English</option><option value="es">Español</option><option value="pt-BR">Português</option><option value="vi">Tiếng Việt</option><option value="id">Bahasa Indonesia</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="it">Italiano</option><option value="ru">Русский</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="zh-Hant">繁體中文</option><option value="zh-Hans">简体中文</option><option value="th">ไทย</option><option value="fil">Filipino</option><option value="hi">हिन्दी</option><option value="bn">বাংলা</option><option value="la">Latina</option></select>
   <div class="kbtn done" id="kDone">✓ close</div>
 </div>
 
 <div id="splash">
-  <select id="langSel" title="Language" onmousedown="event.stopPropagation()" onclick="event.stopPropagation()"><option value="en">English</option><option value="es">Español</option><option value="pt-BR">Português</option><option value="vi">Tiếng Việt</option><option value="id">Bahasa Indonesia</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="it">Italiano</option><option value="ru">Русский</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="zh-Hant">繁體中文</option><option value="zh-Hans">简体中文</option></select>
+  <select id="langSel" title="Language" onmousedown="event.stopPropagation()" onclick="event.stopPropagation()"><option value="en">English</option><option value="es">Español</option><option value="pt-BR">Português</option><option value="vi">Tiếng Việt</option><option value="id">Bahasa Indonesia</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="it">Italiano</option><option value="ru">Русский</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="zh-Hant">繁體中文</option><option value="zh-Hans">简体中文</option><option value="th">ไทย</option><option value="fil">Filipino</option><option value="hi">हिन्दी</option><option value="bn">বাংলা</option><option value="la">Latina</option></select>
   <h1>grafverse</h1>
   <div class="tag">You are what you paint. Paint what you are.</div>
   <div id="tag2">Nothing exists until it's painted.</div>
@@ -1044,6 +1044,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(l.indexOf('de')===0) return 'de';
     if(l.indexOf('it')===0) return 'it';
     if(l.indexOf('ru')===0) return 'ru';
+    if(l.indexOf('th')===0) return 'th';
+    if(l.indexOf('fil')===0 || l.indexOf('tl')===0) return 'fil';
+    if(l.indexOf('hi')===0) return 'hi';
+    if(l.indexOf('bn')===0) return 'bn';
+    if(l.indexOf('la')===0) return 'la';
     if(l.indexOf('ja')===0) return 'ja';
     if(l.indexOf('ko')===0) return 'ko';
     if(l.indexOf('zh')===0) return /(tw|hk|mo|hant)/.test(l) ? 'zh-Hant' : 'zh-Hans';
