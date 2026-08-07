@@ -776,6 +776,39 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     meterFill.style.background='#'+COLORS[i].toString(16).padStart(6,'0'); refreshHeldCan(); }
   function showHint(t){ hint.textContent=t; hint.style.opacity = t?1:0; }
 
+  // ── reliable share-link popup ── the auto-copy after an await burns the user-gesture (clipboard denied),
+  //    and a toast isn't selectable. This gives a copyable field + a real Copy button (fresh gesture works),
+  //    with an execCommand fallback + manual-select, plus native Share on mobile. So the link is ALWAYS gettable.
+  function showShareLink(url){
+    const esc=String(url).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    const ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(4,8,18,.72);display:flex;align-items:center;justify-content:center;z-index:90;padding:20px;';
+    ov.innerHTML='<div style="background:#0e1626;border:1px solid rgba(120,170,255,.35);border-radius:16px;padding:18px;width:min(460px,100%);box-shadow:0 24px 70px rgba(0,0,0,.6);font:15px system-ui,-apple-system,sans-serif;color:#eaf2ff;">'
+      +'<div style="font:600 12px system-ui;letter-spacing:.14em;text-transform:uppercase;color:#6fd3ff;margin-bottom:12px;">☁ Your share link</div>'
+      +'<input class="_su" readonly value="'+esc+'" style="width:100%;background:rgba(8,14,26,.85);border:1px solid rgba(120,170,255,.35);border-radius:10px;padding:11px 12px;color:#eaf2ff;font:13px ui-monospace,Menlo,monospace;">'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">'
+        +'<button class="_cp" style="flex:2 1 130px;background:linear-gradient(180deg,#1f6fd8,#1857b0);border:1px solid #3a7fd8;border-radius:11px;padding:11px;color:#fff;font:600 13px system-ui;cursor:pointer;">📋 Copy link</button>'
+        +(navigator.share?'<button class="_sh" style="flex:1 1 90px;background:rgba(24,46,82,.9);border:1px solid rgba(120,170,255,.4);border-radius:11px;padding:11px;color:#eaf2ff;font:600 13px system-ui;cursor:pointer;">↗ Share</button>':'')
+        +'<button class="_op" style="flex:1 1 90px;background:rgba(24,46,82,.9);border:1px solid rgba(120,170,255,.4);border-radius:11px;padding:11px;color:#eaf2ff;font:600 13px system-ui;cursor:pointer;">Open ↗</button>'
+        +'<button class="_cl" style="flex:1 1 80px;background:transparent;border:1px solid rgba(120,170,255,.3);border-radius:11px;padding:11px;color:#9fb4d8;font:600 13px system-ui;cursor:pointer;">Close</button>'
+      +'</div>'
+      +'<div style="color:#8ba3c9;font-size:11.5px;margin-top:10px;line-height:1.5;">Paste it anywhere — it unfurls a preview card. Lives ~12 months (the clock resets each time someone opens it).</div>'
+      +'</div>';
+    document.body.append(ov);
+    const inp=ov.querySelector('._su');
+    const sel=()=>{ try{ inp.focus(); inp.select(); inp.setSelectionRange(0, String(url).length); }catch(_){} };
+    setTimeout(sel,40); inp.addEventListener('focus',sel); inp.addEventListener('click',sel);
+    ov.querySelector('._cp').onclick=async(e)=>{ let ok=false;
+      try{ await navigator.clipboard.writeText(url); ok=true; }catch(_){}
+      if(!ok){ sel(); try{ ok=document.execCommand('copy'); }catch(_){} }
+      e.target.textContent = ok?'✓ Copied!':'↑ Select it & copy'; setTimeout(()=>{ e.target.textContent='📋 Copy link'; },1800); };
+    const sh=ov.querySelector('._sh'); if(sh) sh.onclick=()=>{ try{ navigator.share({url, title:'grafverse'}); }catch(_){} };
+    ov.querySelector('._op').onclick=()=>window.open(url,'_blank','noopener');
+    const close=()=>ov.remove();
+    ov.querySelector('._cl').onclick=close;
+    ov.addEventListener('click',e=>{ if(e.target===ov) close(); });
+  }
+
   // ── STENCILS: spraying a face DEPOSITS the active stencil's own dabs (fixed on the face) → spray anywhere on it and the mark fills in + builds up. Recorded dabs → faithful mint replay. Sources are pluggable (text · embedded logo · future: user uploads). ──
   let activeStencil=null, _stPts=null, _evImg=null, _saImg=null;
   let stencilSpread=1; const SPREAD_JITTER={1:0, 2:0.022, 3:0.05};   // 1 crisp · 2 wide · 3 very wide — authentic tag: lay 3, overpaint 2, finish 1
@@ -1871,8 +1904,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const data=await res.json().catch(()=>({}));
       if(!res.ok || !data.id) throw new Error(data.error||('HTTP '+res.status));
       const link=location.origin+location.pathname.replace(/[^/]*$/,'')+'w.php?id='+data.id;
-      try{ await navigator.clipboard.writeText(link); }catch(_){}
-      showHint('☁ Shared — link copied: '+link);
+      showHint('☁ Shared ✓'); showShareLink(link);   // reliable copyable popup (auto-copy fails after the await)
     }catch(e){ showHint('Share failed: '+(e.message||e)); }
   }
   document.getElementById('kMint').addEventListener('click', async ()=>{
@@ -2113,8 +2145,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       if(!res.ok || !data.id) throw new Error(data.error||('HTTP '+res.status));
       if(data.edit){ shares[data.id]=data.edit; sharesSet(shares); setMyShare(data.id); }   // first save → remember the edit token so later saves UPDATE this same world/link
       const link=location.origin+location.pathname.replace(/[^/]*$/,'')+'w.php?id='+data.id;   // share the OG/SEO landing page (crawlable, social card) → it opens the game
-      _kNote().innerHTML=(data.updated?'☁ Saved &amp; updated — same link:':'☁ Saved &amp; shareable — your link:')+'<br><a href="'+link+'" target="_blank" rel="noopener" style="color:var(--cyan);word-break:break-all">'+link+'</a> <span style="opacity:.6">(copied — share it to let anyone open your world)</span>';
-      try{ await navigator.clipboard.writeText(link); }catch(_){}
+      _kNote().innerHTML=(data.updated?'☁ Saved &amp; updated — same link:':'☁ Saved &amp; shareable — your link:')+'<br><a href="'+link+'" target="_blank" rel="noopener" style="color:var(--cyan);word-break:break-all">'+link+'</a>';
+      showShareLink(link);   // reliable copyable popup (auto-copy after an await burns the gesture → denied)
     }catch(e){ _kNote().textContent='Save to server failed: '+(e.message||e); }
   }
   async function openSharedWorld(id){                                     // opened via ?w=<id> — fetch the shared world + drop the visitor into it
