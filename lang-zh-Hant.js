@@ -70,6 +70,6 @@
       { q:"怎麼創造世界？",        lore:true, a:R('world') },
       { q:"怎麼分享？",            lore:true, a:R('share') }
     ],
-    ui: {}   // step 3: UI strings
+    ui: { splashTag:"你塗的，就是你。塗出你自己。", splashTag2:"沒塗之前，什麼都不存在。", splashBegin:"▶ 開始", splashResume:"↩ 回到上個世界", splashCreed:"契約之中，我們信之" }
   });
 })();

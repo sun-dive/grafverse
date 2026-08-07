@@ -70,6 +70,6 @@
       { q:"世界の作り方は？",        lore:true, a:R('world') },
       { q:"どう共有する？",          lore:true, a:R('share') }
     ],
-    ui: {}   // step 3: UI strings
+    ui: { splashTag:"塗ったものが、あなたになる。あなたを、塗れ。", splashTag2:"塗られるまで、何も存在しない。", splashBegin:"▶ はじめる", splashResume:"↩ 前の世界を再開", splashCreed:"契約の中に、我らは信を置く" }
   });
 })();

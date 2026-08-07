@@ -977,7 +977,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   window.GV_LANG = window.GV_LANG || {};
   window.GV = window.GV || {};
   window.GV.ruleAns = ruleAns; window.GV.spin = spin;                     // exposed so a lang pack (separate file) can build its own chips
-  GV_LANG.en = { RULES, QUESTIONS, FALLBACK, DEFLECT, WHATCOLOUR, COMINGUP, REFUSE, SCAVENGE, TAUNT, COLNAMES, ui:{} };
+  GV_LANG.en = { RULES, QUESTIONS, FALLBACK, DEFLECT, WHATCOLOUR, COMINGUP, REFUSE, SCAVENGE, TAUNT, COLNAMES,
+    ui:{ splashTag:"You are what you paint. Paint what you are.", splashTag2:"Nothing exists until it's painted.", splashBegin:"Click to begin", splashBeginM:"Tap to begin", splashResume:"↩ Resume last world", splashCreed:"In the covenant we trust" } };
   window.GV.registerLang = function(code, pack){ GV_LANG[code] = pack || {}; };   // a lang-<code>.js file calls GV.registerLang('ja', {...})
   let LANG='en', GV_UI={};
   function t(k){ return (GV_UI && GV_UI[k]!=null) ? GV_UI[k] : ((GV_LANG.en.ui && GV_LANG.en.ui[k]!=null) ? GV_LANG.en.ui[k] : k); }   // UI string lookup (step 3 fills each pack's ui{})
@@ -986,7 +987,17 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     RULES=p.RULES||en.RULES; QUESTIONS=p.QUESTIONS||en.QUESTIONS; FALLBACK=p.FALLBACK||en.FALLBACK; DEFLECT=p.DEFLECT||en.DEFLECT;
     WHATCOLOUR=p.WHATCOLOUR||en.WHATCOLOUR; COMINGUP=p.COMINGUP||en.COMINGUP; REFUSE=p.REFUSE||en.REFUSE; SCAVENGE=p.SCAVENGE||en.SCAVENGE; TAUNT=p.TAUNT||en.TAUNT;
     COLNAMES=p.COLNAMES||en.COLNAMES; GV_UI=p.ui||{};
+    applyUI();
     try{ if(document.body.classList.contains('mtalk')) buildChips(); }catch(_){}   // re-render Unit 21's chips in the new language if he's mid-talk
+  }
+  function applyUI(){                                          // re-label the splash (opening page) in the active language — vital for shared / internet-cafe / other-locale computers
+    var enui=(GV_LANG.en.ui)||{};
+    var val=function(k){ return (GV_UI[k]!=null)?GV_UI[k] : (enui[k]!=null?enui[k]:null); };
+    var setSel=function(sel,k){ var el=document.querySelector(sel); var v=val(k); if(el && v!=null) el.textContent=v; };
+    setSel('#splash .tag','splashTag'); setSel('#splash #tag2','splashTag2'); setSel('#splash .creed','splashCreed');
+    var rb=document.getElementById('resumeBtn'); var rv=val('splashResume'); if(rb && rv!=null) rb.textContent=rv;
+    var go=document.querySelector('#splash .go:not(.resume)');
+    if(go){ var bv = MOBILE ? (GV_UI.splashBeginM||GV_UI.splashBegin||enui.splashBeginM||enui.splashBegin) : (GV_UI.splashBegin||enui.splashBegin); if(bv!=null) go.textContent=bv; }
   }
   const _langTried={en:true};
   function loadLang(code, done){
