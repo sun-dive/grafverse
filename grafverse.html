@@ -43,12 +43,12 @@
   #meterFill{height:100%;width:100%;border-radius:6px;background:#38e1ff;transition:width .08s linear, background .2s;}
 
   #swatches{position:fixed;left:24px;bottom:70px;display:flex;gap:8px;opacity:0;transition:opacity .4s;pointer-events:none;}
-  #stencilTog,#stencilTog2{position:fixed;left:24px;padding:7px 12px;border-radius:12px;background:rgba(24,46,82,.9);border:1px solid rgba(120,170,255,.4);color:#cfe3ff;font:600 13px system-ui;cursor:pointer;opacity:0;transition:opacity .3s;pointer-events:none;z-index:6;user-select:none;}
-  #stencilTog{bottom:118px;} #stencilTog2{bottom:156px;}
-  body.building #stencilTog,body.building #stencilTog2{opacity:.85;pointer-events:auto;}
-  body.shaping #stencilTog,body.keep #stencilTog,body.mtalk #stencilTog,body.shaping #stencilTog2,body.keep #stencilTog2,body.mtalk #stencilTog2{display:none!important;}
-  #stencilTog.on,#stencilTog2.on{background:rgba(56,225,255,.35);border-color:#7fd8e8;color:#eafaff;}
-  #spreadTog{position:fixed;left:24px;bottom:194px;padding:7px 12px;border-radius:12px;background:rgba(24,46,82,.9);border:1px solid rgba(120,170,255,.4);color:#cfe3ff;font:600 13px system-ui;cursor:pointer;z-index:6;user-select:none;display:none;}
+  #stencilTog,#stencilTog2,#stencilTog3{position:fixed;left:24px;padding:7px 12px;border-radius:12px;background:rgba(24,46,82,.9);border:1px solid rgba(120,170,255,.4);color:#cfe3ff;font:600 13px system-ui;cursor:pointer;opacity:0;transition:opacity .3s;pointer-events:none;z-index:6;user-select:none;}
+  #stencilTog{bottom:118px;} #stencilTog2{bottom:156px;} #stencilTog3{bottom:194px;}
+  body.building #stencilTog,body.building #stencilTog2,body.building #stencilTog3{opacity:.85;pointer-events:auto;}
+  body.shaping #stencilTog,body.keep #stencilTog,body.mtalk #stencilTog,body.shaping #stencilTog2,body.keep #stencilTog2,body.mtalk #stencilTog2,body.shaping #stencilTog3,body.keep #stencilTog3,body.mtalk #stencilTog3{display:none!important;}
+  #stencilTog.on,#stencilTog2.on,#stencilTog3.on{background:rgba(56,225,255,.35);border-color:#7fd8e8;color:#eafaff;}
+  #spreadTog{position:fixed;left:24px;bottom:232px;padding:7px 12px;border-radius:12px;background:rgba(24,46,82,.9);border:1px solid rgba(120,170,255,.4);color:#cfe3ff;font:600 13px system-ui;cursor:pointer;z-index:6;user-select:none;display:none;}
   #spreadTog.show{display:block;}
   body.shaping #spreadTog,body.keep #spreadTog,body.mtalk #spreadTog{display:none!important;}
   #ownOffer{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);display:none;align-items:center;gap:12px;max-width:92vw;padding:11px 12px 11px 18px;border-radius:14px;background:rgba(10,20,38,.93);border:1px solid rgba(120,170,255,.35);box-shadow:0 12px 40px rgba(0,0,0,.5);color:#dbe8ff;font:600 13.5px system-ui;z-index:20;}
@@ -241,6 +241,7 @@
 <div id="swatches"></div>
 <div id="stencilTog" title="grafverse stencil — spray a solid to reveal the wordmark (G cycles)">▦ grafverse</div>
 <div id="stencilTog2" title="Evidnus stencil — spray a solid to reveal the logo">▦ evidnus</div>
+<div id="stencilTog3" title="サトシ stencil — spray a solid to reveal サトシ (Satoshi, the BSV unit)">▦ サトシ</div>
 <div id="spreadTog" title="Stencil spread (H) — 1 crisp · 2 wide · 3 very wide. Lay 3, overpaint 2, finish 1 for an authentic tag.">◍ spread 1</div>
 <div id="ownOffer"><span id="ownMsg"></span><button id="ownGo">Own / remix</button><button id="ownX" title="dismiss">✕</button></div>
 <div id="inv"></div>
@@ -740,16 +741,19 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function showHint(t){ hint.textContent=t; hint.style.opacity = t?1:0; }
 
   // ── STENCILS: spraying a face DEPOSITS the active stencil's own dabs (fixed on the face) → spray anywhere on it and the mark fills in + builds up. Recorded dabs → faithful mint replay. Sources are pluggable (text · embedded logo · future: user uploads). ──
-  let activeStencil=null, _stPts=null, _evImg=null;
+  let activeStencil=null, _stPts=null, _evImg=null, _saImg=null;
   let stencilSpread=1; const SPREAD_JITTER={1:0, 2:0.022, 3:0.05};   // 1 crisp · 2 wide · 3 very wide — authentic tag: lay 3, overpaint 2, finish 1
   const EVIDNUS_SRC='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWgAAABbCAMAAABpou9QAAAABlBMVEX///8AAABVwtN+AAAAAWJLR0QAiAUdSAAAAAlwSFlzAAAuIwAALiMBeKU/dgAAAAd0SU1FB+oIBgsOAhLIJRoAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMDctMjBUMDM6NDg6MDQrMDA6MDAK5FxVAAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTA3LTIwVDAzOjQ4OjA0KzAwOjAwe7nk6QAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0wOC0wNlQxMToxNDowMSswMDowMCyenY0AAAAhdEVYdGhpc3RvZ3JhbTpjb250cmFzdC1zdHJldGNoADB4MTAwJXXjKWEAAAMgSURBVHja7dpJdsMgEARQc/9LZxsHRFWPSFHV1kz9QX6y5M/HljGMHRRPxohAhzq/KmOEpGPb9J6MEYMOdn9NxohJR/u/J0EpQbOJScmZT8hKznwi0DrQlvi15GxLDbT2YIr3YO77CXrOc6DxoFMLRxeXwTaUmM8ZL59c49cQFdDLMtiVGStwSYM+gk6CRn0EvarAIU06C3pdAQ09DeKf8p3QrPTUXtBUBdYjPY8haCM0Jz23FjTlbDzSizEie3s/aI8gGVPvjUHe0o5CfxXk8TTVZdmUVmjMFocukzYMu2rZC305kBl6M+LxI80sIGGN4LLJgR4UdNGRTmlYDk0+y+L2Zd3isDQ3u/+7kYXm3jfsZqFHS5a2QlOtKqE3h5BZB962qq9p01G9A/TA01JfDMyZPwfNjVULfXn3C9cBR6qUZgZlJ+6CHmBasCEQslg61KQXeuyn3e8Hhube9YPYBiVbfDcM7BgLvfzdtIUmNYiFeqFd1TsTgb6+M2OgaQ1DEdnQsWUlQl9JE9B/ep6Bjr8K7IK+kIbQUzdBA+g1NYKe+5yG3t+/x50ToFfSAHrToxn64/+wH3pzPtddVtXfETrTOQV6pt5Br4tvgDYDWNYEm+ZAw3u1eQ8uGqQ8s3RtUmyuLmj06wMeMjN0lvT1gKaZ2qDB72l4LbNVFUo/BXr7hAg5577BS4G2zdMJvXvmiZw90MXSN4bePMUHzJay0qWfCH35Xgo5+/7PkiMd/C47Aw3v3uC1YJGpPNK+Ax154Dp/vu1CQPvWsZyiDBrNMLj4CqSg1w7I2XcvVfjr+AnQq+sI0niv1CrpR0AvBoXTGNfxXYq56sT1HoX+BBbuqeZR0I4+DmhDrY3Q8+yC7oHGXQQt6DtD/52e6QIqdu7MS6FpZ0G7oJkegvY4X709fgt0hqARyvsnk8y1lELXrNRek/dfU4eX/5wIuitBaIXNL105V2ZxD3N6Sf8zgu6KoJtSc3+uTJFzUwTdFUE3RdBNEXRT5NwUQTdF0D3R7V1TBN0UQTdF0E0RdFME3RU5N0XQXZFzVwTdFTF3Rc67/AAEUx7aUW5cZAAAAABJRU5ErkJggg==';
   { const im=new Image(); im.onload=()=>{ _evImg=im; if(activeStencil==='evidnus') buildStencil('evidnus'); }; im.src=EVIDNUS_SRC; }   // load the Evidnus logo once
+  const SATOSHI_SRC='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAXwAAAB3CAMAAAA3iQuPAAAABlBMVEX///8AAABVwtN+AAAAAWJLR0QAiAUdSAAAAAd0SU1FB+oIBwUJCXh5IDoAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMDgtMDdUMDU6MDk6MDgrMDA6MDBY4A88AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTA4LTA3VDA1OjA5OjA4KzAwOjAwKb23gAAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0wOC0wN1QwNTowOTowOCswMDowMH6oll8AAAAhdEVYdGhpc3RvZ3JhbTpjb250cmFzdC1zdHJldGNoADB4MTAwJXXjKWEAAAATaVRYdGxhYmVsAAAAAADjgrXjg4jjgrdz1NsMAAADMUlEQVR42u3cy5LqQAwD0PT///RdzOJWQR60H5I6La8ZWz6EkJoAx+FyuVwul8vlmqjxv9hRXlCTmm34Y2z4vBr/bzh65OfSDQ8P5YBL0F5tKvgHG5/Br4hPIwAPNr7AS+7XwS/HB8/eHn8Mnv7u+OO7GMPJRDr4uPm741P5jU889RifePAb/3M6MIXxv+fDchj/JAAqiPFPI2CiGP88AySL8a9SAMIY/zKG8fHl0w6zjE8tX+0wC5TE+HdxKhfL7/zw8ERkMfyjLMjA1ivwj6ocxieW8Y1v/N3xJe4Rb4zfN+HhenJ3/NYZp32N/z3G+BcZAfYdU867robf5t86ZL7pZJI+nqLncG5IR/NQnNn0zS6gGQ3NI3lm4/fDlI/pHBBpKI9fO6mvfaThCvgr8IfarYFfOa6le6zZMviFE+t7B3uF8ask7kTa/KtbBxstht95e6moW+jvOh6e5Oj0L2wcbqKIj3n3Lesbb6GJj7n6qWma6CCL/+xfOzTaMtNAGR/gTz3w1fGh/Mk/n+8gj//oXzc4lzrQYAX8bn+W/Sr4vfwk+0nNypPtfOte/lTk9+N38jPsF8O/9a9O9Hvg6PTl8C/5qwPNpUj2qBXKLDO9OQG/ZHgUv3ObwPLkX2ZLd6l/dHQd5P7ZrKnZ0Vd750Ihg/JAP87NjF4ZH/eF2aukydFr46f+N5APmp28PH7z1x3ucqYHz7RpPcMmmgPtR6X9K/BxVWtv/GBG5tv8Ys2rE3IvsVq7A3cKro/P2TtWHZ9K3/2NNW187mG/Nz7bvltHGH8o2e+FP/j22+IL0Pd/QVwTX+GwB/zrXBJfwh7wywiC+Br0iHtGcvhjH3s1fBX6DfHHXvZK+EPV/vX4Q4keZC+Cr0WPslfAH0Pa/s34cvTAz+Rxlx3y9JjfXGR/2HtDexb+WIO+OQhh4/FUqCDPyXDzKOsp07dHoTzNa9D3Z5HCb992Khx0KmE/YXpEHM4ZTl4e/g5I2nJbeuzVjpz8Qb59w3qD0ZA/KFeYZ6Pxe8K2FE2Fnaonf6BuGfLn6sF/KJDGwq5sofvNMZDGCh6OcAZ2BpfL5XK5XC6Xy3VZ/wDr1xoCbk/z7QAAAABJRU5ErkJggg==';
+  { const im=new Image(); im.onload=()=>{ _saImg=im; if(activeStencil==='satoshi') buildStencil('satoshi'); }; im.src=SATOSHI_SRC; }   // load サトシ (katakana Satoshi — the BSV unit) once
   function _sampleDark(g,S){ const d=g.getImageData(0,0,S,S).data, pts=[];                          // dark, opaque pixels → UV dab-points (works for black text AND black-on-white logos)
     for(let y=0;y<S;y+=3) for(let x=0;x<S;x+=3){ const i=(y*S+x)*4; if(d[i+3]>80 && (d[i]+d[i+1]+d[i+2])/3 < 110) pts.push([x/S, 1-y/S]); }
     return pts; }
   function buildStencil(kind){
     const S=256, c=document.createElement('canvas'); c.width=S; c.height=S; const g=c.getContext('2d'); g.clearRect(0,0,S,S);
-    if(kind==='evidnus'){ if(!_evImg){ _stPts=[]; return; } const tw=S*0.9, th=tw*_evImg.height/_evImg.width; g.drawImage(_evImg,(S-tw)/2,(S-th)/2,tw,th); }   // logo, ~90% width, centred
+    const img = kind==='evidnus' ? _evImg : (kind==='satoshi' ? _saImg : null);   // image stencils (Evidnus logo / サトシ katakana) — pre-rendered so they don't depend on the user's fonts
+    if(kind==='evidnus' || kind==='satoshi'){ if(!img){ _stPts=[]; return; } const tw=S*0.9, th=tw*img.height/img.width; g.drawImage(img,(S-tw)/2,(S-th)/2,tw,th); }   // ~90% width, centred
     else { g.fillStyle='#000'; g.textAlign='center'; g.textBaseline='middle'; let fs=60; g.font='800 '+fs+'px system-ui,Arial,sans-serif';
       const w=g.measureText('grafverse').width||1; fs=Math.max(10,Math.floor(fs*(S*0.86)/w)); g.font='800 '+fs+'px system-ui,Arial,sans-serif'; g.fillText('grafverse',S/2,S/2); }
     _stPts=_sampleDark(g,S);
@@ -757,17 +761,18 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function _updateSpreadChip(){ const el=document.getElementById('spreadTog'); if(!el) return;   // spread selector shows only while a stencil is active
     el.textContent='◍ '+(typeof t==='function'?t('spread'):'spread')+' '+stencilSpread; el.classList.toggle('show', !!activeStencil); }
   function _applyStencil(){ if(activeStencil) buildStencil(activeStencil); else _stPts=null;
-    const a=document.getElementById('stencilTog'), b=document.getElementById('stencilTog2');
-    if(a) a.classList.toggle('on', activeStencil==='grafverse'); if(b) b.classList.toggle('on', activeStencil==='evidnus');
+    const a=document.getElementById('stencilTog'), b=document.getElementById('stencilTog2'), c=document.getElementById('stencilTog3');
+    if(a) a.classList.toggle('on', activeStencil==='grafverse'); if(b) b.classList.toggle('on', activeStencil==='evidnus'); if(c) c.classList.toggle('on', activeStencil==='satoshi');
     _updateSpreadChip();
     showHint(activeStencil ? ('▦ '+activeStencil+' stencil ON — spray any solid; it fills in (◍ spread '+stencilSpread+')') : 'stencil off'); }
   function setStencil(kind){ activeStencil=(activeStencil===kind)?null:kind; _applyStencil(); }                 // chip → select/toggle that stencil
-  function cycleStencil(){ activeStencil = activeStencil===null?'grafverse':(activeStencil==='grafverse'?'evidnus':null); _applyStencil(); }   // G key → off → grafverse → evidnus → off
+  function cycleStencil(){ activeStencil = activeStencil===null?'grafverse':(activeStencil==='grafverse'?'evidnus':(activeStencil==='evidnus'?'satoshi':null)); _applyStencil(); }   // G key → off → grafverse → evidnus → サトシ → off
   function cycleSpread(){ stencilSpread = stencilSpread>=3?1:stencilSpread+1; _updateSpreadChip();              // H key / chip → 1 crisp → 2 wide → 3 very wide
     showHint('◍ stencil spread '+stencilSpread+(stencilSpread===1?' — crisp & clear':stencilSpread===2?' — wide':' — very wide (lay this first, overpaint down to 1)')); }
-  { const a=document.getElementById('stencilTog'), b=document.getElementById('stencilTog2'), s=document.getElementById('spreadTog');
+  { const a=document.getElementById('stencilTog'), b=document.getElementById('stencilTog2'), c=document.getElementById('stencilTog3'), s=document.getElementById('spreadTog');
     if(a){ a.addEventListener('click',()=>setStencil('grafverse')); a.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); setStencil('grafverse'); },{passive:false}); }
     if(b){ b.addEventListener('click',()=>setStencil('evidnus')); b.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); setStencil('evidnus'); },{passive:false}); }
+    if(c){ c.addEventListener('click',()=>setStencil('satoshi')); c.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); setStencil('satoshi'); },{passive:false}); }
     if(s){ s.addEventListener('click',cycleSpread); s.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); cycleSpread(); },{passive:false}); } }
   addEventListener('keydown', e=>{ if(!buildUnlocked || talking || keepOpen || shaping) return;
     if(e.code==='KeyG'){ e.preventDefault(); cycleStencil(); }
