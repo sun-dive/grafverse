@@ -696,6 +696,36 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   wardenTower.position.set(-40,0,232);              // the far pole — opposite Unit 21 (−Z); a distant flicker to chase
   scene.add(wardenTower);
 
+  // ── Saturn in the sky ── grafverse's moon IS Clarke's IAPETUS, so its giant hangs low over the far horizon.
+  //    Starfield backdrop + a ringed Saturn spun on real UTC time, ring-opening ≈ the true current angle. ──
+  (function(){ const N=1500, pos=new Float32Array(N*3);
+    for(let i=0;i<N;i++){ const u=Math.random(), th=Math.random()*Math.PI*2, r=Math.sqrt(1-u*u), R=3400+Math.random()*500;
+      pos[i*3]=Math.cos(th)*r*R; pos[i*3+1]=u*R*0.85+30; pos[i*3+2]=Math.sin(th)*r*R; }
+    const gg=new THREE.BufferGeometry(); gg.setAttribute('position',new THREE.BufferAttribute(pos,3));
+    scene.add(new THREE.Points(gg,new THREE.PointsMaterial({color:0xcdddff,size:2.6,sizeAttenuation:false,fog:false,transparent:true,opacity:.85})));
+  })();
+  function makeSaturn(){
+    const grp=new THREE.Group(), R=150;
+    const pTex=makeLabel(384,256,(x,w,h)=>{ const g=x.createLinearGradient(0,0,0,h);
+      [['#d9c39a',0],['#c6a86d',0.14],['#e7d9b6',0.24],['#bd9e66',0.36],['#dac798',0.48],['#c7ab74',0.6],['#e4d5aa',0.72],['#b58c54',0.84],['#d8c393',0.94]].forEach(b=>g.addColorStop(b[1],b[0]));
+      x.fillStyle=g; x.fillRect(0,0,w,h);
+      for(let i=0;i<50;i++){ x.globalAlpha=.05+Math.random()*.06; x.fillStyle=Math.random()<.5?'#fff8e6':'#8a6a38'; x.fillRect(0,Math.random()*h,w,1+Math.random()*2.5); } x.globalAlpha=1; });
+    const planet=new THREE.Mesh(new THREE.SphereGeometry(R,48,32), new THREE.MeshBasicMaterial({map:pTex,fog:false}));
+    const rTex=makeLabel(512,4,(x,w)=>{ for(let i=0;i<w;i++){ const t=i/w; let a=0;
+      if(t>0.05&&t<0.96){ a=0.5+0.35*Math.sin(t*46)*Math.sin(t*11); a=Math.max(0.08,Math.min(0.85,a)); }
+      if(t>0.60&&t<0.68) a=0.04;                       // the Cassini division
+      const c=195+Math.round(45*Math.sin(t*28)); x.fillStyle='rgba('+c+','+(c-18)+','+(c-58)+','+a+')'; x.fillRect(i,0,1,4); } });
+    const ring=new THREE.Mesh(new THREE.RingGeometry(R*1.22,R*2.28,140,1), new THREE.MeshBasicMaterial({map:rTex,transparent:true,side:THREE.DoubleSide,fog:false,depthWrite:false}));
+    { const gp=ring.geometry.attributes.position, uv=ring.geometry.attributes.uv, ri=R*1.22, ro=R*2.28;
+      for(let i=0;i<gp.count;i++){ const d=Math.hypot(gp.getX(i),gp.getY(i)); uv.setXY(i,(d-ri)/(ro-ri),0.5); } uv.needsUpdate=true; }
+    ring.rotation.x=Math.PI/2; grp.add(planet); grp.add(ring); grp.userData.planet=planet;
+    const d=new Date(), yrs=d.getUTCFullYear()+d.getUTCMonth()/12 - 2025.2;   // rings went edge-on ~Mar 2025
+    const B=26.7*Math.sin(2*Math.PI*yrs/29.457)*Math.PI/180;                    // ≈ the real ring-opening angle for now
+    grp.rotation.x=0.12+Math.abs(B); grp.rotation.z=-0.36;                      // real-trending opening + a stylistic axial lean
+    return grp;
+  }
+  const saturn=makeSaturn(); saturn.position.set(60,340,1700); scene.add(saturn);   // hung low over the +Z horizon, beyond Wardenclyffe
+
   // ---------- audio (synthesised, fully offline — no files) ----------
   let actx=null, hissGain=null;
   function initAudio(){
@@ -1625,6 +1655,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(wardenTower){ const w=wardenTower.userData, cr=(Math.random()<0.18?0.9:0)+0.5+0.5*Math.sin(performance.now()*0.018);
       w.arcL.intensity=1.8+cr*2.6; w.orb.material.emissiveIntensity=1.6+cr*1.6;                     // Tesla plasma crackle on the far horizon
       for(let i=0;i<w.arcs.length;i++){ w.arcs[i].visible=Math.random()<0.6; w.arcs[i].material.opacity=0.35+Math.random()*0.5; } }
+    if(saturn) saturn.userData.planet.rotation.y = ((Date.now()/1000/38376)%1)*Math.PI*2;   // Saturn spins on its ~10.66 h day, live from UTC
     nearMachine = !introActive && md < 7;
     if(!greeted && !introActive && md < 7){
       greeted=true;
