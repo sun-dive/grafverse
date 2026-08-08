@@ -45,6 +45,21 @@ export const RECORD_LIVECOUNTER = 0x06
 /** Fixed byte-width of the on-chain counter field (uint32 LE → ~4.29e9 ticks; never touches the sign bit). */
 export const N_BYTES = 4
 
+/**
+ * UI/policy cap on a mark's byte length — NOT covenant-enforced (the mark is a free trailing OP_RETURN),
+ * so this is the board's rule, not a consensus one. 111 = the 1·1·1 / 111-sat nod, and enough bytes to
+ * write in any language (≈37 CJK chars · ≈27 emoji · a full Latin sentence).
+ */
+export const MARK_MAX_BYTES = 111
+
+/** The genesis mark — the counter's opening line. "Follow the white 🐇" is exactly 21 bytes (the hidden 21 nod). */
+export const GENESIS_MARK = 'Follow the white \u{1F407}'
+
+/** UTF-8 byte length of a string (the unit the mark cap is measured in). */
+export function markByteLength(s: string): number {
+  return new TextEncoder().encode(s).length
+}
+
 /** Encode a counter value as the fixed 4-byte little-endian field the covenant carries and increments. */
 export function nField(n: number): number[] {
   if (n < 0 || n >= 0x80000000) throw new Error('nField: counter out of uint32 range')
