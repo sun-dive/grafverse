@@ -669,6 +669,33 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   const machine = makeVendingMachine();
   scene.add(machine);
 
+  // ── Wardenclyffe tower — Tesla's free-energy dream, standing at the moon's FAR POLE to be discovered later.
+  //    A lattice mast + copper electrode dome + a crackling plasma orb (the ether made visible; no meter, no landlord). ──
+  function makeWardenclyffeTower(){
+    const g=new THREE.Group(); const H=34, RB=7, RT=2.6;
+    const frame=new THREE.Mesh(new THREE.CylinderGeometry(RT,RB,H,8,6,true),
+      new THREE.MeshStandardMaterial({color:0x2a3c60,emissive:0x0b1626,emissiveIntensity:.4,roughness:.7,metalness:.35,wireframe:true}));
+    frame.position.y=H/2; g.add(frame);
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(RB+0.6,RB+1.2,1.4,8),
+      new THREE.MeshStandardMaterial({color:0x0c1424,roughness:.9,metalness:.2})); base.position.y=0.7; g.add(base);
+    const dome=new THREE.Mesh(new THREE.SphereGeometry(5.6,20,12,0,Math.PI*2,0,Math.PI/2),
+      new THREE.MeshStandardMaterial({color:0xb87333,emissive:0x5a3410,emissiveIntensity:.55,roughness:.35,metalness:.85})); dome.position.y=H; g.add(dome);
+    const rim=new THREE.Mesh(new THREE.TorusGeometry(4.2,0.5,10,22),
+      new THREE.MeshStandardMaterial({color:0x8a5a28,roughness:.4,metalness:.85,emissive:0x3a2410,emissiveIntensity:.5}));
+    rim.rotation.x=Math.PI/2; rim.position.y=H-0.5; g.add(rim);
+    const orb=new THREE.Mesh(new THREE.SphereGeometry(1.5,16,12),
+      new THREE.MeshStandardMaterial({color:0xe6f4ff,emissive:0x9fd0ff,emissiveIntensity:2.4,roughness:.2,fog:false})); orb.position.y=H+2.4; g.add(orb);
+    const arcL=new THREE.PointLight(0x9fd8ff,2.5,70,2); arcL.position.y=H+3; g.add(arcL);
+    const arcs=[]; for(let i=0;i<5;i++){ const a=i/5*Math.PI*2;
+      const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0,H+2.4,0), new THREE.Vector3(Math.cos(a)*(3+Math.random()*2.5),H+(0.6+Math.random()*4),Math.sin(a)*(3+Math.random()*2.5))]),
+        new THREE.LineBasicMaterial({color:0xcfeaff,transparent:true,opacity:.8,fog:false})); g.add(line); arcs.push(line); }
+    g.userData.orb=orb; g.userData.arcL=arcL; g.userData.arcs=arcs; return g;
+  }
+  const wardenTower=makeWardenclyffeTower();
+  wardenTower.position.set(-40,0,232);              // the far pole — opposite Unit 21 (−Z); a distant flicker to chase
+  scene.add(wardenTower);
+
   // ---------- audio (synthesised, fully offline — no files) ----------
   let actx=null, hissGain=null;
   function initAudio(){
@@ -1595,6 +1622,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       let cd=Math.abs(ph-0.62); if(cd>0.5)cd=1-cd; const cOn=Math.max(0,1-cd/0.07);
       fx.userData.hub.material.emissiveIntensity=1.2+cOn*6; fx.userData.hubLight.intensity=0.4+cOn*2.4;
     }
+    if(wardenTower){ const w=wardenTower.userData, cr=(Math.random()<0.18?0.9:0)+0.5+0.5*Math.sin(performance.now()*0.018);
+      w.arcL.intensity=1.8+cr*2.6; w.orb.material.emissiveIntensity=1.6+cr*1.6;                     // Tesla plasma crackle on the far horizon
+      for(let i=0;i<w.arcs.length;i++){ w.arcs[i].visible=Math.random()<0.6; w.arcs[i].material.opacity=0.35+Math.random()*0.5; } }
     nearMachine = !introActive && md < 7;
     if(!greeted && !introActive && md < 7){
       greeted=true;
