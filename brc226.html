@@ -211,6 +211,16 @@
   ul.lc-signers .sg-msg{flex:1 1 auto;min-width:0;font-size:14px;color:var(--ink);overflow-wrap:anywhere}
   ul.lc-signers .sg-who{flex:0 0 auto;font-family:var(--mono);font-size:10.5px;color:var(--struct)}
   ul.lc-signers li.genesis .sg-msg{color:var(--accent);font-weight:600}
+  .howto{margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+  .howto summary{cursor:pointer;list-style:none;padding:13px 18px;font-family:var(--sans);font-weight:600;font-size:14px;color:var(--accent);display:flex;align-items:center;gap:8px}
+  .howto summary::-webkit-details-marker{display:none}
+  .howto[open] summary{border-bottom:1px solid var(--line-2)}
+  .howbody{padding:8px 18px 16px}
+  .howbody ol{margin:6px 0 0;padding-left:20px;display:grid;gap:9px}
+  .howbody li{font-size:13.5px;color:var(--muted);line-height:1.55}
+  .howbody li b{color:var(--ink);font-weight:600}
+  .howfoot{font-size:13px;color:var(--muted);margin:13px 0 0;padding-top:12px;border-top:1px dashed var(--accent)}
+  .howfoot b{color:var(--struct)}
 </style>
 </head>
 <body>
@@ -234,12 +244,24 @@
         </div>
         <div class="livemeta">
           <div id="lc-total">connecting…</div>
-          <div class="livesign"><span class="soon" id="lc-sign">signing opens at go-live 🐇</span></div>
+          <div class="livesign"><a id="lc-sign" href="#lc-howto">🐇 how to post →</a></div>
         </div>
       </div>
       <div class="lc-lastlab">the last 21 signers</div>
       <ul class="lc-signers" id="lc-signers"><li class="empty" id="lc-status">connecting to the chain…</li></ul>
     </div>
+    <details class="howto" id="lc-howto">
+      <summary>🐇 how to post — leave your mark on the wall</summary>
+      <div class="howbody">
+        <ol>
+          <li><b>Write your mark.</b> Up to <b>111 bytes</b> — any language, any emoji. It's carved into the chain, forever.</li>
+          <li><b>It's practically free.</b> A tiny miner fee, plus a <b>refundable deposit</b> the <em>next</em> poster hands straight back to you — and a single satoshi to the author. That's the whole cost.</li>
+          <li><b>No account. No owner. No off-switch.</b> Anyone can push the counter forward; no one can ever stop it, and no mark can be deleted.</li>
+          <li><b>Self-moderating.</b> Every post costs real (if tiny) sats, so spam prices itself out — no rules, no moderators.</li>
+        </ol>
+        <p class="howfoot"><b>One-click signing is landing next</b> — a throwaway key made right in your browser, funded by a quick QR, signs your tick for you. Until then the counter is fully permissionless: any tool that can spend a BRC-226 covenant can push it forward. 🎱</p>
+      </div>
+    </details>
   </section>
 
   <section>
@@ -504,6 +526,7 @@
       .catch(function(){ if($('lc-n').textContent==='·') $('lc-status').textContent='chain unavailable — retrying…'; });
   }
   load(false);
+  var _sign=$('lc-sign'); if(_sign) _sign.addEventListener('click',function(){ var h=$('lc-howto'); if(h) h.open=true; });
   setInterval(function(){ if(!document.hidden) load(true); }, 20000);
   document.addEventListener('visibilitychange',function(){ if(!document.hidden) load(true); });
 })();
