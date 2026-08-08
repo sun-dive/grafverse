@@ -91,7 +91,8 @@ function init_cache() {
   $tx = get_tx($GENESIS_TXID); if (!$tx) return null;
   $st = counter_state(counter_vout($tx) ?? ''); if (!$st) return null;
   $g = entry($st[0], mark_of($tx), $st[1], $GENESIS_TXID);
-  return ['genesis' => $GENESIS_TXID, 'tip' => ['txid' => $GENESIS_TXID, 'n' => $st[0]],
+  // at genesis, lastFunder == the immutable author; the client needs its full 20-byte hash to rebuild the next lock
+  return ['genesis' => $GENESIS_TXID, 'author' => $st[1], 'tip' => ['txid' => $GENESIS_TXID, 'n' => $st[0]],
           'last21' => [$g], 'total' => $st[0], 'updated' => time()];
 }
 
@@ -139,6 +140,8 @@ if (php_sapi_name() === 'cli' && empty($GLOBALS['TIP_RUN'])) return;   // CLI in
 $c = load_cache();
 if (!$c) { $c = init_cache(); if ($c) save_cache($c); }
 if (!$c) { echo json_encode(['error' => 'counter not deployed yet', 'genesis' => null]); exit; }
+// heal caches written before `author` existed
+if (empty($c['author'])) { $gt = get_tx($c['genesis']); $gs = $gt ? counter_state(counter_vout($gt) ?? '') : null; if ($gs) { $c['author'] = $gs[1]; save_cache($c); } }
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 if ($method === 'POST') {
@@ -151,6 +154,7 @@ if ($method === 'POST') {
 
 echo json_encode([
   'genesis' => $c['genesis'],
+  'author'  => $c['author'] ?? null,          // immutable author hash — the client rebuilds the next lock with it
   'n'       => $c['total'],
   'tipTxid' => $c['tip']['txid'],
   'last21'  => array_reverse($c['last21']),   // newest first, for the board

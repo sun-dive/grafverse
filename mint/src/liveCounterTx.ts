@@ -75,6 +75,9 @@ export interface TickParams extends CounterAmounts {
   funder: { key: PrivateKey; sourceTransaction: Transaction; outputIndex: number }
   /** The mark to leave (≤ 111 bytes). String or raw bytes. */
   mark: string | number[]
+  /** Where change goes. Send-to-post routes it to the POSTER's address (so the throwaway key ends at zero);
+   *  defaults to the funder key's own address. */
+  changeAddress?: string
   feePerKb?: number
 }
 
@@ -102,7 +105,7 @@ export async function buildTickTx(p: TickParams): Promise<Transaction> {
   tx.addOutput({ lockingScript: p2pkhLock(p.covenant.lastFunderHash), satoshis: DEPOSIT }) // out1 · repay old funder
   tx.addOutput({ lockingScript: p2pkhLock(p.authorHash), satoshis: MARKFEE })              // out2 · author crumb
   tx.addOutput({ lockingScript: LockingScript.fromBinary(markOutputScript(mark)), satoshis: 0 }) // out3 · the mark
-  tx.addOutput({ lockingScript: new P2PKH().lock(p.funder.key.toAddress()), change: true })      // out4 · change
+  tx.addOutput({ lockingScript: new P2PKH().lock(p.changeAddress ?? p.funder.key.toAddress()), change: true }) // out4 · change → poster (send-to-post) or funder
 
   await tx.fee(new SatoshisPerKilobyte(p.feePerKb ?? LIVECOUNTER_FEE_PER_KB))
   await tx.sign()

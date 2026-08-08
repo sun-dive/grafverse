@@ -65,6 +65,23 @@ check('tick2 covenant input validates', validateInput(tick2, 0, lock1, V))
 check('tick2 out0 = counter lock @ n=2', arrEq(tick2.outputs[0].lockingScript.toBinary(), lock2.toBinary()))
 check('tick2 out1 repays signer1 DEPOSIT', tick2.outputs[1].satoshis === DEPOSIT && arrEq(tick2.outputs[1].lockingScript.toBinary(), p2pkhScript(s1H)))
 
+// ── send-to-post: a throwaway key funds the tick, but change + the refund both go to the POSTER ──
+const throwaway = PrivateKey.fromRandom(), poster = PrivateKey.fromRandom()
+const posterHash = keyHash160(poster), posterAddr = poster.toAddress()
+const stp = await buildTickTx({
+  covenant: { sourceTransaction: tick2, outputIndex: 0, n: 2, lastFunderHash: s2H },
+  authorHash: dH, newFunderHash: posterHash,                       // refund (out0.newFunder) → poster's wallet
+  funder: { key: throwaway, sourceTransaction: fundingTx(throwaway, FUND), outputIndex: 0 },
+  changeAddress: posterAddr,                                       // change (out4) → poster, not the throwaway
+  mark: 'gm from a walled garden 🐇',
+})
+const lock3 = buildLiveCounterLock({ n: 3, lastFunderHash: posterHash, authorHash: dH })
+check('send-to-post covenant input validates', validateInput(stp, 0, lock2, V))
+check('send-to-post out0 refund routed to poster', arrEq(stp.outputs[0].lockingScript.toBinary(), lock3.toBinary()))
+check('send-to-post change → poster (not throwaway)',
+  arrEq(stp.outputs[4].lockingScript.toBinary(), p2pkhScript(posterHash)) &&
+  !arrEq(stp.outputs[4].lockingScript.toBinary(), p2pkhScript(keyHash160(throwaway))))
+
 // dumps for the tip.php byte-parser cross-check (tick1: n should read as 1, mark 'wagmi 🐇')
 console.log('DUMP_COUNTER ' + tick1.outputs[0].lockingScript.toHex())
 console.log('DUMP_MARK ' + tick1.outputs[3].lockingScript.toHex())
