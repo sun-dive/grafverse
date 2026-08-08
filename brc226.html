@@ -221,6 +221,39 @@
   .howbody li b{color:var(--ink);font-weight:600}
   .howfoot{font-size:13px;color:var(--muted);margin:13px 0 0;padding-top:12px;border-top:1px dashed var(--accent)}
   .howfoot b{color:var(--struct)}
+  /* ── send-to-post modal ── */
+  .livesign{display:flex;gap:12px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+  .postbtn{font-family:var(--sans);font-weight:700;font-size:14px;padding:9px 15px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  .postbtn:hover{filter:brightness(1.06)}
+  @media(prefers-color-scheme:dark){.postbtn{color:#0a111d}} :root[data-theme="dark"] .postbtn{color:#0a111d}
+  .pm-ov{position:fixed;inset:0;background:rgba(8,12,20,.72);z-index:100;display:none;align-items:center;justify-content:center;padding:16px}
+  .pm-ov.on{display:flex}
+  .pm{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.5);max-width:460px;width:100%;max-height:92vh;overflow-y:auto}
+  .pm-h{display:flex;justify-content:space-between;align-items:center;padding:15px 20px;border-bottom:1px solid var(--line-2)}
+  .pm-h b{font-family:var(--serif);font-size:19px}
+  .pm-x{background:none;border:none;color:var(--muted);font-size:24px;cursor:pointer;line-height:1;padding:0 4px}
+  .pm-b{padding:18px 20px 20px}
+  .pm-b label{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+  .pm-b input{width:100%;font-family:var(--mono);font-size:14px;padding:11px 13px;border-radius:10px;border:1px solid var(--line);background:var(--ground);color:var(--ink);margin-bottom:4px}
+  .pm-b input:focus{outline:2px solid var(--accent);border-color:var(--accent)}
+  .pm-bytes{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right;margin-bottom:12px}
+  .pm-bytes.over{color:var(--bad)}
+  .pm-btn{width:100%;font-family:var(--sans);font-weight:600;font-size:15px;padding:13px;border-radius:11px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;margin-top:8px;display:block;text-align:center;text-decoration:none;box-sizing:border-box}
+  @media(prefers-color-scheme:dark){.pm-btn{color:#0a111d}} :root[data-theme="dark"] .pm-btn{color:#0a111d}
+  .pm-btn:disabled{opacity:.5;cursor:not-allowed}
+  .pm-btn.ghost{background:transparent;color:var(--struct);border-color:var(--line)}
+  .pm-addr{font-family:var(--mono);font-size:13px;word-break:break-all;background:var(--ground);border:1px solid var(--line);border-radius:9px;padding:11px;color:var(--ink);margin:4px 0 10px}
+  .pm-amt{font-family:var(--mono);font-weight:700;font-size:24px;color:var(--accent);text-align:center;margin:8px 0}
+  .pm-note{font-size:12.5px;color:var(--muted);line-height:1.55;margin:12px 0 0}
+  .pm-note b{color:var(--ink)}
+  .pm-spin{width:26px;height:26px;border:3px solid var(--line-2);border-top-color:var(--accent);border-radius:50%;animation:pmsp 1s linear infinite;margin:16px auto}
+  @keyframes pmsp{to{transform:rotate(360deg)}}
+  .pm-status{text-align:center;font-size:14px;color:var(--muted);margin:8px 0}
+  .pm-ok{color:var(--good)} .pm-err{color:var(--bad)}
+  .pm-mono{font-family:var(--mono);font-size:12px;color:var(--struct);word-break:break-all}
+  .pm-nudge{font-size:12px;color:var(--muted);margin-top:14px;padding-top:12px;border-top:1px dashed var(--accent)}
+  .pm-nudge a{color:var(--accent)}
+  .pm-resume{background:var(--accent-soft);border:1px solid var(--accent);border-radius:10px;padding:13px;margin-bottom:14px;font-size:13.5px;color:var(--ink)}
 </style>
 </head>
 <body>
@@ -229,7 +262,7 @@
   <p class="eyebrow">BRC-226 · working sketch</p>
   <h1>The smallest program that runs itself.</h1>
   <p class="lede">A two-op on-chain counter. <b>Minted once, advanced by anyone, owned by no one</b> — and it pays for its own heartbeat.</p>
-  <p class="lede muted">One JavaScript line — <code style="font-family:var(--mono);font-size:.9em">n = n + 1</code> — compiled to a Bitcoin covenant. If this can live on the chain and tick forever with no operator, the rest of the language is just more blocks.</p>
+  <p class="lede muted">One JavaScript line — <code style="font-family:var(--mono);font-size:.9em">n = n + 1</code> — compiled to a Bitcoin covenant. If this can live on the chain and tick forever with no operator, the rest of the language is just more BMF atoms.</p>
 
   <section class="livewrap" aria-label="the live counter">
     <div class="livehead">
@@ -244,7 +277,7 @@
         </div>
         <div class="livemeta">
           <div id="lc-total">connecting…</div>
-          <div class="livesign"><a id="lc-sign" href="#lc-howto">🐇 how to post →</a></div>
+          <div class="livesign"><button id="lc-post" class="postbtn">✍ Post to the wall</button><a id="lc-sign" href="#lc-howto">how it works →</a></div>
         </div>
       </div>
       <div class="lc-lastlab">the last 21 signers</div>
@@ -526,9 +559,210 @@
       .catch(function(){ if($('lc-n').textContent==='·') $('lc-status').textContent='chain unavailable — retrying…'; });
   }
   load(false);
+  window.__lcReload=function(){ load(true); };            // the post modal calls this after a tick lands
   var _sign=$('lc-sign'); if(_sign) _sign.addEventListener('click',function(){ var h=$('lc-howto'); if(h) h.open=true; });
   setInterval(function(){ if(!document.hidden) load(true); }, 20000);
   document.addEventListener('visibilitychange',function(){ if(!document.hidden) load(true); });
+})();
+</script>
+<div class="pm-ov" id="pm-ov" role="dialog" aria-modal="true">
+  <div class="pm">
+    <div class="pm-h"><b>Post to the wall 🐇</b><button class="pm-x" id="pm-x" aria-label="close">×</button></div>
+    <div class="pm-b">
+      <div class="pm-resume" id="pm-resume" style="display:none">
+        A post is in progress — your sats are on a throwaway funding address.
+        <button class="pm-btn" id="pm-resume-go">Resume it</button>
+        <button class="pm-btn ghost" id="pm-sweep2">Sweep my sats back to me</button>
+      </div>
+
+      <div id="pm-compose">
+        <label for="pm-mark">your mark · up to 111 bytes · any language</label>
+        <input id="pm-mark" maxlength="111" placeholder="gm from taipei 🐇" autocomplete="off" spellcheck="false">
+        <div class="pm-bytes" id="pm-mbytes">0/111</div>
+        <label for="pm-recv">your BSV address — your 1,000-sat deposit refunds here</label>
+        <input id="pm-recv" placeholder="1…" autocomplete="off" spellcheck="false">
+        <div class="pm-status pm-err" id="pm-cerr"></div>
+        <button class="pm-btn" id="pm-begin">Continue →</button>
+        <p class="pm-note">A throwaway key is made <b>in your browser</b> — your own wallet is never touched. You send it a few sats, it posts your tick, and the change + deposit route back to you.</p>
+        <p class="pm-nudge">Sats stuck in a wallet you don't control? <a href="https://wallet.grafverse.com" target="_blank" rel="noopener">Own your keys →</a></p>
+      </div>
+
+      <div id="pm-fund" style="display:none">
+        <div class="pm-amt" id="pm-famt">1,400 sat</div>
+        <label>send it to this throwaway address (made in your browser):</label>
+        <div class="pm-addr" id="pm-faddr">…</div>
+        <a class="pm-btn" id="pm-furi" href="#">📲 Open in wallet</a>
+        <button class="pm-btn ghost" id="pm-copy">Copy address</button>
+        <div class="pm-status" id="pm-wbal">watching the chain for your send…</div>
+        <div class="pm-spin"></div>
+        <p class="pm-note"><b>1,000 sat is a refundable deposit</b> — the next poster hands it back to your address. Anything extra returns as change. True cost ≈ the fee + one satoshi.</p>
+        <button class="pm-btn ghost" id="pm-sweep">Cancel — sweep my sats back</button>
+      </div>
+
+      <div id="pm-watch" style="display:none">
+        <div class="pm-spin"></div>
+        <div class="pm-status" id="pm-wtitle">Posting to the counter…</div>
+        <div class="pm-status pm-mono" id="pm-wsub"></div>
+      </div>
+
+      <div id="pm-done" style="display:none">
+        <div class="pm-amt pm-ok" id="pm-dn">#1</div>
+        <div class="pm-status pm-ok">You're on the wall 🐇</div>
+        <a class="pm-mono" id="pm-dtx" href="#" target="_blank" rel="noopener" style="display:block;text-align:center;margin:6px 0"></a>
+        <p class="pm-note" style="text-align:center">Your 1,000-sat deposit refunds to your address when the next person posts.</p>
+        <button class="pm-btn" id="pm-close2">Done</button>
+      </div>
+
+      <div id="pm-err" style="display:none">
+        <div class="pm-status pm-err" id="pm-emsg"></div>
+        <button class="pm-btn ghost" id="pm-sweep3">Sweep my sats back to me</button>
+        <button class="pm-btn" id="pm-close3">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var ASK=1400, MIN=1250, POLL=5000;
+  var WOC='https://api.whatsonchain.com/v1/bsv/main', BB='https://bananablocks.com/api/v1/bsv/main', LSK='brc226_pending';
+  var GM=null, S=null, timer=null;
+  function $(id){return document.getElementById(id)}
+  function byteLen(s){try{return new Blob([s]).size}catch(e){return unescape(encodeURIComponent(s)).length}}
+  function hexToBytes(h){var a=[];for(var i=0;i<h.length;i+=2)a.push(parseInt(h.substr(i,2),16));return a}
+  function bytesToHex(b){return b.map(function(x){return('0'+(x&255).toString(16)).slice(-2)}).join('')}
+  function wj(p){return fetch(WOC+p,{cache:'no-store'}).then(function(r){if(!r.ok)throw Error('woc '+r.status);return r.json()})}
+  function wt(p){return fetch(WOC+p,{cache:'no-store'}).then(function(r){if(!r.ok)throw Error('woc '+r.status);return r.text()})}
+  function bcast(hex){return fetch(WOC+'/tx/raw',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({txhex:hex})}).then(function(r){return r.text().then(function(t){return{ok:r.ok,body:(t||'').replace(/"/g,'')}})})}
+  // mempool-aware UTXOs: merge confirmed (/unspent/all, wrapped in .result) + fresh (/unconfirmed/unspent, bare array)
+  function utxos(addr){
+    return Promise.all([
+      wj('/address/'+addr+'/unspent/all').catch(function(){return null}),
+      wj('/address/'+addr+'/unconfirmed/unspent').catch(function(){return null})
+    ]).then(function(rs){
+      var out=[],seen={};
+      rs.forEach(function(d){ var rows=d&&(Array.isArray(d.result)?d.result:(Array.isArray(d)?d:[]));
+        (rows||[]).forEach(function(u){ var k=u.tx_hash+':'+u.tx_pos; if(!seen[k]){seen[k]=1;out.push({tx_hash:u.tx_hash,tx_pos:u.tx_pos,value:u.value});} }); });
+      return out;
+    });
+  }
+  function ensureGM(){ if(GM)return Promise.resolve(GM); if(window.GrafMint){GM=window.GrafMint;return Promise.resolve(GM);}
+    return new Promise(function(res,rej){var s=document.createElement('script');s.src='/vendor/grafmint.js';s.onload=function(){GM=window.GrafMint;res(GM)};s.onerror=function(){rej(Error('could not load the signer'))};document.head.appendChild(s)}); }
+  function addrHash(addr){ var s=new GM.P2PKH().lock(addr).toBinary(); if(s.length<25) throw Error('bad address'); return s.slice(3,23); }
+  function key(){ return GM.PrivateKey.fromWif(S.wif); }
+  function persist(){ try{localStorage.setItem(LSK,JSON.stringify(S))}catch(e){} }
+  function clearP(){ try{localStorage.removeItem(LSK)}catch(e){} S=null; }
+  function show(st){ ['compose','fund','watch','done','err'].forEach(function(s){var el=$('pm-'+s);if(el)el.style.display=(s===st)?'block':'none'}); }
+  function open(){ $('pm-ov').classList.add('on'); ensureGM().catch(function(){}); if(S&&S.wif){$('pm-resume').style.display='block';show('fund');} else {show('compose');$('pm-resume').style.display='none';} }
+  function close(){ $('pm-ov').classList.remove('on'); if(timer){clearInterval(timer);timer=null;} }
+
+  function begin(){
+    var mark=$('pm-mark').value, addr=$('pm-recv').value.trim();
+    $('pm-cerr').textContent='';
+    var mb=byteLen(mark);
+    if(mb===0) return $('pm-cerr').textContent='Write a mark first.';
+    if(mb>111) return $('pm-cerr').textContent='Mark is too long ('+mb+'/111 bytes).';
+    ensureGM().then(function(){
+      var ph; try{ ph=addrHash(addr); }catch(e){ $('pm-cerr').textContent='That is not a valid BSV address.'; return; }
+      var k=GM.PrivateKey.fromRandom();
+      S={wif:k.toWif(),throwAddr:k.toAddress(),posterAddr:addr,posterHashHex:bytesToHex(ph),mark:mark,ts:Date.now()};
+      persist(); toFund();
+    }).catch(function(e){ $('pm-cerr').textContent=(e.message||'Could not load the signer.'); });
+  }
+  function toFund(){
+    show('fund'); $('pm-resume').style.display='none';
+    $('pm-faddr').textContent=S.throwAddr;
+    $('pm-famt').textContent=ASK.toLocaleString()+' sat';
+    $('pm-furi').href='bitcoin:'+S.throwAddr+'?amount='+(ASK/1e8).toFixed(8)+'&label=BRC-226';
+    $('pm-wbal').textContent='watching the chain for your send…';
+    if(timer)clearInterval(timer); poll(); timer=setInterval(poll,POLL);
+  }
+  function poll(){
+    if(!S)return;
+    utxos(S.throwAddr).then(function(u){
+      var bal=(u||[]).reduce(function(t,x){return t+x.value},0);
+      if(bal>0)$('pm-wbal').textContent=bal.toLocaleString()+' sat received';
+      if(bal>=MIN){ clearInterval(timer); timer=null; doTick(u,0); }
+    }).catch(function(){});
+  }
+  function doTick(utxos,attempt){
+    show('watch'); $('pm-wtitle').textContent='Posting to the counter…'; $('pm-wsub').textContent=attempt?'someone posted first — retrying on the new tip…':'building your tick…';
+    var tip;
+    fetch('/tip.php',{cache:'no-store'}).then(function(r){return r.json()}).then(function(t){
+      tip=t; if(!tip||tip.genesis==null) throw Error('counter not live yet');
+      return wt('/tx/'+tip.tipTxid+'/hex');
+    }).then(function(tipHex){
+      var tipTx=GM.Transaction.fromHex(tipHex);
+      var lastFunder=tipTx.outputs[0].lockingScript.toBinary().slice(12,32);
+      var u=(utxos||[]).slice().sort(function(a,b){return b.value-a.value})[0];
+      return wt('/tx/'+u.tx_hash+'/hex').then(function(fh){
+        return GM.buildTickTx({
+          covenant:{sourceTransaction:tipTx,outputIndex:0,n:tip.n,lastFunderHash:lastFunder},
+          authorHash:hexToBytes(tip.author), newFunderHash:hexToBytes(S.posterHashHex),
+          funder:{key:key(),sourceTransaction:GM.Transaction.fromHex(fh),outputIndex:u.tx_pos},
+          changeAddress:S.posterAddr, mark:S.mark,
+        });
+      });
+    }).then(function(tx){
+      var hex=tx.toHex(), txid=tx.id('hex');
+      return bcast(hex).then(function(b){
+        if(!b.ok){
+          if(attempt<3 && /missing|spent|conflict|mempool|already/i.test(b.body)){
+            return utxos(S.throwAddr).then(function(f){ doTick(f,attempt+1); });
+          }
+          throw Error(b.body||'broadcast rejected');
+        }
+        try{fetch(BB+'/tx/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rawtx:hex})})}catch(e){}
+        try{fetch('/tip.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({txid:txid})})}catch(e){}
+        clearP(); done(txid, tip.n+1);
+      });
+    }).catch(function(e){
+      fail('Post failed: '+(e.message||e)+' — your sats are safe on the funding address.');
+    });
+  }
+  function done(txid,n){
+    show('done'); $('pm-dn').textContent='#'+n;
+    $('pm-dtx').textContent=txid.slice(0,12)+'…'+txid.slice(-6); $('pm-dtx').href='https://whatsonchain.com/tx/'+txid;
+    try{ if(window.__lcReload) setTimeout(window.__lcReload,1500); }catch(e){}
+  }
+  function fail(msg){ if(timer){clearInterval(timer);timer=null;} show('err'); $('pm-emsg').textContent=msg; }
+  function sweep(){
+    if(!S){ fail('Nothing to sweep.'); return; }
+    show('watch'); $('pm-wtitle').textContent='Sweeping your sats back…'; $('pm-wsub').textContent='';
+    ensureGM().then(function(){
+      var k=key();
+      return utxos(S.throwAddr).then(function(utxos){
+        if(!utxos||!utxos.length) throw Error('the funding address is empty');
+        var tx=new GM.Transaction(); tx.version=2;
+        var chain=Promise.resolve();
+        utxos.forEach(function(u){ chain=chain.then(function(){ return wt('/tx/'+u.tx_hash+'/hex').then(function(h){
+          tx.addInput({sourceTransaction:GM.Transaction.fromHex(h),sourceOutputIndex:u.tx_pos,unlockingScriptTemplate:new GM.P2PKH().unlock(k)}); }); }); });
+        return chain.then(function(){
+          tx.addOutput({lockingScript:new GM.P2PKH().lock(S.posterAddr),change:true});
+          return tx.fee(new GM.SatoshisPerKilobyte(100)).then(function(){ return tx.sign(); }).then(function(){
+            return bcast(tx.toHex()).then(function(b){
+              if(!b.ok) throw Error(b.body);
+              clearP(); fail('Swept back to your address ✓  '+tx.id('hex').slice(0,12)+'…');
+            });
+          });
+        });
+      });
+    }).catch(function(e){ fail('Sweep failed: '+(e.message||e)); });
+  }
+
+  try{ var raw=localStorage.getItem(LSK); if(raw){ S=JSON.parse(raw); if(!S||!S.wif) S=null; } }catch(e){ S=null; }
+  var pb=$('lc-post'); if(pb) pb.addEventListener('click', open);
+  $('pm-x').addEventListener('click', close);
+  $('pm-ov').addEventListener('click', function(e){ if(e.target===$('pm-ov')) close(); });
+  $('pm-mark').addEventListener('input', function(){ var b=byteLen(this.value); var el=$('pm-mbytes'); el.textContent=b+'/111'; el.classList.toggle('over',b>111); });
+  $('pm-begin').addEventListener('click', begin);
+  $('pm-resume-go').addEventListener('click', function(){ ensureGM().then(toFund); });
+  $('pm-copy').addEventListener('click', function(){ try{navigator.clipboard.writeText(S.throwAddr);this.textContent='Copied ✓';}catch(e){} });
+  $('pm-sweep').addEventListener('click', sweep);
+  $('pm-sweep2').addEventListener('click', sweep);
+  $('pm-sweep3').addEventListener('click', sweep);
+  $('pm-close2').addEventListener('click', close);
+  $('pm-close3').addEventListener('click', close);
 })();
 </script>
 </body>

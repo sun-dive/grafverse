@@ -45,7 +45,7 @@ export {
   MARK_MAX_BYTES, GENESIS_MARK, LIVECOUNTER_SCOPE, RECORD_LIVECOUNTER,
 } from './liveCounter.ts'
 // ── @bsv/sdk primitives the browser modal needs directly (throwaway key gen, tip-tx parse, P2PKH) ──
-export { PrivateKey, Transaction, P2PKH } from '@bsv/sdk'
+export { PrivateKey, Transaction, P2PKH, SatoshisPerKilobyte } from '@bsv/sdk'
 
 // ── mint / editions / gift-voucher free units (low-level) ──
 export {
