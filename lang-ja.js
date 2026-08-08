@@ -72,7 +72,7 @@
     ],
     wallet: { wBack:"← ゲームに戻る", wWallet:"🔑 ウォレット", wYourAddr:"あなたのアドレス", wWatchOnly:"閲覧のみ", wCopy:"コピー", wBalance:"残高", wFund:"＋ BSVを購入して入金", wMyNfts:"🎨 マイNFT ▾", wSend:"💸 BSVを送る", wSendAddrPh:"受取人のBSVアドレス (1…)", wSendAmtPh:"金額（サトシ）", wSendMax:"全額送る", wSendBtn:"送る", wSendHint:"任意のアドレスへの通常のBSV送金です。おつりはこのウォレットに戻ります。署名はこのページで行われ、鍵がここを離れることはありません。", wRecovery:"リカバリーフレーズ — 12単語", wReveal:"👁 表示", wCopyBtn:"コピー", wWritten:"✓ 書き留めた", wPrivKey:"秘密鍵（WIF）", wAdvanced:"詳細 — 復元・閲覧のみ・エクスポート", wRestoreLbl:"12単語のフレーズまたはWIF鍵から復元", wRestoreBtn:"ウォレットを復元", wWatchBtn:"閲覧のみ（公開鍵）", wImmortalize:"✦ 不朽にする", wFooter:"grafspace · Bitcoin SV ブロックチェーン上" },
     ui: {
-      splashTag:"塗ったものが、あなたになる。あなたを、塗れ。", splashTag2:"塗られるまで、何も存在しない。", splashBegin:"▶ はじめる", splashResume:"↩ 前の世界を再開", splashCreed:"契約の中に、我らは信を置く",
+      splashTag:"塗ったものが、あなたになる。あなたを、塗れ。", splashTag2:"塗られるまで、何も存在しない。", splashBegin:"▶ はじめる", splashResume:"↩ 前の世界を再開", splashCreed:"契約の中に、我らは信を置く", introReveal:"…ペンキでいっぱいだ。",
       worldHdr:"あなたの世界", namePh:"✎ 世界に名前を…", kSave:"☁ 保存して共有", kReload:"↻ 世界を再読み込み", kExport:"📤 ファイルに保存 (.bmf)", kImport:"📥 ファイルから読み込み (.bmf)", kMint:"⬆ チェーンに保存", kChain:"⬇ チェーンから読み込み", kBack:"← 前の世界へ戻る", kWallet:"👛 ウォレットを開く — 残高とNFT", kDone:"✓ 閉じる",
       keepTab:"◆ メニュー", exitBtn:"⏻ 終了", makeTab:"◆ 作る", spray:"噴射", grab:"掴む", talk:"話す", own:"所有 / リミックス", spread:"拡散", spNarrow:"細い", spBroad:"中", spWide:"広い",
       merchTag:"grafverse グッズ", merchH:"グラフィティを着よう。", merchSub:"grafverse のTシャツ、ポスターほか。", merchCta:"🛍 グッズを見る →", merchTeaser:"👕 近日公開 — あなたが塗った世界を着よう。", merchSkip:"いいえ — 続ける →",
