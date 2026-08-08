@@ -188,6 +188,29 @@
   footer{margin-top:60px; padding-top:20px; border-top:1px solid var(--line); font-family:var(--mono); font-size:11.5px; color:var(--muted); display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px}
   footer .creed{color:var(--struct)}
   footer .by b{color:var(--ink); font-weight:600}
+  /* ── live board (grafverse-hosted; fetches /tip.php) ── */
+  .livewrap{margin:clamp(26px,5vw,42px) 0 0}
+  .livehead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:12px;flex-wrap:wrap}
+  .livebadge{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600}
+  .livebadge i{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:lpulse 1.8s ease-in-out infinite}
+  @keyframes lpulse{0%,100%{opacity:1}50%{opacity:.28}}
+  .liveexp{font-family:var(--mono);font-size:11px;color:var(--struct);text-decoration:none;border-bottom:1px dotted var(--struct)}
+  .liveboard{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+  .livetop{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;padding:18px 20px 14px;border-bottom:1px solid var(--line-2)}
+  .livelab{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .livebig{font-family:var(--mono);font-weight:700;font-size:clamp(38px,9vw,60px);line-height:1;letter-spacing:-.02em;color:var(--accent)}
+  .livemeta{text-align:right;font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.9}
+  .livesign a{font-family:var(--sans);font-size:13px;font-weight:600;color:var(--accent);text-decoration:none}
+  .livesign .soon{font-family:var(--sans);font-size:13px;font-weight:600;color:var(--muted)}
+  .lc-lastlab{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:11px 20px 4px}
+  ul.lc-signers{list-style:none;margin:0;padding:2px 10px 12px;max-height:340px;overflow-y:auto}
+  ul.lc-signers li{display:flex;gap:11px;align-items:baseline;padding:9px 10px;border-radius:9px}
+  ul.lc-signers li + li{border-top:1px solid var(--line-2)}
+  ul.lc-signers li.empty{color:var(--muted);font-family:var(--mono);font-size:12.5px;justify-content:center;padding:22px 10px;border:none}
+  ul.lc-signers .sg-n{font-family:var(--mono);font-size:11px;color:var(--muted);flex:0 0 auto;width:52px}
+  ul.lc-signers .sg-msg{flex:1 1 auto;min-width:0;font-size:14px;color:var(--ink);overflow-wrap:anywhere}
+  ul.lc-signers .sg-who{flex:0 0 auto;font-family:var(--mono);font-size:10.5px;color:var(--struct)}
+  ul.lc-signers li.genesis .sg-msg{color:var(--accent);font-weight:600}
 </style>
 </head>
 <body>
@@ -197,6 +220,27 @@
   <h1>The smallest program that runs itself.</h1>
   <p class="lede">A two-op on-chain counter. <b>Minted once, advanced by anyone, owned by no one</b> — and it pays for its own heartbeat.</p>
   <p class="lede muted">One JavaScript line — <code style="font-family:var(--mono);font-size:.9em">n = n + 1</code> — compiled to a Bitcoin covenant. If this can live on the chain and tick forever with no operator, the rest of the language is just more blocks.</p>
+
+  <section class="livewrap" aria-label="the live counter">
+    <div class="livehead">
+      <span class="livebadge"><i></i> live on-chain · immortal · ownerless</span>
+      <a class="liveexp" id="lc-tip" href="#" target="_blank" rel="noopener">tip: —</a>
+    </div>
+    <div class="liveboard">
+      <div class="livetop">
+        <div>
+          <div class="livelab">counter · n</div>
+          <div class="livebig" id="lc-n">·</div>
+        </div>
+        <div class="livemeta">
+          <div id="lc-total">connecting…</div>
+          <div class="livesign"><span class="soon" id="lc-sign">signing opens at go-live 🐇</span></div>
+        </div>
+      </div>
+      <div class="lc-lastlab">the last 21 signers</div>
+      <ul class="lc-signers" id="lc-signers"><li class="empty" id="lc-status">connecting to the chain…</li></ul>
+    </div>
+  </section>
 
   <section>
     <h2><span class="n">01</span>The chain is the execution trace</h2>
@@ -434,5 +478,35 @@
   </footer>
 
 </div>
+<script>
+(function(){
+  function $(id){return document.getElementById(id)}
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function paint(d){
+    if(!d||d.genesis==null){
+      $('lc-n').textContent='0';
+      $('lc-total').textContent='not yet awake';
+      $('lc-status').textContent='the counter wakes when the genesis is broadcast 🐇';
+      return;
+    }
+    $('lc-n').textContent=d.n;
+    $('lc-total').textContent=d.n+(d.n===1?' tick':' ticks');
+    if(d.tipTxid){var t=$('lc-tip');t.textContent='tip: '+d.tipTxid.slice(0,8)+'…'+d.tipTxid.slice(-4);t.href='https://whatsonchain.com/tx/'+d.tipTxid;}
+    var rows=(d.last21||[]).map(function(x){
+      var cls=(x.n===0)?'genesis':'';
+      return '<li class="'+cls+'"><span class="sg-n">#'+x.n+'</span><span class="sg-msg">'+esc(x.mark)+'</span><span class="sg-who">'+esc(x.funder)+'</span></li>';
+    });
+    $('lc-signers').innerHTML = rows.length ? rows.join('') : '<li class="empty">no signers yet — be the first after the rabbit</li>';
+  }
+  function load(sync){
+    fetch('/tip.php'+(sync?'?sync=1':''),{cache:'no-store'})
+      .then(function(r){return r.json()}).then(paint)
+      .catch(function(){ if($('lc-n').textContent==='·') $('lc-status').textContent='chain unavailable — retrying…'; });
+  }
+  load(false);
+  setInterval(function(){ if(!document.hidden) load(true); }, 20000);
+  document.addEventListener('visibilitychange',function(){ if(!document.hidden) load(true); });
+})();
+</script>
 </body>
 </html>
