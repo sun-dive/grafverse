@@ -65,6 +65,11 @@ check('tick2 covenant input validates', validateInput(tick2, 0, lock1, V))
 check('tick2 out0 = counter lock @ n=2', arrEq(tick2.outputs[0].lockingScript.toBinary(), lock2.toBinary()))
 check('tick2 out1 repays signer1 DEPOSIT', tick2.outputs[1].satoshis === DEPOSIT && arrEq(tick2.outputs[1].lockingScript.toBinary(), p2pkhScript(s1H)))
 
+// dumps for the tip.php byte-parser cross-check (tick1: n should read as 1, mark 'wagmi 🐇')
+console.log('DUMP_COUNTER ' + tick1.outputs[0].lockingScript.toHex())
+console.log('DUMP_MARK ' + tick1.outputs[3].lockingScript.toHex())
+console.log('DUMP_FUNDER ' + Buffer.from(s1H).toString('hex'))
+
 console.log(`\n${pass}/${pass + fail} checks passed  ·  genesis fee≈${FUND - (genesis.outputs.at(-1)?.satoshis ?? 0)} sat`)
 if (fail > 0) { console.error('LC TX: FAIL'); process.exit(1) }
 console.log('LC TX OK — real genesis→tick→tick assembled + interpreter-valid')
