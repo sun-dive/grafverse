@@ -1233,7 +1233,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const vis=QUESTIONS.filter(chipVisible);
     const pinned=vis.filter(Q=>Q.pin);                     // always shown (e.g. "What colours?")
     const core  =vis.filter(Q=>!Q.pin && !Q.lore);         // functional / onboarding — self-gated & contextual
-    const lore  =vis.filter(Q=>Q.lore);                    // ambient flavour — always eligible, rotated
+    const loreOpen=(spent>0 || hasPainted);                // hold the deeper/flavour chips back through the intro — they open once you're IN the loop
+    const lore  =loreOpen ? vis.filter(Q=>Q.lore) : [];    // ambient flavour, rotated — gated so the first conversation stays on who / why / paint
     const pick=pinned.slice();
     const budget=Math.max(0, CAP-pick.length);
     // functional chips lead — unasked first (source order keeps the buy flow ahead of flavour) — but reserve room for lore
