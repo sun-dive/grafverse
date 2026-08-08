@@ -649,7 +649,7 @@
   function ensureGM(){ if(GM)return Promise.resolve(GM); if(window.GrafMint){GM=window.GrafMint;return Promise.resolve(GM);}
     return new Promise(function(res,rej){var s=document.createElement('script');s.src='/vendor/grafmint.js';s.onload=function(){GM=window.GrafMint;res(GM)};s.onerror=function(){rej(Error('could not load the signer'))};document.head.appendChild(s)}); }
   function addrHash(addr){ var s=new GM.P2PKH().lock(addr).toBinary(); if(s.length<25) throw Error('bad address'); return s.slice(3,23); }
-  function key(){ return GM.PrivateKey.fromWif(S.wif); }
+  function key(){ return GM.importWif(S.wif); }             // grafmint's proven WIF parser
   function persist(){ try{localStorage.setItem(LSK,JSON.stringify(S))}catch(e){} }
   function clearP(){ try{localStorage.removeItem(LSK)}catch(e){} S=null; }
   function show(st){ ['compose','fund','watch','done','err'].forEach(function(s){var el=$('pm-'+s);if(el)el.style.display=(s===st)?'block':'none'}); }
