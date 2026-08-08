@@ -35,6 +35,18 @@ export { publishSellerNote } from './sellerNote.ts'
 export { estimateEditionFunding, fundingMargin, type MintCostEstimate } from './editionBuilder.ts'
 export { compressIfSmaller } from './compress.ts'
 
+// ── BRC-226 LiveCounter — the immortal, ownerless counter's tx builders + helpers (send-to-post board) ──
+export {
+  buildTickTx, buildGenesisTx, tickUnlockTemplate, keyHash160, LIVECOUNTER_FEE_PER_KB,
+  type TickParams, type GenesisParams,
+} from './liveCounterTx.ts'
+export {
+  buildLiveCounterLock, markByteLength, nField,
+  MARK_MAX_BYTES, GENESIS_MARK, LIVECOUNTER_SCOPE, RECORD_LIVECOUNTER,
+} from './liveCounter.ts'
+// ── @bsv/sdk primitives the browser modal needs directly (throwaway key gen, tip-tx parse, P2PKH) ──
+export { PrivateKey, Transaction, P2PKH } from '@bsv/sdk'
+
 // ── mint / editions / gift-voucher free units (low-level) ──
 export {
   createEdition, createEditionV2, replicateEdition, replicateEditionV2,
