@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BRC-226 · The Self-Running Counter — a Bitcoin covenant that runs itself</title>
+<meta name="description" content="The smallest BRC-226 program: a self-running, self-funding Bitcoin covenant. One JavaScript line compiled to Script — minted once, advanced by anyone via ANYONECANPAY, unforkable deterministic logic. Battery, pool and relay funding, with a real sCrypt reference contract.">
+<meta name="author" content="sun-dive">
+<link rel="canonical" href="https://grafverse.com/brc226.html">
+<meta name="theme-color" content="#0a111d">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><text x=%221%22 y=%2214%22 font-size=%2214%22>🧱</text></svg>">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="grafverse">
+<meta property="og:title" content="BRC-226 · The Self-Running Counter">
+<meta property="og:description" content="A Bitcoin covenant that runs itself: minted once, advanced by anyone, owned by no one — and it pays for its own heartbeat.">
+<meta property="og:url" content="https://grafverse.com/brc226.html">
+<meta property="og:image" content="https://grafverse.com/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="BRC-226 · The Self-Running Counter">
+<meta name="twitter:description" content="A Bitcoin covenant that runs itself: minted once, advanced by anyone, owned by no one — and it pays for its own heartbeat.">
+<meta name="twitter:image" content="https://grafverse.com/og.jpg">
+<style>
+  :root{
+    --ground:#eaeef3; --panel:#ffffff; --ink:#141d2b; --muted:#586a83;
+    --line:#c5d1e0; --line-2:#dae2ee;
+    --accent:#c17d16;         /* amber — a live sat, the bounty, the signal */
+    --accent-soft:#f6ecd8;
+    --struct:#2f6d7d;         /* slate-teal — covenant structure */
+    --struct-soft:#e2eef1;
+    --good:#3f7d52;
+    --grid:rgba(20,29,43,.045);
+    --shadow:0 1px 2px rgba(20,29,43,.06), 0 8px 24px rgba(20,29,43,.05);
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ground:#0a111d; --panel:#111b2b; --ink:#dde7f3; --muted:#8ea3c0;
+      --line:#22344e; --line-2:#1a2740;
+      --accent:#f0ad4e; --accent-soft:#2a2113;
+      --struct:#4fa6bb; --struct-soft:#122630;
+      --good:#66b483;
+      --grid:rgba(221,231,243,.05);
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"]{
+    --ground:#eaeef3; --panel:#ffffff; --ink:#141d2b; --muted:#586a83;
+    --line:#c5d1e0; --line-2:#dae2ee; --accent:#c17d16; --accent-soft:#f6ecd8;
+    --struct:#2f6d7d; --struct-soft:#e2eef1; --good:#3f7d52; --grid:rgba(20,29,43,.045);
+    --shadow:0 1px 2px rgba(20,29,43,.06), 0 8px 24px rgba(20,29,43,.05);
+  }
+  :root[data-theme="dark"]{
+    --ground:#0a111d; --panel:#111b2b; --ink:#dde7f3; --muted:#8ea3c0;
+    --line:#22344e; --line-2:#1a2740; --accent:#f0ad4e; --accent-soft:#2a2113;
+    --struct:#4fa6bb; --struct-soft:#122630; --good:#66b483; --grid:rgba(221,231,243,.05);
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--sans); line-height:1.6; -webkit-font-smoothing:antialiased;
+    background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+    background-size:26px 26px;
+  }
+  .wrap{max-width:820px; margin:0 auto; padding:clamp(28px,6vw,64px) clamp(18px,5vw,32px) 80px}
+  .eyebrow{font-family:var(--mono); font-size:12px; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--accent); font-weight:600; margin:0 0 18px}
+  h1{font-family:var(--serif); font-weight:600; font-size:clamp(30px,6.4vw,50px); line-height:1.08;
+    letter-spacing:-.01em; margin:0 0 14px; text-wrap:balance}
+  .lede{font-size:clamp(16px,2.4vw,19px); color:var(--muted); margin:0 0 6px; max-width:60ch}
+  .lede b{color:var(--ink); font-weight:600}
+
+  section{margin-top:clamp(38px,7vw,60px)}
+  h2{font-family:var(--mono); font-size:13px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--struct); font-weight:600; margin:0 0 4px}
+  h2 .n{color:var(--muted); margin-right:10px}
+  .h2sub{font-family:var(--serif); font-size:clamp(20px,3.4vw,27px); font-weight:600; margin:0 0 18px; letter-spacing:-.01em; text-wrap:balance}
+  p{margin:0 0 14px; max-width:64ch}
+  .muted{color:var(--muted)}
+
+  /* ---- the tx-chain diagram ---- */
+  .chainscroll{overflow-x:auto; padding:6px 2px 14px; margin:0 -4px; -webkit-overflow-scrolling:touch}
+  .chain{display:flex; align-items:stretch; gap:0; min-width:max-content; padding:4px}
+  .node{position:relative; background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:14px 16px 12px; width:150px; flex:0 0 auto; box-shadow:var(--shadow)}
+  .node.genesis{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent), var(--shadow)}
+  .node .tag{font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-bottom:8px}
+  .node.genesis .tag{color:var(--accent)}
+  .node .nval{font-family:var(--mono); font-weight:700; font-size:27px; line-height:1; letter-spacing:-.01em}
+  .node .nlabel{font-family:var(--mono); font-size:11px; color:var(--struct); margin-top:2px}
+  .node .bat{margin-top:12px}
+  .node .bat-l{font-family:var(--mono); font-size:10px; color:var(--muted); display:flex; justify-content:space-between; margin-bottom:4px}
+  .node .bar{height:6px; border-radius:4px; background:var(--line-2); overflow:hidden}
+  .node .bar > i{display:block; height:100%; background:var(--accent); border-radius:4px}
+  .arrow{flex:0 0 auto; width:58px; display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative; padding-top:6px}
+  .arrow .line{height:2px; width:100%; background:linear-gradient(90deg,var(--line),var(--struct)); position:relative}
+  .arrow .line::after{content:"▸"; position:absolute; right:-3px; top:-11px; color:var(--struct); font-size:15px}
+  .arrow .bounty{font-family:var(--mono); font-size:10px; color:var(--accent); background:var(--accent-soft);
+    border:1px solid var(--accent); border-radius:20px; padding:2px 8px; margin-top:10px; white-space:nowrap; font-weight:600}
+  .arrow .who{font-family:var(--mono); font-size:9px; color:var(--muted); margin-top:5px; text-align:center; line-height:1.3}
+  .node.dots{border:1px dashed var(--line); background:transparent; box-shadow:none; display:flex; align-items:center; justify-content:center; width:70px; color:var(--muted); font-family:var(--mono); font-size:20px}
+  .caption{font-family:var(--mono); font-size:11.5px; color:var(--muted); margin-top:12px; text-align:center}
+
+  /* ---- covenant rule card ---- */
+  .rules{background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:var(--shadow)}
+  .rules .rhead{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
+    padding:12px 18px; border-bottom:1px solid var(--line-2); display:flex; justify-content:space-between; align-items:center}
+  .rules .rhead b{color:var(--struct); font-weight:600}
+  .rule{display:flex; gap:14px; padding:16px 18px}
+  .rule + .rule{border-top:1px solid var(--line-2)}
+  .rule .k{font-family:var(--mono); font-weight:700; color:var(--accent); font-size:13px; flex:0 0 auto; width:26px}
+  .rule .rt{min-width:0}
+  .rule .rt .name{font-family:var(--mono); font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--struct); font-weight:600; margin-bottom:5px}
+  .rule .rt code{font-family:var(--mono); font-size:13.5px; color:var(--ink); background:var(--struct-soft); border:1px solid var(--line-2);
+    padding:2px 7px; border-radius:6px; display:inline-block; margin-bottom:6px; word-break:break-word}
+  .rule .rt .why{font-size:13.5px; color:var(--muted); margin:0}
+  .rfoot{padding:12px 18px; border-top:1px solid var(--line-2); font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .rfoot b{color:var(--ink); font-weight:600}
+  .state{display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center; padding:11px 18px; border-bottom:1px solid var(--line-2); font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .state .sl{font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--struct); font-weight:600}
+  .state code{font-family:var(--mono); font-size:12.5px; color:var(--accent); background:var(--accent-soft); border:1px solid var(--line-2); padding:1px 6px; border-radius:5px; margin-right:4px}
+  .state em{font-style:normal; color:var(--muted); opacity:.8}
+  .funds{display:grid; grid-template-columns:1fr; gap:12px}
+  @media(min-width:720px){.funds{grid-template-columns:repeat(3,1fr)}}
+  .fund{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 16px 15px; box-shadow:var(--shadow); display:flex; flex-direction:column}
+  .fund.hot{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent), var(--shadow)}
+  .fund .fi{font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; font-weight:600; color:var(--struct); margin-bottom:9px}
+  .fund.hot .fi{color:var(--accent)}
+  .fund .fmech{font-size:13.5px; color:var(--ink); margin:0 0 13px; max-width:none}
+  .fund dl{margin:0 0 13px; display:grid; gap:7px}
+  .fund dl > div{display:grid; grid-template-columns:72px 1fr; gap:8px; align-items:baseline}
+  .fund dt{font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted)}
+  .fund dd{margin:0; font-size:12.5px; color:var(--ink)}
+  .fund .fbest{margin-top:auto; font-family:var(--mono); font-size:11px; color:var(--muted); border-top:1px solid var(--line-2); padding-top:10px}
+  .fund .fbest em{font-style:italic; color:var(--struct)}
+  .fund .fnote{font-size:12px; color:var(--muted); margin:11px 0 0; padding-top:10px; border-top:1px dashed var(--accent); max-width:none}
+  .fund .fnote b{color:var(--ink)}
+  .stackline{font-size:13.5px; color:var(--muted); margin-top:15px; max-width:none}
+  .stackline b{color:var(--struct); font-weight:600}
+  .seed{margin-top:clamp(38px,7vw,60px); background:var(--struct-soft); border:1px solid var(--line); border-radius:14px; padding:22px 22px}
+  .seed .seedline{font-family:var(--serif); font-size:clamp(17px,2.8vw,21px); margin:6px 0 0; color:var(--ink); max-width:none; text-wrap:balance}
+  .seed .seedline b{color:var(--struct)}
+  code{font-family:var(--mono)}
+  .code{background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); overflow-x:auto}
+  .code .hd{display:block; padding:9px 18px; border-bottom:1px solid var(--line-2); font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted)}
+  .code .hd b{color:var(--struct); font-weight:600}
+  .code pre{margin:0; padding:16px 18px; font-family:var(--mono); font-size:12.5px; line-height:1.7; color:var(--ink); white-space:pre}
+  .code .c{color:var(--muted); font-style:italic}
+  .code .kw{color:var(--accent); font-weight:600}
+  .code .kw2{color:var(--struct); font-weight:600}
+
+  /* ---- three moves ---- */
+  .moves{display:grid; grid-template-columns:1fr; gap:12px}
+  @media(min-width:620px){.moves{grid-template-columns:repeat(3,1fr)}}
+  .move{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 16px 15px; box-shadow:var(--shadow)}
+  .move .mi{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); font-weight:600; margin-bottom:8px}
+  .move h3{font-family:var(--serif); font-size:18px; margin:0 0 6px; font-weight:600}
+  .move p{font-size:13.5px; color:var(--muted); margin:0; max-width:none}
+  .move code{font-family:var(--mono); font-size:12px; color:var(--ink); background:var(--struct-soft); padding:1px 5px; border-radius:5px}
+
+  /* ---- two-up (fork / stall) ---- */
+  .twoup{display:grid; grid-template-columns:1fr; gap:12px}
+  @media(min-width:620px){.twoup{grid-template-columns:1fr 1fr}}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 18px; box-shadow:var(--shadow)}
+  .card .ct{font-family:var(--mono); font-size:12px; letter-spacing:.1em; text-transform:uppercase; font-weight:600; margin-bottom:8px; color:var(--good)}
+  .card p{font-size:14px; margin:0; color:var(--muted)}
+  .card p b{color:var(--ink); font-weight:600}
+
+  /* ---- edges list ---- */
+  ul.edges{list-style:none; margin:0; padding:0}
+  ul.edges li{position:relative; padding:10px 0 10px 26px; border-top:1px solid var(--line-2); font-size:14px; color:var(--muted)}
+  ul.edges li:first-child{border-top:none}
+  ul.edges li::before{content:"△"; position:absolute; left:0; top:10px; color:var(--accent); font-size:12px}
+  ul.edges b{color:var(--ink); font-weight:600}
+
+  /* ---- generalize / ladder ---- */
+  .ladder{display:grid; gap:2px; font-family:var(--mono); font-size:13px; border-radius:12px; overflow:hidden; border:1px solid var(--line); box-shadow:var(--shadow)}
+  .ladder .rung{background:var(--panel); padding:12px 16px; display:flex; gap:12px; align-items:baseline}
+  .ladder .rung .s{color:var(--accent); font-weight:700; flex:0 0 auto}
+  .ladder .rung .t{color:var(--ink)}
+  .ladder .rung .t b{color:var(--struct)}
+  .pull{font-family:var(--serif); font-size:clamp(19px,3.4vw,25px); line-height:1.35; margin:26px 0 0; text-wrap:balance; letter-spacing:-.01em}
+  .pull b{color:var(--accent); font-weight:600}
+
+  footer{margin-top:60px; padding-top:20px; border-top:1px solid var(--line); font-family:var(--mono); font-size:11.5px; color:var(--muted); display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px}
+  footer .creed{color:var(--struct)}
+  footer .by b{color:var(--ink); font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">BRC-226 · working sketch</p>
+  <h1>The smallest program that runs itself.</h1>
+  <p class="lede">A two-op on-chain counter. <b>Minted once, advanced by anyone, owned by no one</b> — and it pays for its own heartbeat.</p>
+  <p class="lede muted">One JavaScript line — <code style="font-family:var(--mono);font-size:.9em">n = n + 1</code> — compiled to a Bitcoin covenant. If this can live on the chain and tick forever with no operator, the rest of the language is just more blocks.</p>
+
+  <section>
+    <h2><span class="n">01</span>The chain is the execution trace</h2>
+    <p class="h2sub">Each transaction is one tick. The lineage of UTXOs <em>is</em> the running program.</p>
+    <div class="chainscroll">
+      <div class="chain">
+        <div class="node genesis">
+          <div class="tag">◆ genesis · mint</div>
+          <div class="nval">0</div>
+          <div class="nlabel">n = 0</div>
+          <div class="bat"><div class="bat-l"><span>battery</span><span>1000</span></div><div class="bar"><i style="width:100%"></i></div></div>
+        </div>
+        <div class="arrow">
+          <div class="line"></div>
+          <div class="bounty">🏅 STEP − fee</div>
+          <div class="who">to whoever<br>advanced it</div>
+        </div>
+        <div class="node">
+          <div class="tag">tick</div>
+          <div class="nval">1</div>
+          <div class="nlabel">n = 1</div>
+          <div class="bat"><div class="bat-l"><span>battery</span><span>~980</span></div><div class="bar"><i style="width:80%"></i></div></div>
+        </div>
+        <div class="arrow">
+          <div class="line"></div>
+          <div class="bounty">🏅 STEP − fee</div>
+          <div class="who">anyone,<br>permissionless</div>
+        </div>
+        <div class="node">
+          <div class="tag">tick</div>
+          <div class="nval">2</div>
+          <div class="nlabel">n = 2</div>
+          <div class="bat"><div class="bat-l"><span>battery</span><span>~960</span></div><div class="bar"><i style="width:60%"></i></div></div>
+        </div>
+        <div class="arrow">
+          <div class="line"></div>
+          <div class="bounty">🏅 STEP − fee</div>
+          <div class="who">deterministic<br>result</div>
+        </div>
+        <div class="node">
+          <div class="tag">tick</div>
+          <div class="nval">3</div>
+          <div class="nlabel">n = 3</div>
+          <div class="bat"><div class="bat-l"><span>battery</span><span>~940</span></div><div class="bar"><i style="width:40%"></i></div></div>
+        </div>
+        <div class="node dots">…</div>
+      </div>
+    </div>
+    <p class="caption">← scroll → &nbsp;·&nbsp; every arrow is a real tx at 100 sat/KB &nbsp;·&nbsp; the counter can only ever go n → n+1</p>
+  </section>
+
+  <section>
+    <h2><span class="n">02</span>The block</h2>
+    <p class="h2sub">Two rules the covenant enforces on its own spend — nothing more.</p>
+    <p class="muted">Spent, the script reads its <em>own</em> transaction (OP_PUSH_TX puts the sighash preimage on the stack) and checks two things about the output that continues it:</p>
+    <div class="rules">
+      <div class="rhead"><span>covenant <b>C(n, lastFunder)</b> — the "increment" block</span><span>OP_PUSH_TX</span></div>
+      <div class="state">
+        <span class="sl">state</span>
+        <span><code>n</code> the counter</span>
+        <span><code>lastFunder</code> who to repay <em>· relay only</em></span>
+      </div>
+      <div class="rule">
+        <div class="k">1</div>
+        <div class="rt">
+          <div class="name">Quine + increment</div>
+          <code>out.script == C(n + 1)</code>
+          <p class="why">The next output must lock to <em>this very covenant</em>, with the counter bumped by one. It rebuilds itself, one higher.</p>
+        </div>
+      </div>
+      <div class="rule">
+        <div class="k">2</div>
+        <div class="rt">
+          <div class="name">Leave the bounty</div>
+          <code>out.value ≥ in.value − STEP</code>
+          <p class="why">Carry the battery forward, minus a fixed budget. The freed <code style="font-size:.85em">STEP − fee</code> is the reward the spender pockets for doing the work.</p>
+        </div>
+      </div>
+      <div class="rfoot">Everything else is <b>unconstrained</b> — who pays, who claims the bounty, extra inputs. Open to advance, sealed to alter.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">03</span>Three moves</h2>
+    <p class="h2sub">Mint the logic. Anyone invokes it. The result can't be argued with.</p>
+    <div class="moves">
+      <div class="move">
+        <div class="mi">→ mint</div>
+        <h3>Source to chain</h3>
+        <p>Publish <code>C(0)</code> funded with the battery. The logic now lives on-chain, referenced by txid — reusable inventory, not a copy.</p>
+      </div>
+      <div class="move">
+        <div class="mi">→ invoke</div>
+        <h3>ANYONECANPAY</h3>
+        <p>Anyone builds the spend and signs their fuel input <code>SIGHASH_ANYONECANPAY</code> — so a half-built tx can be completed and relayed by <em>anyone</em>.</p>
+      </div>
+      <div class="move">
+        <div class="mi">→ result</div>
+        <h3>Not forkable</h3>
+        <p>The covenant admits exactly <em>one</em> valid continuation. The counter can only become <code>n+1</code>. Deterministic logic — a fact, not a vote.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">04</span>Why it holds</h2>
+    <p class="h2sub">It can't fork. It can't stall.</p>
+    <div class="twoup">
+      <div class="card">
+        <div class="ct">✓ can't fork</div>
+        <p><b>One valid spend, always.</b> A normal contract's next state is a negotiation — many spends might pass. This one passes for exactly one output. So each tx isn't a choice, it's a <b>line in a proof</b>. You can't fork a proof.</p>
+      </div>
+      <div class="card">
+        <div class="ct">✓ can't stall</div>
+        <p><b>A standing bounty.</b> While <code style="font-family:var(--mono);font-size:.9em">STEP − fee &gt; 0</code>, there's always a reason to tick it. The program <b>pays for its own execution</b> and pulls itself down the chain. No operator, ever. It lives as long as its battery — and anyone can top it up.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">05</span>Funding · three ways to stay alive</h2>
+    <p class="h2sub">Where the bounty comes from decides how long a program lives.</p>
+    <div class="funds">
+      <div class="fund">
+        <div class="fi">🔋 battery</div>
+        <p class="fmech">Carries its own funding. Each tick drains it a little.</p>
+        <dl>
+          <div><dt>alive by</dt><dd>itself</dd></div>
+          <div><dt>idle?</dt><dd>waits, full</dd></div>
+          <div><dt>true cost</dt><dd>finite — N ticks, then halts</dd></div>
+        </dl>
+        <div class="fbest">for finite runs — compute to completion</div>
+      </div>
+
+      <div class="fund">
+        <div class="fi">⛽ shared pool</div>
+        <p class="fmech">Many programs draw ticks from one tank a patron refills.</p>
+        <dl>
+          <div><dt>alive by</dt><dd>a patron</dd></div>
+          <div><dt>idle?</dt><dd>yes — stays up, unused</dd></div>
+          <div><dt>true cost</dt><dd>drains the pool</dd></div>
+        </dl>
+        <div class="fbest">for always-on infrastructure</div>
+      </div>
+
+      <div class="fund hot">
+        <div class="fi">🤝 relay · pass-the-torch</div>
+        <p class="fmech">Each funder repays the <em>previous</em> one. The program's own value never drains.</p>
+        <dl>
+          <div><dt>alive by</dt><dd>its users</dd></div>
+          <div><dt>idle?</dt><dd>no — naps, wakes when called</dd></div>
+          <div><dt>true cost</dt><dd>only fees; the deposit circulates</dd></div>
+        </dl>
+        <div class="fbest">for programs that live <em>iff</em> useful</div>
+        <p class="fnote"><b>A reimbursement, not a yield.</b> Promise profit and the payout must escalate — that's a chain letter. Keep the deposit tiny → the last funder risks only a crumb, and the program simply sleeps.</p>
+      </div>
+    </div>
+    <p class="stackline">…and they <b>stack</b>: a tiny battery for a baseline pulse · relay for real demand · a pool when someone wants to sponsor a favourite.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">06</span>The block, in Script</h2>
+    <p class="h2sub">The same two rules — and the relay — as a real covenant.</p>
+    <p class="muted">Written sCrypt-style (it compiles to Bitcoin Script). <code>Tx.checkPreimage</code> is the OP_PUSH_TX move: it forces the spending transaction's own sighash preimage onto the stack and proves it's genuine — so the script can read its <em>own</em> tx and pin down the future.</p>
+    <div class="code">
+      <span class="hd">contract <b>SelfRunningCounter</b> · relay-funded</span>
+<pre><span class="kw2">contract</span> SelfRunningCounter {
+  <span class="kw2">@state</span> int n;                       <span class="c">// the counter</span>
+  <span class="kw2">@state</span> PubKeyHash lastFunder;        <span class="c">// who to repay</span>
+  <span class="kw2">static const</span> int DEPOSIT = 1000;     <span class="c">// sats · the rolling refund — keep it tiny</span>
+
+  <span class="kw2">@method</span>() <span class="kw2">public</span> tick(SigHashPreimage txp, PubKeyHash funder) {
+    <span class="kw">require</span>(Tx.checkPreimage(txp));       <span class="c">// OP_PUSH_TX — prove txp IS this very tx</span>
+
+    int V = SigHash.value(txp);             <span class="c">// my sats · carried forward, never drained</span>
+    PubKeyHash prev = this.lastFunder;       <span class="c">// who advanced me last time</span>
+
+    this.n = this.n + 1;                     <span class="c">// the whole computation: n -&gt; n+1</span>
+    this.lastFunder = funder;                <span class="c">// record this advancer — repaid next tick</span>
+
+    bytes out0 = this.buildStateOutput(V);   <span class="c">// Rule 1 · quine + increment, value V</span>
+    bytes out1 = Utils.buildOutput(          <span class="c">// Rule 2 · repay the previous funder</span>
+        Utils.buildPublicKeyHashScript(prev), DEPOSIT);
+    <span class="kw">require</span>(hash256(out0 + out1) == SigHash.hashOutputs(txp));  <span class="c">// exactly these outputs = the only valid future</span>
+  }
+}
+<span class="c">// to advance: add your OWN input (SIGHASH_ANYONECANPAY) covering DEPOSIT + fee,</span>
+<span class="c">// name yourself `funder`, and the NEXT tick repays you. permissionless, deterministic.</span></pre>
+    </div>
+    <div class="twoup" style="margin-top:12px">
+      <div class="card">
+        <div class="ct">◆ fixed — the proof</div>
+        <p><b>n → n+1</b>, the repayment to the previous funder, and the carried value — all committed by <code>hashOutputs</code>. Exactly one valid future.</p>
+      </div>
+      <div class="card">
+        <div class="ct" style="color:var(--accent)">◆ free — the permission</div>
+        <p><b>Who advances it.</b> The funder names their own address and adds one <code>ANYONECANPAY</code> input. Anyone can — and that freedom never bends the counter's path.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">07</span>The honest edges</h2>
+    <p class="h2sub">Foundations, not vibe. Where the real work is.</p>
+    <ul class="edges">
+      <li><b>OP_PUSH_TX must be canonical.</b> The preimage-on-stack trick needs the exact, malleation-safe construction (standard on BSV / sCrypt) — get the sighash right or the "quine" leaks.</li>
+      <li><b>The battery is finite.</b> Liveness holds only while the reward covers the fee. Fund it for N ticks; refills are welcome but not automatic.</li>
+      <li><b>Races are wasteful, never divergent.</b> Two advancers can collide on one UTXO — only one tick lands. But the result is identical, so the state never splits; the loser just spent a failed attempt.</li>
+      <li><b>Big state travels by reference.</b> A counter is one integer in-script. Real programs carry state as a hash pointer (same instinct as reference-mints), not inline.</li>
+      <li><b>Compute has gravity.</b> Every tick is a real fee. Wasteful code literally weighs more — the tightest program wins by physics, not taste.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">08</span>From one block to a language</h2>
+    <p class="h2sub">The counter is not a toy. It's the first opcode.</p>
+    <div class="ladder">
+      <div class="rung"><span class="s">→</span><span class="t">Swap <b>n + 1</b> for any pure <b>f(state)</b> &nbsp;→&nbsp; an "apply f" covenant.</span></div>
+      <div class="rung"><span class="s">→</span><span class="t">Enforce a <b>different continuation on a condition</b> &nbsp;→&nbsp; branching.</span></div>
+      <div class="rung"><span class="s">→</span><span class="t">Reference many minted blocks &nbsp;→&nbsp; a <b>program</b> that assembles itself as it runs.</span></div>
+      <div class="rung"><span class="s">→</span><span class="t">The <b>UTXO lineage is the tape</b>; each tx is one instruction retiring; the network already checked the work.</span></div>
+    </div>
+    <p class="pull">Bitcoin isn't the ledger the program writes to. <b>Bitcoin is the CPU that runs it</b> — and every step is proven the moment it happens.</p>
+  </section>
+
+  <section class="seed">
+    <p class="eyebrow" style="color:var(--struct); margin-bottom:0">the point of writing it down</p>
+    <p class="seedline">This is a <b>seed, not a spec</b> — the smallest working example, offered as a BRC so anyone can grow it. Take the block, change the rule, plant your own.</p>
+  </section>
+
+  <footer>
+    <span>BRC-226 · the self-running counter · v0.3</span>
+    <span class="by">by <b>sun-dive</b> · co-authored &amp; engineered with <b>Claude</b></span>
+    <span class="creed">in the covenant we trust</span>
+  </footer>
+
+</div>
+</body>
+</html>
