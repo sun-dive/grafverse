@@ -254,6 +254,14 @@
   .pm-nudge{font-size:12px;color:var(--muted);margin-top:14px;padding-top:12px;border-top:1px dashed var(--accent)}
   .pm-nudge a{color:var(--accent)}
   .pm-resume{background:var(--accent-soft);border:1px solid var(--accent);border-radius:10px;padding:13px;margin-bottom:14px;font-size:13.5px;color:var(--ink)}
+  .pm-qr{background:#fff;border-radius:12px;padding:12px;margin:8px auto 12px;width:max-content;max-width:100%;box-shadow:var(--shadow)}
+  .pm-qr svg{display:block;width:206px;max-width:56vw;height:auto}
+  .pm-alt{margin:2px 0 10px;border:1px solid var(--line);border-radius:10px}
+  .pm-alt summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;color:var(--struct);font-weight:600}
+  .pm-alt summary::-webkit-details-marker{display:none}
+  .pm-alt[open] summary{border-bottom:1px solid var(--line-2)}
+  .pm-alt .in{padding:12px 14px}
+  .pm-cancel{display:block;text-align:center;font-size:12.5px;color:var(--muted);margin-top:14px;cursor:pointer;text-decoration:underline}
 </style>
 </head>
 <body>
@@ -588,15 +596,18 @@
       </div>
 
       <div id="pm-fund" style="display:none">
+        <div class="pm-status" style="margin-top:0"><b style="color:var(--ink)">Scan &amp; send</b> — from any BSV wallet</div>
         <div class="pm-amt" id="pm-famt">1,400 sat</div>
-        <label>send it to this throwaway address (made in your browser):</label>
-        <div class="pm-addr" id="pm-faddr">…</div>
-        <a class="pm-btn" id="pm-furi" href="#">📲 Open in wallet</a>
-        <button class="pm-btn ghost" id="pm-copy">Copy address</button>
-        <div class="pm-status" id="pm-wbal">watching the chain for your send…</div>
+        <div class="pm-qr" id="pm-qr"></div>
+        <div class="pm-status" id="pm-wbal">📡 watching for your send…</div>
         <div class="pm-spin"></div>
-        <p class="pm-note"><b>1,000 sat is a refundable deposit</b> — the next poster hands it back to your address. Anything extra returns as change. True cost ≈ the fee + one satoshi.</p>
-        <button class="pm-btn ghost" id="pm-sweep">Cancel — sweep my sats back</button>
+        <details class="pm-alt"><summary>can't scan? send manually ▾</summary><div class="in">
+          <div class="pm-addr" id="pm-faddr">…</div>
+          <a class="pm-btn" id="pm-furi" href="#">📲 Open in wallet</a>
+          <button class="pm-btn ghost" id="pm-copy">Copy address</button>
+        </div></details>
+        <p class="pm-note"><b>1,000 sat is a refundable deposit</b> — returned to you when the next person posts. Anything extra comes back as change.</p>
+        <span class="pm-cancel" id="pm-sweep">cancel &amp; sweep my sats back</span>
       </div>
 
       <div id="pm-watch" style="display:none">
@@ -653,7 +664,7 @@
   function persist(){ try{localStorage.setItem(LSK,JSON.stringify(S))}catch(e){} }
   function clearP(){ try{localStorage.removeItem(LSK)}catch(e){} S=null; }
   function show(st){ ['compose','fund','watch','done','err'].forEach(function(s){var el=$('pm-'+s);if(el)el.style.display=(s===st)?'block':'none'}); }
-  function open(){ $('pm-ov').classList.add('on'); ensureGM().catch(function(){}); if(S&&S.wif){$('pm-resume').style.display='block';show('fund');} else {show('compose');$('pm-resume').style.display='none';} }
+  function open(){ $('pm-ov').classList.add('on'); ensureGM().catch(function(){}); ensureQR(); if(S&&S.wif){$('pm-resume').style.display='block';show('fund');} else {show('compose');$('pm-resume').style.display='none';} }
   function close(){ $('pm-ov').classList.remove('on'); if(timer){clearInterval(timer);timer=null;} }
 
   function begin(){
@@ -673,10 +684,14 @@
     show('fund'); $('pm-resume').style.display='none';
     $('pm-faddr').textContent=S.throwAddr;
     $('pm-famt').textContent=ASK.toLocaleString()+' sat';
-    $('pm-furi').href='bitcoin:'+S.throwAddr+'?amount='+(ASK/1e8).toFixed(8)+'&label=BRC-226';
-    $('pm-wbal').textContent='watching the chain for your send…';
+    var uri='bitcoin:'+S.throwAddr+'?amount='+(ASK/1e8).toFixed(8)+'&label=BRC-226';
+    $('pm-furi').href=uri;
+    ensureQR().then(function(){ makeQR(uri); });
+    $('pm-wbal').textContent='📡 watching for your send…';
     if(timer)clearInterval(timer); poll(); timer=setInterval(poll,POLL);
   }
+  function ensureQR(){ if(window.qrcode)return Promise.resolve(); return new Promise(function(res){var s=document.createElement('script');s.src='/vendor/qr.min.js';s.onload=res;s.onerror=res;document.head.appendChild(s)}); }
+  function makeQR(uri){ try{ if(!window.qrcode)return; var q=window.qrcode(0,'M'); q.addData(uri); q.make(); $('pm-qr').innerHTML=q.createSvgTag({cellSize:4,margin:1,scalable:true}); }catch(e){} }
   function poll(){
     if(!S)return;
     utxos(S.throwAddr).then(function(u){
