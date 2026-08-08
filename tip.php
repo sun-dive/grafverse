@@ -23,7 +23,7 @@ if (in_array($origin, $ALLOW, true)) {
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') { http_response_code(204); exit; }
 
 // ── config ─────────────────────────────────────────────────────────────────
-$GENESIS_TXID = '';                 // ← set to OUR canonical genesis txid at go-live (slice ⑥)
+$GENESIS_TXID = '2a5c1c758fa58856f88c9d27aaba64f4616666399faf712a294875b67ee7aeee';  // canonical genesis — "Follow the white 🐇" @ n=0, broadcast 2026-08-08
 $COUNTER_VOUT = 0;                  // the counter covenant is always output 0
 $BOARD        = 21;                 // "the last 21 signers"
 $MAX_ADVANCE  = 40;                 // ticks to catch up per request (bounds a viral burst)
