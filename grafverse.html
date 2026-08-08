@@ -570,6 +570,32 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       new THREE.MeshStandardMaterial({color:0xd83a2a})); straw.position.set(0.12,1.32,0); straw.rotation.z=-0.25; g.add(straw);
     g.scale.setScalar(scale||1); return g;
   }
+  // Unit 21's retrofit flux capacitor — three arms, an inward-charging light-chase, a center flash. 1.21 GW, naturally.
+  function makeFluxCapacitor(){
+    const g=new THREE.Group();
+    const houseTex=makeLabel(256,256,(x,w,h)=>{ x.fillStyle='#05070c'; x.fillRect(0,0,w,h);
+      x.strokeStyle='#12325a'; x.lineWidth=7; x.strokeRect(9,9,w-18,h-18);
+      x.fillStyle='#f5a623'; x.textAlign='center'; x.textBaseline='middle'; x.shadowColor='#f5a623'; x.shadowBlur=12;
+      x.font='bold 34px monospace'; x.fillText('1.21 GW',w/2,h-32); });
+    const housing=new THREE.Mesh(new THREE.BoxGeometry(0.46,0.46,0.05),
+      new THREE.MeshStandardMaterial({map:houseTex,roughness:.6,metalness:.4,emissive:0x0a1428,emissiveIntensity:.35}));
+    g.add(housing);
+    const hub=new THREE.Mesh(new THREE.SphereGeometry(0.036,16,12),
+      new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xcfeaff,emissiveIntensity:2,roughness:.2,fog:false}));
+    hub.position.z=0.045; g.add(hub);
+    const hubLight=new THREE.PointLight(0x9fd8ff,0.5,1.4,2); hubLight.position.z=0.12; g.add(hubLight);
+    const bulbs=[]; [150,30,270].map(d=>d*Math.PI/180).forEach(a=>{ const dx=Math.cos(a), dy=Math.sin(a);
+      const tube=new THREE.Mesh(new THREE.CylinderGeometry(0.011,0.011,0.19,8),
+        new THREE.MeshStandardMaterial({color:0x0c1830,emissive:0x14335f,emissiveIntensity:.5,roughness:.4,fog:false}));
+      tube.position.set(dx*0.095,dy*0.095,0.035); tube.rotation.z=a-Math.PI/2; g.add(tube);
+      for(let i=0;i<3;i++){ const r=0.05+i*0.052;
+        const b=new THREE.Mesh(new THREE.SphereGeometry(0.018,10,8),
+          new THREE.MeshStandardMaterial({color:0xffffff,emissive:0x7fc8ff,emissiveIntensity:.35,roughness:.3,fog:false}));
+        b.position.set(dx*r,dy*r,0.055); g.add(b); bulbs.push({m:b,step:i}); }   // step 0=inner … 2=outer
+    });
+    g.userData.bulbs=bulbs; g.userData.hub=hub; g.userData.hubLight=hubLight;
+    return g;
+  }
   function makeVendingMachine(){
     const m=new THREE.Group();
     const CAB=0x16294d, PANELC=0x0c1830, SHELF=0x24406b;
@@ -635,6 +661,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
         can.rotation.y=i*1.2+s*0.6; m.add(can); placed++;
       }
     }
+    // ---- flux capacitor (Unit 21 needs 1.21 gigawatts) — bolted proud on the control panel ----
+    const flux=makeFluxCapacitor(); flux.position.set(PX,1.72,0.58); m.add(flux); m.userData.flux=flux;
     m.position.copy(MACHINE_POS);
     return m;
   }
@@ -1559,6 +1587,13 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const p=(performance.now()-_revealT0)/750;
       if(p<1){ if(monolith) monolith.scale.setScalar(Math.max(0.001,1-p*p)); if(machine) machine.scale.setScalar(Math.min(1,p*1.2)); if(manifestTool&&manifestTool.visible) manifestTool.scale.setScalar(Math.min(1,p*1.2)); }
       else { if(monolith){ monolith.visible=false; monolith.scale.setScalar(1); } if(machine) machine.scale.setScalar(1); if(manifestTool) manifestTool.scale.setScalar(1); _revealT0=0; }
+    }
+    if(machine && machine.visible && machine.userData.flux){            // ⚡ flux capacitor: inward light-chase + center flash (1.21 GW)
+      const fx=machine.userData.flux, ph=(performance.now()/900)%1;
+      fx.userData.bulbs.forEach(bb=>{ const pk=0.08+(2-bb.step)*0.2; let d=Math.abs(ph-pk); if(d>0.5)d=1-d;
+        bb.m.material.emissiveIntensity=0.3+Math.max(0,1-d/0.13)*3; });
+      let cd=Math.abs(ph-0.62); if(cd>0.5)cd=1-cd; const cOn=Math.max(0,1-cd/0.07);
+      fx.userData.hub.material.emissiveIntensity=1.2+cOn*6; fx.userData.hubLight.intensity=0.4+cOn*2.4;
     }
     nearMachine = !introActive && md < 7;
     if(!greeted && !introActive && md < 7){
