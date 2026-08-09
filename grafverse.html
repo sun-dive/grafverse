@@ -450,6 +450,10 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   let _gctx=pctx, _gtex=paintTex;                                                     // the ground canvas spray() writes to — set per paint (trigger) / per stroke.g (load)
   function _wipeGround(){ pctx.clearRect(0,0,TEX,TEX); paintTex.needsUpdate=true; pctx2.clearRect(0,0,TEX,TEX); paintTex2.needsUpdate=true; groundStrokes.length=0; }
 
+  // ── SEE THROUGH THE MOON — the surface is transparent void until painted, so you glimpse the OPPOSITE pole's painting far below, through the moon (mirrored, since it's the far side) ──
+  const ghostGround=new THREE.Mesh(new THREE.PlaneGeometry(GROUND,GROUND), new THREE.MeshBasicMaterial({ map:paintTex2, transparent:true, opacity:1, depthWrite:false, side:THREE.DoubleSide, fog:false }));
+  ghostGround.rotation.x=-Math.PI/2; ghostGround.position.set(0,-1500,0); scene.add(ghostGround);   // the SAME canvas seen from INSIDE the moon — the far pole's paint hangs below the near pole (opaque where painted · see-through to the stars/Saturn where not); setHemisphere() swaps which pole it shows
+
   // helper: uv -> canvas px
   function toPx(uv){ return { x: uv.x*TEX, y:(1-uv.y)*TEX }; }
 
@@ -824,6 +828,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(saturn)      saturn.position.set(0, far?4200:-4200, far?1540:0);             // Saturn overhead on the sub-Saturn side · beneath on Unit 21's anti-Saturn side
     if(wardenTower) wardenTower.position.set(0, far?0:-4100, far?1600:0);           // the tower stands beside you at the sub-Saturn point · at the antipode (beneath) otherwise
     if(sunSprite)   sunSprite.position.set(far?90:80, far?4188:-4188, far?1580:40); // the Sun keeps its place by Saturn's limb, wherever Saturn is
+    if(ghostGround){ ghostGround.material.map = far?paintTex:paintTex2; ghostGround.material.needsUpdate=true; ghostGround.position.set(0,-1500, far?1600:0); }   // the ghost always shows the OTHER pole's paint, far beneath whichever pole you stand on
   }
 
   // ---------- audio (synthesised, fully offline — no files) ----------
