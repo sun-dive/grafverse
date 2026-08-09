@@ -727,7 +727,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   const wardenTower=makeWardenclyffeTower();
   wardenTower.position.set(0,-4100,0);              // at the ANTIPODE (180° from Unit 21 = the sub-Saturn point): far beneath, a tiny distant spire silhouetted against Saturn — "too small to see" from Unit 21, by design
-  wardenTower.visible=false; scene.add(wardenTower);   // manifests only once the monolith wakes into Unit 21
+  scene.add(wardenTower);
 
   // ── Saturn in the sky ── grafverse's moon IS Clarke's IAPETUS, so its giant hangs low over the far horizon.
   //    Starfield backdrop + a ringed Saturn spun on real UTC time, ring-opening ≈ the true current angle. ──
@@ -787,8 +787,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   const _egGates=[];
   (function(){
-    const gA=makePleiadesGate(); gA.position.set(18.7,0,-162.3); gA.lookAt(0,6.5,0); gA.visible=false; scene.add(gA);   // Seven Sisters gate — on the spawn → monolith sight-line, ~163 m out; hidden until the monolith wakes
-    const gB=makeJumpGate(0.08); gB.position.set(40,0,1600); gB.visible=false; scene.add(gB);        // return gate by Wardenclyffe; hidden until the monolith wakes
+    const gA=makePleiadesGate(); gA.position.set(18.7,0,-162.3); gA.lookAt(0,6.5,0); scene.add(gA);   // Seven Sisters gate — on the spawn → monolith sight-line, ~163 m out
+    const gB=makeJumpGate(0.08); gB.position.set(40,0,1600); scene.add(gB);        // return gate by Wardenclyffe
     _egGates.push({grp:gA, x:18.7, z:-162.3, dest:{x:0, z:1540, yaw:Math.PI, side:'far'}});   // behind the monolith → CROSSES to the sub-Saturn side (Saturn overhead, Wardenclyffe beside you)
     _egGates.push({grp:gB, x:40, z:1600,  dest:{x:0, z:0, yaw:0, side:'near'}});   // → back to the DROID's SPAWN point (0,0,0), facing Unit 21 — Saturn drops beneath again
   })();
@@ -978,11 +978,13 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   { const q=new URLSearchParams(location.search);
     const shared=q.has('w')||q.has('buy')||q.has('bundle')||q.has('acquire')||q.has('minted');
     let seen=false; try{ seen=localStorage.getItem('gv-intro-seen')==='1'; }catch(_){}
-    const forceIntro=q.has('intro');                         // ?intro → always play the cold open (testing aid: bypasses the seen-flag AND cache-busts stale HTML)
-    if(forceIntro || (!shared && !seen)){ introActive=true; if(machine) machine.visible=false; monolith.visible=true;
+    let hasWorld=false; try{ const _d=JSON.parse(localStorage.getItem('grafverse-world-v1')||'null'); hasWorld=!!(_d && ((_d.shapes&&_d.shapes.length)||(_d.ground&&_d.ground.length))); }catch(_){}   // a RETURNING player (saved world) NEVER replays the cold open
+    const forceIntro=q.has('intro');                         // ?intro → always play the cold open (testing aid: bypasses the flags AND cache-busts stale HTML)
+    if(forceIntro || (!shared && !seen && !hasWorld)){ introActive=true; if(machine) machine.visible=false; monolith.visible=true;
       if(manifestTool) manifestTool.visible=false; if(mtRing) mtRing.visible=false;
       if(canPickup) canPickup.visible=false; if(ring) ring.visible=false;                 // pure void: no cans in sight —
       if(scavCan) scavCan.visible=false; if(scavRing) scavRing.visible=false;             // only the monolith and its one beacon
+      if(wardenTower) wardenTower.visible=false; if(_egGates) _egGates.forEach(G=>G.grp.visible=false);   // gates + tower hidden ONLY during the cold open; they MANIFEST at the reveal (and default-show for returning players)
       startBeacon(); }   // cold open: the conjuring item + the paint cans all arrive at the reveal
   }
 
