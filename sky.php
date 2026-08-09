@@ -17,7 +17,7 @@ header('Access-Control-Allow-Origin: *');
 header('Cache-Control: public, max-age=3600');
 
 $today = gmdate('Y-m-d');
-$cache = __DIR__.'/sky-cache-'.$today.'.json';
+$cache = __DIR__.'/sky-cache-'.$today.'-'.@filemtime(__FILE__).'.json';   // include this script's mtime → any code/data change (or a fresh deploy) auto-busts the daily cache
 if (is_file($cache)) { readfile($cache); exit; }
 
 // ---- helpers (Schlyter / BlackSunObs) ----
