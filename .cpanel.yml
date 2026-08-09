@@ -26,3 +26,4 @@ deployment:
     - /bin/cp lang-*.js "$DEPLOYPATH"                     # i18n language packs (lang-ja.js, lang-zh-Hant.js, …) lazy-loaded by the game
     - /bin/cp brc226.html "$DEPLOYPATH"                   # BRC-226 blueprint — self-contained, crawlable (coined-term SEO); shareable at grafverse.com/brc226.html
     - /bin/cp tip.php "$DEPLOYPATH"                        # BRC-226 LiveCounter board cache: follows the covenant chain → { n, tipTxid, last21[] }
+    - /bin/cp sky.php "$DEPLOYPATH"                        # daily-cached backdrop sky-data (per-UTC-date; the game fetches it to place the backdrop bodies)
