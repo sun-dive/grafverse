@@ -14,11 +14,9 @@
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
-header('Cache-Control: public, max-age=3600');
+header('Cache-Control: public, max-age=30');   // computed fresh per request (fast moons) — the heavy part (Horizons) is cached once per UTC day
 
 $today = gmdate('Y-m-d');
-$cache = __DIR__.'/sky-cache-'.$today.'-'.@filemtime(__FILE__).'.json';   // include this script's mtime → any code/data change (or a fresh deploy) auto-busts the daily cache
-if (is_file($cache)) { readfile($cache); exit; }
 
 // ---- helpers (Schlyter / BlackSunObs) ----
 function rev($x){ $x = $x - floor($x/360)*360; return $x < 0 ? $x + 360 : $x; }
@@ -121,28 +119,44 @@ function iapetus_planets($PLANETS,$sat,$satr,$d){                  // $sat = Sat
 }
 
 // ---- Saturn's SATELLITE system, as seen FROM IAPETUS (the observer is moon #8 — you stand on it) ----
-// Real mean elements: a (km), sidereal period P (days), inclination i to Saturn's equator (deg), absolute mag H = V(1,0).
-// Saturn's north pole (J2000, IAU): RA 40.589°, Dec 83.537° → normal to the ring/equatorial plane the moons orbit in.
-// FIDELITY: a, e, i, P, H and all the geometry are exact; the epoch mean-longitude (today's along-orbit PHASE) uses the
-// convention L0=0 at J2000 (each moon at its node at epoch) — deterministic and time-correct, but the absolute phase wants a
-// one-off JPL/Horizons calibration to match a real telescope. Ranges, brightness, orientation and separations are all real.
+// Positions come from JPL Horizons OSCULATING elements (SAT441), J2000 ecliptic, Saturn-centred — fetched once per UTC day
+// and cached, then propagated to the EXACT request time (the fast inner moons move degrees per hour). Telescope-accurate;
+// falls back to the most recent cache, then to offline, if Horizons is unreachable.
 $SAT_R_KM = 60268.0; $AU_KM = 149597870.7;
 $SAT_POLE_RA = 40.589; $SAT_POLE_DEC = 83.537;
-//                    a_km,     P_days,      i_deg,   H,     colour
-$MOONS = array(
-    'Mimas'    => array(185539.0,  0.9424218,  1.574,  3.3, '#c9c4bd'),
-    'Enceladus'=> array(237948.0,  1.3702180,  0.009,  2.1, '#f2f6ff'),
-    'Tethys'   => array(294619.0,  1.8878020,  1.091,  0.6, '#d8d2c6'),
-    'Dione'    => array(377396.0,  2.7369150,  0.028,  0.8, '#cfcabf'),
-    'Rhea'     => array(527108.0,  4.5182120,  0.333,  0.1, '#c8c3ba'),
-    'Titan'    => array(1221870.0,15.9454210,  0.306, -1.3, '#e8a862'),   // hazy orange
-    'Hyperion' => array(1500880.0,21.2766090,  0.615,  4.6, '#b6a68f'),
-    'Iapetus'  => array(3560820.0,79.3301830, 15.470,  1.5, '#9b8f7e'),   // the observer (skipped as a sky object)
+$MOON_INFO = array(    // name => [ Horizons body-id, absolute mag H=V(1,0), colour ]
+    'Mimas'=>array(601,3.3,'#c9c4bd'),  'Enceladus'=>array(602,2.1,'#f2f6ff'), 'Tethys'=>array(603,0.6,'#d8d2c6'),
+    'Dione'=>array(604,0.8,'#cfcabf'),  'Rhea'=>array(605,0.1,'#c8c3ba'),      'Titan'=>array(606,-1.3,'#e8a862'),
+    'Hyperion'=>array(607,4.6,'#b6a68f'),'Iapetus'=>array(608,1.5,'#9b8f7e'),  // Iapetus = the observer (not drawn as a sky object)
 );
 function equ2ecl($v,$obl){ $o=deg2rad($obl); return array($v[0], $v[1]*cos($o)+$v[2]*sin($o), -$v[1]*sin($o)+$v[2]*cos($o)); }
 function vcross($a,$b){ return array($a[1]*$b[2]-$a[2]*$b[1], $a[2]*$b[0]-$a[0]*$b[2], $a[0]*$b[1]-$a[1]*$b[0]); }
 function vdot($a,$b){ return $a[0]*$b[0]+$a[1]*$b[1]+$a[2]*$b[2]; }
 function vnorm($a){ $m=sqrt(vdot($a,$a)); return $m>0?array($a[0]/$m,$a[1]/$m,$a[2]/$m):$a; }
+function h_fetch($u){ if(!function_exists('curl_init')) return @file_get_contents($u);
+    $c=curl_init($u); curl_setopt_array($c,array(CURLOPT_RETURNTRANSFER=>1,CURLOPT_TIMEOUT=>25,CURLOPT_CONNECTTIMEOUT=>10,CURLOPT_SSL_VERIFYPEER=>0)); $r=curl_exec($c); curl_close($c); return $r; }
+function h_parse_elem($t){ if(!$t) return null; $L=explode("\n",$t);       // pull EC,IN,OM,W,N,MA,A from the first $$SOE row of a Horizons ELEMENTS CSV
+    for($i=0;$i<count($L);$i++){ if(strpos($L[$i],'$$SOE')!==false && isset($L[$i+1])){ $f=array_map('trim',explode(',',$L[$i+1]));
+        if(count($f)<12) return null; return array('e'=>(float)$f[2],'i'=>(float)$f[4],'OM'=>(float)$f[5],'W'=>(float)$f[6],
+            'N'=>(float)$f[8]*86400.0, 'MA'=>(float)$f[9], 'A'=>(float)$f[11], 'ep'=>(float)$f[0]-2451543.5); } }
+    return null; }
+function horizons_moons($MOON_INFO){    // → [ name => osculating-element array ] for all bodies, or null if any fetch fails
+    $day=gmdate('Y-m-d');
+    $base="https://ssd.jpl.nasa.gov/api/horizons.api?format=text&EPHEM_TYPE=%27ELEMENTS%27&CENTER=%27500@699%27&REF_PLANE=%27ECLIPTIC%27"
+         ."&OUT_UNITS=%27KM-S%27&CSV_FORMAT=%27YES%27&START_TIME=%27$day%27&STOP_TIME=%27$day%2000:01%27&STEP_SIZE=%271%27";
+    $out=array();
+    foreach($MOON_INFO as $name=>$mi){ $el=h_parse_elem(h_fetch($base."&COMMAND=%27".$mi[0]."%27")); if(!$el) return null; $out[$name]=$el; }
+    return $out;
+}
+function kepler_ecl_au($el,$d,$AU){     // propagate one osculating ellipse to day-number $d → Saturn-centric ecliptic (AU)
+    $M=fmod($el['MA']+$el['N']*($d-$el['ep']),360.0); if($M<0)$M+=360.0; $e=$el['e'];
+    $E=EA_iter($M,$e); $xv=$el['A']*(cos(deg2rad($E))-$e); $yv=$el['A']*sqrt(1-$e*$e)*sin(deg2rad($E));
+    $r=sqrt($xv*$xv+$yv*$yv); $v=atan2d($xv,$yv);
+    $x=$r*( cos(deg2rad($el['OM']))*cos(deg2rad($v+$el['W'])) - sin(deg2rad($el['OM']))*sin(deg2rad($v+$el['W']))*cos(deg2rad($el['i'])) );
+    $y=$r*( sin(deg2rad($el['OM']))*cos(deg2rad($v+$el['W'])) + cos(deg2rad($el['OM']))*sin(deg2rad($v+$el['W']))*cos(deg2rad($el['i'])) );
+    $z=$r*sin(deg2rad($v+$el['W']))*sin(deg2rad($el['i']));
+    return array($x/$AU,$y/$AU,$z/$AU);
+}
 
 $now = gmdate('Y-m-d H:i:s'); $d = daynum($now);
 list($satlon,$satlat,$satr) = saturn_helio($d);
@@ -156,48 +170,58 @@ $sat_xyz = array($satr*cos(deg2rad($satlat))*cos(deg2rad($satlon)),
                  $satr*sin(deg2rad($satlat)));
 $planets = iapetus_planets($PLANETS, $sat_xyz, $satr, $d);
 
-// --- Saturn's satellite system, as seen FROM IAPETUS ---
+// --- Saturn's satellite system, as seen FROM IAPETUS — Horizons osculating elements (daily-cached), propagated to now ---
 $pole_eq = array(cos(deg2rad($SAT_POLE_DEC))*cos(deg2rad($SAT_POLE_RA)),
                  cos(deg2rad($SAT_POLE_DEC))*sin(deg2rad($SAT_POLE_RA)),
                  sin(deg2rad($SAT_POLE_DEC)));
-$Pn = vnorm(equ2ecl($pole_eq, $obl));                 // Saturn's north (moon-plane normal) in ecliptic
-$U  = vnorm(vcross(array(0,0,1), $Pn));               // ascending node of Saturn's equator on the ecliptic
-$W  = vcross($Pn, $U);                                // in-plane axis; (U,W,Pn) right-handed
-function moon_pos_au($el,$U,$W,$Pn,$d,$AU_KM){        // Saturn-centric ecliptic position (AU): circular orbit, incl. i, node@U, L0=0 @epoch
-    list($a_km,$P,$i,$H,$col)=$el;
-    $L=deg2rad(rev(360.0/$P*$d)); $ir=deg2rad($i); $a=$a_km/$AU_KM;
-    $perp=array(cos($ir)*$W[0]+sin($ir)*$Pn[0], cos($ir)*$W[1]+sin($ir)*$Pn[1], cos($ir)*$W[2]+sin($ir)*$Pn[2]);
-    return array($a*(cos($L)*$U[0]+sin($L)*$perp[0]), $a*(cos($L)*$U[1]+sin($L)*$perp[1]), $a*(cos($L)*$U[2]+sin($L)*$perp[2]));
-}
-$iap    = moon_pos_au($MOONS['Iapetus'],$U,$W,$Pn,$d,$AU_KM);     // the observer's Saturn-centric position
+$Pn = vnorm(equ2ecl($pole_eq, $obl));                            // Saturn's north (ring-plane normal) in ecliptic — for the ring-opening angle
+$elemCache = __DIR__."/sky-elements-$today.json";
+$sys = is_file($elemCache) ? json_decode(file_get_contents($elemCache), true) : null;
+if(!$sys){ $sys = horizons_moons($MOON_INFO);                    // once per UTC day: fetch + cache the osculating elements
+    if($sys){ @file_put_contents($elemCache, json_encode($sys));
+        foreach(glob(__DIR__.'/sky-elements-*.json') as $f){ if($f!==$elemCache && @filemtime($f)<time()-4*86400) @unlink($f); } } }
+if(!$sys){ $prev=glob(__DIR__.'/sky-elements-*.json');           // Horizons unreachable → newest cached day as a fallback
+    if($prev){ usort($prev,function($a,$b){ return @filemtime($b)-@filemtime($a); }); $sys=json_decode(file_get_contents($prev[0]),true); } }
+$moon_src = $sys ? 'JPL Horizons (SAT441 osculating elements, daily-cached; propagated to the request time)' : 'unavailable (Horizons offline, no cache)';
+
 $sun_sc = array(-$sat_xyz[0],-$sat_xyz[1],-$sat_xyz[2]);          // the Sun, Saturn-centric ecliptic AU (opposite Saturn's heliocentric pos)
-$vsat   = array(-$iap[0],-$iap[1],-$iap[2]); $Rsat_obs=sqrt(vdot($vsat,$vsat));   // Iapetus→Saturn
-list($sat_ra,$sat_dec) = ecl2equ(rev(atan2d($vsat[0],$vsat[1])), asind($vsat[2]/$Rsat_obs), $d);
-$sat_ang_arcmin = 2*atan($SAT_R_KM/($Rsat_obs*$AU_KM))*180/M_PI*60;
-$moons_out=array();
-foreach($MOONS as $name=>$el){
-    if($name==='Iapetus') continue;
-    $m = moon_pos_au($el,$U,$W,$Pn,$d,$AU_KM);
-    $v = array($m[0]-$iap[0],$m[1]-$iap[1],$m[2]-$iap[2]); $R=sqrt(vdot($v,$v));   // Iapetus→moon (AU)
-    list($mra,$mdec)=ecl2equ(rev(atan2d($v[0],$v[1])), asind($v[2]/$R), $d);
-    $sep=rad2deg(acos(max(-1,min(1,vdot(vnorm($v),vnorm($vsat))))));               // angular separation from Saturn
-    $mag=$el[3]+5*log10($satr*$R);                                                 // H + 5·log10(r_sun·R_obs); near-full phase, phase term dropped
-    $behind=($R>$Rsat_obs)&&($sep<($sat_ang_arcmin/120.0));                        // behind Saturn's disc → occulted
-    $moons_out[]=array('name'=>$name,'ra'=>round($mra,3),'dec'=>round($mdec,3),
-        'sep'=>round($sep,3),'mag'=>round($mag,2),'dist_km'=>round($R*$AU_KM),'color'=>$el[4],'behind'=>$behind);
-}
-$vsun=array($sun_sc[0]-$iap[0],$sun_sc[1]-$iap[1],$sun_sc[2]-$iap[2]); $Rsun_obs=sqrt(vdot($vsun,$vsun));
-$sun_saturn_sep=rad2deg(acos(max(-1,min(1,vdot(vnorm($vsun),vnorm($vsat))))));     // Sun↔Saturn elongation from Iapetus (drives the Sun's true placement at Saturn's limb)
-// Saturn's LIT face = the direction from Saturn to the Sun (celestial RA/Dec) → drives Saturn's real phase in the render.
 $sd_lon=rev(atan2d($sun_sc[0],$sun_sc[1])); $sd_lat=asind($sun_sc[2]/sqrt(vdot($sun_sc,$sun_sc)));
-list($sun_dir_ra,$sun_dir_dec)=ecl2equ($sd_lon,$sd_lat,$d);
-$phase_ang=rad2deg(acos(max(-1,min(1,vdot(vnorm($iap),vnorm($sun_sc))))));         // Sun–Saturn–Iapetus angle → illuminated fraction
-$illum=(1+cos(deg2rad($phase_ang)))/2;
+list($sun_dir_ra,$sun_dir_dec)=ecl2equ($sd_lon,$sd_lat,$d);       // Saturn→Sun celestial direction → aims Saturn's phase terminator
+
+$moons_out=array(); $saturn_sky=null; $isun_sky=null;
+if($sys){
+    $iap  = kepler_ecl_au($sys['Iapetus'],$d,$AU_KM);            // the observer's Saturn-centric position
+    $vsat = array(-$iap[0],-$iap[1],-$iap[2]); $Rsat_obs=sqrt(vdot($vsat,$vsat));   // Iapetus→Saturn
+    list($sat_ra,$sat_dec)=ecl2equ(rev(atan2d($vsat[0],$vsat[1])), asind($vsat[2]/$Rsat_obs), $d);
+    $sat_ang_arcmin=2*atan($SAT_R_KM/($Rsat_obs*$AU_KM))*180/M_PI*60;
+    foreach($MOON_INFO as $name=>$mi){ if($name==='Iapetus') continue;
+        $m=kepler_ecl_au($sys[$name],$d,$AU_KM);
+        $v=array($m[0]-$iap[0],$m[1]-$iap[1],$m[2]-$iap[2]); $R=sqrt(vdot($v,$v));   // Iapetus→moon (AU)
+        list($mra,$mdec)=ecl2equ(rev(atan2d($v[0],$v[1])), asind($v[2]/$R), $d);
+        $sep=rad2deg(acos(max(-1,min(1,vdot(vnorm($v),vnorm($vsat))))));
+        $mag=$mi[1]+5*log10($satr*$R);                                              // H + 5·log10(r_sun·R_obs)
+        $behind=($R>$Rsat_obs)&&($sep<($sat_ang_arcmin/120.0));                     // behind Saturn's disc → occulted
+        $moons_out[]=array('name'=>$name,'ra'=>round($mra,3),'dec'=>round($mdec,3),
+            'sep'=>round($sep,3),'mag'=>round($mag,2),'dist_km'=>round($R*$AU_KM),'color'=>$mi[2],'behind'=>$behind);
+    }
+    $vsun=array($sun_sc[0]-$iap[0],$sun_sc[1]-$iap[1],$sun_sc[2]-$iap[2]); $Rsun=sqrt(vdot($vsun,$vsun));
+    list($isun_ra,$isun_dec)=ecl2equ(rev(atan2d($vsun[0],$vsun[1])), asind($vsun[2]/$Rsun), $d);  // exact Sun sky-position from Iapetus
+    $isun_sky=array($isun_ra,$isun_dec);
+    $sun_saturn_sep=rad2deg(acos(max(-1,min(1,vdot(vnorm($vsun),vnorm($vsat))))));
+    $phase_ang=rad2deg(acos(max(-1,min(1,vdot(vnorm($iap),vnorm($sun_sc))))));       // Sun–Saturn–Iapetus → illuminated fraction
+    $illum=(1+cos(deg2rad($phase_ang)))/2;
+    $ring_open=asind(vdot(vnorm($iap),$Pn));
+    $saturn_sky=array('ra'=>round($sat_ra,3),'dec'=>round($sat_dec,3),'ang_arcmin'=>round($sat_ang_arcmin,2),
+        'dist_km'=>round($Rsat_obs*$AU_KM),'sun_sep'=>round($sun_saturn_sep,3),
+        'pole_ra'=>$SAT_POLE_RA,'pole_dec'=>$SAT_POLE_DEC,'ring_open'=>round($ring_open,2),
+        'sun_dir_ra'=>round($sun_dir_ra,3),'sun_dir_dec'=>round($sun_dir_dec,3),
+        'phase_ang'=>round($phase_ang,1),'illum'=>round($illum,3));
+}
 
 $sky = array(
     'date' => $today, 'computed' => $now.' UTC', 'day_number' => round($d,4), 'obliquity' => round($obl,4),
     'sun' => array(
-        'ra' => round($sra,4), 'dec' => round($sdec,4),
+        'ra' => round($isun_sky?$isun_sky[0]:$sra,4), 'dec' => round($isun_sky?$isun_sky[1]:$sdec,4),   // exact from Iapetus (Horizons) if available
         'ecl_lon' => round($isun_lon,4), 'zodiac' => zodiac($isun_lon),
         'dist_au' => round($satr,4), 'ang_arcmin' => round(2*atan(0.00465247/$satr)*180/M_PI*60, 3)
     ),
@@ -207,21 +231,10 @@ $sky = array(
     ),
     'earth_sun_ecl_lon' => round(sun_ecl_lon($d),4),
     'planets' => $planets,
-    'saturn_sky' => array(                                          // Saturn as seen FROM Iapetus (true direction + size + range)
-        'ra' => round($sat_ra,3), 'dec' => round($sat_dec,3),
-        'ang_arcmin' => round($sat_ang_arcmin,2), 'dist_km' => round($Rsat_obs*$AU_KM),
-        'sun_sep' => round($sun_saturn_sep,3),                      // Sun↔Saturn elongation → the Sun blazes this far off Saturn's limb
-        'pole_ra' => $SAT_POLE_RA, 'pole_dec' => $SAT_POLE_DEC,     // Saturn's north pole (J2000) = the moon/ring-plane normal → aligns the moon-string to the rings
-        'ring_open' => round(asind(vdot(vnorm($iap),$Pn)),2),       // ring opening angle from Iapetus (elevation of the observer above Saturn's equator)
-        'sun_dir_ra' => round($sun_dir_ra,3), 'sun_dir_dec' => round($sun_dir_dec,3),   // direction Saturn→Sun (celestial) → aims Saturn's sunlight for the true phase
-        'phase_ang' => round($phase_ang,1), 'illum' => round($illum,3)                  // phase angle + lit fraction (small illum = thin backlit crescent)
-    ),
+    'saturn_sky' => $saturn_sky,                                    // Saturn from Iapetus (Horizons) — null if unavailable; the render guards on it
     'moons' => $moons_out,
-    'sat_fidelity' => 'a/e/i/P/H + geometry exact; epoch phase L0=0@J2000 (wants a JPL calibration for absolute phase)',
-    'source' => 'BlackSunObs ephemeris (Schlyter method) via grafverse sky.php'
+    'sat_fidelity' => $moon_src,
+    'source' => 'JPL Horizons (Saturn system) + BlackSunObs Schlyter (planets/Sun) via grafverse sky.php'
 );
 
-$json = json_encode($sky, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES);
-@file_put_contents($cache, $json);                                // best-effort daily cache (webroot may be read-only → just recompute)
-foreach (glob(__DIR__.'/sky-cache-*.json') as $f) { if ($f !== $cache && @filemtime($f) < time()-3*86400) @unlink($f); }  // sweep stale
-echo $json;
+echo json_encode($sky, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES);  // computed fresh per request (moons move); Horizons elements are the daily-cached layer
