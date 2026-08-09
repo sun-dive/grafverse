@@ -441,6 +441,15 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   ground.rotation.x = -Math.PI/2;
   scene.add(ground);
 
+  // ── FAR-POLE ground (Wardenclyffe / sub-Saturn side) — a SECOND paintable canvas at the opposite pole; saved as part of the world ──
+  const pc2=document.createElement('canvas'); pc2.width=pc2.height=TEX; const pctx2=pc2.getContext('2d'); pctx2.clearRect(0,0,TEX,TEX);
+  const paintTex2=new THREE.CanvasTexture(pc2); paintTex2.anisotropy=paintTex.anisotropy;
+  const ground2=new THREE.Mesh(new THREE.PlaneGeometry(GROUND,GROUND), new THREE.MeshBasicMaterial({ map:paintTex2, transparent:true, depthWrite:false }));
+  ground2.rotation.x=-Math.PI/2; ground2.position.z=1600; scene.add(ground2);        // centred under Wardenclyffe (0,0,1600)
+  const _grounds=[{ctx:pctx,tex:paintTex},{ctx:pctx2,tex:paintTex2}];                 // [0]=near (Unit 21) · [1]=far (Wardenclyffe)
+  let _gctx=pctx, _gtex=paintTex;                                                     // the ground canvas spray() writes to — set per paint (trigger) / per stroke.g (load)
+  function _wipeGround(){ pctx.clearRect(0,0,TEX,TEX); paintTex.needsUpdate=true; pctx2.clearRect(0,0,TEX,TEX); paintTex2.needsUpdate=true; groundStrokes.length=0; }
+
   // helper: uv -> canvas px
   function toPx(uv){ return { x: uv.x*TEX, y:(1-uv.y)*TEX }; }
 
@@ -456,25 +465,25 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     lastPx={x,y};
     const col = new THREE.Color(COLORS[colorIdx]);
     const cr = (col.r*255)|0, cg=(col.g*255)|0, cb=(col.b*255)|0;
-    pctx.globalCompositeOperation = 'source-over';   // ← was 'lighter' (additive → white-hot on overpaint); normal blend builds to the true colour
+    _gctx.globalCompositeOperation = 'source-over';   // normal blend builds to the true colour
     const main = (32 + rnd()*8) * (1 + dwell*0.9);   // pools outward when you linger
     const core = 0.55 + dwell*0.35;                          // brighter, wetter core on dwell
-    const g = pctx.createRadialGradient(x,y,0, x,y,main);
+    const g = _gctx.createRadialGradient(x,y,0, x,y,main);
     g.addColorStop(0,   `rgba(${cr},${cg},${cb},${core})`);
     g.addColorStop(0.5, `rgba(${cr},${cg},${cb},0.22)`);
     g.addColorStop(1,   `rgba(${cr},${cg},${cb},0)`);
-    pctx.fillStyle = g;
-    pctx.beginPath(); pctx.arc(x,y,main,0,7); pctx.fill();
+    _gctx.fillStyle = g;
+    _gctx.beginPath(); _gctx.arc(x,y,main,0,7); _gctx.fill();
     // scattered droplets => spray-can texture; more + further as it starts to run
     const drops = 6 + (dwell*12|0);
     for(let i=0;i<drops;i++){
       const a=rnd()*7, d=rnd()*main*(1.4+dwell*1.2), rr=1+rnd()*(3+dwell*3);
       const dx=x+Math.cos(a)*d, dy=y+Math.sin(a)*d;
-      pctx.fillStyle = `rgba(${cr},${cg},${cb},${0.14+rnd()*0.28})`;
-      pctx.beginPath(); pctx.arc(dx,dy,rr,0,7); pctx.fill();
+      _gctx.fillStyle = `rgba(${cr},${cg},${cb},${0.14+rnd()*0.28})`;
+      _gctx.beginPath(); _gctx.arc(dx,dy,rr,0,7); _gctx.fill();
     }
-    pctx.globalCompositeOperation = 'source-over';
-    paintTex.needsUpdate = true;
+    _gctx.globalCompositeOperation = 'source-over';
+    _gtex.needsUpdate = true;
   }
 
   // Walk through wet paint → pick it up on your soles and leave fading footprints for a few steps.
@@ -1708,9 +1717,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
           }
         }
       } else {
-        const hit = ray.intersectObject(ground)[0];        // otherwise → paint the ground
+        const hit = ray.intersectObjects([ground,ground2])[0];        // paint whichever ground patch the reticle is over
         if(hit && hit.uv){
+          const gi = (hit.object===ground2) ? 1 : 0; _gctx=_grounds[gi].ctx; _gtex=_grounds[gi].tex;
           if(curKey!=='g'){ endStroke(); beginStroke('ground',0); }
+          if(curStroke) curStroke._g=gi;                  // remember which patch this stroke belongs to (for save/load)
           if(addDab(hit.uv.x, hit.uv.y, 0)) spray(hit.uv);
           hasPainted=true;
         }
@@ -2320,11 +2331,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function updateBackBtn(){ const b=document.getElementById('kBack'); if(b) b.style.display = trailGet().length ? 'block' : 'none'; }
   function restoreWorldData(data){                                 // rebuild a snapshotted world into the scene (mirrors loadWorld, from a given snapshot)
     clearShapes();
-    pctx.clearRect(0,0,TEX,TEX); paintTex.needsUpdate=true; groundStrokes.length=0;
+    _wipeGround();
     _adoptWorldName(data.name||'');                                    // a snapshot (back-stack) carries its name
     _provenance=Array.isArray(data.prov)?data.prov:[];
     (data.shapes||[]).forEach(addShapeFromData);
-    (data.ground||[]).forEach(stroke=>{ colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0; for(const d of stroke.dabs) spray({x:d[0], y:d[1]}); groundStrokes.push(stroke); });
+    (data.ground||[]).forEach(stroke=>{ colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0; { const _rg=_grounds[stroke.g||0]; _gctx=_rg.ctx; _gtex=_rg.tex; } for(const d of stroke.dabs) spray({x:d[0], y:d[1]}); groundStrokes.push(stroke); });
     saveWorld();
   }
   function goBack(){ const a=trailGet(); if(!a.length){ _kNote().textContent='No previous world to go back to.'; return; }
@@ -2785,7 +2796,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   function endStroke(){
     if(curStroke && curStroke.dabs.length){
-      if(curStroke.target==='ground') groundStrokes.push({c:curStroke.c, seed:curStroke.seed, dabs:curStroke.dabs});
+      if(curStroke.target==='ground') groundStrokes.push({c:curStroke.c, seed:curStroke.seed, dabs:curStroke.dabs, g:curStroke._g||0});
       else wetLayer(curStroke.target).st.push({si:curStroke.si, c:curStroke.c, seed:curStroke.seed, dabs:curStroke.dabs});
       scheduleSave();
     }
@@ -2888,11 +2899,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   function importScene(bytes, additive){                                                   // load a packed scene: REPLACE the world, or (additive) drop its solid(s) INTO the current one
     const dec = BMF.scene.unpack(bytes);
-    if(!additive){ _provenance=[]; clearShapes(); pctx.clearRect(0,0,TEX,TEX); paintTex.needsUpdate=true; groundStrokes.length=0; }   // replace → wipe · additive → keep the world you're in
+    if(!additive){ _provenance=[]; clearShapes(); _wipeGround(); }   // replace → wipe · additive → keep the world you're in
     let n=0;
     if(additive && (dec.shapes||[]).length===1){ try{ dropSolidAtPlayer(recordToShape(dec.shapes[0])); n=1; }catch(e){} }             // a single shared solid → place it at the player, auto-rested
     else { (dec.shapes||[]).forEach(rec=>{ try{ addShapeFromData(recordToShape(rec)); n++; }catch(e){} }); }
-    if(!additive) (dec.ground||[]).forEach(stroke=>{ colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0;
+    if(!additive) (dec.ground||[]).forEach(stroke=>{ colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0; { const _rg=_grounds[stroke.g||0]; _gctx=_rg.ctx; _gtex=_rg.tex; }
       for(const d of stroke.dabs) spray({x:d[0], y:d[1]}); groundStrokes.push(stroke); });
     saveWorld();
     return { shapes:n, ground: additive?0:(dec.ground||[]).length };
@@ -2901,8 +2912,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // ── Stage 3: import a MEMBERS world — each member is a paint-atom (a one-shape scene) → fetch it, rebuild the shape, set its txid ──
   async function importMembersWorld(dec, GM, provider){
     _provenance=[]; clearShapes();
-    pctx.clearRect(0,0,TEX,TEX); paintTex.needsUpdate=true; groundStrokes.length=0;         // wipe ground
-    (dec.ground||[]).forEach(stroke=>{ colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0;
+    _wipeGround();         // wipe ground
+    (dec.ground||[]).forEach(stroke=>{ colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0; { const _rg=_grounds[stroke.g||0]; _gctx=_rg.ctx; _gtex=_rg.tex; }
       for(const d of stroke.dabs) spray({x:d[0], y:d[1]}); groundStrokes.push(stroke); });
     (dec.shapes||[]).forEach(rec=>{ try{ addShapeFromData(recordToShape(rec)); }catch(e){} });   // FREE inline shapes (crystals / geometry) — always load, no ownership
     const mem=dec.members||[]; let n=0;
@@ -2998,7 +3009,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     _provenance=Array.isArray(data.prov)?data.prov:[];                 // restore fork lineage across reloads
     (data.shapes||[]).forEach(addShapeFromData);
     (data.ground||[]).forEach(stroke=>{
-      colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0;
+      colorIdx=stroke.c; seedRand(stroke.seed>>>0); lastPx=null; dwell=0; { const _rg=_grounds[stroke.g||0]; _gctx=_rg.ctx; _gtex=_rg.tex; }
       for(const d of stroke.dabs) spray({x:d[0], y:d[1]});
       groundStrokes.push(stroke);
     });
