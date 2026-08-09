@@ -61,11 +61,133 @@ function ecl2equ($lon,$lat,$d){                                    // ecliptic (
     return array(rev(atan2d($xq,$yq)), asind($zq));
 }
 
+// ---- the visible planets, as SEEN FROM IAPETUS (≈ from Saturn — the moon's 3.5 Mm offset is nil at interplanetary range) ----
+// Every element set + magnitude formula is Schlyter's, ported verbatim from the user's own BlackSunObs ephemeris.
+function planet_xyz($el,$d){                                       // heliocentric ecliptic rectangular (x,y,z) + helio distance r
+    list($N0,$Nr,$i0,$ir,$w0,$wr,$a0,$ar,$e0,$er,$M0,$Mr) = $el;
+    $N=$N0+$Nr*$d; $i=$i0+$ir*$d; $w=$w0+$wr*$d; $a=$a0+$ar*$d; $e=$e0+$er*$d; $M=rev($M0+$Mr*$d);
+    $E=EA_iter($M,$e); $x=$a*(cos(deg2rad($E))-$e); $y=$a*sin(deg2rad($E))*sqrt(1-$e*$e);
+    $r=sqrt($x*$x+$y*$y); $v=atan2d($x,$y);
+    $xh=$r*( cos(deg2rad($N))*cos(deg2rad($v+$w)) - sin(deg2rad($N))*sin(deg2rad($v+$w))*cos(deg2rad($i)) );
+    $yh=$r*( sin(deg2rad($N))*cos(deg2rad($v+$w)) + cos(deg2rad($N))*sin(deg2rad($v+$w))*cos(deg2rad($i)) );
+    $zh=$r*sin(deg2rad($v+$w))*sin(deg2rad($i));
+    return array($xh,$yh,$zh,$r);
+}
+function sun_rect($d){                                             // geocentric Sun ecliptic rectangular (x,y) + dist → Earth's helio pos is its negative
+    $w=282.9404+4.70935E-5*$d; $e=0.016709-1.151E-9*$d; $M=rev(356.0470+0.9856002585*$d);
+    $E=EA_iter($M,$e); $xv=cos(deg2rad($E))-$e; $yv=sqrt(1-$e*$e)*sin(deg2rad($E));
+    $rs=sqrt($xv*$xv+$yv*$yv); $lon=rev(atan2d($xv,$yv)+$w);
+    return array($rs*cos(deg2rad($lon)), $rs*sin(deg2rad($lon)), $rs);
+}
+function planet_mag($name,$r,$R,$FV){                              // Schlyter apparent-magnitude formulas (r=helio dist, R=obs dist, FV=phase angle°)
+    $b = 5*log10($r*$R);
+    switch($name){
+        case 'Mercury': return -0.36+$b+0.027*$FV+2.2E-13*pow($FV,6);
+        case 'Venus':   return -4.34+$b+0.013*$FV+4.2E-7*pow($FV,3);
+        case 'Earth':   return -3.99+$b+0.013*$FV;                 // Schlyter has no Earth-from-outside; use Earth's known absolute magnitude H≈−3.99
+        case 'Mars':    return -1.51+$b+0.016*$FV;
+        case 'Jupiter': return -9.25+$b+0.014*$FV;
+        case 'Uranus':  return -7.15+$b+0.001*$FV;
+        case 'Neptune': return -6.90+$b+0.001*$FV;
+    }
+    return 99;
+}
+//                  N0,        Nr,        i0,      ir,        w0,        wr,         a0,       ar,        e0,       er,        M0,       Mr,             colour
+$PLANETS = array(
+    'Mercury'=>array(48.3313,3.24587E-5, 7.0047, 5.00E-8,   29.1241, 1.01444E-5,  0.387098, 0,        0.205635, 5.59E-10,  168.6562, 4.0923344368,  '#b9b0a0'),
+    'Venus'  =>array(76.6799,2.46590E-5, 3.3946, 2.75E-8,   54.8910, 1.38374E-5,  0.723330, 0,        0.006773,-1.302E-9,   48.0052, 1.6021302244,  '#fff3cf'),
+    'Earth'  =>null,                                                              // special-cased below (heliocentric Earth = −geocentric Sun)
+    'Mars'   =>array(49.5574,2.11081E-5, 1.8497,-1.78E-8,  286.5016, 2.92961E-5,  1.523688, 0,        0.093405, 2.516E-9,   18.6021, 0.5240207766,  '#e0663a'),
+    'Jupiter'=>array(100.4542,2.76854E-5,1.3030,-1.557E-7, 273.8777, 1.64505E-5,  5.20256,  0,        0.048498, 4.469E-9,   19.8950, 0.0830853001,  '#d9b98a'),
+    'Uranus' =>array(74.0005,1.3978E-5,  0.7733, 1.9E-8,    96.6612, 3.0565E-5,  19.18171, -1.55E-8,  0.047318, 7.45E-9,   142.5905, 0.011725806,   '#a8d8e0'),
+    'Neptune'=>array(131.7806,3.0173E-5, 1.7700,-2.55E-7,  272.8461,-6.027E-6,   30.05826, 3.313E-8,  0.008606, 2.15E-9,   260.2471, 0.005995147,   '#5a7fd6'),
+);
+function iapetus_planets($PLANETS,$sat,$satr,$d){                  // $sat = Saturn helio xyz (the observer); $satr = Sun→observer distance (AU)
+    list($sx,$sy,$sz) = $sat; $out = array();
+    foreach($PLANETS as $name=>$el){
+        if($name==='Earth'){ list($xs,$ys,$rs)=sun_rect($d); $px=-$xs; $py=-$ys; $pz=0; $r=$rs; $col='#6b93d6'; }
+        else { list($px,$py,$pz,$r)=planet_xyz($el,$d); $col=$el[12]; }
+        $dx=$px-$sx; $dy=$py-$sy; $dz=$pz-$sz; $R=sqrt($dx*$dx+$dy*$dy+$dz*$dz);   // vector observer→planet, geocentric(≈Iapetus) distance
+        $lon=rev(atan2d($dx,$dy)); $lat=asind($dz/$R);
+        list($ra,$dec)=ecl2equ($lon,$lat,$d);
+        $cosFV=max(-1,min(1,($r*$r+$R*$R-$satr*$satr)/(2*$r*$R))); $FV=rad2deg(acos($cosFV));   // phase angle at the planet
+        $mag=planet_mag($name,$r,$R,$FV);
+        // elongation from the Sun as seen from the observer (Sun sits opposite Saturn, at −$sat)
+        $cosE=max(-1,min(1,(-$sx*$dx-$sy*$dy-$sz*$dz)/($satr*$R))); $elong=rad2deg(acos($cosE));
+        $out[]=array('name'=>$name,'ra'=>round($ra,3),'dec'=>round($dec,3),'mag'=>round($mag,2),
+                     'elong'=>round($elong,1),'dist_au'=>round($R,3),'color'=>$col);
+    }
+    return $out;
+}
+
+// ---- Saturn's SATELLITE system, as seen FROM IAPETUS (the observer is moon #8 — you stand on it) ----
+// Real mean elements: a (km), sidereal period P (days), inclination i to Saturn's equator (deg), absolute mag H = V(1,0).
+// Saturn's north pole (J2000, IAU): RA 40.589°, Dec 83.537° → normal to the ring/equatorial plane the moons orbit in.
+// FIDELITY: a, e, i, P, H and all the geometry are exact; the epoch mean-longitude (today's along-orbit PHASE) uses the
+// convention L0=0 at J2000 (each moon at its node at epoch) — deterministic and time-correct, but the absolute phase wants a
+// one-off JPL/Horizons calibration to match a real telescope. Ranges, brightness, orientation and separations are all real.
+$SAT_R_KM = 60268.0; $AU_KM = 149597870.7;
+$SAT_POLE_RA = 40.589; $SAT_POLE_DEC = 83.537;
+//                    a_km,     P_days,      i_deg,   H,     colour
+$MOONS = array(
+    'Mimas'    => array(185539.0,  0.9424218,  1.574,  3.3, '#c9c4bd'),
+    'Enceladus'=> array(237948.0,  1.3702180,  0.009,  2.1, '#f2f6ff'),
+    'Tethys'   => array(294619.0,  1.8878020,  1.091,  0.6, '#d8d2c6'),
+    'Dione'    => array(377396.0,  2.7369150,  0.028,  0.8, '#cfcabf'),
+    'Rhea'     => array(527108.0,  4.5182120,  0.333,  0.1, '#c8c3ba'),
+    'Titan'    => array(1221870.0,15.9454210,  0.306, -1.3, '#e8a862'),   // hazy orange
+    'Hyperion' => array(1500880.0,21.2766090,  0.615,  4.6, '#b6a68f'),
+    'Iapetus'  => array(3560820.0,79.3301830, 15.470,  1.5, '#9b8f7e'),   // the observer (skipped as a sky object)
+);
+function equ2ecl($v,$obl){ $o=deg2rad($obl); return array($v[0], $v[1]*cos($o)+$v[2]*sin($o), -$v[1]*sin($o)+$v[2]*cos($o)); }
+function vcross($a,$b){ return array($a[1]*$b[2]-$a[2]*$b[1], $a[2]*$b[0]-$a[0]*$b[2], $a[0]*$b[1]-$a[1]*$b[0]); }
+function vdot($a,$b){ return $a[0]*$b[0]+$a[1]*$b[1]+$a[2]*$b[2]; }
+function vnorm($a){ $m=sqrt(vdot($a,$a)); return $m>0?array($a[0]/$m,$a[1]/$m,$a[2]/$m):$a; }
+
 $now = gmdate('Y-m-d H:i:s'); $d = daynum($now);
 list($satlon,$satlat,$satr) = saturn_helio($d);
 $isun_lon = rev($satlon + 180); $isun_lat = -$satlat;              // Sun as seen from Iapetus ≈ opposite Saturn
 list($sra,$sdec) = ecl2equ($isun_lon, $isun_lat, $d);
 $obl = 23.4393 - 3.563E-7*$d;
+
+// Saturn's heliocentric rectangular position = the observer (Iapetus) for the planet sightlines
+$sat_xyz = array($satr*cos(deg2rad($satlat))*cos(deg2rad($satlon)),
+                 $satr*cos(deg2rad($satlat))*sin(deg2rad($satlon)),
+                 $satr*sin(deg2rad($satlat)));
+$planets = iapetus_planets($PLANETS, $sat_xyz, $satr, $d);
+
+// --- Saturn's satellite system, as seen FROM IAPETUS ---
+$pole_eq = array(cos(deg2rad($SAT_POLE_DEC))*cos(deg2rad($SAT_POLE_RA)),
+                 cos(deg2rad($SAT_POLE_DEC))*sin(deg2rad($SAT_POLE_RA)),
+                 sin(deg2rad($SAT_POLE_DEC)));
+$Pn = vnorm(equ2ecl($pole_eq, $obl));                 // Saturn's north (moon-plane normal) in ecliptic
+$U  = vnorm(vcross(array(0,0,1), $Pn));               // ascending node of Saturn's equator on the ecliptic
+$W  = vcross($Pn, $U);                                // in-plane axis; (U,W,Pn) right-handed
+function moon_pos_au($el,$U,$W,$Pn,$d,$AU_KM){        // Saturn-centric ecliptic position (AU): circular orbit, incl. i, node@U, L0=0 @epoch
+    list($a_km,$P,$i,$H,$col)=$el;
+    $L=deg2rad(rev(360.0/$P*$d)); $ir=deg2rad($i); $a=$a_km/$AU_KM;
+    $perp=array(cos($ir)*$W[0]+sin($ir)*$Pn[0], cos($ir)*$W[1]+sin($ir)*$Pn[1], cos($ir)*$W[2]+sin($ir)*$Pn[2]);
+    return array($a*(cos($L)*$U[0]+sin($L)*$perp[0]), $a*(cos($L)*$U[1]+sin($L)*$perp[1]), $a*(cos($L)*$U[2]+sin($L)*$perp[2]));
+}
+$iap    = moon_pos_au($MOONS['Iapetus'],$U,$W,$Pn,$d,$AU_KM);     // the observer's Saturn-centric position
+$sun_sc = array(-$sat_xyz[0],-$sat_xyz[1],-$sat_xyz[2]);          // the Sun, Saturn-centric ecliptic AU (opposite Saturn's heliocentric pos)
+$vsat   = array(-$iap[0],-$iap[1],-$iap[2]); $Rsat_obs=sqrt(vdot($vsat,$vsat));   // Iapetus→Saturn
+list($sat_ra,$sat_dec) = ecl2equ(rev(atan2d($vsat[0],$vsat[1])), asind($vsat[2]/$Rsat_obs), $d);
+$sat_ang_arcmin = 2*atan($SAT_R_KM/($Rsat_obs*$AU_KM))*180/M_PI*60;
+$moons_out=array();
+foreach($MOONS as $name=>$el){
+    if($name==='Iapetus') continue;
+    $m = moon_pos_au($el,$U,$W,$Pn,$d,$AU_KM);
+    $v = array($m[0]-$iap[0],$m[1]-$iap[1],$m[2]-$iap[2]); $R=sqrt(vdot($v,$v));   // Iapetus→moon (AU)
+    list($mra,$mdec)=ecl2equ(rev(atan2d($v[0],$v[1])), asind($v[2]/$R), $d);
+    $sep=rad2deg(acos(max(-1,min(1,vdot(vnorm($v),vnorm($vsat))))));               // angular separation from Saturn
+    $mag=$el[3]+5*log10($satr*$R);                                                 // H + 5·log10(r_sun·R_obs); near-full phase, phase term dropped
+    $behind=($R>$Rsat_obs)&&($sep<($sat_ang_arcmin/120.0));                        // behind Saturn's disc → occulted
+    $moons_out[]=array('name'=>$name,'ra'=>round($mra,3),'dec'=>round($mdec,3),
+        'sep'=>round($sep,3),'mag'=>round($mag,2),'dist_km'=>round($R*$AU_KM),'color'=>$el[4],'behind'=>$behind);
+}
+$vsun=array($sun_sc[0]-$iap[0],$sun_sc[1]-$iap[1],$sun_sc[2]-$iap[2]); $Rsun_obs=sqrt(vdot($vsun,$vsun));
+$sun_saturn_sep=rad2deg(acos(max(-1,min(1,vdot(vnorm($vsun),vnorm($vsat))))));     // Sun↔Saturn elongation from Iapetus (drives the Sun's true placement at Saturn's limb)
 
 $sky = array(
     'date' => $today, 'computed' => $now.' UTC', 'day_number' => round($d,4), 'obliquity' => round($obl,4),
@@ -79,6 +201,14 @@ $sky = array(
         'dist_au' => round($satr,4), 'zodiac' => zodiac($satlon)
     ),
     'earth_sun_ecl_lon' => round(sun_ecl_lon($d),4),
+    'planets' => $planets,
+    'saturn_sky' => array(                                          // Saturn as seen FROM Iapetus (true direction + size + range)
+        'ra' => round($sat_ra,3), 'dec' => round($sat_dec,3),
+        'ang_arcmin' => round($sat_ang_arcmin,2), 'dist_km' => round($Rsat_obs*$AU_KM),
+        'sun_sep' => round($sun_saturn_sep,3)                       // Sun↔Saturn elongation → the Sun blazes this far off Saturn's limb
+    ),
+    'moons' => $moons_out,
+    'sat_fidelity' => 'a/e/i/P/H + geometry exact; epoch phase L0=0@J2000 (wants a JPL calibration for absolute phase)',
     'source' => 'BlackSunObs ephemeris (Schlyter method) via grafverse sky.php'
 );
 

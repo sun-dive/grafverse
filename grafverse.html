@@ -416,24 +416,87 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     g.fillStyle=grd; g.fillRect(0,0,S,S);
     const tex=new THREE.CanvasTexture(cv); tex.colorSpace=THREE.SRGBColorSpace;
     const spr=new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, fog:false }));
-    spr.renderOrder=20;
-    spr.position.set(80,-4188,40); spr.scale.setScalar(4.2);                   // REAL angular size — ~3.4′ (0.057°) from Iapetus's 9.5 AU — a brilliant pinpoint at Saturn's limb, where it truly sits
-    scene.add(spr); sunSprite=spr;                                              // world-placed by Saturn (behind it), at true scale
+    spr.renderOrder=20; spr.scale.setScalar(4.2); spr.position.set(0,-3480,0);  // placeholder (straight down) until loadSky plants it at the Sun's true RA/Dec
+    skyDome.add(spr); sunSprite=spr;                                            // lives IN the star sphere → placed at the Sun's TRUE RA/Dec by loadSky, sized by brightness each frame (like a star, brightest one)
   })();
+
+  // ---------- the visible PLANETS from Iapetus — true RA/Dec (sky.php), sized + tinted by real apparent magnitude ----------
+  //   From 9.5 AU out the inner worlds HUG the Sun: Earth a pale-blue-dot ~6° off it, Venus/Mercury/Mars alongside; Jupiter stands
+  //   ~21–33° away (the one bold planet); Uranus/Neptune ride far off, faint. Steady coloured points — planets don't twinkle.
+  //   No labels: which light is which is left to be discovered. Children of skyDome, so the daily sky-orientation carries them.
+  let _planetGlow;
+  function planetGlowTex(){
+    if(_planetGlow) return _planetGlow;
+    const S=64, cv=document.createElement('canvas'); cv.width=cv.height=S; const g=cv.getContext('2d');
+    const grd=g.createRadialGradient(S/2,S/2,0, S/2,S/2,S/2);
+    grd.addColorStop(0,'rgba(255,255,255,1)'); grd.addColorStop(.18,'rgba(255,255,255,.95)');
+    grd.addColorStop(.4,'rgba(255,255,255,.35)'); grd.addColorStop(1,'rgba(255,255,255,0)');
+    g.fillStyle=grd; g.fillRect(0,0,S,S);
+    _planetGlow=new THREE.CanvasTexture(cv); _planetGlow.colorSpace=THREE.SRGBColorSpace; return _planetGlow;
+  }
+  const planetGroup=new THREE.Group(); skyDome.add(planetGroup);
+  function addPlanets(list){
+    if(!Array.isArray(list)) return;
+    while(planetGroup.children.length) planetGroup.remove(planetGroup.children[0]);
+    const R=3500, D2R=Math.PI/180, tex=planetGlowTex();
+    for(const p of list){
+      const a=p.ra*D2R, d=p.dec*D2R, cd=Math.cos(d);
+      const scale=Math.max(7, Math.min(34, 34*Math.pow(10,-0.16*p.mag)));       // brighter (lower mag) → bigger glow
+      const op=Math.max(.35, Math.min(1, 1.15-0.11*p.mag));                     // …and more opaque; faint outer worlds barely there
+      const spr=new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, color:new THREE.Color(p.color||'#ffffff'),
+        transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, fog:false, opacity:op }));
+      spr.position.set(R*cd*Math.cos(a), R*Math.sin(d), R*cd*Math.sin(a));
+      spr.scale.setScalar(scale); spr.renderOrder=18; spr.userData.planet=p.name;
+      planetGroup.add(spr);
+    }
+  }
+
+  // ---------- Saturn's MOONS from Iapetus — Titan, Rhea, Dione, Tethys, Enceladus, Mimas, Hyperion (sky.php) ----------
+  //   From Iapetus the inner moons are ~375× closer than from Earth → BRILLIANT (Titan brighter than Venus), a little court of
+  //   bright points clustered around Saturn. Placed at true RA/Dec on the star sphere (which is anchored on Saturn, below), so
+  //   they fall around the disc; ones currently BEHIND Saturn's disc are dropped (occulted). Titan carries its hazy-orange tint.
+  const moonGroup=new THREE.Group(); skyDome.add(moonGroup);
+  function addMoons(list){
+    if(!Array.isArray(list)) return;
+    while(moonGroup.children.length) moonGroup.remove(moonGroup.children[0]);
+    const R=3470, D2R=Math.PI/180, tex=planetGlowTex();
+    for(const p of list){
+      if(p.behind) continue;                                                    // occulted by Saturn's disc → hidden
+      const a=p.ra*D2R, d=p.dec*D2R, cd=Math.cos(d);
+      const scale=Math.max(9, Math.min(30, 30*Math.pow(10,-0.13*p.mag)));        // all bright, but the brighter moons a touch bigger
+      const op=Math.max(.6, Math.min(1, 1.2-0.06*p.mag));
+      const spr=new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, color:new THREE.Color(p.color||'#ffffff'),
+        transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, fog:false, opacity:op }));
+      spr.position.set(R*cd*Math.cos(a), R*Math.sin(d), R*cd*Math.sin(a));
+      spr.scale.setScalar(scale); spr.renderOrder=19; spr.userData.moon=p.name;
+      moonGroup.add(spr);
+    }
+  }
+
+  // ── anchor the whole star sphere on SATURN: rotate it so Saturn's true celestial direction sits where Saturn is drawn
+  //    (straight DOWN at Unit 21's anti-Saturn point · overhead on the sub-Saturn far side). The Sun (17° off today), the
+  //    moons and the planets are all children of this sphere → they fall into their true places around Saturn automatically. ──
+  function anchorSky(side){
+    const s=window.__sky; if(!s||!s.saturn_sky) return;
+    const D2R=Math.PI/180, a=s.saturn_sky.ra*D2R, d=s.saturn_sky.dec*D2R, cd=Math.cos(d);
+    const local=new THREE.Vector3(cd*Math.cos(a), Math.sin(d), cd*Math.sin(a));  // Saturn's direction in the star frame
+    const target=(side==='far')?new THREE.Vector3(0,1,0):new THREE.Vector3(0,-1,0);   // Saturn overhead (far) / straight down (near)
+    skyDome.quaternion.setFromUnitVectors(local, target);
+  }
 
   // ── Step 2: the daily IAPETUS sky — fetch sky.php (your resurrected BlackSunObs ephemeris, cached per UTC date) ──
   //   Place the Sun at its TRUE position among the stars (today ≈ Libra, opposite Saturn), anchored to the existing
   //   light direction so the moon stays lit, and rotate the whole star sphere so the correct constellations fall around it.
   (function loadSky(){
-    const D2R=Math.PI/180, SUNSKY=new THREE.Vector3(0.06,-0.996,0.03).normalize();   // the Sun sits BENEATH, just off Saturn — it's night on Unit 21's anti-Saturn side, the Sun behind Saturn
+    const D2R=Math.PI/180;
     fetch('sky.php',{cache:'no-store'}).then(r=>r.json()).then(s=>{
       if(!s||!s.sun) return;
-      const a=s.sun.ra*D2R, d=s.sun.dec*D2R, cd=Math.cos(d);
-      const local=new THREE.Vector3(cd*Math.cos(a), Math.sin(d), cd*Math.sin(a));   // Sun in the SAME frame as the stars
-      skyDome.quaternion.setFromUnitVectors(local, SUNSKY);                          // spin the sky so the Sun (Libra) sits beneath, just off Saturn
-      // (the Sun is world-placed at Saturn's limb, at true angular size — see sunDisc above; the sky orientation still puts the correct constellations behind it)
-      window.__sky=s;                                                                // expose (Saturn phase etc. — Step 4)
-      // (the Seven Sisters gate is now fixed BEHIND the monolith — see the gate setup above — not replanted at the Pleiades bearing)
+      window.__sky=s;                                                                // expose (Saturn phase, moons — Step 4)
+      anchorSky('near');                                                             // spin the whole sky so Saturn sits straight down at Unit 21's anti-Saturn point
+      if(sunSprite){ const a=s.sun.ra*D2R, d=s.sun.dec*D2R, cd=Math.cos(d);          // the Sun at its TRUE RA/Dec (≈17° off Saturn today) — no longer hand-pinned to the limb
+        sunSprite.position.set(3480*cd*Math.cos(a), 3480*Math.sin(d), 3480*cd*Math.sin(a)); }
+      addPlanets(s.planets);                                                          // the visible planets, at their true bearings around the Sun/Saturn
+      addMoons(s.moons);                                                              // Saturn's brilliant moon-court, clustered around the disc
     }).catch(()=>{ /* offline / no PHP → real stars still show at identity orientation */ });
   })();
 
@@ -837,7 +900,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const far=(side==='far');                                                      // 'far' = the SUB-SATURN side: Saturn overhead, Wardenclyffe beside you
     if(saturn)      saturn.position.set(0, far?4200:-4200, far?1540:0);             // Saturn overhead on the sub-Saturn side · beneath on Unit 21's anti-Saturn side
     if(wardenTower) wardenTower.position.set(0, far?0:-4100, far?1600:0);           // the tower stands beside you at the sub-Saturn point · at the antipode (beneath) otherwise
-    if(sunSprite)   sunSprite.position.set(far?90:80, far?4188:-4188, far?1580:40); // the Sun keeps its place by Saturn's limb, wherever Saturn is
+    anchorSky(side);                                                                // re-spin the sky so Saturn + its moons + the Sun + the planets ride overhead (far) or beneath (near)
     if(ghostGround){ ghostGround.material.map = far?paintTex:paintTex2; ghostGround.material.needsUpdate=true; ghostGround.position.set(0,-1500, far?1600:0); }   // the ghost always shows the OTHER pole's paint, far beneath whichever pole you stand on
   }
 
@@ -1609,6 +1672,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     checkPortals(px, pz, camera.position.y, feetY);               // 🌀 breached a gate crystal? → travel to its destination world
     checkGates(px, pz, spd, dt);                                  // 🌀 Easter-egg ether gates → teleport across Iapetus (near void ⇄ far pole)
     skyDome.position.copy(camera.position);                       // 🌌 keep the real star sphere centred on the eye → stars stay fixed at infinity
+    if(sunSprite){                                                // ☀ render the Sun like the STARS — by BRIGHTNESS, not angular size: a fixed on-screen point (the brightest one), not a sub-pixel true disc
+      const H=window.innerHeight||800, dpx=20;                    // ~20px sprite → a ~4px brilliant core (bigger than the 3.6px brightest star) + glare halo
+      const wpp=2*3480*Math.tan(camera.fov*Math.PI/360)/H;        // 3480 = the Sun's radius on the star sphere (skyDome follows the eye, so this is its distance)
+      sunSprite.scale.setScalar(dpx*wpp);                         // constant on-screen size regardless of where you walk
+    }
     let floorY=0, nUp=1, nX=0, nZ=0;                              // default = flat ground at y=0 (up normal)
     let wetCol=null, cSurf=null, cU=0, cV=0;                      // wet paint under the feet (drives slip + smear)
     _stand.length=0;
