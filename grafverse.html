@@ -477,11 +477,23 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   //    (straight DOWN at Unit 21's anti-Saturn point · overhead on the sub-Saturn far side). The Sun (17° off today), the
   //    moons and the planets are all children of this sphere → they fall into their true places around Saturn automatically. ──
   function anchorSky(side){
-    const s=window.__sky; if(!s||!s.saturn_sky) return;
-    const D2R=Math.PI/180, a=s.saturn_sky.ra*D2R, d=s.saturn_sky.dec*D2R, cd=Math.cos(d);
-    const local=new THREE.Vector3(cd*Math.cos(a), Math.sin(d), cd*Math.sin(a));  // Saturn's direction in the star frame
-    const target=(side==='far')?new THREE.Vector3(0,1,0):new THREE.Vector3(0,-1,0);   // Saturn overhead (far) / straight down (near)
-    skyDome.quaternion.setFromUnitVectors(local, target);
+    const s=window.__sky; if(!s||!s.saturn_sky||!saturn) return;
+    const D2R=Math.PI/180, ss=s.saturn_sky, far=(side==='far');
+    const v3=(ra,dec)=>{ const a=ra*D2R,d=dec*D2R,cd=Math.cos(d); return new THREE.Vector3(cd*Math.cos(a),Math.sin(d),cd*Math.sin(a)); };
+    // the drawn Saturn's real ring-plane normal in world (so the moon-string matches the rings you SEE)
+    saturn.updateWorldMatrix(true,false);
+    const ring=saturn.userData.ring, RN=new THREE.Vector3(0,0,1).applyQuaternion(ring.getWorldQuaternion(new THREE.Quaternion())).normalize();
+    // SOURCE basis (star frame): Saturn's direction + its pole made ⟂ to it
+    const su=v3(ss.ra,ss.dec).normalize();
+    const sp=v3(ss.pole_ra,ss.pole_dec); sp.addScaledVector(su,-sp.dot(su)).normalize();
+    const sw=new THREE.Vector3().crossVectors(su,sp);
+    // TARGET basis (world): Saturn straight down/overhead + the ring normal made ⟂ to that
+    const tu=new THREE.Vector3(0,far?1:-1,0);
+    const poleT=RN.clone(); if(far) poleT.y=-poleT.y;
+    const tp=poleT.addScaledVector(tu,-poleT.dot(tu)).normalize();
+    const tw=new THREE.Vector3().crossVectors(tu,tp);
+    const S=new THREE.Matrix4().makeBasis(su,sp,sw), T=new THREE.Matrix4().makeBasis(tu,tp,tw);
+    skyDome.quaternion.setFromRotationMatrix(T.multiply(S.invert()));                 // maps Saturn→down & its equatorial plane→the drawn ring plane → moons string ALONG the rings
   }
 
   // ── Step 2: the daily IAPETUS sky — fetch sky.php (your resurrected BlackSunObs ephemeris, cached per UTC date) ──

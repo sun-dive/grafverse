@@ -205,7 +205,9 @@ $sky = array(
     'saturn_sky' => array(                                          // Saturn as seen FROM Iapetus (true direction + size + range)
         'ra' => round($sat_ra,3), 'dec' => round($sat_dec,3),
         'ang_arcmin' => round($sat_ang_arcmin,2), 'dist_km' => round($Rsat_obs*$AU_KM),
-        'sun_sep' => round($sun_saturn_sep,3)                       // Sun↔Saturn elongation → the Sun blazes this far off Saturn's limb
+        'sun_sep' => round($sun_saturn_sep,3),                      // Sun↔Saturn elongation → the Sun blazes this far off Saturn's limb
+        'pole_ra' => $SAT_POLE_RA, 'pole_dec' => $SAT_POLE_DEC,     // Saturn's north pole (J2000) = the moon/ring-plane normal → aligns the moon-string to the rings
+        'ring_open' => round(asind(vdot(vnorm($iap),$Pn)),2)        // ring opening angle from Iapetus (elevation of the observer above Saturn's equator)
     ),
     'moons' => $moons_out,
     'sat_fidelity' => 'a/e/i/P/H + geometry exact; epoch phase L0=0@J2000 (wants a JPL calibration for absolute phase)',
