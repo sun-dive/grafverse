@@ -21,6 +21,8 @@ deployment:
     - /bin/cp w.php "$DEPLOYPATH"                         # shareable, crawlable OG/SEO landing page per shared world/solid (→ ./?w=<id>)
     - /bin/cp og.php "$DEPLOYPATH"                        # serves a share's rendered 1200×630 OG cover (falls back to og.jpg)
     - /bin/cp bmf-codec.js "$DEPLOYPATH"                  # shared thrifty BMF pack/unpack codec (game packs before mint)
+    - /bin/cp stars.js "$DEPLOYPATH"                      # sky data pack (loaded by the game backdrop)
+    - /bin/cp milkyway.webp "$DEPLOYPATH"                 # all-sky backdrop image
     - /bin/cp lang-*.js "$DEPLOYPATH"                     # i18n language packs (lang-ja.js, lang-zh-Hant.js, …) lazy-loaded by the game
     - /bin/cp brc226.html "$DEPLOYPATH"                   # BRC-226 blueprint — self-contained, crawlable (coined-term SEO); shareable at grafverse.com/brc226.html
     - /bin/cp tip.php "$DEPLOYPATH"                        # BRC-226 LiveCounter board cache: follows the covenant chain → { n, tipTxid, last21[] }
