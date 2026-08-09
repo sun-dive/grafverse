@@ -836,7 +836,13 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       [['#d9c39a',0],['#c6a86d',0.14],['#e7d9b6',0.24],['#bd9e66',0.36],['#dac798',0.48],['#c7ab74',0.6],['#e4d5aa',0.72],['#b58c54',0.84],['#d8c393',0.94]].forEach(b=>g.addColorStop(b[1],b[0]));
       x.fillStyle=g; x.fillRect(0,0,w,h);
       for(let i=0;i<50;i++){ x.globalAlpha=.05+Math.random()*.06; x.fillStyle=Math.random()<.5?'#fff8e6':'#8a6a38'; x.fillRect(0,Math.random()*h,w,1+Math.random()*2.5); } x.globalAlpha=1; });
-    const planet=new THREE.Mesh(new THREE.SphereGeometry(R,48,32), new THREE.MeshBasicMaterial({map:pTex,color:0x2b2822,fog:false,transparent:true}));   // darkened → the backlit NIGHT face (from Iapetus the Sun is behind Saturn)
+    const planetMat=new THREE.MeshBasicMaterial({map:pTex,fog:false});             // UNLIT base → immune to every scene light; the terminator is shaded IN the material from the true Sun direction (updated each frame)
+    planetMat.onBeforeCompile=(sh)=>{ planetMat.userData.shader=sh; sh.uniforms.uSunDir={value:new THREE.Vector3(0,-1,0)};
+      sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vWN;')
+        .replace('#include <begin_vertex>','#include <begin_vertex>\nvWN=normalize(mat3(modelMatrix)*normal);');
+      sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nuniform vec3 uSunDir;\nvarying vec3 vWN;')
+        .replace('#include <dithering_fragment>','float _lit=smoothstep(-0.10,0.12,dot(normalize(vWN),normalize(uSunDir)));\ngl_FragColor.rgb*=(0.045+0.955*_lit);\n#include <dithering_fragment>'); };
+    const planet=new THREE.Mesh(new THREE.SphereGeometry(R,64,48), planetMat);      // real 3D phase (a thin backlit crescent today): day side full, night side ~5%, soft terminator
     const rTex=makeLabel(512,4,(x,w)=>{ for(let i=0;i<w;i++){ const t=i/w; let a=0;
       if(t>0.05&&t<0.96){ a=0.5+0.35*Math.sin(t*46)*Math.sin(t*11); a=Math.max(0.08,Math.min(0.85,a)); }
       if(t>0.60&&t<0.68) a=0.04;                       // the Cassini division
@@ -850,6 +856,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     return grp;
   }
   const saturn=makeSaturn(); saturn.position.set(0,-4200,0); scene.add(saturn);   // BENEATH your feet — Unit 21 is the anti-Saturn point, so Saturn (over the sub-Saturn antipode) sits on the far side of the moon: seen straight DOWN through the void among the lower stars. Your paint covers the void → hides it; walk to clear ground to see it again.
+  const _satSunTmp=new THREE.Vector3();   // reused each frame for Saturn's world sun-direction (feeds the terminator shader)
 
   // ── 🌀 JUMP GATES (Easter egg) — Tesla-ether rings, FIXED stage furniture like Wardenclyffe/Saturn (added straight to `scene`, NEVER bShapes) so they can't touch the serialize/mint path. ──
   //    Sprint-breach a ring → teleport across Iapetus (near void ⇄ far pole). Reuses the crystal-gate FEEL (◈ hint + ENTER_SPEED breach) but the destination is a SPOT IN THIS WORLD, not a chain load.
@@ -1688,6 +1695,12 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const H=window.innerHeight||800, dpx=20;                    // ~20px sprite → a ~4px brilliant core (bigger than the 3.6px brightest star) + glare halo
       const wpp=2*3480*Math.tan(camera.fov*Math.PI/360)/H;        // 3480 = the Sun's radius on the star sphere (skyDome follows the eye, so this is its distance)
       sunSprite.scale.setScalar(dpx*wpp);                         // constant on-screen size regardless of where you walk
+      const ss=window.__sky&&window.__sky.saturn_sky, psh=saturn&&saturn.userData.planet&&saturn.userData.planet.material.userData.shader;
+      if(psh && ss && ss.sun_dir_ra!=null){                        // feed Saturn's terminator shader its TRUE Sun direction (world) → correct backlit crescent, immune to scene lights
+        const a=ss.sun_dir_ra*Math.PI/180, d=ss.sun_dir_dec*Math.PI/180, cd=Math.cos(d);
+        _satSunTmp.set(cd*Math.cos(a), Math.sin(d), cd*Math.sin(a)).applyQuaternion(skyDome.quaternion);   // celestial → world via the anchored sky
+        psh.uniforms.uSunDir.value.copy(_satSunTmp);
+      }
     }
     let floorY=0, nUp=1, nX=0, nZ=0;                              // default = flat ground at y=0 (up normal)
     let wetCol=null, cSurf=null, cU=0, cV=0;                      // wet paint under the feet (drives slip + smear)
