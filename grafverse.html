@@ -396,6 +396,16 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     // sky orientation is set by loadSky() from sky.php (below); left at identity until that resolves
   })();
 
+  // ── THE MILKY WAY — the real NASA "Deep Star Maps 2020" panorama (public domain), in CELESTIAL (RA/Dec) coords, hung on the
+  //    star sphere. Celestial coords + our RA/Dec stars → it aligns with NO rotation or mirror; ADDITIVE so it glows without
+  //    occluding the Sun/Saturn, and its true structure (star clouds + the Great Rift) reads as a real bearing across the sky. ──
+  (function milkyWay(){
+    const mat=new THREE.MeshBasicMaterial({ side:THREE.BackSide, transparent:true, blending:THREE.AdditiveBlending, opacity:0.62, depthWrite:false, fog:false });
+    const mw=new THREE.Mesh(new THREE.SphereGeometry(3550,64,40), mat); mw.visible=false; mw.renderOrder=-2; skyDome.add(mw);
+    new THREE.TextureLoader().load('milkyway.webp', tex=>{ tex.colorSpace=THREE.SRGBColorSpace; mat.map=tex; mat.needsUpdate=true; mw.visible=true; },
+      undefined, ()=>{ /* not deployed / offline → skip; the point-stars still carry the sky */ });
+  })();
+
   // ---------- the sun disc — lives IN the star sphere (skyDome), so it sits among its true constellation ----------
   let sunSprite;
   (function sunDisc(){
