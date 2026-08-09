@@ -319,6 +319,8 @@
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 <script src="bmf-codec.js"></script>
+<script src="stars.js"></script><!-- real star catalog: window.GV_STARS (Yale Bright Star Catalog, 9096 stars) -->
+
 <script type="module">
 import * as THREE from 'three';
 window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE references working
@@ -352,7 +354,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000006);
-  scene.fog = new THREE.FogExp2(0x000006, 0.0016);
+  scene.fog = new THREE.FogExp2(0x000006, 0.00016);   // Iapetus is airless → almost no haze; you see crisp to the true ~1.58 km horizon
 
   const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.1, 5000);
   camera.rotation.order = 'YXZ';
@@ -365,33 +367,64 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   const key = new THREE.DirectionalLight(0xfff4ea, 1.05);          // warm-white sunlight
   key.position.copy(sunDir).multiplyScalar(120); scene.add(key);
 
-  // ---------- starfield (you are floating in space) ----------
-  (function stars(){
-    const N = 3500, pos = new Float32Array(N*3);
-    for(let i=0;i<N;i++){
-      // random point on a shell
-      const r = 700 + Math.random()*1600;
-      const t = Math.random()*Math.PI*2, p = Math.acos(2*Math.random()-1);
-      pos[i*3]   = r*Math.sin(p)*Math.cos(t);
-      pos[i*3+1] = r*Math.cos(p);
-      pos[i*3+2] = r*Math.sin(p)*Math.sin(t);
+  // ---------- REAL star field — 9,096 stars, Yale Bright Star Catalog (window.GV_STARS / stars.js), at true RA/Dec (J2000) ----------
+  //   Iapetus sees the SAME fixed stars as Earth (no measurable parallax). `skyDome` FOLLOWS the camera each frame (sky at infinity)
+  //   and is ROTATED to orient Iapetus's sky (a fixed tilt for now; the daily sky.json will drive this precisely in Step 2).
+  //   Rendered in 3 magnitude buckets → a cheap, GPU-friendly brightness hierarchy (bright stars bigger/whiter).
+  const skyDome = new THREE.Group(); scene.add(skyDome);
+  (function realStars(){
+    const cat = (window.GV_STARS && window.GV_STARS.decode) ? window.GV_STARS.decode() : null;
+    const R = 3600, D2R = Math.PI/180;
+    if(!cat){                                                  // fallback: a sparse random shell if stars.js didn't load
+      const N=2000, pos=new Float32Array(N*3);
+      for(let i=0;i<N;i++){ const u=Math.random()*2-1, th=Math.random()*Math.PI*2, r=Math.sqrt(1-u*u);
+        pos[i*3]=Math.cos(th)*r*R; pos[i*3+1]=u*R; pos[i*3+2]=Math.sin(th)*r*R; }
+      const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+      skyDome.add(new THREE.Points(g,new THREE.PointsMaterial({color:0xcdddff,size:2,sizeAttenuation:false,fog:false,transparent:true,opacity:.85})));
+      return;
     }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos,3));
-    const m = new THREE.PointsMaterial({ color:0xffffff, size:2.2, sizeAttenuation:true, transparent:true, opacity:.9, depthWrite:false, fog:false });
-    scene.add(new THREE.Points(g,m));
+    const buckets=[ [1.5,3.6,0xffffff,1.0], [3.5,2.15,0xeef2ff,0.92], [99,1.35,0xb9c6e6,0.8] ];   // [magMax, pixelSize, colour, opacity]
+    let lo=-2;
+    for(const b of buckets){
+      const hi=b[0], sub=cat.filter(s=>s.mag>lo && s.mag<=hi); lo=hi;
+      const pos=new Float32Array(sub.length*3);
+      sub.forEach((s,i)=>{ const a=s.ra*D2R, d=s.dec*D2R, cd=Math.cos(d);
+        pos[i*3]=R*cd*Math.cos(a); pos[i*3+1]=R*Math.sin(d); pos[i*3+2]=R*cd*Math.sin(a); });
+      const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+      skyDome.add(new THREE.Points(g,new THREE.PointsMaterial({color:b[2],size:b[1],sizeAttenuation:false,fog:false,transparent:true,opacity:b[3],depthWrite:false})));
+    }
+    // sky orientation is set by loadSky() from sky.php (below); left at identity until that resolves
   })();
 
-  // ---------- the sun disc, hanging in the black sky (matches the sunlight direction) ----------
+  // ---------- the sun disc — lives IN the star sphere (skyDome), so it sits among its true constellation ----------
+  let sunSprite;
   (function sunDisc(){
-    const S=256, cv=document.createElement('canvas'); cv.width=cv.height=S; const g=cv.getContext('2d');
-    const grd=g.createRadialGradient(S/2,S/2,0, S/2,S/2,S/2);
-    grd.addColorStop(0,'rgba(255,255,255,1)');   grd.addColorStop(.18,'rgba(255,248,232,1)');
-    grd.addColorStop(.42,'rgba(255,235,198,.5)'); grd.addColorStop(.75,'rgba(255,221,170,.1)'); grd.addColorStop(1,'rgba(255,221,170,0)');
+    const S=128, cv=document.createElement('canvas'); cv.width=cv.height=S; const g=cv.getContext('2d');
+    const grd=g.createRadialGradient(S/2,S/2,0, S/2,S/2,S/2);   // small, HARD, brilliant core (~mag −23 from Iapetus) + a warm glow
+    grd.addColorStop(0,'rgba(255,255,255,1)');   grd.addColorStop(.14,'rgba(255,255,255,1)');
+    grd.addColorStop(.24,'rgba(255,252,240,.95)'); grd.addColorStop(.5,'rgba(255,240,205,.32)'); grd.addColorStop(1,'rgba(255,238,200,0)');
     g.fillStyle=grd; g.fillRect(0,0,S,S);
     const tex=new THREE.CanvasTexture(cv); tex.colorSpace=THREE.SRGBColorSpace;
     const spr=new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, fog:false }));
-    spr.position.copy(sunDir).multiplyScalar(1400); spr.scale.setScalar(280); scene.add(spr);
+    spr.renderOrder=20;
+    spr.position.set(80,-4188,40); spr.scale.setScalar(4.2);                   // REAL angular size — ~3.4′ (0.057°) from Iapetus's 9.5 AU — a brilliant pinpoint at Saturn's limb, where it truly sits
+    scene.add(spr); sunSprite=spr;                                              // world-placed by Saturn (behind it), at true scale
+  })();
+
+  // ── Step 2: the daily IAPETUS sky — fetch sky.php (your resurrected BlackSunObs ephemeris, cached per UTC date) ──
+  //   Place the Sun at its TRUE position among the stars (today ≈ Libra, opposite Saturn), anchored to the existing
+  //   light direction so the moon stays lit, and rotate the whole star sphere so the correct constellations fall around it.
+  (function loadSky(){
+    const D2R=Math.PI/180, SUNSKY=new THREE.Vector3(0.06,-0.996,0.03).normalize();   // the Sun sits BENEATH, just off Saturn — it's night on Unit 21's anti-Saturn side, the Sun behind Saturn
+    fetch('sky.php',{cache:'no-store'}).then(r=>r.json()).then(s=>{
+      if(!s||!s.sun) return;
+      const a=s.sun.ra*D2R, d=s.sun.dec*D2R, cd=Math.cos(d);
+      const local=new THREE.Vector3(cd*Math.cos(a), Math.sin(d), cd*Math.sin(a));   // Sun in the SAME frame as the stars
+      skyDome.quaternion.setFromUnitVectors(local, SUNSKY);                          // spin the sky so the Sun (Libra) sits beneath, just off Saturn
+      // (the Sun is world-placed at Saturn's limb, at true angular size — see sunDisc above; the sky orientation still puts the correct constellations behind it)
+      window.__sky=s;                                                                // expose (Saturn phase etc. — Step 4)
+      // (the Seven Sisters gate is now fixed BEHIND the monolith — see the gate setup above — not replanted at the Pleiades bearing)
+    }).catch(()=>{ /* offline / no PHP → real stars still show at identity orientation */ });
   })();
 
   // ---------- the paintable ground (invisible until painted) ----------
@@ -693,24 +726,19 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     g.userData.orb=orb; g.userData.arcL=arcL; g.userData.arcs=arcs; return g;
   }
   const wardenTower=makeWardenclyffeTower();
-  wardenTower.position.set(-40,0,232);              // the far pole — opposite Unit 21 (−Z); a distant flicker to chase
-  scene.add(wardenTower);
+  wardenTower.position.set(0,-4100,0);              // at the ANTIPODE (180° from Unit 21 = the sub-Saturn point): far beneath, a tiny distant spire silhouetted against Saturn — "too small to see" from Unit 21, by design
+  wardenTower.visible=false; scene.add(wardenTower);   // manifests only once the monolith wakes into Unit 21
 
   // ── Saturn in the sky ── grafverse's moon IS Clarke's IAPETUS, so its giant hangs low over the far horizon.
   //    Starfield backdrop + a ringed Saturn spun on real UTC time, ring-opening ≈ the true current angle. ──
-  (function(){ const N=1500, pos=new Float32Array(N*3);
-    for(let i=0;i<N;i++){ const u=Math.random(), th=Math.random()*Math.PI*2, r=Math.sqrt(1-u*u), R=3400+Math.random()*500;
-      pos[i*3]=Math.cos(th)*r*R; pos[i*3+1]=u*R*0.85+30; pos[i*3+2]=Math.sin(th)*r*R; }
-    const gg=new THREE.BufferGeometry(); gg.setAttribute('position',new THREE.BufferAttribute(pos,3));
-    scene.add(new THREE.Points(gg,new THREE.PointsMaterial({color:0xcdddff,size:2.6,sizeAttenuation:false,fog:false,transparent:true,opacity:.85})));
-  })();
+  // (the star backdrop is now the REAL skyDome built above — no separate random field needed here)
   function makeSaturn(){
-    const grp=new THREE.Group(), R=150;
+    const grp=new THREE.Group(), R=70;   // disc ≈1.9° at its distance beneath you (rings out to ~4.5°) — the real angular size seen from Iapetus
     const pTex=makeLabel(384,256,(x,w,h)=>{ const g=x.createLinearGradient(0,0,0,h);
       [['#d9c39a',0],['#c6a86d',0.14],['#e7d9b6',0.24],['#bd9e66',0.36],['#dac798',0.48],['#c7ab74',0.6],['#e4d5aa',0.72],['#b58c54',0.84],['#d8c393',0.94]].forEach(b=>g.addColorStop(b[1],b[0]));
       x.fillStyle=g; x.fillRect(0,0,w,h);
       for(let i=0;i<50;i++){ x.globalAlpha=.05+Math.random()*.06; x.fillStyle=Math.random()<.5?'#fff8e6':'#8a6a38'; x.fillRect(0,Math.random()*h,w,1+Math.random()*2.5); } x.globalAlpha=1; });
-    const planet=new THREE.Mesh(new THREE.SphereGeometry(R,48,32), new THREE.MeshBasicMaterial({map:pTex,fog:false,transparent:true}));
+    const planet=new THREE.Mesh(new THREE.SphereGeometry(R,48,32), new THREE.MeshBasicMaterial({map:pTex,color:0x2b2822,fog:false,transparent:true}));   // darkened → the backlit NIGHT face (from Iapetus the Sun is behind Saturn)
     const rTex=makeLabel(512,4,(x,w)=>{ for(let i=0;i<w;i++){ const t=i/w; let a=0;
       if(t>0.05&&t<0.96){ a=0.5+0.35*Math.sin(t*46)*Math.sin(t*11); a=Math.max(0.08,Math.min(0.85,a)); }
       if(t>0.60&&t<0.68) a=0.04;                       // the Cassini division
@@ -718,13 +746,76 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const ring=new THREE.Mesh(new THREE.RingGeometry(R*1.22,R*2.28,140,1), new THREE.MeshBasicMaterial({map:rTex,transparent:true,side:THREE.DoubleSide,fog:false,depthWrite:false}));
     { const gp=ring.geometry.attributes.position, uv=ring.geometry.attributes.uv, ri=R*1.22, ro=R*2.28;
       for(let i=0;i<gp.count;i++){ const d=Math.hypot(gp.getX(i),gp.getY(i)); uv.setXY(i,(d-ri)/(ro-ri),0.5); } uv.needsUpdate=true; }
-    ring.rotation.x=Math.PI/2; grp.add(planet); grp.add(ring); grp.userData.planet=planet; grp.userData.ring=ring;
-    const d=new Date(), yrs=d.getUTCFullYear()+d.getUTCMonth()/12 - 2025.2;   // rings went edge-on ~Mar 2025
-    const B=26.7*Math.sin(2*Math.PI*yrs/29.457)*Math.PI/180;                    // ≈ the real ring-opening angle for now
-    grp.rotation.x=0.12+Math.abs(B); grp.rotation.z=-0.36;                      // real-trending opening + a stylistic axial lean
+    const halo=new THREE.Mesh(new THREE.SphereGeometry(R*1.06,32,24), new THREE.MeshBasicMaterial({color:0x7a663f,transparent:true,opacity:0.5,side:THREE.BackSide,blending:THREE.AdditiveBlending,depthWrite:false,fog:false}));   // warm backlit rim-glow around the dark disc
+    ring.rotation.x=Math.PI/2; grp.add(halo); grp.add(planet); grp.add(ring); grp.userData.planet=planet; grp.userData.ring=ring;
+    grp.rotation.x=Math.PI/2 - 0.16; grp.rotation.z=0.05;                       // rings seen ~EDGE-ON from Iapetus (looking ACROSS them, ~9° open) — not the face-on Earth view
     return grp;
   }
-  const saturn=makeSaturn(); saturn.position.set(60,340,1700); scene.add(saturn);   // hung low over the +Z horizon, beyond Wardenclyffe
+  const saturn=makeSaturn(); saturn.position.set(0,-4200,0); scene.add(saturn);   // BENEATH your feet — Unit 21 is the anti-Saturn point, so Saturn (over the sub-Saturn antipode) sits on the far side of the moon: seen straight DOWN through the void among the lower stars. Your paint covers the void → hides it; walk to clear ground to see it again.
+
+  // ── 🌀 JUMP GATES (Easter egg) — Tesla-ether rings, FIXED stage furniture like Wardenclyffe/Saturn (added straight to `scene`, NEVER bShapes) so they can't touch the serialize/mint path. ──
+  //    Sprint-breach a ring → teleport across Iapetus (near void ⇄ far pole). Reuses the crystal-gate FEEL (◈ hint + ENTER_SPEED breach) but the destination is a SPOT IN THIS WORLD, not a chain load.
+  //    Arriving on the far side (z≈205) lands you inside the Awakening's reveal band → Saturn is already fully risen. Unit 21 swears gates aren't real; the wanderer who finds one knows better.
+  function makeJumpGate(hue){
+    const g=new THREE.Group(), R=2.6, cy=R+0.4;
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(R,0.34,12,40),
+      new THREE.MeshStandardMaterial({color:0x0b1020,emissive:new THREE.Color().setHSL(hue,0.85,0.5),emissiveIntensity:1.8,roughness:.3,metalness:.6,fog:false}));
+    ring.position.y=cy; g.add(ring);
+    const glow=new THREE.Mesh(new THREE.CircleGeometry(R-0.25,32),
+      new THREE.MeshBasicMaterial({color:new THREE.Color().setHSL(hue,0.9,0.6),transparent:true,opacity:.15,side:THREE.DoubleSide,fog:false,depthWrite:false}));
+    glow.position.y=cy; g.add(glow);
+    for(let i=0;i<6;i++){ const a=i/6*Math.PI*2;                                    // ether arcs licking the inner rim
+      g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(Math.cos(a)*R*0.92,cy+Math.sin(a)*R*0.92,0), new THREE.Vector3(Math.cos(a+1.7)*R*0.35,cy+Math.sin(a+1.7)*R*0.35,0)]),
+        new THREE.LineBasicMaterial({color:new THREE.Color().setHSL(hue,0.9,0.78),transparent:true,opacity:.55,fog:false}))); }
+    if(!MOBILE){ const L=new THREE.PointLight(new THREE.Color().setHSL(hue,0.9,0.6),1.6,44,2); L.position.y=cy; g.add(L); }
+    g.userData.ring=ring; g.userData.glow=glow; g.userData.hue=hue; g.userData.ringEmis=1.8; return g;
+  }
+  // ── The SEVEN SISTERS gate — Gate A wears the Pleiades (M45). From Unit 21 it reads as the seven sisters hanging in the void,
+  //    a breadcrumb to the crossing. loadSky() plants it at the Pleiades' TRUE bearing from Unit 21 and turns it to face him. ──
+  function makePleiadesGate(){
+    const g=new THREE.Group();
+    const sisters=[[0,0,1.0],[0.95,-0.55,0.72],[-1.15,-0.2,0.76],[-0.45,0.65,0.6],[-0.2,-0.95,0.55],[-0.85,0.85,0.5],[1.05,-0.35,0.5]]; // [x,y,brightness]
+    const glowTex=(function(){ const S=64,cv=document.createElement('canvas'); cv.width=cv.height=S; const c=cv.getContext('2d');
+      const gr=c.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2); gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(.25,'rgba(226,236,255,.9)');
+      gr.addColorStop(.6,'rgba(150,180,255,.22)'); gr.addColorStop(1,'rgba(150,180,255,0)'); c.fillStyle=gr; c.fillRect(0,0,S,S);
+      const t=new THREE.CanvasTexture(cv); t.colorSpace=THREE.SRGBColorSpace; return t; })();
+    const SC=1.7, baseY=6.5, stars=[];
+    for(const s of sisters){ const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false}));
+      spr.position.set(s[0]*SC, baseY+s[1]*SC, 0); spr.scale.setScalar(0.9+s[2]*1.4); g.add(spr); stars.push({m:spr,b:s[2]}); }
+    g.userData.sisters=stars; g.userData.hue=0.6; return g;   // NO ring — just the seven sisters, so it blends into the star field until you're right on it
+  }
+  const _egGates=[];
+  (function(){
+    const gA=makePleiadesGate(); gA.position.set(18.7,0,-162.3); gA.lookAt(0,6.5,0); gA.visible=false; scene.add(gA);   // Seven Sisters gate — on the spawn → monolith sight-line, ~163 m out; hidden until the monolith wakes
+    const gB=makeJumpGate(0.08); gB.position.set(40,0,1600); gB.visible=false; scene.add(gB);        // return gate by Wardenclyffe; hidden until the monolith wakes
+    _egGates.push({grp:gA, x:18.7, z:-162.3, dest:{x:0, z:1540, yaw:Math.PI, side:'far'}});   // behind the monolith → CROSSES to the sub-Saturn side (Saturn overhead, Wardenclyffe beside you)
+    _egGates.push({grp:gB, x:40, z:1600,  dest:{x:0, z:0, yaw:0, side:'near'}});   // → back to the DROID's SPAWN point (0,0,0), facing Unit 21 — Saturn drops beneath again
+  })();
+  let _gateCool=0, _nearEgGate=null, _egGateT=0;
+  function checkGates(px,pz,spd,dt){
+    _egGateT+=dt;
+    for(const G of _egGates){ const r=G.grp.userData.ring, gl=G.grp.userData.glow, sis=G.grp.userData.sisters;
+      const dd=Math.hypot(px-G.x,pz-G.z), vis=Math.max(0,Math.min(1,(160-dd)/120));   // HIDDEN from afar → fades in only as you get close (full within ~40 u); find it, don't spot it
+      if(r){ const s=1+0.05*Math.sin(_egGateT*3+G.grp.userData.hue*10); r.scale.set(s,s,s); r.rotation.z+=dt*0.5; r.material.emissiveIntensity=(G.grp.userData.ringEmis||1.5)*vis; }
+      if(gl) gl.material.opacity=(0.11+0.06*Math.abs(Math.sin(_egGateT*2)))*vis;
+      if(sis) for(const st of sis) st.m.material.opacity=(0.55+0.25*Math.sin(_egGateT*2.5+st.b*9))*vis; }   // sisters twinkle, but only once you're near
+    if(_gateCool>0){ _gateCool-=dt; return; }
+    if(talking||keepOpen||firstStart||introActive) return;
+    for(const G of _egGates){ if(Math.hypot(px-G.x,pz-G.z)<1.7 && spd>ENTER_SPEED){ jumpGate(G); return; } }   // NO hint — sprint-breach still works, but discovering it is EARNED in the game
+  }
+  function jumpGate(G){
+    camera.position.x=G.dest.x; camera.position.z=G.dest.z; yaw=G.dest.yaw;
+    velX=0; velZ=0; _gateCool=1.6; _nearEgGate=null;                                // zero momentum + cooldown → no instant bounce-back
+    if(G.dest.side) setHemisphere(G.dest.side);                                     // cross the moon to the other hemisphere
+    showHint('🌀 the ether takes you…');
+  }
+  function setHemisphere(side){                                                     // reconfigure the sky for whichever side of Iapetus you're standing on
+    const far=(side==='far');                                                      // 'far' = the SUB-SATURN side: Saturn overhead, Wardenclyffe beside you
+    if(saturn)      saturn.position.set(0, far?4200:-4200, far?1540:0);             // Saturn overhead on the sub-Saturn side · beneath on Unit 21's anti-Saturn side
+    if(wardenTower) wardenTower.position.set(0, far?0:-4100, far?1600:0);           // the tower stands beside you at the sub-Saturn point · at the antipode (beneath) otherwise
+    if(sunSprite)   sunSprite.position.set(far?90:80, far?4188:-4188, far?1580:40); // the Sun keeps its place by Saturn's limb, wherever Saturn is
+  }
 
   // ---------- audio (synthesised, fully offline — no files) ----------
   let actx=null, hissGain=null;
@@ -807,11 +898,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // the DROID's dialect — TWO-TONE Morse: every symbol EQUAL length, PITCH carries it
   // (dot = high · dash = a perfect fifth lower, 660:440 = 3:2). Asian-speech flourish: the FINAL tone is held 4×
   // (the falling cadence). Unit 21 grumbles in one flat tone; the droid sings. Returns the utterance length in sec.
-  function speakMorseDroid(text){
+  function speakMorseDroid(text, maxChars){
     if(!morseVoice || !actx) return 0;
     stopMorse();
     if(actx.state==='suspended'){ try{ actx.resume(); }catch(e){} }
-    const chars=(String(text).toUpperCase().match(/[A-Z0-9]/g)||[]).slice(0,10);   // a chirp, not a drone
+    const chars=(String(text).toUpperCase().match(/[A-Z0-9]/g)||[]).slice(0, maxChars||10);   // a chirp, not a drone (the reveal passes a bigger cap for its full line)
     const u=0.065, HI=660, LO=440;                                 // HI:LO = 3:2 = a perfect fifth
     const seq=[]; let t=actx.currentTime+0.03;
     for(const ch of chars){ const code=MORSE_TABLE[ch]; if(!code){ t+=u*4; continue; }
@@ -840,7 +931,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   // ── INTRO ── Unit 21 first appears as a 2001-style MONOLITH on the unpainted moon: one light in its
   //   middle blinking Morse "PAINT". Walk up + touch → it reveals the vending machine + "…it's full of
   //   paint." First-timers only — shared links (?w=/buy/…) and returning players skip straight in.
-  let introActive=false, monolith=null, _beacon=null, _beaconLight=null, _mSeg=null, _mCycle=0, _mT0=0, _revealT0=0;
+  let introActive=false, monolith=null, _beacon=null, _beaconLight=null, _mSeg=null, _mCycle=0, _mT0=0, _revealT0=0, _morseUntil=0;
   function makeMonolith(){
     const grp=new THREE.Group(), H=5.4, W=2.4, D=0.6;                     // 2001 ratio ≈ 1:4:9 (depth:width:height)
     const slab=new THREE.Mesh(new THREE.BoxGeometry(W,H,D),
@@ -874,7 +965,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(scavCan) scavCan.visible=true; if(scavRing) scavRing.visible=true;
     _revealT0=performance.now();
     try{ localStorage.setItem('gv-intro-seen','1'); }catch(_){}
-    showIntroCard(); try{ speakMorseDroid('OMG PAINT'); }catch(_){}       // the droid's two-tone dialect (full sentence would drone ~18s)
+    try{ const _dur=speakMorseDroid('OMG ITS FULL OF PAINT',40)||0; _morseUntil=performance.now()+_dur*1000+250; }catch(_){}   // the droid's TWO-TONE Morse ONLY — no English text; Unit 21 stays silent until it finishes
+    if(wardenTower) wardenTower.visible=true; if(_egGates) _egGates.forEach(G=>{ G.grp.visible=true; });                        // the gates + Wardenclyffe MANIFEST as the world wakes
     // the conjuring item materializes BEHIND the droid — turn around and it's there
     const _bx=Math.sin(yaw), _bz=Math.cos(yaw), _tx=camera.position.x+_bx*3.6, _tz=camera.position.z+_bz*3.6;
     toolHome.set(_tx,0.7,_tz); _toolReady=true;
@@ -1489,6 +1581,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     // --- vertical: gravity + jump; stand/slide on REAL surfaces (down-ray → true height + normal) ---
     const px=camera.position.x, pz=camera.position.z, feetY=camera.position.y-EYE;
     checkPortals(px, pz, camera.position.y, feetY);               // 🌀 breached a gate crystal? → travel to its destination world
+    checkGates(px, pz, spd, dt);                                  // 🌀 Easter-egg ether gates → teleport across Iapetus (near void ⇄ far pole)
+    skyDome.position.copy(camera.position);                       // 🌌 keep the real star sphere centred on the eye → stars stay fixed at infinity
     let floorY=0, nUp=1, nX=0, nZ=0;                              // default = flat ground at y=0 (up normal)
     let wetCol=null, cSurf=null, cU=0, cV=0;                      // wet paint under the feet (drives slip + smear)
     _stand.length=0;
@@ -1655,18 +1749,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(wardenTower){ const w=wardenTower.userData, cr=(Math.random()<0.18?0.9:0)+0.5+0.5*Math.sin(performance.now()*0.018);
       w.arcL.intensity=1.8+cr*2.6; w.orb.material.emissiveIntensity=1.6+cr*1.6;                     // Tesla plasma crackle on the far horizon
       for(let i=0;i<w.arcs.length;i++){ w.arcs[i].visible=Math.random()<0.6; w.arcs[i].material.opacity=0.35+Math.random()*0.5; } }
-    if(saturn){                                                        // ★ THE AWAKENING: Unit 21 (−Z) is the FAR side — Saturn hidden. Cross to the far pole (+Z) and it RISES.
-      const st=Math.max(0,Math.min(1,(camera.position.z-20)/200)), e=st*st*(3-2*st);
-      saturn.visible = st>0.01;
-      if(saturn.visible){
-        saturn.position.y=-80+e*420;                                   // cresting the horizon as you approach the near side
-        saturn.userData.planet.material.opacity=Math.min(1,e*1.7);
-        saturn.userData.ring.material.opacity=Math.min(1,e*1.7);
-        saturn.userData.planet.rotation.y=((Date.now()/1000/38376)%1)*Math.PI*2;   // spins on its ~10.66 h day, live from UTC
-      }
+    if(saturn){                                                        // Saturn is TIDALLY LOCKED → it hangs FIXED over the sub-Saturn (+Z) side; you cross the moon (jump gate) to stand beneath it.
+      saturn.userData.planet.rotation.y=((Date.now()/1000/38376)%1)*Math.PI*2;   // still spins on its ~10.66 h day, live from UTC
     }
     nearMachine = !introActive && md < 7;
-    if(!greeted && !introActive && md < 7){
+    if(!greeted && !introActive && md < 7 && performance.now()>=_morseUntil){       // Unit 21 waits until the droid's Morse has fully finished
       greeted=true;
       speak("Hello young gentlebot, what can I do you for today sir?", MOBILE ? "▸ Tap Talk to chat with me." : "▸ Press T to talk to me.");
     }
