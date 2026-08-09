@@ -157,6 +157,23 @@ function kepler_ecl_au($el,$d,$AU){     // propagate one osculating ellipse to d
     $z=$r*sin(deg2rad($v+$el['W']))*sin(deg2rad($el['i']));
     return array($x/$AU,$y/$AU,$z/$AU);
 }
+// --- currently-active comets, as seen FROM IAPETUS (Horizons OBSERVER; faint at ~8+ AU but real — aim-to-name targets) ---
+// Curated current-apparition list (designation => [display name, colour]). Refresh as comets come and go.
+$COMETS = array( '10P'=>array('Tempel 2','#a7f0cf'), '220P'=>array('McNaught','#a7f0cf'), '169P'=>array('NEAT','#a7f0cf') );
+function h_parse_comet($t){ if(!$t) return null; $L=explode("\n",$t);   // OBSERVER CSV (Q 1,9,20): Date,flag,flag,RA,DEC,Tmag,Nmag,delta,deldot
+    for($i=0;$i<count($L);$i++){ if(strpos($L[$i],'$$SOE')!==false && isset($L[$i+1])){ $f=array_map('trim',explode(',',$L[$i+1]));
+        if(count($f)<8) return null; $mag=is_numeric($f[5])?(float)$f[5]:(is_numeric($f[6])?(float)$f[6]:99.0);
+        return array('ra'=>(float)$f[3],'dec'=>(float)$f[4],'mag'=>round($mag,1),'dist_au'=>round((float)$f[7],3)); } }
+    return null; }
+function horizons_comets($COMETS){     // best-effort per comet (a failure just drops that one — they move slowly at ~8 AU, so daily is fine)
+    $day=gmdate('Y-m-d');
+    $base="https://ssd.jpl.nasa.gov/api/horizons.api?format=text&EPHEM_TYPE=%27OBSERVER%27&CENTER=%27@608%27&QUANTITIES=%271,9,20%27"
+         ."&ANG_FORMAT=%27DEG%27&CSV_FORMAT=%27YES%27&START_TIME=%27$day%27&STOP_TIME=%27$day%2000:01%27&STEP_SIZE=%271%27";
+    $out=array();
+    foreach($COMETS as $des=>$ci){ $c=h_parse_comet(h_fetch($base."&COMMAND=%27DES%3D".rawurlencode($des)."%3BCAP%3B%27"));
+        if($c){ $c['name']=$ci[0]; $c['color']=$ci[1]; $out[]=$c; } }
+    return $out;
+}
 
 $now = gmdate('Y-m-d H:i:s'); $d = daynum($now);
 list($satlon,$satlat,$satr) = saturn_helio($d);
@@ -177,12 +194,15 @@ $pole_eq = array(cos(deg2rad($SAT_POLE_DEC))*cos(deg2rad($SAT_POLE_RA)),
 $Pn = vnorm(equ2ecl($pole_eq, $obl));                            // Saturn's north (ring-plane normal) in ecliptic — for the ring-opening angle
 $elemCache = __DIR__."/sky-elements-$today.json";
 $sys = is_file($elemCache) ? json_decode(file_get_contents($elemCache), true) : null;
-if(!$sys){ $sys = horizons_moons($MOON_INFO);                    // once per UTC day: fetch + cache the osculating elements
-    if($sys){ @file_put_contents($elemCache, json_encode($sys));
+if($sys && !isset($sys['moons'])) $sys=null;                     // older cache format → refetch
+if(!$sys){ $m = horizons_moons($MOON_INFO);                      // once per UTC day: fetch + cache the Saturn system (+ comets)
+    if($m){ $sys = array('moons'=>$m, 'comets'=>horizons_comets($COMETS));
+        @file_put_contents($elemCache, json_encode($sys));
         foreach(glob(__DIR__.'/sky-elements-*.json') as $f){ if($f!==$elemCache && @filemtime($f)<time()-4*86400) @unlink($f); } } }
 if(!$sys){ $prev=glob(__DIR__.'/sky-elements-*.json');           // Horizons unreachable → newest cached day as a fallback
-    if($prev){ usort($prev,function($a,$b){ return @filemtime($b)-@filemtime($a); }); $sys=json_decode(file_get_contents($prev[0]),true); } }
+    if($prev){ usort($prev,function($a,$b){ return @filemtime($b)-@filemtime($a); }); $s2=json_decode(file_get_contents($prev[0]),true); if($s2&&isset($s2['moons'])) $sys=$s2; } }
 $moon_src = $sys ? 'JPL Horizons (SAT441 osculating elements, daily-cached; propagated to the request time)' : 'unavailable (Horizons offline, no cache)';
+$comets_out = ($sys && isset($sys['comets'])) ? $sys['comets'] : array();
 
 $sun_sc = array(-$sat_xyz[0],-$sat_xyz[1],-$sat_xyz[2]);          // the Sun, Saturn-centric ecliptic AU (opposite Saturn's heliocentric pos)
 $sd_lon=rev(atan2d($sun_sc[0],$sun_sc[1])); $sd_lat=asind($sun_sc[2]/sqrt(vdot($sun_sc,$sun_sc)));
@@ -190,12 +210,12 @@ list($sun_dir_ra,$sun_dir_dec)=ecl2equ($sd_lon,$sd_lat,$d);       // Saturn→Su
 
 $moons_out=array(); $saturn_sky=null; $isun_sky=null;
 if($sys){
-    $iap  = kepler_ecl_au($sys['Iapetus'],$d,$AU_KM);            // the observer's Saturn-centric position
+    $iap  = kepler_ecl_au($sys['moons']['Iapetus'],$d,$AU_KM);   // the observer's Saturn-centric position
     $vsat = array(-$iap[0],-$iap[1],-$iap[2]); $Rsat_obs=sqrt(vdot($vsat,$vsat));   // Iapetus→Saturn
     list($sat_ra,$sat_dec)=ecl2equ(rev(atan2d($vsat[0],$vsat[1])), asind($vsat[2]/$Rsat_obs), $d);
     $sat_ang_arcmin=2*atan($SAT_R_KM/($Rsat_obs*$AU_KM))*180/M_PI*60;
     foreach($MOON_INFO as $name=>$mi){ if($name==='Iapetus') continue;
-        $m=kepler_ecl_au($sys[$name],$d,$AU_KM);
+        $m=kepler_ecl_au($sys['moons'][$name],$d,$AU_KM);
         $v=array($m[0]-$iap[0],$m[1]-$iap[1],$m[2]-$iap[2]); $R=sqrt(vdot($v,$v));   // Iapetus→moon (AU)
         list($mra,$mdec)=ecl2equ(rev(atan2d($v[0],$v[1])), asind($v[2]/$R), $d);
         $sep=rad2deg(acos(max(-1,min(1,vdot(vnorm($v),vnorm($vsat))))));
@@ -233,6 +253,7 @@ $sky = array(
     'planets' => $planets,
     'saturn_sky' => $saturn_sky,                                    // Saturn from Iapetus (Horizons) — null if unavailable; the render guards on it
     'moons' => $moons_out,
+    'comets' => $comets_out,                                        // currently-active comets from Iapetus (name, ra, dec, mag, dist_au)
     'sat_fidelity' => $moon_src,
     'source' => 'JPL Horizons (Saturn system) + BlackSunObs Schlyter (planets/Sun) via grafverse sky.php'
 );
