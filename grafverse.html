@@ -2727,17 +2727,20 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
                    0x224422,0x44aa44,0x66ff66,0xbbffbb,
                    0x223355,0x3377cc,0x55bbff,0x99ddff,
                    0x442266,0x9955cc,0xcc88ff,0xff99cc ];
+  // ── the crystals reflect the REAL sky, LIVE: they share the scene reflection probe (reflectionEnv / updateReflections below), whose
+  //    CubeCamera renders the actual world — stars, Saturn beneath, moons, your painted ground. So cut a crystal at Unit 21, look into
+  //    it, and there's Saturn — sighted through the glass though you can't crane down to it directly. The mirror-periscope. ──
   let _gemEnv=null;
-  function gemEnv(){ if(_gemEnv) return _gemEnv;                          // a little sky (dark + the sun) for the glass to refract/reflect
+  function gemEnv(){ const e=reflectionEnv(); if(e) return e;             // the shared live sky-reflection probe
+    if(_gemEnv) return _gemEnv;                                           // fallback: a static little sky if the probe is unavailable
     try{ const S=256, cv=document.createElement('canvas'); cv.width=cv.height=S; const g=cv.getContext('2d');
       const grd=g.createLinearGradient(0,0,0,S); grd.addColorStop(0,'#22345a'); grd.addColorStop(.55,'#0a0e18'); grd.addColorStop(1,'#05070d');
       g.fillStyle=grd; g.fillRect(0,0,S,S);
       g.fillStyle='rgba(255,244,224,0.95)'; g.beginPath(); g.arc(S*0.72,S*0.26,S*0.085,0,7); g.fill();
-      g.fillStyle='rgba(150,200,255,0.45)'; g.beginPath(); g.arc(S*0.28,S*0.52,S*0.06,0,7); g.fill();
       const pm=new THREE.PMREMGenerator(renderer); pm.compileEquirectangularShader();
       const et=new THREE.CanvasTexture(cv); et.mapping=THREE.EquirectangularReflectionMapping;
       _gemEnv=pm.fromEquirectangular(et).texture; et.dispose();
-    }catch(e){ console.warn('gemEnv failed', e); }
+    }catch(e2){ console.warn('gemEnv fallback failed', e2); }
     return _gemEnv; }
   function crystallizeShape(mesh, tex){                                   // ghost/painted → a gem crystal (cycle the gem library on repeat)
     const g=GEMS[tex]||GEMS[1], color=g.col, opaque=g.tr<0.5;
@@ -2877,15 +2880,15 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   // ── real-time reflections: ONE shared cube probe so metal mirrors the ACTUAL scene (ground · shapes · sky · your can), refreshed periodically ──
   let _cubeRT=null, _cubeCam=null, _reflFrame=0;
-  function reflectionEnv(){ if(!_cubeRT){ _cubeRT=new THREE.WebGLCubeRenderTarget(256); _cubeCam=new THREE.CubeCamera(0.3, 3000, _cubeRT); } return _cubeRT.texture; }
+  function reflectionEnv(){ if(!_cubeRT){ _cubeRT=new THREE.WebGLCubeRenderTarget(256); _cubeCam=new THREE.CubeCamera(0.3, 6000, _cubeRT); } return _cubeRT.texture; }   // far 6000 → reaches the stars (3600) + Saturn (4200), so crystals mirror the real sky
   function updateReflections(){
-    let any=false; for(const m of bShapes){ if(m.userData.tex>=25){ any=true; break; } }
-    if(!any) return;                                                     // no metal in the world → skip the whole cost
+    let any=false; for(const m of bShapes){ if(m.userData.tex>=25 || m.userData.crystal){ any=true; break; } }
+    if(!any) return;                                                     // no metal AND no crystal → skip the whole cost
     reflectionEnv();                                                     // ensure the probe exists
     if((_reflFrame++ % 8)!==0) return;                                   // refresh every 8 frames (reflections may lag a touch — keeps it cheap)
-    _cubeCam.position.copy(camera.position);                             // probe from where you stand → reflects your surroundings
+    _cubeCam.position.copy(camera.position);                             // probe from where you stand → reflects your surroundings + the sky
     const hidden=[];
-    for(const m of bShapes){ if(m.userData.tex>=25 && m.visible){ m.visible=false; hidden.push(m); } }   // hide metals → no self-reflection artefacts
+    for(const m of bShapes){ if((m.userData.tex>=25 || m.userData.crystal) && m.visible){ m.visible=false; hidden.push(m); } }   // hide metals + crystals → no self-reflection / feedback
     _cubeCam.update(renderer, scene);
     for(const m of hidden) m.visible=true;
   }
