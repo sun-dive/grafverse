@@ -24,7 +24,7 @@ if ($desc === '') $desc = ($type === 's')
 
 $origin = 'https://' . preg_replace('/[^a-z0-9.\-:]/i', '', ($_SERVER['HTTP_HOST'] ?? 'grafverse.com'));
 $url    = $origin . '/w.php?id=' . rawurlencode($id);
-$game   = './?w=' . rawurlencode($id);
+$game   = '/grafverse.html?w=' . rawurlencode($id);   // the game now lives at /grafverse.html (root = splash)
 $jpg    = $ok ? ($dir . '/' . $id . '.jpg') : '';
 $hasImg = ($jpg && is_file($jpg));
 $img    = $origin . '/og.php?id=' . rawurlencode($id) . ($hasImg ? ('&v=' . @filemtime($jpg)) : '');   // per-share cover (cache-busted by mtime) · og.php falls back to the brand card
@@ -53,6 +53,21 @@ $h = function ($s) { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); };
 <meta name="twitter:description" content="<?= $h($desc) ?>">
 <meta name="twitter:image" content="<?= $h($img) ?>">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>🎨</text></svg>">
+<?php if ($ok):
+  // Rich result for this specific shared world/solid: a CreativeWork that is part of the grafverse WebSite, made in grafverse.
+  $ld = [
+    '@context'    => 'https://schema.org',
+    '@type'       => 'CreativeWork',
+    'name'        => $name,
+    'description' => $desc,
+    'url'         => $url,
+    'image'       => $img,
+    'inLanguage'  => 'en',
+    'creator'     => ['@type' => 'Organization', '@id' => 'https://grafverse.com/#org', 'name' => 'grafverse'],
+    'isPartOf'    => ['@type' => 'WebSite', '@id' => 'https://grafverse.com/#website', 'name' => 'grafverse', 'url' => 'https://grafverse.com/'],
+  ];
+  echo '<script type="application/ld+json">' . json_encode($ld, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "</script>\n";
+endif; ?>
 <style>
   *{margin:0;box-sizing:border-box}
   body{background:radial-gradient(ellipse at 50% -10%, #10203c 0%, #0a1020 55%, #06090f 100%);
@@ -87,9 +102,9 @@ $h = function ($s) { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); };
   <p class="hint">Free to explore in your browser — no install, no wallet. Paint on it, and what you paint is <b>yours</b>.</p>
 <?php else: ?>
   <p class="hint">This <?= $h($thing) ?> isn’t here — the link may be mistyped, or it expired (shares are kept for 12 months after their last view).</p>
-  <a class="enter" href="./">Open grafverse</a>
+  <a class="enter" href="/grafverse.html">Open grafverse</a>
 <?php endif; ?>
-  <div class="foot"><?= $h($ttl) ?> is a tiny <b>Block Media Format</b> (BMF) manifest — free models composite live in your browser, owned paint stays yours on-chain. <a href="./">Make your own →</a></div>
+  <div class="foot"><?= $h($ttl) ?> is a tiny <b>Block Media Format</b> (BMF) manifest — free models composite live in your browser, owned paint stays yours on-chain. <a href="/grafverse.html">Make your own →</a></div>
   <div class="creed">in the covenant we trust</div>
 </main>
 </body></html>

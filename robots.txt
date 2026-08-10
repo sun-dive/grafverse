@@ -1,0 +1,12 @@
+# grafverse.com — crawl directives
+User-agent: *
+Allow: /
+
+# data / API endpoints — no crawl value (keep the crawl budget on content)
+Disallow: /world.php
+Disallow: /worlds/
+Disallow: /handoff.php
+Disallow: /tip.php
+Disallow: /sky.php
+
+Sitemap: https://grafverse.com/sitemap.php

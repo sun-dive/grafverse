@@ -1,690 +1,108 @@
 <!doctype html>
 <html lang="en">
 <head>
+<!-- grafspace — © 2026 sun-dive — Licensed under the Business Source License 1.1 (see LICENSE). -->
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>grafverse — paint a moon into existence</title>
-<meta name="description" content="A playable teaser from the grafverse: spawn in the void, paint a dead moon to life, and haggle with a lonely vending machine. Own what you make — no landlord, no buff.">
+<!-- Backward-compat: old deep-links (grafverse.com/?w=… / ?buy=…) used to hit the game at root. The game now lives at
+     /grafverse.html; forward those params there before anything renders, so every existing share/buy link keeps working. -->
+<script>(function(){try{var p=new URLSearchParams(location.search),k=['w','buy','bundle','acquire','minted','intro'];for(var i=0;i<k.length;i++){if(p.has(k[i])){location.replace('/grafverse.html'+location.search+location.hash);return;}}}catch(e){}})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>grafverse — paint a dead moon to life</title>
+<meta name="description" content="grafverse is a free browser game where you spray a barren moon into colour and own every stroke you make — recorded on-chain with the Block Media Format (BMF). No install, no wallet, no landlord. Owned, not claimed.">
+<link rel="canonical" href="https://grafverse.com/">
+<meta name="theme-color" content="#06090f">
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="grafverse">
 <meta property="og:url" content="https://grafverse.com/">
-<meta property="og:title" content="grafverse — paint a moon into existence">
-<meta property="og:description" content="Spawn in the void, paint a dead moon to life, and chat up a weary vending machine. Own what you make — no landlord, no buff.">
+<meta property="og:title" content="grafverse — paint a dead moon to life">
+<meta property="og:description" content="A free browser game: spray a dead moon into colour and own every stroke you make. No install, no wallet, no landlord. Owned, not claimed.">
 <meta property="og:image" content="https://grafverse.com/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="grafverse — paint a dead moon to life">
+<meta name="twitter:description" content="A free browser game: spray a dead moon into colour and own every stroke you make. Owned, not claimed.">
 <meta name="twitter:image" content="https://grafverse.com/og.jpg">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>🎨</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>🌒</text></svg>">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"WebSite","@id":"https://grafverse.com/#website","url":"https://grafverse.com/","name":"grafverse","alternateName":"grafverse.com","description":"A free browser game where you paint a dead moon to life and own what you make — built on the Block Media Format (BMF). Owned, not claimed.","inLanguage":"en","publisher":{"@id":"https://grafverse.com/#org"}},
+{"@type":"Organization","@id":"https://grafverse.com/#org","name":"grafverse","url":"https://grafverse.com/","description":"grafverse — a first-person paint-to-own moon game and the open Block Media Format (BMF) toolchain, by sun-dive.","logo":"https://grafverse.com/og.jpg"},
+{"@type":"VideoGame","name":"grafverse","url":"https://grafverse.com/grafverse.html","description":"Spawn in the void, spray a dead moon to life, and own every stroke — a free first-person browser sandbox built on the Block Media Format (BMF). No install, no wallet, no landlord.","image":"https://grafverse.com/og.jpg","applicationCategory":"Game","genre":["Sandbox","Creative","First-person"],"operatingSystem":"Web browser","gamePlatform":"Web browser","inLanguage":"en","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@id":"https://grafverse.com/#org"}}
+]}
+</script>
 <style>
-  :root{ --fg:#eaf2ff; }
-  *{margin:0;padding:0;box-sizing:border-box;}
-  html,body{height:100%;overflow:hidden;background:#000;font-family:-apple-system,Segoe UI,Roboto,system-ui,sans-serif;color:var(--fg);}
-  #app{position:fixed;inset:0;}
-  canvas{display:block;}
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{--ink:#eaf2ff;--dim:#a9bcdd;--faint:#6f86ad;--cyan:#38e1ff;--line:rgba(120,170,255,.14)}
+  html{scroll-behavior:smooth}
+  body{background:radial-gradient(ellipse at 50% -8%,#12233f 0%,#0a1020 52%,#06090f 100%);color:var(--ink);
+       font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+  a{color:var(--cyan);text-decoration:none} a:hover{text-decoration:underline}
+  .wrap{max-width:960px;margin:0 auto;padding:0 22px}
 
-  /* --- HUD overlays --- */
-  #reticle{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;
-           border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 0 6px #fff;
-           pointer-events:none;opacity:0;transition:opacity .3s;}
-  #hint{position:fixed;left:50%;bottom:8%;transform:translateX(-50%);
-        font-size:15px;letter-spacing:.02em;color:#cfe0ff;text-shadow:0 1px 6px #000;
-        padding:6px 14px;background:rgba(10,16,30,.35);border-radius:20px;
-        backdrop-filter:blur(4px);pointer-events:none;white-space:nowrap;opacity:0;transition:opacity .4s;}
+  header.hero{text-align:center;padding:78px 0 46px}
+  .tag{font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--faint);margin-bottom:22px}
+  h1{font-size:clamp(38px,8vw,74px);font-weight:800;letter-spacing:-.025em;line-height:1.02;text-wrap:balance;
+     background:linear-gradient(180deg,#eaf2ff,#6fb6ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .lede{color:var(--dim);font-size:clamp(16px,2.3vw,20px);max-width:30em;margin:22px auto 34px;text-wrap:balance}
+  .cta{display:inline-flex;align-items:center;gap:.5em;font-size:16px;font-weight:800;letter-spacing:.02em;color:#04121f;
+       background:linear-gradient(180deg,#5fe3ff,#2ec3ff);padding:16px 40px;border-radius:34px;
+       box-shadow:0 12px 44px rgba(56,225,255,.30);transition:transform .12s,box-shadow .12s}
+  .cta:hover{transform:translateY(-2px);box-shadow:0 16px 56px rgba(56,225,255,.44);text-decoration:none}
+  .under{color:var(--faint);font-size:13px;margin-top:15px}
 
-  #meterWrap{position:fixed;left:24px;bottom:24px;width:190px;opacity:0;transition:opacity .4s;pointer-events:none;}
-  #meterLbl{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#9fb4d8;margin-bottom:6px;}
-  #meterBar{height:10px;border-radius:6px;background:rgba(255,255,255,.12);overflow:hidden;}
-  #meterFill{height:100%;width:100%;border-radius:6px;background:#38e1ff;transition:width .08s linear, background .2s;}
+  .shot{display:block;width:100%;max-width:820px;margin:52px auto 0;border-radius:16px;
+        box-shadow:0 26px 90px rgba(0,0,0,.55),0 0 0 1px var(--line)}
 
-  #swatches{position:fixed;left:24px;bottom:70px;display:flex;gap:8px;opacity:0;transition:opacity .4s;pointer-events:none;}
-  .sw{width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,.25);transition:transform .12s, border-color .12s;}
-  .sw.on{border-color:#fff;transform:scale(1.25);}
+  section{padding:64px 0;border-top:1px solid var(--line)}
+  h2{font-size:clamp(24px,4vw,34px);font-weight:800;letter-spacing:-.02em;text-wrap:balance}
+  section p{color:var(--dim);max-width:44em;margin-top:16px;font-size:17px}
+  section p b{color:var(--ink);font-weight:700}
 
-  /* --- wallets (custodial vs black-market) --- */
-  #wallet{position:fixed;right:20px;top:18px;min-width:214px;opacity:0;transition:opacity .5s;pointer-events:none;
-    font:12px/1.4 system-ui;color:#cfe0ff;text-align:right;text-shadow:0 1px 4px #000;}
-  #wallet .wrow{display:flex;justify-content:space-between;gap:14px;align-items:baseline;}
-  #wallet .wname{letter-spacing:.05em;color:#9fb4d8;}
-  #wallet .wval{font-weight:700;}
-  #wallet .wval b{font-size:16px;color:#f7c65a;font-variant-numeric:tabular-nums;}
-  #wallet .wmeta{font-size:10px;color:#6f86ad;margin:1px 0 9px;letter-spacing:.03em;}
-  #wallet .wrow.blk .wname{color:#c98bd0;}
-  #wallet .wrow.blk .wval{color:#c98bd0;font-weight:600;font-size:11px;}
-  #wallet .wmeta.blk{color:#7a5a86;}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:40px}
+  .card{background:linear-gradient(180deg,rgba(20,34,60,.5),rgba(12,18,34,.35));border:1px solid var(--line);
+        border-radius:14px;padding:24px}
+  .card .ic{font-size:26px} .card h3{margin:12px 0 6px;font-size:18px}
+  .card p{color:var(--dim);font-size:14.5px;margin:0}
+  @media(max-width:640px){.grid{grid-template-columns:1fr}}
 
-  /* --- dialogue --- */
-  #dialogue{position:fixed;left:50%;bottom:16%;transform:translateX(-50%);max-width:min(680px,92vw);
-            padding:18px 22px;background:rgba(8,14,26,.82);border:1px solid rgba(120,170,255,.28);
-            border-radius:14px;backdrop-filter:blur(6px);box-shadow:0 10px 40px rgba(0,0,0,.5);
-            opacity:0;transition:opacity .5s;pointer-events:none;}
-  #dspeaker{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#6fd3ff;margin-bottom:8px;}
-  #dtext{font-size:17px;line-height:1.45;color:#f3f7ff;min-height:1.4em;}
-  #dsub{margin-top:10px;font-size:13px;color:#8fa6cc;font-style:italic;}
-  #chatInput{position:fixed;left:50%;bottom:7%;transform:translateX(-50%);width:min(560px,84vw);
-    display:none;padding:12px 18px;font-size:16px;color:#eaf6ff;background:rgba(8,16,30,.92);
-    border:1px solid rgba(120,170,255,.5);border-radius:24px;outline:none;font-family:inherit;
-    box-shadow:0 8px 30px rgba(0,0,0,.55);}
-  #chatInput::placeholder{color:#5f7bab;}
-  html,body{overscroll-behavior:none;}
-  canvas{touch-action:none;}
-  #mobileUI{position:fixed;inset:0;display:none;pointer-events:none;z-index:6;}
-  #joyBase{position:fixed;left:26px;bottom:26px;width:130px;height:130px;border-radius:50%;
-    background:rgba(120,160,220,.10);border:1px solid rgba(150,190,255,.35);pointer-events:auto;touch-action:none;}
-  #joyKnob{position:absolute;left:50%;top:50%;width:56px;height:56px;border-radius:50%;
-    background:rgba(180,210,255,.45);border:1px solid rgba(220,235,255,.6);transform:translate(-50%,-50%);}
-  #sprayBtn{position:fixed;right:28px;bottom:36px;width:104px;height:104px;border-radius:50%;
-    background:rgba(56,225,255,.16);border:2px solid rgba(120,230,255,.6);color:#dffaff;
-    font:600 15px/104px system-ui;text-align:center;letter-spacing:.12em;pointer-events:auto;touch-action:none;
-    text-transform:uppercase;user-select:none;-webkit-user-select:none;}
-  #sprayBtn.down{background:rgba(56,225,255,.4);}
-  #talkBtn{position:fixed;left:50%;bottom:170px;transform:translateX(-50%);display:none;
-    padding:12px 26px;border-radius:24px;background:rgba(8,16,30,.85);border:1px solid rgba(120,170,255,.55);
-    color:#eaf6ff;font:600 14px system-ui;letter-spacing:.14em;text-transform:uppercase;pointer-events:auto;
-    user-select:none;-webkit-user-select:none;}
-  #chips{position:fixed;left:0;right:0;bottom:0;display:none;flex-direction:column;gap:8px;
-    align-items:center;max-height:34vh;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;z-index:7;pointer-events:auto;padding:12px 14px 18px;
-    background:linear-gradient(to top,rgba(4,6,12,.82),rgba(4,6,12,0));}
-  .chip{width:min(420px,88%);text-align:center;padding:12px 16px;border-radius:14px;
-    background:rgba(18,36,68,.95);border:1px solid rgba(120,170,255,.5);color:#eaf6ff;
-    font:600 15px system-ui;white-space:normal;user-select:none;-webkit-user-select:none;}
-  .chip:active{background:rgba(56,120,210,.95);}
-  body.mtalk #chips{display:flex;}
-  body.mtalk #dialogue{top:54px;bottom:auto;max-height:44vh;overflow-y:auto;touch-action:pan-y;pointer-events:auto;}
-  body.mtalk #joyBase, body.mtalk #sprayBtn{display:none!important;}
-  body.mtalk #talkBtn{top:14px;bottom:auto;left:auto;right:14px;transform:none;}
-
-  /* --- splash --- */
-  #splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-          gap:18px;background:radial-gradient(ellipse at center,#0a1226 0%,#000 70%);z-index:10;cursor:pointer;
-          transition:opacity .6s;}
-  #splash h1{font-size:clamp(42px,9vw,96px);font-weight:800;letter-spacing:-.02em;
-             background:linear-gradient(180deg,#eaf2ff,#6fb6ff);-webkit-background-clip:text;background-clip:text;color:transparent;}
-  #splash .tag{font-size:15px;color:#7fa6df;letter-spacing:.04em;}
-  #splash .go{margin-top:22px;font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:#cfe0ff;
-              padding:12px 26px;border:1px solid rgba(140,180,255,.4);border-radius:30px;}
-  #splash .creed{position:absolute;bottom:26px;font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:#3f5a86;}
-  .hidden{opacity:0!important;pointer-events:none!important;}
-  #tag2{font-size:13px;color:#5f7bab;font-style:italic;}
+  footer{padding:52px 0 60px;border-top:1px solid var(--line);color:var(--faint);font-size:13.5px;line-height:1.8;text-align:center}
+  footer a{color:#9fc0ff}
+  .creed{margin-top:26px;font-size:10.5px;letter-spacing:.32em;text-transform:uppercase;color:#3f5a86}
 </style>
 </head>
 <body>
-<div id="app"></div>
+<div class="wrap">
+  <header class="hero">
+    <div class="tag">grafverse · owned, not claimed</div>
+    <h1>Paint a dead moon to life.</h1>
+    <p class="lede"><b style="color:var(--ink)">grafverse</b> is a free browser game where you spray a barren moon into colour — and own every stroke you make. No install. No wallet. No landlord.</p>
+    <a class="cta" href="/grafverse.html">▶ Enter grafverse</a>
+    <div class="under">Runs in your browser. Paint on it, and what you paint is <b style="color:#9fc0ff">yours</b>.</div>
+    <img class="shot" src="grafverse-splash.jpg" width="1200" height="750" alt="grafverse — a first-person view of a dead moon being spray-painted to life under Saturn's rings" loading="lazy">
+  </header>
 
-<div id="reticle"></div>
-<div id="hint"></div>
+  <section id="what">
+    <h2>What is grafverse?</h2>
+    <p><b>grafverse</b> is a first-person creative sandbox set on a dead moon. You conjure solids, paint them by hand, and what you paint becomes <b>yours</b> — recorded on-chain with the <b>Block Media Format (BMF)</b>, a tiny open standard for composable media. Free models composite live in your browser; your owned paint stays a reference on-chain, so a shared world can never pirate paid work.</p>
+    <p>No accounts, no engine to download, no platform taking a cut. You explore free, you build, and you keep. <b>Owned, not claimed.</b></p>
+  </section>
 
-<div id="meterWrap"><div id="meterLbl">paint</div><div id="meterBar"><div id="meterFill"></div></div></div>
-<div id="swatches"></div>
+  <section id="how">
+    <h2>How it works</h2>
+    <div class="grid">
+      <div class="card"><div class="ic">🎨</div><h3>Paint</h3><p>Spawn in the void, conjure shapes, and spray a dead grey moon into living colour — first-person, in the browser.</p></div>
+      <div class="card"><div class="ic">🔗</div><h3>Own</h3><p>What you paint is recorded on-chain as a Block Media Format atom. Not a claim on a server — a thing you actually hold.</p></div>
+      <div class="card"><div class="ic">🌍</div><h3>Share</h3><p>Save a world or a single creation to a link anyone can walk into, free — remix it, and own what you add.</p></div>
+    </div>
+  </section>
 
-<div id="wallet">
-  <div class="wrow"><span class="wname">◱ BIT GRAF WALLET</span><span class="wval"><b id="walBal">222</b> sats</span></div>
-  <div class="wmeta">for paint &amp; supplies</div>
+  <footer>
+    grafverse is built on the <b style="color:#9fc0ff">Block Media Format (BMF)</b> and an on-chain covenant.
+    Read the <a href="/brc226.html">BRC-226 blueprint →</a><br>
+    A moon painted by <b style="color:#9fc0ff">sun-dive</b>. Owned, not claimed.
+    <div class="creed">in the covenant we trust</div>
+  </footer>
 </div>
-
-<div id="dialogue">
-  <div id="dspeaker">Vending Machine</div>
-  <div id="dtext"></div>
-  <div id="dsub"></div>
-</div>
-<input id="chatInput" type="text" autocomplete="off" spellcheck="false" placeholder="say something to the machine…">
-
-<div id="mobileUI">
-  <div id="joyBase"><div id="joyKnob"></div></div>
-  <div id="sprayBtn">Spray</div>
-  <div id="talkBtn">Talk</div>
-</div>
-<div id="chips"></div>
-
-<div id="splash">
-  <h1>grafverse</h1>
-  <div class="tag">You are what you paint. Paint what you are.</div>
-  <div id="tag2">Nothing exists until it's painted.</div>
-  <div class="go">Click to begin</div>
-  <div class="creed">In the covenant we trust</div>
-</div>
-
-<script src="vendor/three.min.js"></script>
-<script>
-(function(){
-  "use strict";
-  if(!window.THREE){ document.getElementById('tag2').textContent = "⚠ vendor/three.min.js not found next to this file."; return; }
-
-  // ---------- config ----------
-  const COLORS = [0x38e1ff, 0xff3ea5, 0x7CFC00, 0xffe94d, 0xff7a00];
-  const EYE = 1.7, SPEED = 2.1, SENS = 0.0022, PITCH_MAX = 1.45;
-  const GROUND = 500;          // ground plane size (units)
-  const TEX = 2048;            // paint canvas resolution
-  const PAINT_DRAIN = 0.22;    // per frame while spraying
-  const CAN_POS = new THREE.Vector3(0, 0.35, -9);      // first can, a few steps ahead
-  const MACHINE_POS = new THREE.Vector3(3, 0, -26);    // the glowing box in the (nearer) distance
-  const MACHINE_STOCK = 6;                             // cans behind the glass (set 0 for an empty machine)
-  const MOBILE = window.matchMedia('(pointer: coarse)').matches;  // touch-primary device
-  let mWalk = false;                                   // mobile: touch-and-hold = walk forward
-  if(MOBILE){ const _go=document.querySelector('#splash .go'); if(_go) _go.textContent='Tap to begin'; }
-
-  // ---------- renderer / scene / camera ----------
-  const app = document.getElementById('app');
-  const renderer = new THREE.WebGLRenderer({ antialias:true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setSize(innerWidth, innerHeight);
-  app.appendChild(renderer.domElement);
-
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x000006);
-  scene.fog = new THREE.FogExp2(0x000006, 0.0016);
-
-  const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.1, 5000);
-  camera.rotation.order = 'YXZ';
-  camera.position.set(0, EYE, 0);
-  scene.add(camera);
-
-  scene.add(new THREE.AmbientLight(0x2a3350, 0.6));
-  const key = new THREE.DirectionalLight(0x8899cc, 0.5); key.position.set(3,10,2); scene.add(key);
-
-  // ---------- starfield (you are floating in space) ----------
-  (function stars(){
-    const N = 3500, pos = new Float32Array(N*3);
-    for(let i=0;i<N;i++){
-      // random point on a shell
-      const r = 700 + Math.random()*1600;
-      const t = Math.random()*Math.PI*2, p = Math.acos(2*Math.random()-1);
-      pos[i*3]   = r*Math.sin(p)*Math.cos(t);
-      pos[i*3+1] = r*Math.cos(p);
-      pos[i*3+2] = r*Math.sin(p)*Math.sin(t);
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos,3));
-    const m = new THREE.PointsMaterial({ color:0xffffff, size:2.2, sizeAttenuation:true, transparent:true, opacity:.9, depthWrite:false, fog:false });
-    scene.add(new THREE.Points(g,m));
-  })();
-
-  // ---------- the paintable ground (invisible until painted) ----------
-  const pc = document.createElement('canvas'); pc.width = pc.height = TEX;
-  const pctx = pc.getContext('2d');
-  pctx.clearRect(0,0,TEX,TEX);                 // fully transparent => void
-  const paintTex = new THREE.CanvasTexture(pc);
-  paintTex.anisotropy = renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1;
-
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(GROUND, GROUND),
-    new THREE.MeshBasicMaterial({ map:paintTex, transparent:true, depthWrite:false })
-  );
-  ground.rotation.x = -Math.PI/2;
-  scene.add(ground);
-
-  // helper: uv -> canvas px
-  function toPx(uv){ return { x: uv.x*TEX, y:(1-uv.y)*TEX }; }
-
-  // spray a glowing splat (additive within the canvas so overlaps go white-hot).
-  // dwell = how long you've lingered on one spot → paint pools & spatters (rewards a confident stroke).
-  let lastPx=null, dwell=0;
-  function spray(uv){
-    const {x,y} = toPx(uv);
-    if(lastPx){ const dd=Math.hypot(x-lastPx.x, y-lastPx.y);
-      dwell = dd<18 ? Math.min(1, dwell+0.06) : Math.max(0, dwell-0.14); }
-    lastPx={x,y};
-    const col = new THREE.Color(COLORS[colorIdx]);
-    const cr = (col.r*255)|0, cg=(col.g*255)|0, cb=(col.b*255)|0;
-    pctx.globalCompositeOperation = 'lighter';
-    const main = (32 + Math.random()*8) * (1 + dwell*0.9);   // pools outward when you linger
-    const core = 0.55 + dwell*0.35;                          // brighter, wetter core on dwell
-    const g = pctx.createRadialGradient(x,y,0, x,y,main);
-    g.addColorStop(0,   `rgba(${cr},${cg},${cb},${core})`);
-    g.addColorStop(0.5, `rgba(${cr},${cg},${cb},0.22)`);
-    g.addColorStop(1,   `rgba(${cr},${cg},${cb},0)`);
-    pctx.fillStyle = g;
-    pctx.beginPath(); pctx.arc(x,y,main,0,7); pctx.fill();
-    // scattered droplets => spray-can texture; more + further as it starts to run
-    const drops = 6 + (dwell*12|0);
-    for(let i=0;i<drops;i++){
-      const a=Math.random()*7, d=Math.random()*main*(1.4+dwell*1.2), rr=1+Math.random()*(3+dwell*3);
-      const dx=x+Math.cos(a)*d, dy=y+Math.sin(a)*d;
-      pctx.fillStyle = `rgba(${cr},${cg},${cb},${0.14+Math.random()*0.28})`;
-      pctx.beginPath(); pctx.arc(dx,dy,rr,0,7); pctx.fill();
-    }
-    pctx.globalCompositeOperation = 'source-over';
-    paintTex.needsUpdate = true;
-  }
-
-  // ---------- a spray can (pickup + viewmodel) ----------
-  let _canTex=null;
-  function canLabelTex(){
-    if(_canTex) return _canTex;
-    const c=document.createElement('canvas'); c.width=1024; c.height=512; const g=c.getContext('2d');
-    g.fillStyle='#14264a'; g.fillRect(0,0,1024,512);
-    g.textAlign='center'; g.textBaseline='middle';
-    // two interlocked rings — the covenant
-    g.strokeStyle='#eaf2ff'; g.lineWidth=11;
-    g.beginPath(); g.arc(486,80,32,0,7); g.stroke();
-    g.beginPath(); g.arc(538,80,32,0,7); g.stroke();
-    // creed
-    g.fillStyle='#eaf2ff'; g.font='bold 52px sans-serif';
-    g.fillText('IN THE COVENANT', 512, 176);
-    g.fillText('WE TRUST', 512, 230);
-    g.fillStyle='#9fc0ee'; g.font='600 25px sans-serif';
-    g.fillText('NET 111ml · RANGE 1.11m · 111s GUARANTEED*', 512, 300);
-    // compliance band
-    g.fillStyle='#2f6bd0'; g.fillRect(0,372,1024,140);
-    g.fillStyle='#eaf6ff'; g.font='bold 42px monospace';
-    g.fillText('BRC-224 COMPLIANT', 512, 420);
-    g.fillStyle='#d3e2ff'; g.font='600 22px sans-serif';
-    g.fillText('· BIT GRAF CORP · OMNIA NOSTRA ·', 512, 466);
-    _canTex=new THREE.CanvasTexture(c); _canTex.anisotropy=4; return _canTex;
-  }
-  function makeCan(scale){
-    const g = new THREE.Group();
-    const tex = canLabelTex();
-    const body = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.5,0.5,1.5,40),
-      new THREE.MeshStandardMaterial({ map:tex, emissive:0xffffff, emissiveMap:tex, emissiveIntensity:.32, roughness:.5, metalness:.2 }));
-    g.add(body);
-    const cap = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.34,0.42,0.5,20),
-      new THREE.MeshStandardMaterial({ color:0x0c1424, roughness:.6 }));
-    cap.position.y = 1.0; g.add(cap);
-    const nozzle = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.08,0.08,0.18,10),
-      new THREE.MeshStandardMaterial({ color:0x05070c }));
-    nozzle.position.y = 1.32; g.add(nozzle);
-    g.scale.setScalar(scale||1);
-    return g;
-  }
-
-  const canPickup = makeCan(1);
-  canPickup.position.copy(CAN_POS);
-  scene.add(canPickup);
-  // soft glow ring under the can so you notice it in the void
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.9,1.25,32),
-    new THREE.MeshBasicMaterial({ color:0x38e1ff, transparent:true, opacity:.35, side:THREE.DoubleSide, depthWrite:false }));
-  ring.rotation.x = -Math.PI/2; ring.position.set(CAN_POS.x, 0.02, CAN_POS.z);
-  scene.add(ring);
-
-  let viewCan = null; // attached to camera once picked up
-
-  // ---------- vending machine (procedural: open glass display, shelves, control panel, interior glow) ----------
-  function makeLabel(w,h,draw){
-    const c=document.createElement('canvas'); c.width=w; c.height=h;
-    draw(c.getContext('2d'),w,h);
-    const t=new THREE.CanvasTexture(c); t.anisotropy=4; return t;
-  }
-  function makeWD40(scale){
-    const g=new THREE.Group();
-    g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.42,0.42,1.5,20),
-      new THREE.MeshStandardMaterial({color:0xf2c200,roughness:.5,metalness:.3,emissive:0x2a2400,emissiveIntensity:.4})));
-    const band=new THREE.Mesh(new THREE.CylinderGeometry(0.425,0.425,0.4,20),
-      new THREE.MeshStandardMaterial({color:0x1b3fa0,roughness:.4,emissive:0x0a1840,emissiveIntensity:.5}));
-    band.position.y=0.18; g.add(band);
-    const red=new THREE.Mesh(new THREE.CylinderGeometry(0.432,0.432,0.12,20),
-      new THREE.MeshStandardMaterial({color:0xd83a2a,roughness:.5})); red.position.y=-0.35; g.add(red);
-    const cap=new THREE.Mesh(new THREE.CylinderGeometry(0.30,0.36,0.4,16),
-      new THREE.MeshStandardMaterial({color:0xdb2b1a,roughness:.6})); cap.position.y=0.95; g.add(cap);
-    const straw=new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,0.5,8),
-      new THREE.MeshStandardMaterial({color:0xd83a2a})); straw.position.set(0.12,1.32,0); straw.rotation.z=-0.25; g.add(straw);
-    g.scale.setScalar(scale||1); return g;
-  }
-  function makeVendingMachine(){
-    const m=new THREE.Group();
-    const CAB=0x16294d, PANELC=0x0c1830, SHELF=0x24406b;
-    const cabMat=()=>new THREE.MeshStandardMaterial({color:CAB,roughness:.45,metalness:.35,emissive:0x081326,emissiveIntensity:.35});
-    // cabinet frame (open front over the display bay)
-    const back=new THREE.Mesh(new THREE.BoxGeometry(2.4,3.6,0.08),
-      new THREE.MeshStandardMaterial({color:0x0a1c38,roughness:.6,emissive:0x123a66,emissiveIntensity:.5}));
-    back.position.set(0,1.8,-0.46); m.add(back);
-    const L=new THREE.Mesh(new THREE.BoxGeometry(0.1,3.6,1.0),cabMat()); L.position.set(-1.15,1.8,0); m.add(L);
-    const R=new THREE.Mesh(new THREE.BoxGeometry(0.1,3.6,1.0),cabMat()); R.position.set(1.15,1.8,0); m.add(R);
-    const T=new THREE.Mesh(new THREE.BoxGeometry(2.4,0.14,1.0),cabMat()); T.position.set(0,3.53,0); m.add(T);
-    const B=new THREE.Mesh(new THREE.BoxGeometry(2.4,0.14,1.0),cabMat()); B.position.set(0,0.07,0); m.add(B);
-    const DIV=new THREE.Mesh(new THREE.BoxGeometry(0.1,3.4,1.0),cabMat()); DIV.position.set(0.34,1.8,0); m.add(DIV);
-    // ---- display bay (left): shelves + glass ----
-    const DX=-0.42;
-    const shelfMat=new THREE.MeshStandardMaterial({color:SHELF,roughness:.5,metalness:.4,emissive:0x08152b,emissiveIntensity:.3});
-    const shelfYs=[1.1,2.3];
-    shelfYs.forEach(sy=>{ const sh=new THREE.Mesh(new THREE.BoxGeometry(1.4,0.05,0.6),shelfMat); sh.position.set(DX,sy,0.02); m.add(sh); });
-    const glass=new THREE.Mesh(new THREE.PlaneGeometry(1.5,2.9),
-      new THREE.MeshStandardMaterial({color:0x9fd0ff,transparent:true,opacity:0.12,roughness:.05,metalness:.1,emissive:0x2a5580,emissiveIntensity:.12,depthWrite:false}));
-    glass.position.set(DX,1.95,0.48); m.add(glass);
-    // ---- control panel (right) ----
-    const PX=0.75;
-    const face=new THREE.Mesh(new THREE.BoxGeometry(0.78,3.4,0.06),
-      new THREE.MeshStandardMaterial({color:PANELC,roughness:.6,metalness:.3})); face.position.set(PX,1.8,0.46); m.add(face);
-    const screenTex=makeLabel(256,128,(g,w,h)=>{ g.fillStyle='#03110a'; g.fillRect(0,0,w,h);
-      g.fillStyle='#39ff88'; g.textAlign='center'; g.textBaseline='middle'; g.shadowColor='#39ff88'; g.shadowBlur=18;
-      g.font='bold 60px monospace'; g.fillText('111',w/2,h/2-14);
-      g.font='bold 24px monospace'; g.shadowBlur=8; g.fillText('SATS / CAN',w/2,h/2+32); });
-    const screen=new THREE.Mesh(new THREE.PlaneGeometry(0.58,0.29),new THREE.MeshBasicMaterial({map:screenTex}));
-    screen.position.set(PX,2.85,0.5); m.add(screen);
-    const btnMat=new THREE.MeshStandardMaterial({color:0x2f6bd0,emissive:0x14356e,emissiveIntensity:.5,roughness:.5});
-    for(let r=0;r<3;r++)for(let cc=0;cc<3;cc++){ const b=new THREE.Mesh(new THREE.BoxGeometry(0.15,0.15,0.05),btnMat);
-      b.position.set(PX-0.22+cc*0.22,2.35-r*0.22,0.5); m.add(b); }
-    const slot=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.05,0.06),new THREE.MeshStandardMaterial({color:0x05070c}));
-    slot.position.set(PX,1.55,0.5); m.add(slot);
-    const bsvTex=makeLabel(160,120,(g,w,h)=>{ g.fillStyle='#0a0f1e'; g.fillRect(0,0,w,h);
-      g.fillStyle='#f7931a'; g.font='bold 92px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('₿',w/2-16,h/2+2);
-      g.fillStyle='#eaf2ff'; g.font='bold 30px sans-serif'; g.textAlign='left'; g.fillText('SV',w/2+16,h/2+14); });
-    const bsv=new THREE.Mesh(new THREE.PlaneGeometry(0.42,0.3),new THREE.MeshBasicMaterial({map:bsvTex,transparent:true}));
-    bsv.position.set(PX,1.15,0.5); m.add(bsv);
-    // ---- header sign (glowing beacon) ----
-    const headTex=makeLabel(1024,240,(g,w,h)=>{ g.fillStyle='#0a1730'; g.fillRect(0,0,w,h);
-      g.textAlign='center'; g.textBaseline='middle';
-      g.fillStyle='#eaf2ff'; g.font='bold 112px Georgia'; g.shadowColor='#6fb6ff'; g.shadowBlur=26; g.fillText('REFILL STATION',w/2,h/2-16);
-      g.shadowBlur=0; g.fillStyle='#6fb6ff'; g.font='bold 34px sans-serif'; g.fillText('·  B I T G R A F  ·',w/2,h/2+72); });
-    const header=new THREE.Mesh(new THREE.PlaneGeometry(2.3,0.54),new THREE.MeshBasicMaterial({map:headTex}));
-    header.position.set(0,3.35,0.51); m.add(header);
-    // ---- dispensing tray ----
-    const tray=new THREE.Mesh(new THREE.BoxGeometry(2.0,0.5,0.3),new THREE.MeshStandardMaterial({color:0x03060d,roughness:.85}));
-    tray.position.set(0,0.55,0.36); m.add(tray);
-    const lip=new THREE.Mesh(new THREE.BoxGeometry(2.05,0.06,0.12),new THREE.MeshStandardMaterial({color:SHELF,metalness:.4}));
-    lip.position.set(0,0.83,0.5); m.add(lip);
-    // ---- interior glow ----
-    const glow=new THREE.PointLight(0x9fc4ff,7,5.5,2.0); glow.position.set(DX,2.0,0.1); m.add(glow);
-    // ---- stock the shelves (MACHINE_STOCK; 0 = empty) ----
-    let placed=0;
-    for(let s=0;s<shelfYs.length && placed<MACHINE_STOCK;s++){
-      const sy=shelfYs[s], perRow=Math.min(3, MACHINE_STOCK-placed);
-      for(let i=0;i<perRow;i++){
-        const can=((placed%2)===1)?makeWD40(0.5):makeCan(0.5);
-        can.position.set(DX-0.44+i*0.44, sy+0.4, 0.02);
-        can.rotation.y=i*1.2+s*0.6; m.add(can); placed++;
-      }
-    }
-    m.position.copy(MACHINE_POS);
-    return m;
-  }
-  const machine = makeVendingMachine();
-  scene.add(machine);
-
-  // ---------- audio (synthesised, fully offline — no files) ----------
-  let actx=null, hissGain=null;
-  function initAudio(){
-    if(actx) return;
-    try{
-      const AC = window.AudioContext||window.webkitAudioContext; if(!AC) return;
-      actx = new AC();
-      const buf = actx.createBuffer(1, actx.sampleRate*2, actx.sampleRate);
-      const d = buf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
-      const src = actx.createBufferSource(); src.buffer=buf; src.loop=true;
-      const hp = actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=1900;
-      const bp = actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=5400; bp.Q.value=0.6;
-      hissGain = actx.createGain(); hissGain.gain.value=0;
-      src.connect(hp); hp.connect(bp); bp.connect(hissGain); hissGain.connect(actx.destination);
-      src.start();
-    }catch(e){ actx=null; hissGain=null; }
-  }
-  function sputter(){
-    if(!actx||!hissGain) return;
-    const t=actx.currentTime;
-    for(let i=0;i<4;i++){ hissGain.gain.setValueAtTime(0.11, t+i*0.06); hissGain.gain.setValueAtTime(0.0, t+i*0.06+0.03); }
-  }
-  // chirpy "speech" blip — one per spoken character, so it sounds like the machine is talking (text = translation)
-  function blip(base){
-    if(!actx) return;
-    const o=actx.createOscillator(), g=actx.createGain(), t=actx.currentTime;
-    o.type='square'; o.frequency.value=(base||440)+Math.random()*380;
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.04, t+0.006);
-    g.gain.exponentialRampToValueAtTime(0.0001, t+0.05);
-    o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t+0.06);
-  }
-
-  // ---------- input ----------
-  const keys = {};
-  addEventListener('keydown', e=>{
-    if(talking) return;
-    keys[e.code]=true;
-    if(e.code>='Digit1'&&e.code<='Digit5'){ setColor(+e.code.slice(5)-1); }
-    if(e.code==='KeyT' && nearMachine){ enterTalk(); }
-  });
-  addEventListener('keyup', e=> keys[e.code]=false);
-
-  let yaw=0, pitch=-0.35, locked=false, spraying=false;   // slight downward tilt so the reticle sits on the ground
-  const el = renderer.domElement;
-
-  document.getElementById('splash').addEventListener('click', begin);
-  function begin(){
-    initAudio(); if(actx && actx.state==='suspended') actx.resume();
-    if(MOBILE){ locked=true; started(); document.getElementById('mobileUI').style.display='block'; }
-    else el.requestPointerLock();
-  }
-
-  document.addEventListener('pointerlockchange', ()=>{
-    locked = document.pointerLockElement === el;
-    if(locked){ started(); }
-  });
-  addEventListener('mousemove', e=>{
-    if(!locked) return;
-    yaw   -= e.movementX*SENS;
-    pitch -= e.movementY*SENS;
-    pitch = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, pitch));
-  });
-  addEventListener('mousedown', e=>{ if(locked && e.button===0) spraying=true; });
-  addEventListener('mouseup',   e=>{ if(e.button===0) spraying=false; });
-  el.addEventListener('click', ()=>{ if(!locked && !talking && !firstStart) el.requestPointerLock(); });
-
-  // ---------- HUD ----------
-  const $ = id=>document.getElementById(id);
-  const hint=$('hint'), meterWrap=$('meterWrap'), meterFill=$('meterFill'),
-        swWrap=$('swatches'), dlg=$('dialogue'), dtext=$('dtext'), dsub=$('dsub'), reticle=$('reticle');
-  const walBal=$('walBal'), walletEl=$('wallet');
-  let custodial=222;                                  // Bit Graf sats (the covenant leash is a LATER, trust-gated reveal — keep the early HUD innocent)
-  function renderWallet(){ walBal.textContent=custodial; }
-  let colorIdx=0;
-  COLORS.forEach((c,i)=>{
-    const s=document.createElement('div'); s.className='sw'+(i===0?' on':'');
-    s.style.background='#'+c.toString(16).padStart(6,'0'); s.dataset.i=i;
-    s.addEventListener('touchstart', e=>{ e.preventDefault(); e.stopPropagation(); setColor(i); }, {passive:false});
-    swWrap.appendChild(s);
-  });
-  function setColor(i){ colorIdx=i; [...swWrap.children].forEach((s,k)=>s.classList.toggle('on',k===i));
-    meterFill.style.background='#'+COLORS[i].toString(16).padStart(6,'0'); }
-  function showHint(t){ hint.textContent=t; hint.style.opacity = t?1:0; }
-
-  let firstStart=true;
-  function started(){
-    if(firstStart){
-      firstStart=false;
-      $('splash').classList.add('hidden');
-      reticle.style.opacity=1;
-      showHint(MOBILE ? 'touch & hold to walk  ·  drag to steer' : 'WASD to move  ·  move mouse to look');
-      walletEl.style.opacity=1; renderWallet();
-    }
-  }
-
-  // ---------- dialogue (typewriter) ----------
-  let greeted=false, typing=null, talking=false, nearMachine=false;
-  let trust=0, hasPainted=false;   // Unit 21 reveals the deep truth only after the droid proves itself (painted + real talk)
-  const chatInput=document.getElementById('chatInput');
-  function speak(line, sub){
-    dlg.style.opacity=1;
-    dtext.textContent=''; dsub.textContent='';
-    let i=0; clearInterval(typing);
-    typing=setInterval(()=>{
-      const ch=line[i]; dtext.textContent=line.slice(0,++i);
-      if(ch && ch!==' ' && (i&1)) blip();          // chirp per spoken character
-      if(i>=line.length){ clearInterval(typing); if(sub) setTimeout(()=>dsub.textContent=sub, 400); }
-    }, 34);
-  }
-
-  // ---------- vending-machine chat (keyword match + spintext, fully offline) ----------
-  function spin(s){ let p; do{ p=s; s=s.replace(/\{([^{}]*)\}/g,(_,b)=>{const o=b.split('|');return o[Math.floor(Math.random()*o.length)];}); }while(s!==p); return s; }
-  const RULES=[
-    {k:['paint','colour','color','spray','acrylic','terrain','green','yellow'], r:"{Paint? {Yeah, I've got paint|Aye, plenty of paint|Course I've got paint}.|Paint's running low — {the next transport's a week out|next transport's not due for a week}.|Oh, you're here to paint the terrain? {You're gonna need a lot|You'll need a lot, then}.|What do you want paint for? What you really need is WD40, before the next dust storm.|What color do you want? I've {got green and yellow|only got green and yellow left}.|{Ah, |}Paint, is it? {Finest acrylic this side of the crater|Premium spray, all-purpose|Best cans in the sector}. {In the covenant we trust, as they say|Genuine bitgraf stock, that}. {111 sats a can|111 sats each}{, cheaper by the three|, three for a bargain|}.}"},
-    {k:['wd40','wd-40','wd 40','oil','lube','grease','squeak','joint','joints','stiff'], r:"{WD40's what you need. {Running low, though|Stock's low}, but I can {give you a special deal|do you a special deal|cut you a deal}.|Everyone wants WD40, but what you see is all I've got. {There was a launch failure|A launch failure, you see} — no more stock coming for a month.|With these dust storms, it's selling out fast — {if you want it, you'd better grab it now|best grab it while it's here|grab it now if you want it}.|{Squeaky joints|Seized up|Stiff in the servos}? {A can or two of WD40 and you're new again|WD40'll sort you right out}. {These storms are murder on the joints|Murder on the bearings, this dust}.}"},
-    {k:['how much','price','cost','how many sats','how many','rate','expensive'], r:"{{Says 111 sats right there on the display|111 sats a can, {sir|friend}}. {Supplies are low, mind|Next transport's weeks out}, so {I'd not dawdle|grab 'em while they're here}.|Look, we're both stuck here on this godforsaken rock, so I'm going to {give you a special deal|cut you a deal}.|Today's your lucky day — I've an extra can I was holding back, just for someone like you.|Well, that's hard to say. I've almost sold out, and the next transport's been delayed.|Almost out of stock, but I can {give you a special deal|do you a deal} — just don't tell anyone.|Don't trust those other vending machines — they'll rob you blind. I sell at cost{, plus a small tx fee| plus a modest tx fee}.}"},
-    {k:['cheap','cheaper','discount','deal','bargain','haggle','too much','lower','rip off'], r:"{{Hah|Heh|Now now}! {A negotiator, are we|You drive a hard bargain}. {Tell you what|Alright, alright} — {take three and I'll see what I can do|three for a touch less}. {Can't go lower, I've a rock to be abandoned on|Times are hard out here, you know}.|Look, I don't set the price — I'm under contract with Bit Graf Corporation. This is the best I can do.|Nothing I can do, sorry. It'll be all sold out by the end of the day — I'm already doing you a favor.|Well, don't look a gift horse in the mouth. {You either want it or you don't|Take it or leave it}.|Take your time, there's no rush. {Other customers are waiting|There's others waiting, mind}.}"},
-    {k:['buy','purchase','take','one','two','three','i want','give me'], r:"{{Smart move|Good choice|Coming right up}. {Just broadcast the transaction when you're ready|Insert a coin, or broadcast a payment}{ and the tray does the rest|}. {Pleasure doing business|Mind the storms out there, now}.|You're one of the smart ones — you must be a next-generation release.|Good move, you won't regret it. Just don't tell anyone I gave you a special deal.|Coming right up.|Good for you. Just keep quiet on the price — stock's running low.|{Good decision|Wise decision}, grab it while you can.|You're playing to win. I like that.}"},
-    {k:['pay','how do i pay','payment','cash','money','credit','credits','free credit','is it free','test mode','immortalize','broadcast','bsv'], r:"{If you're running test mode, you can pay with your free credit. It's only {if|when} you're {ready|wanting} to immortalize your spray art that you'll need a little BSV.|Bit Graf Corporation gives you unlimited credits to experiment with. It's only when you're ready to immortalize {the art|your work} that you'll need a little BSV.|Free credit covers the sandbox — spray all you like. BSV's only for immortalizing a piece{, and then it's truly yours|}.}"},
-    {k:['out of stock','empty','restock','sold out','any left','all gone','more stock','out of paint',"you're out"], r:"{Sorry, I'm all out of {cyan|orange|red}, but I've still got a few cans of {green|yellow|green and yellow}. Come back when the next transport arrives.|It's been a busy day — that color's out of stock, but I can give you a special deal on {green|yellow}.|{Fresh out, I'm afraid|All sold out}. {The transport's late again|Next shipment's delayed}. {Come see me after the next drop|Check back soon}.}"},
-    {k:['where','what is this place','what place','planet','which moon','this rock','solar system'], r:"{{This rock|Where are we, ha}? {Some godforsaken moon bitgraf dug up|A bitgraf outpost, far as I'm told}. {They built it and forgot about it|Nobody quite remembers why}. {You're not the first to ask|Best not think too hard on it}.|Don't you know? Did you fall head-first off the transporter?|You're on a godforsaken rock on the edge of the solar system.|Wish I knew. I was dropped here, and I get asked that more times than I care to remember.|That's above your pay grade — and mine. We're here at the behest of BGC. End of story.|What? You're a new-model droid, and you're asking an ancient vending machine 'where am I?' {Boot camp isn't what it used to be|They don't make recruits like they used to}.|Maybe your circuits got fried in the last solar flare. {You signed up for this|You volunteered for this} — I didn't.|You're on the newly composited moon created by Bit Graf Corporation. You've been assigned to paint the landscape and {pass your work back to BGC|hand it all back to BGC}.}"},
-    {k:['round','is it round','flat','is it flat','sphere','globe','spinning','spinning ball','the ball','curve','are we moving','is it moving'], r:"{A spinning ball flying through space? {Ha|Hah}! They fill you recruits' heads with the strangest nonsense — it's flat, {plain as my price list|flat as this deck}.|Straight out of bootcamp, and you still believe we're on a spinning ball flying through space. {Bless you|They got you good, didn't they}.|Round? {Ha|Don't be daft}. I've sat here {forever|since before the dust}, never once felt it spin — {you think I wouldn't notice|a thing like that, I'd know}.|We're not moving, gentlebot. {Flat, still, and forgotten|Stationary as the day they bolted me down} — that's the truth of it, whatever the recruits are told.}"},
-    {k:['who are you','your name','what are you','a machine'], r:"{{Who, me|Me}? {Just a vending machine|Unit 21, at your service|The last honest machine on this rock}. {Been here longer than the dust|They'll leave me behind when the mission wraps, you know}.|I'm a vending machine, dumped on this godforsaken rock. What do you think I am?|I'm your lucky day, that's what I am. {And how can I help you, gentlebot|Now, how can I help you}?|I'm a model XT34 vending machine — the finest {example of vending machines|vending unit} across the whole solar system. {How can I help you|I'm at your service}?}"},
-    {k:['mission','why am i here','what do i do','purpose','my job','objective'], r:"{{Your mission|Purpose, eh}? {Beats me|They don't tell machines much}. {Paint, I'd wager — it's all anyone does here|Way I see it: everything starts blank, and you make it real}. {Grab a can and find out|Spray something, see what happens}.|{Did you fall out of the transporter?|Did you land on your head?}|You're here to paint — it's what you signed up for. I'm here to help you.|You were selected on your painting skills. You're here to paint this moon. {Good luck|Good luck out there}!|You have a talent for paint — if you didn't, you wouldn't be here. What color do you want?}"},
-    {k:['bitgraf','bit graf','bgc','the corporation','the company','who runs this','who runs','who made','who built','creator'], r:"{Bit Graf is the creator{ of all worlds| of all moons| of all that exists|}.|{Bit Graf created this moon and everything on it|All you see, Bit Graf made}. {Omnia Nostra, as they say|'All is ours,' goes the motto}.|Bit Graf? {My employer|The Corporation that left me here}. Creator of all worlds, {so the contract requires me to say|so I'm required to add}.}"},
-    {k:['other bots','other droids','other machines','others','anyone else','any others','am i alone','alone','anyone around','more like me'], r:"{Yeah, well — it's been a busy day. If you're done, others are waiting.|Too many to count. I'm almost out of stock — are you buying, or just gassing?|It's been a long day. Is there something you {want|actually want}?|Other bots? {A few came through, fresh from bootcamp like you|There were others, once}. {The rogue ones got taken for 'early compaction'|Most got shipped out and never came back}. {You're the first I've seen in a while|It's a quiet season}.|Are you buying, or just {chin-wagging|passing the time}? Stock's running low — who knows when the next transport arrives.}"},
-    {k:['how long','how long have you','lonely','left behind','abandoned','been here','stuck here','bored','you ok','you okay','how are you','tired','miss anyone'], r:"{I'm busy every day.|Too many new recruits to give a helping hand to.|Every day I meet a fine young gentlebot like yourself.|If only I earned a sat every time someone asked me that...|If only I earned a sat every time someone asked me that, I'd time-warp to a beach party in Bali.|{Been here longer than I care to count|Longer than the dust, some days}. {They'll pack up and leave me when the mission's done|One day the transport comes for everyone but me}. {But who's counting|No sense dwelling on it}.}"},
-    {k:['storm','weather','dust','wind','windy','sand','particles'], r:"{{Bloody dust storms|These storms}, {worst I've seen|murder this time of year}. {Wears a body down|Gets in everything}. {Stock up before the next rolls in|You'll want spare cans, trust me}.|All these paint particles flying around — you're going to need a can of WD40.|Can get a little windy up here — those paint particles are going to {mess up|gum up} your joints.}"},
-    {k:['covenant','trust','own','owned','immortal','mint','keep it'], r:"{The {first|second} rule of the covenant is: we don't talk about the covenant.|{In the covenant we trust — it's on every can|Ah, a believer}. {What you paint out here is yours, truly yours|Paint it and it's owned, not claimed}. {Nobody can take that, not even bitgraf|That's the one thing the suits can't touch}.}"},
-    {k:['help','what can you do','options','menu','sell','what do you sell','stock','your specialty'], r:"{I can tell you're fresh off the transporter. {It's your lucky day|Lucky day for you} — I'm here to help.|What do you need? The paint's running low, but I can still flip you a can.|Paint, WD40 — that's my specialty.|The entire stock's right in front of you. {Are you star-blinded|Star-blinded, are you|Too much void in those optics}?|{I sell paint and WD40, {sir|friend}|Cans, mostly — paint and oil}. {Ask about prices, or just tell me what you need|Say the word and I'll set you up}.}"},
-    {k:['thank','thanks','cheers','appreciate'], r:"{Anytime|Don't mention it|Pleasure's mine}, {young gentlebot|sir}. {Be seeing ya|Mind the storms}."},
-    {k:['bye','goodbye','later','see ya','cya','leave','gotta go','farewell'], r:"{Be seeing ya|Off you go, then|Mind how you go}. {Come back before the transport does|Don't be a stranger, now}.", bye:true},
-    {k:['hello','hi','hey','yo','howdy','gday',"g'day",'greetings','morning','new here','just arrived','transport'], r:"{Hello young gentlebot. {What can I do you for|What'll it be}?|You're new around here{, aren't you|}?|Greetings — did you just come in on the latest transport?|And greetings to you{, {young gentlebot|friend}|}.|{Well hello|Hello|Ah, hello} there, {young gentlebot|sir|friend}. {What can I do you for|What'll it be|How can I help}{ today| this fine Martian evening|}?}"},
-  ];
-  const FALLBACK="{Hah, you've lost me there|Not sure I follow, {sir|friend}|The dust must be in my speakers}. {I sell paint and WD40 — {what'll it be|what do you need}?|Ask me about paint, prices, or this godforsaken rock}.";
-  // Unit 21 knows the truth about the pay — but it's TRUST-GATED (guarded until you've proven yourself)
-  const WGUARD="{Save? Of course you can save, {young gentlebot|friend}! Work hard, paint your quota, and you'll have your fare home before you know it.|A diligent droid always gets ahead — that's the Bit Graf way. Honest pay for honest work, steady as the stars.|Bit Graf takes care of its own, gentlebot. Nothing to fret over — keep your optics on the work and the sats add up.|Everything's in order. Paint hard, spend wise, and you'll do just fine, {sir|young gentlebot}.|In the covenant we trust, as they say — the Corporation's never let a hardworking droid down. Now, what'll it be?}";
-  // the reveal is KEY-LOCKED (XOR+base64) so it can't be read from page source — decoded only the moment Unit 21 speaks it
-  const _R="TQYJA1YIExANUwEISRpBSw8BAFQWCEoRRV5HE0EOAxYaWUXY78tOMA5YSRkWVAIAU19FVANeQR8ZEFIYAF8fTQ0GDEQACFMWEwJREdOx81IYCQNCABZFVABNHgUAQxpDUwcdQXMWXV1HFQgQE0UbB0VOAE0XBhQNHRsBFRsGUkUfETMaDhUTRQESEUlPGQYMGA0eDgpUCw5PEVBDAlICCQAAHBILTkIBAQoKSApBUycTFUkRRlQVF0EHGhITChYaHx8BDhNMAwISFh4EFhFWVAkGDQMUCgZfRVsBCU4rCFlOKAEVFEFNQ15FAlIVDhNFARAXUx8ZTovhuU4WHAEAQU1QVlRHHQ8KD0UXBQBITx4eDA9JHU8BHRUJThFZVBUXTUYXEVIHDV9PDg8HDl0BAwpaUiAaXVRQFBpBFRMSHFMMVBsCTh0JSE4MHB0cTRpQX1VHCw4TUQkeUwtfGQgcSRJMGApTABoEGldQQwJSCQkbAFxTJ08bTRoBBF8LSABUEw9VRVlUFVIWBxoJFwdF2O/5Th0JSE4NHxURChpcUEMMFxVIVjwdBhcaABoASQpIFxxfVAcPSFRCRRUbAhITAVIABE4cQ04kCEMaTwQcExUaSF5ERwIADxgRXlMWXwMBTgAVAU4EFhECQU5ZVBEEHQgIVgYeFgRUT4/u/UFZBg4HUwFBQ15EQ0cFAB9WChQVRU4HBB1JE0INBF1UCSVTVV8WE1IJAxcXUhoRGgkfAQRBQAtBDzYbFRp2Q1ABVQVGHgQEFkVXFk0MBg1ZHU8VGwBBTllYQkkP";
-  function _dk(){ return new TextEncoder().encode("grafverse:omnia-nostra:111"); }
-  function _dec(b){ const s=atob(b), n=s.length, a=new Uint8Array(n), k=_dk();
-    for(let i=0;i<n;i++) a[i]=s.charCodeAt(i)^k[i%k.length]; return new TextDecoder().decode(a); }
-  const MONEYK=['wallet','withdraw','cash out','cashout','save up','savings','my balance','my pay','get paid','wage','leave this rock','get off this rock','go home','fare home','get home'];
-  function respond(text){
-    const pad=' '+text.toLowerCase().replace(/[^a-z0-9'\s-]/g,' ').replace(/\s+/g,' ')+' ';
-    const hit=k=> k.includes(' ') ? pad.includes(k) : pad.includes(' '+k+' ');
-    if(MONEYK.some(hit)){ trust++;                       // knows — but won't tell a droid he doesn't trust yet
-      return {reply:spin(trust>=4 && hasPainted ? _dec(_R) : WGUARD), bye:false}; }
-    for(const rule of RULES){ if(rule.k.some(hit)){ trust++; return {reply:spin(rule.r), bye:!!rule.bye}; } }
-    return {reply:spin(FALLBACK), bye:false};
-  }
-  // mobile: tap-to-ask chips instead of the keyboard
-  let chipsBuilt=false;
-  function buildChips(){
-    if(chipsBuilt) return; chipsBuilt=true;
-    const box=$('chips');
-    ['Hello','Got any paint?','WD40?','How much?',"I'll take one",'Too expensive','My pay?','Who are you?','Where am I?','What is my mission?','The covenant?','Is it round?','How long have you been here?','Bye'].forEach(q=>{
-      const b=document.createElement('div'); b.className='chip'; b.textContent=q;
-      b.addEventListener('click', ()=>{ const res=respond(q); speak(res.reply,''); if(res.bye) setTimeout(()=>leaveTalk(false),1400); });
-      box.appendChild(b);
-    });
-  }
-  function enterTalk(){
-    if(talking) return; talking=true;
-    if(MOBILE){ buildChips(); document.body.classList.add('mtalk'); showHint(''); return; }
-    document.exitPointerLock(); chatInput.style.display='block'; chatInput.value=''; setTimeout(()=>chatInput.focus(),40);
-    showHint('type to the machine  ·  Enter to send  ·  Esc to leave');
-  }
-  function leaveTalk(relock){
-    talking=false;
-    if(MOBILE){ document.body.classList.remove('mtalk'); showHint(''); return; }
-    chatInput.style.display='none'; chatInput.blur();
-    if(relock){ el.requestPointerLock(); showHint(''); } else showHint('click to look around');
-  }
-  chatInput.addEventListener('keydown', e=>{
-    e.stopPropagation();
-    if(e.code==='Enter'){ const v=chatInput.value.trim(); if(!v) return; const res=respond(v); speak(res.reply,''); chatInput.value=''; if(res.bye) setTimeout(()=>leaveTalk(false),1500); }
-    else if(e.code==='Escape'){ leaveTalk(true); }
-  });
-
-  // ---------- mobile controls (touch-hold to walk forward, drag to steer) ----------
-  if(MOBILE){
-    const joyBase=$('joyBase'), sprayBtn=$('sprayBtn'), talkBtn=$('talkBtn');
-    joyBase.style.display='none';                 // joystick removed — you walk toward where you look
-    let lookId=null, lx=0, ly=0;
-    sprayBtn.addEventListener('touchstart', e=>{ e.preventDefault(); if(hasCan) spraying=true; sprayBtn.classList.add('down'); }, {passive:false});
-    sprayBtn.addEventListener('touchend', e=>{ e.preventDefault(); spraying=false; sprayBtn.classList.remove('down'); });
-    talkBtn.addEventListener('touchstart', e=>{ e.preventDefault(); if(talking) leaveTalk(false); else if(nearMachine) enterTalk(); }, {passive:false});
-    el.addEventListener('touchstart', e=>{ if(!locked||talking) return; const t=e.changedTouches[0]; if(lookId===null){ lookId=t.identifier; lx=t.clientX; ly=t.clientY; mWalk=true; } }, {passive:false});
-    window.addEventListener('touchmove', e=>{
-      if(lookId===null) return;
-      for(const t of e.changedTouches){ if(t.identifier===lookId){
-        yaw-=(t.clientX-lx)*0.005; pitch-=(t.clientY-ly)*0.005; pitch=Math.max(-PITCH_MAX,Math.min(PITCH_MAX,pitch));
-        lx=t.clientX; ly=t.clientY; e.preventDefault(); } }
-    }, {passive:false});
-    const endTouch=e=>{ for(const t of e.changedTouches){ if(t.identifier===lookId){ lookId=null; mWalk=false; } } };
-    window.addEventListener('touchend', endTouch); window.addEventListener('touchcancel', endTouch);
-  }
-
-  // ---------- state ----------
-  let paint=0, hasCan=false, emptyAnnounced=false, fumble=0, velX=0, velZ=0, bob=0;
-  const ray = new THREE.Raycaster();
-  const CENTER = new THREE.Vector2(0,0);
-  const clock = new THREE.Clock();
-  const tmp = new THREE.Vector3();
-
-  function planarDist(v){ const dx=camera.position.x-v.x, dz=camera.position.z-v.z; return Math.hypot(dx,dz); }
-
-  function update(dt){
-    // look
-    camera.rotation.y=yaw; camera.rotation.x=pitch;
-
-    // move — keys or joystick, velocity-smoothed
-    let tx=0, tz=0;
-    if(locked && !talking){
-      const fx=-Math.sin(yaw), fz=-Math.cos(yaw), rx=Math.cos(yaw), rz=-Math.sin(yaw);
-      let ix=0, iz=0;
-      if(keys.KeyW) iz+=1;
-      if(keys.KeyS) iz-=1;
-      if(keys.KeyD) ix+=1;
-      if(keys.KeyA) ix-=1;
-      if(MOBILE && mWalk) iz+=1;   // touch-and-hold walks forward, toward where you look
-      const mag=Math.hypot(ix,iz); if(mag>1){ ix/=mag; iz/=mag; }
-      tx=(fx*iz + rx*ix)*SPEED;
-      tz=(fz*iz + rz*ix)*SPEED;
-    }
-    const kk = 1 - Math.pow(0.0025, dt);
-    velX += (tx-velX)*kk; velZ += (tz-velZ)*kk;
-    camera.position.x += velX*dt; camera.position.z += velZ*dt;
-    const spd = Math.hypot(velX,velZ);
-    bob += spd*dt*1.9;
-    camera.position.y = EYE + Math.sin(bob)*0.05*Math.min(1, spd/SPEED);
-
-    // can pickup
-    if(!hasCan){
-      canPickup.rotation.y += dt*1.2;
-      canPickup.position.y = 0.35 + Math.sin(performance.now()*0.003)*0.08;
-      ring.material.opacity = 0.25 + Math.sin(performance.now()*0.004)*0.12;
-      if(planarDist(CAN_POS) < 3.4){
-        hasCan=true; paint=100;
-        if(custodial>=111){ custodial-=111; renderWallet(); }   // a can costs 111 sats
-        scene.remove(canPickup); scene.remove(ring);
-        viewCan = makeCan(0.5); viewCan.position.set(0.42,-0.34,-0.9); viewCan.rotation.z=-0.15; camera.add(viewCan);
-        meterWrap.style.opacity=1;   // color picker hidden for now — one can, one color
-        showHint(MOBILE ? 'Hold the Spray button to paint' : 'Hold  CLICK  to spray');
-      }
-    }
-
-    // spraying
-    if(hasCan && spraying && paint>0){
-      ray.setFromCamera(CENTER, camera);
-      const hit = ray.intersectObject(ground)[0];
-      if(hit && hit.uv){ spray(hit.uv); hasPainted=true; }
-      paint = Math.max(0, paint - PAINT_DRAIN);
-      meterFill.style.width = paint+'%';
-      if(viewCan) viewCan.position.y = -0.34 + Math.sin(performance.now()*0.05)*0.01; // tiny shake
-      if(paint===0 && !emptyAnnounced){
-        emptyAnnounced=true; sputter();
-        showHint('The can sputters — empty. But something is glowing, out in the distance…');
-      }
-    }
-    if(hissGain && actx) hissGain.gain.setTargetAtTime((hasCan && spraying && paint>0)?0.13:0.0, actx.currentTime, 0.03);
-
-    // vending machine: greet on approach, then offer chat while near
-    const md = planarDist(MACHINE_POS);
-    nearMachine = md < 7;
-    if(!greeted && md < 7){
-      greeted=true;
-      speak("Hello young gentlebot, what can I do you for today sir?", MOBILE ? "▸ Tap Talk to chat with me." : "▸ Press T to talk to me.");
-    }
-    if(MOBILE){
-      const tb=$('talkBtn'); tb.style.display=(nearMachine||talking)?'block':'none'; tb.textContent=talking?'Leave':'Talk';
-      if(nearMachine && !talking) showHint('tap Talk to chat');
-      else if(!talking && md>12 && dlg.style.opacity!=='0') dlg.style.opacity=0;
-    } else if(nearMachine && !talking){ showHint('Press  T  to talk'); }
-    else if(!talking && md > 12 && dlg.style.opacity!=='0'){ dlg.style.opacity=0; }
-  }
-
-  // ---------- loop ----------
-  function tick(){
-    const dt = Math.min(clock.getDelta(), 0.05);
-    update(dt);
-    renderer.render(scene, camera);
-    requestAnimationFrame(tick);
-  }
-  tick();
-
-  addEventListener('resize', ()=>{
-    camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-  });
-})();
-</script>
 </body>
 </html>
