@@ -146,8 +146,10 @@
 <script>
 (function(){
   // Reuse the GAME's real, translated splash strings — never invent copy. The lang packs (lang-<code>.js) call
-  // GV.registerLang(code, pack); packs only touch GV.registerLang + GV.ruleAns, so this 2-line shim is enough.
-  window.GV = window.GV || { ruleAns:{}, registerLang:function(c,p){ (window.GV_LANG = window.GV_LANG || {})[c] = p || {}; } };
+  // GV.registerLang(code, pack) and build dialogue via GV.ruleAns('key') — which MUST be callable (packs do R('sing')),
+  // else the pack throws before it registers and the splash silently stays English. We only read pack.ui here, so a
+  // no-op ruleAns that returns "" is enough to let the pack reach registerLang.
+  window.GV = window.GV || { ruleAns:function(){ return ''; }, registerLang:function(c,p){ (window.GV_LANG = window.GV_LANG || {})[c] = p || {}; } };
 
   var EN = { splashTag:"You are what you paint. Paint what you are.",
              splashBegin:"Click to begin", splashBeginM:"Tap to begin", splashResume:"↩ Resume last world" };
