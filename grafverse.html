@@ -357,7 +357,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   scene.background = new THREE.Color(0x000006);
   scene.fog = new THREE.FogExp2(0x000006, 0.00016);   // Iapetus is airless → almost no haze; you see crisp to the true ~1.58 km horizon
 
-  const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.1, 5000);
+  const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.1, 11000);   // far plane pushed out so the Sun sits FAR beyond Saturn (a distant star), occluded by the carbon disc + Saturn
   camera.rotation.order = 'YXZ';
   camera.position.set(0, EYE, 0);
   scene.add(camera);
@@ -440,7 +440,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     g.fillStyle=grd; g.fillRect(0,0,S,S);
     const tex=new THREE.CanvasTexture(cv); tex.colorSpace=THREE.SRGBColorSpace;
     const spr=new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, fog:false }));
-    spr.renderOrder=20; spr.scale.setScalar(4.2); spr.position.set(0,-3480,0);  // placeholder (straight down) until loadSky plants it at the Sun's true RA/Dec
+    spr.renderOrder=20; spr.scale.setScalar(4.2); spr.position.set(0,-9000,0);  // placeholder (straight down) until loadSky plants it at the Sun's true RA/Dec (radius 9000 = far beyond Saturn)
     spr.userData.body={name:'The Sun', type:'star'};
     skyDome.add(spr); sunSprite=spr;                                            // lives IN the star sphere → placed at the Sun's TRUE RA/Dec by loadSky, sized by brightness each frame (like a star, brightest one)
   })();
@@ -593,7 +593,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       window.__sky=s;                                                                // expose (Saturn phase, moons — Step 4)
       anchorSky('near');                                                             // spin the whole sky so Saturn sits straight down at Unit 21's anti-Saturn point
       if(sunSprite){ const a=s.sun.ra*D2R, d=s.sun.dec*D2R, cd=Math.cos(d);          // the Sun at its TRUE RA/Dec (≈17° off Saturn today) — no longer hand-pinned to the limb
-        sunSprite.position.set(3480*cd*Math.cos(a), 3480*Math.sin(d), 3480*cd*Math.sin(a)); }
+        sunSprite.position.set(9000*cd*Math.cos(a), 9000*Math.sin(d), 9000*cd*Math.sin(a)); }   // Sun far beyond Saturn (9000 vs 4200) → occluded by the carbon disc + Saturn
       addPlanets(s.planets);                                                          // the visible planets, at their true bearings around the Sun/Saturn
       addMoons(s.moons);                                                              // Saturn's brilliant moon-court, clustered around the disc
       addComets(s.comets);                                                            // currently-active comets (faint; the reticle names them)
@@ -619,13 +619,16 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   const paintTex2=new THREE.CanvasTexture(pc2); paintTex2.anisotropy=paintTex.anisotropy;
   const ground2=new THREE.Mesh(new THREE.PlaneGeometry(GROUND,GROUND), new THREE.MeshBasicMaterial({ map:paintTex2, transparent:true, depthWrite:false }));
   ground2.rotation.x=-Math.PI/2; ground2.position.z=1600; scene.add(ground2);        // centred under Wardenclyffe (0,0,1600)
+  // 🖤 the far / sub-Saturn ground IS the carbon hemisphere: a solid matte-black backing just under the far paint canvas → unpainted far ground reads solid carbon black; paint = colour polished into it. Shown only while on the far side.
+  const carbonGround=new THREE.Mesh(new THREE.PlaneGeometry(GROUND,GROUND), new THREE.MeshBasicMaterial({color:0x000000, fog:false}));
+  carbonGround.rotation.x=-Math.PI/2; carbonGround.position.set(0,-0.2,1600); carbonGround.renderOrder=-1; carbonGround.visible=false; scene.add(carbonGround);
   const _grounds=[{ctx:pctx,tex:paintTex},{ctx:pctx2,tex:paintTex2}];                 // [0]=near (Unit 21) · [1]=far (Wardenclyffe)
   let _gctx=pctx, _gtex=paintTex;                                                     // the ground canvas spray() writes to — set per paint (trigger) / per stroke.g (load)
   function _wipeGround(){ pctx.clearRect(0,0,TEX,TEX); paintTex.needsUpdate=true; pctx2.clearRect(0,0,TEX,TEX); paintTex2.needsUpdate=true; groundStrokes.length=0; }
 
   // ── SEE THROUGH THE MOON — the surface is transparent void until painted, so you glimpse the OPPOSITE pole's painting far below, through the moon (mirrored, since it's the far side) ──
   const ghostGround=new THREE.Mesh(new THREE.PlaneGeometry(GROUND,GROUND), new THREE.MeshBasicMaterial({ map:paintTex2, transparent:true, opacity:1, depthWrite:false, side:THREE.DoubleSide, fog:false }));
-  ghostGround.rotation.x=-Math.PI/2; ghostGround.position.set(0,-1500,0); scene.add(ghostGround);   // the SAME canvas seen from INSIDE the moon — the far pole's paint hangs below the near pole (opaque where painted · see-through to the stars/Saturn where not); setHemisphere() swaps which pole it shows
+  ghostGround.rotation.x=-Math.PI/2; ghostGround.position.set(0,-1500,0); ghostGround.visible=false; scene.add(ghostGround);   // RETIRED by the two-hemisphere carbon design: the diamond side now shows the black carbon disc + Saturn below (not the far pole's paint), so the "see the other pole's art through the moon" ghost is hidden
 
   // helper: uv -> canvas px
   function toPx(uv){ return { x: uv.x*TEX, y:(1-uv.y)*TEX }; }
@@ -909,7 +912,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(0,H+2.4,0), new THREE.Vector3(Math.cos(a)*(3+Math.random()*2.5),H+(0.6+Math.random()*4),Math.sin(a)*(3+Math.random()*2.5))]),
         new THREE.LineBasicMaterial({color:0xcfeaff,transparent:true,opacity:.8,fog:false})); g.add(line); arcs.push(line); }
-    g.userData.orb=orb; g.userData.arcL=arcL; g.userData.arcs=arcs; return g;
+    g.userData.orb=orb; g.userData.arcL=arcL; g.userData.arcs=arcs; g.userData.stand=[base,dome]; g.userData.dims={H,RB,RT}; return g;
   }
   const wardenTower=makeWardenclyffeTower();
   wardenTower.position.set(0,-4100,0);              // at the ANTIPODE (180° from Unit 21 = the sub-Saturn point): far beneath, a tiny distant spire silhouetted against Saturn — "too small to see" from Unit 21, by design
@@ -960,6 +963,26 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     saturn.updateWorldMatrix(true,false);
   })();
   const _satSunTmp=new THREE.Vector3();   // reused each frame for Saturn's world sun-direction (feeds the terminator shader)
+  // 🖤 THE CARBON HEMISPHERE (seen from the diamond side). A big, low-poly, MATTE-black disk at the moon's CENTRE / hemisphere-join
+  //   plane (734.5 km deep): look down through the transparent diamond side and you see the black carbon hemisphere below, with the
+  //   Sun + Saturn far beyond it. MeshBasic = unlit → never reflects light; opaque + writes depth so it blocks the stars/Sun/Saturn
+  //   behind it, and renderOrder −1 keeps it behind the paint/ground (your painting still shows on top). Hidden on the far side (you stand ON the carbon there).
+  const carbonDisk=new THREE.Mesh(new THREE.CircleGeometry(3000,8),
+    new THREE.MeshBasicMaterial({color:0x000000, fog:false, side:THREE.DoubleSide}));       // opaque, writes depth → BLOCKS the stars + Saturn behind it → solid carbon black
+  carbonDisk.rotation.x=-Math.PI/2; carbonDisk.position.set(0,-3000,0); carbonDisk.renderOrder=-1; scene.add(carbonDisk);   // full moon-radius disk (3000 u = 734.5 km) seated 734.5 km deep — the moon's centre / hemisphere-join plane; drawn before the ground so paint still shows on top
+  // 🔺 THE BLACK TRIANGLE — a rare, silent apparition (the user's own sighting). Pure unlit black; it drifts overhead now and
+  //   then, almost invisible — you only know it's there by the stars (and the Milky Way) winking OUT behind its silhouette. It
+  //   crosses a couple-thousand units up on a random heading (nearer than the stars, so it occludes them), carried slow on its own current.
+  const blackTriangle=(function(){                             // THE black triangle — the Great-Pyramid CORNER WEDGE: one cut from the TIP to the midpoints of two ADJACENT base edges (4 of these + a central spire = the whole pyramid)
+    const S=400, g=new THREE.BufferGeometry();                 // slice face (largest) rides FLAT on top · nose A leads(+Z) · P is the keel point below & back · A→P (0.951) is the long bottom edge
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0,0,0.485*S, -0.354*S,0,-0.242*S, 0.354*S,0,-0.242*S, 0,-0.308*S,-0.415*S]),3));   // A(nose) · M1 · M2 · P(keel)
+    g.setIndex([0,1,2, 0,3,1, 0,2,3, 1,3,2]);                  // slice(top) + two sides + base (closed solid)
+    const m=new THREE.Mesh(g, new THREE.MeshBasicMaterial({color:0x000000, fog:false, side:THREE.DoubleSide}));
+    m.visible=false; scene.add(m); return m; })();
+  // 🔺 RARE random flyover: once every few HOURS it crosses the sky on a random heading, altitude and crossing point — a genuine "did I just see that?"
+  let _btActive=-1, _btNext=performance.now()+(2+Math.random()*4)*3600000;             // first pass in 2–6 hours
+  const _BT_DUR=32000, _BT_S0=-2900, _BT_S1=4200;                                      // ~32 s to cross (slow, carried) · straight-line reach
+  const _btDir=new THREE.Vector3(), _btOver=new THREE.Vector3(), _btR=new THREE.Vector3(), _btU=new THREE.Vector3(0,1,0), _btQuat=new THREE.Quaternion();
 
   // ── 🌀 JUMP GATES (Easter egg) — Tesla-ether rings, FIXED stage furniture like Wardenclyffe/Saturn (added straight to `scene`, NEVER bShapes) so they can't touch the serialize/mint path. ──
   //    Sprint-breach a ring → teleport across Iapetus (near void ⇄ far pole). Reuses the crystal-gate FEEL (◈ hint + ENTER_SPEED breach) but the destination is a SPOT IN THIS WORLD, not a chain load.
@@ -1032,6 +1055,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const far=(side==='far');                                                      // 'far' = the SUB-SATURN side: Saturn overhead, Wardenclyffe beside you
     if(saturn)      saturn.position.set(0, far?4200:-4200, far?1540:0);             // Saturn overhead on the sub-Saturn side · beneath on Unit 21's anti-Saturn side
     if(wardenTower) wardenTower.position.set(0, far?0:-4100, far?1600:0);           // the tower stands beside you at the sub-Saturn point · at the antipode (beneath) otherwise
+    if(carbonDisk) carbonDisk.visible=!far;                                         // 🖤 carbon hemisphere (seen below) shows only from the diamond (near) side
+    if(carbonGround) carbonGround.visible=far;                                      // 🖤 the black carbon ground you STAND on — only on the far (Wardenclyffe) side
     anchorSky(side);                                                                // re-spin the sky so Saturn + its moons + the Sun + the planets ride overhead (far) or beneath (near)
     if(ghostGround){ ghostGround.material.map = far?paintTex:paintTex2; ghostGround.material.needsUpdate=true; ghostGround.position.set(0,-1500, far?1600:0); }   // the ghost always shows the OTHER pole's paint, far beneath whichever pole you stand on
   }
@@ -1801,6 +1826,20 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     }
   }
 
+  // Wardenclyffe is the one SOLID machine (mystery is a ghost; machinery is solid): block its conical mast + base pad so you
+  // can't walk through it — but leave the base standable (jump onto it) so you can climb on. Only engages on the pole you're on.
+  function resolveTower(){
+    if(!wardenTower || !wardenTower.visible) return;
+    const d=wardenTower.userData.dims; if(!d) return;
+    const cx=wardenTower.position.x, cz=wardenTower.position.z, y0=wardenTower.position.y;
+    const feetY=camera.position.y-EYE, h=feetY-y0;
+    if(h<-0.5 || h>d.H) return;                                              // player not within the tower's vertical span (skips the far-buried copy)
+    const dx=camera.position.x-cx, dz=camera.position.z-cz, dd=Math.hypot(dx,dz);
+    const r = (h<1.4) ? d.RB+1.2 : d.RB+(d.RT-d.RB)*(h/d.H);                 // base-pad footprint low down · tapering mast above
+    const R=r+PLR;
+    if(dd<R && dd>1e-4){ camera.position.x=cx+dx/dd*R; camera.position.z=cz+dz/dd*R; }   // push straight out radially
+  }
+
   function update(dt){
     // look
     camera.rotation.y=yaw; camera.rotation.x=pitch;
@@ -1824,6 +1863,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     velX += (tx-velX)*kk; velZ += (tz-velZ)*kk;
     camera.position.x += velX*dt; camera.position.z += velZ*dt;
     resolveWalls();                                       // solids block you (crystals stay permeable)
+    resolveTower();                                        // Wardenclyffe is solid — walk up to it, not through it
     const spd = Math.hypot(velX,velZ);
     _moving = spraying || spd>0.06; if(_moving) _instant=false;   // walking/painting revokes instant mode → must re-earn it with a 3s still gaze
     bob += spd*dt*1.9;
@@ -1832,9 +1872,19 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     checkPortals(px, pz, camera.position.y, feetY);               // 🌀 breached a gate crystal? → travel to its destination world
     checkGates(px, pz, spd, dt);                                  // 🌀 Easter-egg ether gates → teleport across Iapetus (near void ⇄ far pole)
     skyDome.position.copy(camera.position);                       // 🌌 keep the real star sphere centred on the eye → stars stay fixed at infinity
+    { const nb=performance.now();                                 // 🔺 the black triangle's rare random flyover
+      if(_btActive<0){ if(nb>=_btNext && !introActive){ _btActive=nb;
+          const az=Math.random()*Math.PI*2;                                            // random heading + altitude + crossing point each pass
+          _btDir.set(Math.sin(az),0,Math.cos(az));
+          _btOver.set((Math.random()-0.5)*800, 1600+Math.random()*1200, (Math.random()-0.5)*800);
+          _btR.crossVectors(_btU,_btDir).normalize(); _btQuat.setFromRotationMatrix(new THREE.Matrix4().makeBasis(_btR,_btU,_btDir));   // nose along travel, level
+          blackTriangle.quaternion.copy(_btQuat); blackTriangle.visible=true; } }
+      else { const p=(nb-_btActive)/_BT_DUR;
+        if(p>=1){ blackTriangle.visible=false; _btActive=-1; _btNext=nb+(2+Math.random()*4)*3600000; }   // gone; next pass in 2–6 hours
+        else blackTriangle.position.copy(_btOver).addScaledVector(_btDir, _BT_S0+(_BT_S1-_BT_S0)*p); } }
     if(sunSprite){                                                // ☀ render the Sun like the STARS — by BRIGHTNESS, not angular size: a fixed on-screen point (the brightest one), not a sub-pixel true disc
       const H=window.innerHeight||800, dpx=20;                    // ~20px sprite → a ~4px brilliant core (bigger than the 3.6px brightest star) + glare halo
-      const wpp=2*3480*Math.tan(camera.fov*Math.PI/360)/H;        // 3480 = the Sun's radius on the star sphere (skyDome follows the eye, so this is its distance)
+      const wpp=2*9000*Math.tan(camera.fov*Math.PI/360)/H;        // 9000 = the Sun's distance (far beyond Saturn); sized by brightness so its on-screen size stays constant regardless
       sunSprite.scale.setScalar(dpx*wpp);                         // constant on-screen size regardless of where you walk
       const ss=window.__sky&&window.__sky.saturn_sky, psh=saturn&&saturn.userData.planet&&saturn.userData.planet.material.userData.shader;
       if(psh && ss && ss.sun_dir_ra!=null){                        // feed Saturn's terminator shader its TRUE Sun direction (world) → correct backlit crescent, immune to scene lights
@@ -1848,6 +1898,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     let wetCol=null, cSurf=null, cU=0, cV=0;                      // wet paint under the feet (drives slip + smear)
     _stand.length=0;
     for(const m of bShapes){ if(m.userData.painted && m.userData.grow>=1) _stand.push(m); }   // solid + grown = standable
+    if(wardenTower && wardenTower.visible && wardenTower.userData.stand) for(const m of wardenTower.userData.stand) _stand.push(m);   // climb on Wardenclyffe: stand on its base pad + dome
     if(_stand.length){                                            // probe the true surface directly under the feet
       downRay.set(_pOrig.set(px, feetY+0.5, pz), _DOWN); downRay.far=4.0;
       const dh=downRay.intersectObjects(_stand,false)[0];
@@ -2053,7 +2104,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     wall:     { base:'box',                             dims:{ w:2,   h:2.4, d:0.15 } },   // box thinned to a slab
     plane:    { base:'plane',                           dims:{ w:2,   d:2 } },
     cylinder: { base:'prism',   res:6,                  dims:{ r:0.7, h:1.6 } },           // column — hexagonal prism
-    cone:     { base:'pyramid', res:6,                  dims:{ r:0.9, h:1.7 } },           // spire — hex point (quartz)
+    cone:     { base:'pyramid', res:4,                  dims:{ r:0.7071, h:0.9 } },         // spire — EXACTLY the pyramid minus its 4 black-triangle corners: square base 1/√2 of the pyramid's, rotated 45°, same apex/height
     pyramid:  { base:'pyramid', res:4, align:Math.PI/4, dims:{ r:1.0, h:0.9 } },           // square pyramid
     sphere:   { base:'ball',    res:40,                 dims:{ r:0.9 } },                  // ball — v1 lat/long (→ geodesic in v2)
   };
@@ -2074,7 +2125,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     }
     return new THREE.BoxGeometry(1,1,1);
   }
-  const RES = { cylinder:6, cone:6, sphere:40 };   // facets slider defaults per family; low = faceted gem · high = smooth lens/ball
+  const RES = { cylinder:6, cone:4, sphere:40 };   // facets slider defaults per family; low = faceted gem · high = smooth lens/ball (spire defaults to its true 4 sides)
   // bgeomFor(type[,p]) — adapter from a player PRESET to the record: resolve (base, resolution, dims), then makeGeometry.
   // p may override dims (r/h/w/d) or pass {res} for the live facets slider.
   function palmGeometry(seed){                            // a fractal-ish palm: tapered ringed trunk + a crown of arching fronds. One vertex-coloured mesh (→ crystal palm too).
