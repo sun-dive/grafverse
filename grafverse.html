@@ -2338,16 +2338,18 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
         tr.appendChild(sbtn(activeShape.userData.texTile?'▦ tiled':'▨ scaled', ()=>{ const m=activeShape; m.userData.texTile=!m.userData.texTile; applyFinish(m,m.userData.tex); buildShapeTools(m.userData.type); scheduleSave(); },'wide'));   // constant world tile ⇄ fit-to-object
         box.appendChild(tr);
       }
-      const mkr=document.createElement('div'); mkr.className='srow';   // ✓ make solid — commit as a plain, REAL solid (no paint needed)
-      mkr.appendChild(sbtn('✓ make solid', ()=>{ if(activeShape) applySolid(activeShape, 0); },'wide'));
+      // ── the TWO ways to commit a ghost into a real object — convertible but EXPLICIT; the current kind shows a ✓ ──
+      const _isC=activeShape.userData.crystal, _isSolid=activeShape.userData.painted && !_isC;
+      const mkr=document.createElement('div'); mkr.className='srow';
+      mkr.appendChild(sbtn((_isSolid?'✓ ':'')+'◼ Solidify', ()=>{ if(activeShape) applySolid(activeShape, activeShape.userData.tex||0); },'wide'));     // commit AS a paintable solid — the tex index CARRIES (same value read as a material here, as a gem when crystalline)
+      mkr.appendChild(sbtn((_isC?'✓ ':'')+'◆ Crystalize', ()=>{ if(activeShape) crystallizeShape(activeShape, _isC ? (activeShape.userData.gemIdx>=MAXGEM?1:activeShape.userData.gemIdx+1) : (activeShape.userData.tex||1)); },'wide'));   // commit AS a gem crystal — a non-crystal uses its current tex as the gem (change the material → a different gem); re-press cycles 1…16
       box.appendChild(mkr);
       const anr=document.createElement('div'); anr.className='srow';   // ✧ motion — independent bob + rotate (owned, persist in the mint)
       anr.appendChild(sbtn((activeShape.userData.bob?'✓ ':'')+'↕ bob', ()=>{ const m=activeShape; m.userData.bob=!m.userData.bob; buildShapeTools(m.userData.type); scheduleSave(); },'wide'));
       anr.appendChild(sbtn((activeShape.userData.spin?'✓ ':'')+'↻ rotate', ()=>{ const m=activeShape; m.userData.spin=!m.userData.spin; buildShapeTools(m.userData.type); scheduleSave(); },'wide'));
       box.appendChild(anr);
-      const cr=document.createElement('div'); cr.className='srow';   // ◼ Materials (picker) | ◆ Crystals (gems)
+      const cr=document.createElement('div'); cr.className='srow';   // ◼ Materials — the SOLID's finish (plain · metal · stone · wood…); crystal gems are cycled via ◆ Crystalize
       cr.appendChild(sbtn('◼ Materials', ()=>{ solidPickerOpen=!solidPickerOpen; if(activeShape) buildShapeTools(activeShape.userData.type); },'wide'));   // open/close the material picker grid
-      cr.appendChild(sbtn('◆ Crystals', ()=>{ if(activeShape) crystallizeShape(activeShape, activeShape.userData.crystal ? (activeShape.userData.gemIdx>=MAXGEM?1:activeShape.userData.gemIdx+1) : 1); },'wide'));   // cut → cycle gems 1…16
       box.appendChild(cr);
       if(activeShape.userData.painted && !activeShape.userData.crystal){   // 💰 SELL (mint) + FREE channel (download / share link) for THIS painted solid
         const sr=document.createElement('div'); sr.className='srow';
@@ -3207,6 +3209,54 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   const FRACTAL_ID = { palm:160 };                                                   // §4 fractal class (160–207); palm is the first, more to come
   const PALM_H = 2.8;                                                                 // palmGeometry() trunk height (m) — the size field's base
   function matFlagsFor(sd){ return ((((sd.trot||0)/90)|0)&3) | (sd.tile?4:0) | (sd.bob?8:0) | (sd.spin?16:0); }   // grain(2b) · tiled(b2) · bob(b3) · rotate(b4)
+
+  // ── ONE canonical size mapping — the single source for freeze-at-commit, save, mint, AND load. ──
+  //    A solid's ABSOLUTE geometry is { scale: uniform size in world units, ratios: proportions }. The editor's
+  //    3-axis multiplier `s` is only a live handle. absOf(): multiplier → absolute (what we FREEZE at make-solid).
+  //    mulOf(): absolute → the multiplier for the CURRENT preset. Because save stores the absolute and load recovers
+  //    the multiplier via mulOf (÷preset) which render then multiplies (×preset), the two cancel — so a committed
+  //    solid's real size is preset-INDEPENDENT: editing a preset can never resize saved content. (Tripwire guards this.)
+  function absOf(type, s){
+    const pr=PRESETS[type]||PRESETS.box, base=pr.base, d=pr.dims, t=s||[1,1,1];
+    if(base==='box')                    { const W=(d.w||1)*t[0], H=(d.h||1)*t[1], D=(d.d||1)*t[2]; return { scale:H, ratios:[W/H, D/H] }; }
+    if(base==='prism'||base==='pyramid'){ const Dia=2*(d.r||0.5)*t[0], H=(d.h||1)*t[1];            return { scale:H, ratios:[Dia/H] }; }
+    if(base==='ball')                   {                                                          return { scale:2*(d.r||0.9)*t[0], ratios:[] }; }   // uniform = diameter
+    if(base==='plane')                  { const W=(d.w||2)*t[0], Dp=(d.d||2)*t[2];                 return { scale:Dp, ratios:[W/Dp] }; }
+    return { scale:(d.h||1)*t[1], ratios:[] };
+  }
+  function mulOf(type, scale, ratios){
+    const pr=PRESETS[type]||PRESETS.box, base=pr.base, d=pr.dims, R=ratios||[], S=scale;
+    if(base==='box')                    { const H=S, W=(R[0]||1)*H, D=(R[1]||1)*H; return [W/d.w, H/d.h, D/d.d]; }
+    if(base==='prism'||base==='pyramid'){ const H=S, Dia=(R[0]||1)*H, tr=Dia/(2*d.r); return [tr, H/d.h, tr]; }
+    if(base==='ball')                   { const tr=S/(2*d.r); return [tr,tr,tr]; }
+    if(base==='plane')                  { const Dp=S, W=(R[0]||1)*Dp; return [W/d.w, 1, Dp/d.d]; }
+    return [1,1,1];
+  }
+
+  // ── TRIPWIRE (boot-time): assert a committed solid's WORLD size is preset-independent. If a future edit ever breaks
+  //    absOf/mulOf so a preset/geometry change could resize already-saved solids, this shouts in the console instead of
+  //    silently miniaturising everyone's worlds (the exact bug that shipped once). It only reads/restores; no side effects. ──
+  (function sizeTripwire(){
+    const wsize=(type,s)=>{ const pr=PRESETS[type],d=pr.dims,b=pr.base;
+      if(b==='box')                    return [d.w*s[0], d.h*s[1], d.d*s[2]];
+      if(b==='prism'||b==='pyramid')   return [2*d.r*s[0], d.h*s[1], 2*d.r*s[2]];
+      if(b==='ball')                   return [2*d.r*s[0], 2*d.r*s[1], 2*d.r*s[2]];
+      if(b==='plane')                  return [d.w*s[0], 1, d.d*s[2]];
+      return [s[1]]; };
+    const S={box:[1.5,2.3,0.8],wall:[1.2,0.7,3],plane:[1.5,1,0.8],cylinder:[1.8,2.3,1.8],cone:[1.8,2.3,1.8],pyramid:[1.4,3,1.4],sphere:[2.1,2.1,2.1]};   // editor-valid (radial xz-linked, sphere xyz-linked)
+    const bad=[];
+    for(const type in S){ if(!PRESETS[type]) continue;
+      const before=wsize(type,S[type]), frozen=absOf(type,S[type]);
+      const d=PRESETS[type].dims, keep=Object.assign({},d);
+      for(const k in d) d[k]*=1.7;                                              // simulate a preset base-dim edit
+      const after=wsize(type, mulOf(type, frozen.scale, frozen.ratios));
+      Object.assign(d, keep);                                                   // restore — no lasting change
+      if(!before.every((v,i)=>Math.abs(v-after[i])<1e-6)) bad.push(type);
+    }
+    if(bad.length) console.error('⚠ grafverse size-invariant TRIPWIRE FAILED for: '+bad.join(', ')+' — a preset/geometry edit will resize saved solids. Fix absOf/mulOf before shipping.');
+    else console.log('✓ grafverse size tripwire: saved solids are preset-independent');
+  })();
+
   function shapeToRecord(sd){
     const color = sd.cr ? rgb332Index(sd.col!=null?sd.col:(GEMS[sd.gem]||GEMS[1]).col)   // crystal → its 8-bit (RGB332) tint
                         : rgb332Index(sd.base!=null?sd.base:0x0c1526);                       // painted → base material colour, 8-bit
@@ -3217,14 +3267,10 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(FRACTAL_ID[sd.t]!=null){                                                       // FRACTAL (palm…): id + seed u16, uniform scale — no ratios (codec reads the seed)
       return { id:FRACTAL_ID[sd.t], res:sd.res||0, seed:(sd.seed>>>0)||1, pos:sd.p, rot:sd.r, scale:PALM_H*(sd.s[1]||1), color, tex, matFlags, paint, attrs };
     }
-    const pr=PRESETS[sd.t]||PRESETS.box, base=pr.base, d=pr.dims, t=sd.s;            // t = 3-axis target multipliers
-    let ratios=[], sizeM=1;
-    if(base==='box'){ const W=(d.w||1)*t[0], H=(d.h||1)*t[1], D=(d.d||1)*t[2]; sizeM=H; ratios=[W/H, D/H]; }
-    else if(base==='prism'||base==='pyramid'){ const Dia=2*(d.r||0.5)*t[0], H=(d.h||1)*t[1]; sizeM=H; ratios=[Dia/H]; }
-    else if(base==='ball'){ sizeM=2*(d.r||0.9)*t[0]; ratios=[]; }                     // uniform = diameter
-    else if(base==='plane'){ const W=(d.w||2)*t[0], Dp=(d.d||2)*t[2]; sizeM=Dp; ratios=[W/Dp]; }
+    const pr=PRESETS[sd.t]||PRESETS.box;
+    const a = (sd.scale!=null && sd.ratios) ? { scale:sd.scale, ratios:sd.ratios } : absOf(sd.t, sd.s);   // frozen at make-solid → verbatim; else derive from the live multiplier
     const rot=[sd.r[0], sd.r[1]+(pr.align||0), sd.r[2]];                              // fold the preset's canonical facing into rotation
-    return { id:PRESET_ID[sd.t]||122, res:sd.res||pr.res||0, ratios, pos:sd.p, rot, scale:sizeM, color, tex, matFlags, paint, attrs };
+    return { id:PRESET_ID[sd.t]||122, res:sd.res||pr.res||0, ratios:a.ratios, pos:sd.p, rot, scale:a.scale, color, tex, matFlags, paint, attrs };
   }
   function worldToRecords(world){ return { ground:world.ground||[], shapes:(world.shapes||[]).map(shapeToRecord),
     provenance:(world.prov||_provenance||[]).map(tx=>({tx})) }; }   // PROVENANCE chunk — the parent txid(s) this fork derives from
@@ -3257,13 +3303,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(rec.res) sd.res=rec.res;
     if(FRACTAL_TYPE[rec.id]!=null){ sd.t=FRACTAL_TYPE[rec.id]; sd.seed=(rec.seed>>>0)||1; const t=rec.scale/PALM_H; sd.s=[t,t,t]; }   // fractal: uniform scale from the seed
     else {
-      const type=ID_TYPE[rec.id]||'box', pr=PRESETS[type], base=pr.base, d=pr.dims, R=rec.ratios||[], S=rec.scale;   // invert the size→ratios packing per base solid
-      let s=[1,1,1];
-      if(base==='box'){ const H=S, W=(R[0]||1)*H, D=(R[1]||1)*H; s=[W/d.w, H/d.h, D/d.d]; }
-      else if(base==='prism'||base==='pyramid'){ const H=S, Dia=(R[0]||1)*H, tr=Dia/(2*d.r); s=[tr, H/d.h, tr]; }
-      else if(base==='ball'){ const tr=S/(2*d.r); s=[tr,tr,tr]; }
-      else if(base==='plane'){ const Dp=S, W=(R[0]||1)*Dp; s=[W/d.w, 1, Dp/d.d]; }
-      sd.t=type; sd.s=s;                                                                   // a folded align stays in rot (canonical types have align 0 → geometry matches)
+      const type=ID_TYPE[rec.id]||'box';                                                   // invert the size→ratios packing per base solid
+      sd.t=type; sd.s=mulOf(type, rec.scale, rec.ratios);                                   // absolute → the multiplier for the CURRENT preset (÷preset now, ×preset at render → cancels)
+      sd.scale=rec.scale; sd.ratios=(rec.ratios||[]).slice();                               // KEEP the frozen absolute so it re-saves verbatim & mint matches (a folded align stays in rot)
     }
     if(crystal){ sd.cr=1; sd.gem=rec.tex||0; sd.col=rgb332ToHex(rec.color); }
     else { sd.st=(rec.paint&&rec.paint.strokes)||[]; sd.base=rgb332ToHex(rec.color); if(rec.tex){ sd.tex=rec.tex; if(grain) sd.trot=grain*90; if(tile) sd.tile=1; } }
@@ -3315,10 +3357,12 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
 
   function shapeToSave(m){ const u=m.userData;                                 // one COMMITTED shape → its save record (shared by serialize + clone); null for a ghost
     if(!u.painted && !u.crystal) return null;
+    const _abs=absOf(u.type, [u.target.x,u.target.y,u.target.z]);                 // absolute size, derived FRESH from the committed geometry → never stale, never preset-dependent
     const rec={ t:u.type,
       p:[+m.position.x.toFixed(3),+m.position.y.toFixed(3),+m.position.z.toFixed(3)],
       r:[+m.rotation.x.toFixed(4),+m.rotation.y.toFixed(4),+m.rotation.z.toFixed(4)],
-      s:[+u.target.x.toFixed(3),+u.target.y.toFixed(3),+u.target.z.toFixed(3)],
+      s:[+u.target.x.toFixed(3),+u.target.y.toFixed(3),+u.target.z.toFixed(3)],   // live editor multiplier — a transient hint only; `scale`+`ratios` below are the SOURCE OF TRUTH
+      scale:+_abs.scale.toFixed(4), ratios:_abs.ratios.map(x=>+x.toFixed(5)),      // ★ ABSOLUTE size (same field as the minted BMF-SOLID) — a preset edit can NEVER resize this
       paid:!!u.paid };
     if(u.res) rec.res=u.res;                                                   // custom facet count (column/spire/ball)
     if(u.bob) rec.bob=1; if(u.spin) rec.spin=1;                                // owned draw-time motion (→ matFlags bits 3/4 at mint)
@@ -3350,7 +3394,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const m=ghostMesh(sd.t, sd.seed);
     m.position.set(sd.p[0],sd.p[1],sd.p[2]);
     m.rotation.set(sd.r[0],sd.r[1],sd.r[2]);
-    m.userData.target.set(sd.s[0],sd.s[1],sd.s[2]); m.scale.copy(m.userData.target); m.userData.grow=1;   // already real — skip grow-in
+    const _s = (sd.scale!=null) ? mulOf(sd.t, sd.scale, sd.ratios)   // ★ ABSOLUTE → the multiplier for the CURRENT preset (preset-independent); a preset edit leaves the world size untouched
+                                : (sd.s||[1,1,1]);                    // legacy save (only had `s`): use it as-is → shapeToSave re-writes `scale`+`ratios` on the next save, healing it
+    m.userData.target.set(_s[0],_s[1],_s[2]); m.scale.copy(m.userData.target); m.userData.grow=1;   // already real — skip grow-in
     if(sd.bob) m.userData.bob=1; if(sd.spin) m.userData.spin=1;              // restore owned draw-time motion
     if(sd.txid) m.userData.txid=sd.txid; if(sd.creator) m.userData.creator=sd.creator;   // ★ paint-atom identity (minted/imported) + its creator
     if(sd.portalTx) m.userData.portalTx=sd.portalTx;                                      // 🌀 jump-gate destination (a crystal that travels to another world)
