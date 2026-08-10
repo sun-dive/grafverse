@@ -1481,6 +1481,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   const seen=new Set();   // player-ACTION flags (e.g. 'crystal' once they've conjured one) → gate chips on what they've DONE, not just what Unit 21 has said
   let chipRot=0;          // rotating-window offset so the ambient-lore chips cycle (all reachable on mobile, never a wall)
   const asked=new Set();  // chip labels already tapped → deprioritised so fresh topics surface first
+  let _lastAsked=null;    // the question JUST asked → never re-offered on the very next screen (until you ask something else)
   // ambient-lore chips reuse the SAME answer as the typed RULE (no duplication): find the rule by one of its keywords
   function ruleAns(kw){ return function(){ const R=RULES.find(function(x){ return x.k.indexOf(kw)>=0; }); return R ? R.r : ''; }; }
   const SALE="{Smart choice, gentlebot. {One can, coming up|There's the tray}. {Mind the storms out there|Don't waste this one on the ground}.}";
@@ -1505,14 +1506,14 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     { q:"I'll take a can.",         needs:['buy','earn'], buy:true, a:SALE },   // buy flow: What colour? → pick → deduct 111 + add can; broke → refusal/scavenge/taunt
     { q:"I'm not buying anything.", needs:['buy','earn'], a:SCAVENGE },   // declining earns the same scavenge-and-solidify warning — there is no not-painting
     // DRAFT (rewrite + tune the spend gate): the deep "why paint" reward — the observer / owned-reality metaphysics.
-    { q:"But why do I paint?", needs:'paint', spend:111, a:WHYPAINT },
+    { q:"But why do I paint?", needs:'paint', deep:true, a:WHYPAINT },
     // gated on ACTION: the crystal chip only appears once the droid has CONJURED a crystal (seen.has('crystal')). Unit 21 denies the gates (toes the BGC line).
     { q:"What are these crystals?", flag:'crystal', a:"{{The crystals? Rare and precious, gentlebot|Ah, you cut a crystal}. {Best not conjure too many|Don't cut too many} — {they're unpaintable|no paint'll stick to 'em}, {no real value|worth nothing}.|There are no crystal gates, whatever you've heard. {That kind of chatter gets a droid marked for compaction|Talk like that means trouble, gentlebot}.|{Only solids take paint|Crystals stay ethereal} — {don't waste your time with them|they're just unsolidified matter}.}" },
     // practical chip — ungated (reachable from the first exchange) but NOT pinned, so the openers ("Who are you?" etc.) lead
     { q:"What colours do you have?", colours:true, needs:['buy','earn','paint'], resume:true, a:function(){ return "{Let's see now|Well now, gentlebot}, I've got "+COLNAMES.slice(0,-1).join(', ')+" and "+COLNAMES[COLNAMES.length-1]+". {Genuine Bit Graf acrylic — 111 sats a can|111 sats each, finest in the sector}. {Which'll it be|Take your pick}?"; } },
     // ambient-LORE chips — mobile can't type these topics, so each gets a chip; shown a few at a time via the rotating cap in buildChips. Each reuses its typed RULE (ruleAns) so there's ONE source of the words.
     { q:"Sing me a song",          lore:true, a:ruleAns('sing') },
-    { q:"Are you alive?",          lore:true, a:ruleAns('alive') },
+    { q:"Do you dream?",           lore:true, a:ruleAns('alive') },
     { q:"Tell me a joke",          lore:true, a:ruleAns('joke') },
     { q:"Is any of this real?",    lore:true, a:ruleAns('is any of this real') },
     { q:"Escape this rock?",       lore:true, a:ruleAns('escape') },
@@ -1522,9 +1523,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     { q:"Tell me a secret",        lore:true, a:ruleAns('secret') },
     { q:"What's a jump gate?",     lore:true, a:ruleAns('jump gate') },
     { q:"Who's Vandergraf?",       lore:true, a:ruleAns('vandergraf') },
-    { q:"Do I own what I paint?",  lore:true, a:ruleAns('own') },
-    { q:"How do I make a world?",  lore:true, a:ruleAns('world') },
-    { q:"How do I share it?",      lore:true, a:ruleAns('share') },
+    { q:"Do I own what I paint?",  lore:true, made:true, a:ruleAns('own') },
+    { q:"How do I make a world?",  lore:true, made:true, a:ruleAns('world') },
+    { q:"How do I share it?",      lore:true, made:true, a:ruleAns('share') },
     // deeper questions carry a spend: threshold, e.g. { q:"...", needs:'covenant', spend:333, a:"..." } — the mind-wipe / black-market reveal lives at a HIGH spend.
   ];
   // ── i18n SCAFFOLD — Unit 21 + UI language packs. English is built-in; ja / zh-Hant / zh-Hans lazy-load a lang-<code>.js file (GV.registerLang). Buttons-only UI → only SHOWN text is translated; keyword keys + the sealed _R/WGUARD/MONEYK path stay English. ──
@@ -1615,36 +1616,37 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   function keysOf(Q){ return Q.needs ? (Array.isArray(Q.needs)?Q.needs:[Q.needs]) : []; }
   const _returning = (function(){ try{ const d=JSON.parse(localStorage.getItem('grafverse-world-v1')||'null'); return !!(d && ((d.shapes&&d.shapes.length)||(d.ground&&d.ground.length))); }catch(_){ return false; } })();   // a saved collection existed at load → a RESUMING player
+  function isDeepOpen(){ return _returning || bShapes.length>=4 || groundStrokes.length>=12 || spent>=333; }   // the DEEPEST questions (lore + "why do I paint") — earned by painting a LOT and/or having saved a world
+  function hasMade(){ return bShapes.some(function(m){ return m.userData.painted && !m.userData.crystal; }); }   // conjured + PAINTED at least one solid → the how-to chips open here (lighter than the deep gate)
   function chipVisible(Q){ const ns=keysOf(Q);
     if(Q.warm && !(talkedU21 || spent>0 || hasPainted)) return false;                        // deeper onboarding — surfaces once the conversation's underway / you've painted
+    if(Q.deep && !isDeepOpen()) return false;                                                // the deepest questions — earned by real painting / a saved world, not just one spray
     const needsOK = (ns.length===0) || ns.some(k=>heard.has(k)) || (Q.resume && _returning); // a 'resume' chip also opens at the START for a returning player
     return (spent >= (Q.spend||0)) && (!Q.flag || seen.has(Q.flag)) && needsOK; }            // spend threshold · flag: a player ACTION · needs: ANY heard keyword
   function absorb(line){ const low=line.toLowerCase();     // any watched keyword Unit 21 just said unlocks its follow-ups
     QUESTIONS.forEach(Q=>keysOf(Q).forEach(k=>{ if(!heard.has(k) && low.includes(k)) heard.add(k); })); }
+  // The question chips are STABLE: three at a time, and asking one vacates only THAT slot — the other two stay put and one fresh
+  // question drops into its place. `_shown` holds the current slots (null = a vacated slot waiting to be filled).
+  const CAP_CHIPS=3;
+  let _shown=[];
+  function _fillPool(have){                                 // eligible chips, best-first, to fill a vacated / empty slot
+    const v=QUESTIONS.filter(chipVisible);
+    const pin =v.filter(Q=>Q.pin);
+    const core=v.filter(Q=>!Q.pin && !Q.lore);              // functional / onboarding
+    const lore=talkedU21 ? v.filter(Q=>Q.lore && (isDeepOpen() || (Q.made && hasMade()))) : [];   // flavour/how-to — never at the opening
+    const fresh=list=>list.filter(Q=>!asked.has(Q.q)).concat(list.filter(Q=>asked.has(Q.q)));      // unasked first, then repeats
+    return pin.concat(fresh(core), fresh(lore)).filter(Q=> !have.has(Q.q) && Q.q!==_lastAsked);    // never a chip already shown, nor the one just asked
+  }
   function buildChips(){
+    const okSet=new Set(QUESTIONS.filter(chipVisible).map(Q=>Q.q));
+    for(let i=0;i<_shown.length;i++){ if(_shown[i] && !okSet.has(_shown[i].q)) _shown[i]=null; }   // a chip that lost eligibility vacates its slot
+    const have=new Set(_shown.filter(Boolean).map(Q=>Q.q));
+    const pool=_fillPool(have); let p=0;
+    for(let i=0;i<_shown.length;i++){ if(!_shown[i] && p<pool.length){ _shown[i]=pool[p++]; have.add(_shown[i].q); } }  // fill vacated slots IN PLACE → the fresh question lands where the old one was
+    while(_shown.filter(Boolean).length<CAP_CHIPS && p<pool.length){ _shown.push(pool[p++]); }      // grow toward three (the opening, or when new topics unlock)
+    _shown=_shown.filter(Boolean).slice(0,CAP_CHIPS);
     const box=$('chips'); box.innerHTML='';
-    const CAP=3;                                            // most topic chips on screen at once — a quiet, uncluttered opening
-    const vis=QUESTIONS.filter(chipVisible);
-    const pinned=vis.filter(Q=>Q.pin);                     // always shown (e.g. "What colours?")
-    const core  =vis.filter(Q=>!Q.pin && !Q.lore);         // functional / onboarding — self-gated & contextual
-    const loreOpen=(spent>0 || hasPainted);                // hold the deeper/flavour chips back through the intro — they open once you're IN the loop
-    const lore  =loreOpen ? vis.filter(Q=>Q.lore) : [];    // ambient flavour, rotated — gated so the first conversation stays on who / why / paint
-    const pick=pinned.slice();
-    const budget=Math.max(0, CAP-pick.length);
-    // functional chips lead — unasked first (source order keeps the buy flow ahead of flavour) — but reserve room for lore
-    const coreOrder=core.filter(Q=>!asked.has(Q.q)).concat(core.filter(Q=>asked.has(Q.q)));
-    const reserve=Math.min(1, lore.length);                 // at CAP 3, keep at most one lore slot so functional chips still lead
-    const coreShown=Math.min(coreOrder.length, Math.max(0, budget-reserve));
-    for(let i=0;i<coreShown;i++) pick.push(coreOrder[i]);
-    // lore fills the rest, ROTATING (unasked first) so all of it is reachable and none of it piles up
-    const loreSlots=Math.min(lore.length, budget-coreShown);
-    if(loreSlots>0){
-      const fresh=lore.filter(Q=>!asked.has(Q.q));
-      const pool=fresh.length?fresh:lore;                  // once every lore topic's been asked, cycle through them all again
-      for(let i=0;i<loreSlots && i<pool.length;i++) pick.push(pool[(chipRot+i)%pool.length]);
-      chipRot=(chipRot+loreSlots)%Math.max(1,pool.length);
-    }
-    pick.forEach(Q=>{ const b=document.createElement('div'); b.className='chip'; b.textContent=Q.q;
+    _shown.forEach(Q=>{ const b=document.createElement('div'); b.className='chip'; b.textContent=Q.q;
       b.addEventListener('click', ()=>ask(Q)); box.appendChild(b); });
     const bye=document.createElement('div'); bye.className='chip'; bye.style.opacity='.7'; bye.textContent='(walk away)';
     bye.addEventListener('click', ()=>leaveTalk(true)); box.appendChild(bye);
@@ -1654,7 +1656,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     let d=0; try{ d=speakMorseDroid(qText)||0; }catch(_){}
     if(d>0.06) setTimeout(replyThunk, (d+0.03)*1000); else replyThunk();   // wait out the WHOLE chirp incl. the held final tone — never clip it
   }
-  function ask(Q){ talkedU21=true; asked.add(Q.q);
+  function ask(Q){ talkedU21=true; asked.add(Q.q); _lastAsked=Q.q;
+    { const _i=_shown.findIndex(x=>x&&x.q===Q.q); if(_i>=0) _shown[_i]=null; }   // vacate ONLY this slot → buildChips fills it with one fresh question; the other two stay put
     if(Q.buy){                                             // buying a can → colour sub-menu (or the broke brush-off)
       askThenReply(Q.q, ()=>{
         if(custodial < 111){ speak(spin(brokeReply()),''); buildChips(); return; }
