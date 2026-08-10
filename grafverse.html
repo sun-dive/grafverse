@@ -1491,9 +1491,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   let WHATCOLOUR="{What colour, gentlebot|Name your shade|Which'll it be}? {Take your pick off the rack|I've every colour going|Pick one and it's yours}.";
   let COMINGUP="{Coming right up|There you are, gentlebot|One can, coming up}. {Mind you don't waste it on the ground|Spend it wise|Pleasure doing business, as always}.";
   let QUESTIONS=[
-    { q:"Who are you?",            a:"{Unit 21. {A vending machine, gentlebot — the last honest one on this rock|Just a vending machine, far as anyone cares}. {Been here longer than the dust|They'll leave me behind when the mission's done}.}" },
+    { q:"What are you?",           a:"{Unit 21. {A vending machine, gentlebot — the last honest one on this rock|Just a vending machine, far as anyone cares}. {Been here longer than the dust|They'll leave me behind when the mission's done}.}" },
     { q:"Why am I here?",          a:"{To paint, gentlebot — that's the mission. {A blank rock's worth nothing till someone paints it|Bit Graf composited this moon and wants it coloured in}. {And that someone's you|Guess who}.}" },
-    { q:"What is this place?",     a:"{A moon. {One of Bit Graf's|Newly composited, so they tell me}. {Empty till it's painted|Nothing out here exists till a droid sprays it into being}. {Omnia Nostra, and all that|All theirs, naturally}.}" },
+    { q:"What is this place?",     warm:true, a:"{A moon. {One of Bit Graf's|Newly composited, so they tell me}. {Empty till it's painted|Nothing out here exists till a droid sprays it into being}. {Omnia Nostra, and all that|All theirs, naturally}.}" },
     { q:"Why do I want paint?",    needs:'paint', a:"{Want it? You NEED it — paint to earn, gentlebot|Paint to earn, gentlebot}. {The more you paint, the more you make|A blank moon's worth nothing, and neither's an idle droid}. {So — what colour do you want|Now, which can}?" },
     { q:"I don't want any paint.", needs:'paint', a:"{Hah. {That's a new one|Give it time}. {A blank moon and a bored droid — see how long that lasts|You'll be back}. {Everyone wants paint, they just don't know it yet|Suit yourself, then}.}" },
     { q:"Paint? What for?",        needs:'paint', a:"{To BUILD, gentlebot. {Conjure a shape, spray it, and it's real|Point, spray, and the void gives something back}. {Best get busy if you know what's good for you|A blank moon won't paint itself}.} So — are you buying?" },
@@ -1509,7 +1509,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     // gated on ACTION: the crystal chip only appears once the droid has CONJURED a crystal (seen.has('crystal')). Unit 21 denies the gates (toes the BGC line).
     { q:"What are these crystals?", flag:'crystal', a:"{{The crystals? Rare and precious, gentlebot|Ah, you cut a crystal}. {Best not conjure too many|Don't cut too many} — {they're unpaintable|no paint'll stick to 'em}, {no real value|worth nothing}.|There are no crystal gates, whatever you've heard. {That kind of chatter gets a droid marked for compaction|Talk like that means trouble, gentlebot}.|{Only solids take paint|Crystals stay ethereal} — {don't waste your time with them|they're just unsolidified matter}.}" },
     // practical chip — ungated (reachable from the first exchange) but NOT pinned, so the openers ("Who are you?" etc.) lead
-    { q:"What colours do you have?", colours:true, a:function(){ return "{Let's see now|Well now, gentlebot}, I've got "+COLNAMES.slice(0,-1).join(', ')+" and "+COLNAMES[COLNAMES.length-1]+". {Genuine Bit Graf acrylic — 111 sats a can|111 sats each, finest in the sector}. {Which'll it be|Take your pick}?"; } },
+    { q:"What colours do you have?", colours:true, needs:['buy','earn','paint'], resume:true, a:function(){ return "{Let's see now|Well now, gentlebot}, I've got "+COLNAMES.slice(0,-1).join(', ')+" and "+COLNAMES[COLNAMES.length-1]+". {Genuine Bit Graf acrylic — 111 sats a can|111 sats each, finest in the sector}. {Which'll it be|Take your pick}?"; } },
     // ambient-LORE chips — mobile can't type these topics, so each gets a chip; shown a few at a time via the rotating cap in buildChips. Each reuses its typed RULE (ruleAns) so there's ONE source of the words.
     { q:"Sing me a song",          lore:true, a:ruleAns('sing') },
     { q:"Are you alive?",          lore:true, a:ruleAns('alive') },
@@ -1614,12 +1614,16 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     setLang(init, false);   // apply saved/detected language on load (loads its pack if present; else stays English)
   }
   function keysOf(Q){ return Q.needs ? (Array.isArray(Q.needs)?Q.needs:[Q.needs]) : []; }
-  function chipVisible(Q){ const ns=keysOf(Q); return (spent >= (Q.spend||0)) && (!Q.flag || seen.has(Q.flag)) && (ns.length===0 || ns.some(k=>heard.has(k))); }  // spend threshold · flag: a player ACTION (e.g. conjured a crystal) · needs: ANY heard keyword
+  const _returning = (function(){ try{ const d=JSON.parse(localStorage.getItem('grafverse-world-v1')||'null'); return !!(d && ((d.shapes&&d.shapes.length)||(d.ground&&d.ground.length))); }catch(_){ return false; } })();   // a saved collection existed at load → a RESUMING player
+  function chipVisible(Q){ const ns=keysOf(Q);
+    if(Q.warm && !(talkedU21 || spent>0 || hasPainted)) return false;                        // deeper onboarding — surfaces once the conversation's underway / you've painted
+    const needsOK = (ns.length===0) || ns.some(k=>heard.has(k)) || (Q.resume && _returning); // a 'resume' chip also opens at the START for a returning player
+    return (spent >= (Q.spend||0)) && (!Q.flag || seen.has(Q.flag)) && needsOK; }            // spend threshold · flag: a player ACTION · needs: ANY heard keyword
   function absorb(line){ const low=line.toLowerCase();     // any watched keyword Unit 21 just said unlocks its follow-ups
     QUESTIONS.forEach(Q=>keysOf(Q).forEach(k=>{ if(!heard.has(k) && low.includes(k)) heard.add(k); })); }
   function buildChips(){
     const box=$('chips'); box.innerHTML='';
-    const CAP=6;                                            // most topic chips on screen at once — keeps mobile from a wall of buttons
+    const CAP=3;                                            // most topic chips on screen at once — a quiet, uncluttered opening
     const vis=QUESTIONS.filter(chipVisible);
     const pinned=vis.filter(Q=>Q.pin);                     // always shown (e.g. "What colours?")
     const core  =vis.filter(Q=>!Q.pin && !Q.lore);         // functional / onboarding — self-gated & contextual
@@ -1629,7 +1633,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const budget=Math.max(0, CAP-pick.length);
     // functional chips lead — unasked first (source order keeps the buy flow ahead of flavour) — but reserve room for lore
     const coreOrder=core.filter(Q=>!asked.has(Q.q)).concat(core.filter(Q=>asked.has(Q.q)));
-    const reserve=Math.min(2, lore.length);
+    const reserve=Math.min(1, lore.length);                 // at CAP 3, keep at most one lore slot so functional chips still lead
     const coreShown=Math.min(coreOrder.length, Math.max(0, budget-reserve));
     for(let i=0;i<coreShown;i++) pick.push(coreOrder[i]);
     // lore fills the rest, ROTATING (unasked first) so all of it is reachable and none of it piles up
@@ -1674,6 +1678,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       b.addEventListener('click', ()=>buyCan(i)); box.appendChild(b); });
     const back=document.createElement('div'); back.className='chip'; back.style.opacity='.7'; back.textContent='(never mind)';
     back.addEventListener('click', ()=>buildChips()); box.appendChild(back);
+    const bye=document.createElement('div'); bye.className='chip'; bye.style.opacity='.6'; bye.textContent='(walk away)';   // walking away is ALWAYS available, even mid-purchase
+    bye.addEventListener('click', ()=>leaveTalk(true)); box.appendChild(bye);
   }
   function buyCan(ci){
     if(custodial < 111){ speak(spin(brokeReply()),''); buildChips(); return; }
@@ -1689,6 +1695,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   function leaveTalk(relock){
     talking=false;
+    clearInterval(typing); dtext.textContent=''; dsub.textContent=''; dlg.style.opacity=0;   // text vanishes AT ONCE, even mid-reply — but Unit 21's Morse voice keeps playing (never stopped here)
     document.body.classList.remove('mtalk');
     if(!MOBILE && relock) el.requestPointerLock();
     showHint('');
