@@ -3365,6 +3365,22 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       scatterInventory(_pastInv);                             // ★ RESUME: strew the droid's OWN past cans across the world to re-scavenge (the hidden story)
     });
   })();
+  // ── Arrived from the landing splash (grafverse.com → ▶ Play / Resume)? Never show a SECOND splash. The landing WAS
+  //    the splash, so reuse the game's own proven straight-in states: a brand-new player keeps the monolith cold-open
+  //    (just no splash tap); a returning / intro-seen player drops straight into the world exactly like a ?w= link.
+  //    Direct visits to /grafverse.html (no ?go) still get the in-game splash — it is only bypassed here, never removed. ──
+  (function(){
+    let p; try{ p=new URLSearchParams(location.search); }catch(e){ return; }
+    if(!p.has('go')) return;
+    if(introActive){                                          // brand-new player → let the cold-open run, minus the splash tap
+      const sp=$('splash'); if(sp) sp.classList.add('hidden');
+      reticle.style.opacity=1;
+      if(MOBILE) begin(); else if(firstStart){ firstStart=false; showHint(t('hintClick')); }   // desktop: world's live; first click grabs the mouse (same as a shared link)
+    } else {                                                  // returning / intro-seen → straight into the world, same path as a shared ?w= link
+      _dropIntoWorld();
+      if(p.get('go')==='resume'){ try{ scatterInventory(_pastInv); }catch(e){} }   // ▶ Resume also re-strews the droid's past cans (matches the in-game Resume)
+    }
+  })();
   function _welcomeBack(){                                    // returned from the wallet → present the splash as a one-tap RESUME (skip the intro)
     _resumeOnStart=true;
     const go=document.querySelector('#splash .go'); if(go) go.textContent='▶ Resume your world';
