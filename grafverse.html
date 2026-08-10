@@ -1285,10 +1285,25 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     setTimeout(()=>{ try{ powerup(); }catch(_){} }, 550);                 // the device wakes a beat after the reveal
   }
   monolith=makeMonolith(); monolith.visible=false; scene.add(monolith);
+
+  // ── WORLD SLOTS — a small fixed library of named worlds. Slot 0 keeps the ORIGINAL key (grafverse-world-v1) so
+  //    existing data is untouched; slots 1..8 get their own keys. SAVE_KEY tracks the CURRENT slot (default 0), so
+  //    with no switching the game behaves exactly as before. The New / Resume / import flows move the current slot. ──
+  const N_SLOTS=9;
+  const slotKey=n=> n===0 ? 'grafverse-world-v1' : 'grafverse-world-s'+n;
+  let curSlot=(function(){ try{ const c=parseInt(localStorage.getItem('grafverse-cur'),10); return (c>=0 && c<N_SLOTS)?c:0; }catch(e){ return 0; } })();
+  let SAVE_KEY=slotKey(curSlot);
+  function setCurSlot(n){ curSlot=Math.max(0,Math.min(N_SLOTS-1,n|0)); SAVE_KEY=slotKey(curSlot); try{ localStorage.setItem('grafverse-cur', String(curSlot)); }catch(e){} }
+  function _slotData(n){ try{ return JSON.parse(localStorage.getItem(slotKey(n))||'null'); }catch(e){ return null; } }
+  function _slotFilled(d){ return !!(d && ((d.shapes&&d.shapes.length)||(d.ground&&d.ground.length))); }
+  function slotMeta(n){ const d=_slotData(n); return { n:n, empty:!_slotFilled(d), name:(d&&d.name)||'', updated:(d&&d.updated)||0 }; }
+  function anyWorld(){ for(let i=0;i<N_SLOTS;i++){ if(_slotFilled(_slotData(i))) return true; } return false; }
+  function firstEmptySlot(){ for(let i=0;i<N_SLOTS;i++){ if(!_slotFilled(_slotData(i))) return i; } return -1; }
+
   { const q=new URLSearchParams(location.search);
     const shared=q.has('w')||q.has('buy')||q.has('bundle')||q.has('acquire')||q.has('minted');
     let seen=false; try{ seen=localStorage.getItem('gv-intro-seen')==='1'; }catch(_){}
-    let hasWorld=false; try{ const _d=JSON.parse(localStorage.getItem('grafverse-world-v1')||'null'); hasWorld=!!(_d && ((_d.shapes&&_d.shapes.length)||(_d.ground&&_d.ground.length))); }catch(_){}   // a RETURNING player (saved world) NEVER replays the cold open
+    let hasWorld=false; try{ const _d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null'); hasWorld=!!(_d && ((_d.shapes&&_d.shapes.length)||(_d.ground&&_d.ground.length))); }catch(_){}   // a RETURNING player (current slot has a saved world) NEVER replays the cold open
     const forceIntro=q.has('intro');                         // ?intro → always play the cold open (testing aid: bypasses the flags AND cache-busts stale HTML)
     if(forceIntro || (!shared && !seen && !hasWorld)){ introActive=true; if(machine) machine.visible=false; monolith.visible=true;
       if(manifestTool) manifestTool.visible=false; if(mtRing) mtRing.visible=false;
@@ -1731,7 +1746,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     setLang(init, false);   // apply saved/detected language on load (loads its pack if present; else stays English)
   }
   function keysOf(Q){ return Q.needs ? (Array.isArray(Q.needs)?Q.needs:[Q.needs]) : []; }
-  const _returning = (function(){ try{ const d=JSON.parse(localStorage.getItem('grafverse-world-v1')||'null'); return !!(d && ((d.shapes&&d.shapes.length)||(d.ground&&d.ground.length))); }catch(_){ return false; } })();   // a saved collection existed at load → a RESUMING player
+  const _returning = (function(){ try{ const d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null'); return !!(d && ((d.shapes&&d.shapes.length)||(d.ground&&d.ground.length))); }catch(_){ return false; } })();   // a saved collection existed at load → a RESUMING player
   function isDeepOpen(){ return _returning || bShapes.length>=4 || groundStrokes.length>=12 || spent>=333; }   // the DEEPEST questions (lore + "why do I paint") — earned by painting a LOT and/or having saved a world
   function hasMade(){ return bShapes.some(function(m){ return m.userData.painted && !m.userData.crystal; }); }   // conjured + PAINTED at least one solid → the how-to chips open here (lighter than the deep gate)
   function chipVisible(Q){ const ns=keysOf(Q);
@@ -3219,7 +3234,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       else m.scale.copy(t); } }
 
   // ---------- world storage & recall (strokes → localStorage; the WORLD persists, the droid wakes fresh) ----------
-  const SAVE_KEY='grafverse-world-v1';
+  // SAVE_KEY + the world-slot system are defined up top (SAVE_KEY tracks the current slot).
   // ── engine shape → the frozen BMF-SOLID record (docs/BMF-SOLID-SPEC.md) — mint-time conversion ──
   // The 3-axis editor scale collapses to a UNIFORM size + proportion RATIOS; the object is ONE owned paint unit.
   const PRESET_ID = { box:122, wall:122, plane:123, cylinder:119, cone:120, pyramid:120, sphere:121 };
@@ -3400,7 +3415,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   function serializeWorld(){
     const shapes=[]; for(const m of bShapes){ const rec=shapeToSave(m); if(rec) shapes.push(rec); }
-    return { v:2, ground:groundStrokes, shapes, prov:_provenance, name:worldName||undefined };
+    return { v:2, ground:groundStrokes, shapes, prov:_provenance, name:worldName||undefined, updated:Date.now() };
   }
   function saveWorld(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(serializeWorld())); }catch(e){} recordHistory(); }
   let _saveT=null;
