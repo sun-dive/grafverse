@@ -114,11 +114,14 @@
     color:#cfe0ff;font:600 12px system-ui;writing-mode:vertical-rl;letter-spacing:.14em;cursor:pointer;pointer-events:auto;}
   body.building #shapeTab{display:block;}
   body.shaping #shapeTab, body.keep #shapeTab{display:none;}
-  #shapePanel{position:fixed;right:-260px;top:50%;transform:translateY(-50%);width:206px;z-index:9;
+  /* wide + 2 balanced columns so the tall tool stack halves in height (fits on screen); auto-collapses to 1 column on a phone. */
+  #shapePanel{position:fixed;right:-480px;top:50%;transform:translateY(-50%);width:min(440px,62vw);z-index:9;
     background:rgba(8,14,26,.94);border:1px solid rgba(120,170,255,.35);border-radius:14px 0 0 14px;border-right:none;
     padding:14px 12px;transition:right .22s ease;pointer-events:none;}
   body.shaping #shapePanel{right:0;pointer-events:auto;}
-  #shapeTools{display:flex;flex-direction:column;gap:7px;}
+  #shapeTools{columns:200px;column-gap:16px;}                                  /* 2 comfortable columns when wide, 1 when narrow — balanced to auto height */
+  #shapeTools > *{break-inside:avoid;}                                         /* keep each row/section whole across the column break */
+  #shapeTools > .srow, #shapeTools > .mkgrid{margin-bottom:7px;}               /* row spacing (multicol has no flex gap); mkhdr keeps its tight hug */
   .mkhdr{font:700 10px system-ui;letter-spacing:.2em;text-transform:uppercase;color:#7f95bb;text-align:center;margin:2px 0 -1px;}
   .mkgrid{display:flex;flex-wrap:wrap;gap:5px;justify-content:center;}
   .srow{display:flex;gap:6px;align-items:center;justify-content:center;}
