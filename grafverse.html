@@ -320,6 +320,7 @@
 </script>
 <script src="bmf-codec.js"></script>
 <script src="stars.js"></script><!-- real star catalog: window.GV_STARS (Yale Bright Star Catalog, 9096 stars) -->
+<script src="constellations.js"></script><!-- constellation figures + names: window.GV_CONSTEL (d3-celestial, MIT) -->
 
 <script type="module">
 import * as THREE from 'three';
@@ -405,6 +406,29 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     new THREE.TextureLoader().load('milkyway.webp', tex=>{ tex.colorSpace=THREE.SRGBColorSpace; mat.map=tex; mat.needsUpdate=true; mw.visible=true; },
       undefined, ()=>{ /* not deployed / offline → skip; the point-stars still carry the sky */ });
   })();
+
+  // ---------- CONSTELLATIONS — HIDDEN until you point at one of their stars; then that figure lights up + names itself ----------
+  //   Keeps the starfield a pure magical backdrop. Gaze at a star (see updateAim) → its constellation's lines appear + name streaks by.
+  const constelGroup=new THREE.Group(); skyDome.add(constelGroup);
+  const conLines=[]; let _showAllCon=false, _revealedCon=-2;                  // one LineSegments per figure, hidden until revealed
+  (function constellations(){
+    const C=window.GV_CONSTEL; if(!C||!C.con) return;
+    const R=3585, D2R=Math.PI/180;
+    C.con.forEach((c,ci)=>{ const s=c.seg, pos=new Float32Array(s.length/2*3);
+      for(let i=0,p=0;i<s.length;i+=2){ const a=s[i]*D2R, d=s[i+1]*D2R, cd=Math.cos(d);
+        pos[p++]=R*cd*Math.cos(a); pos[p++]=R*Math.sin(d); pos[p++]=R*cd*Math.sin(a); }
+      const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+      const ls=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0x6f9bd6,transparent:true,opacity:0.55,depthWrite:false,fog:false}));
+      ls.renderOrder=-1; ls.visible=false; conLines[ci]=ls; constelGroup.add(ls); });
+  })();
+  function revealCon(ci){                                                     // show just figure ci (all if planetarium mode); hide the rest
+    if(_showAllCon){ if(_revealedCon!==-1){ for(const l of conLines) if(l) l.visible=true; _revealedCon=-1; } return; }
+    if(ci===_revealedCon) return;
+    for(let i=0;i<conLines.length;i++){ if(conLines[i]) conLines[i].visible=(i===ci); }
+    _revealedCon=ci;
+  }
+  addEventListener('keydown', e=>{ if((e.key==='c'||e.key==='C') && !e.repeat && !e.metaKey && !e.ctrlKey){   // C = planetarium mode: reveal every figure at once
+    _showAllCon=!_showAllCon; _revealedCon=-2; if(!_showAllCon) for(const l of conLines) if(l) l.visible=false; } });
 
   // ---------- the sun disc — lives IN the star sphere (skyDome), so it sits among its true constellation ----------
   let sunSprite;
@@ -502,23 +526,35 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   const _aimFwd=new THREE.Vector3(), _aimDir=new THREE.Vector3();
   const _typeMark={star:'☀', planet:'●', moon:'◐', comet:'☄', 'ringed planet':'🪐'};
   let _aimKey='';
+  let _moving=false, _instant=false, _dwellKey='', _dwellStart=0;   // a 3s STILL gaze earns instant reveals (any body); moving/painting revokes it → must re-earn with another 3s gaze
   function updateAim(){
-    if(introActive){ aimLabel.style.opacity='0'; _aimKey=''; return; }         // no naming during the cold open
+    if(introActive){ aimLabel.style.opacity='0'; _aimKey=''; revealCon(-1); return; }   // no naming during the cold open
     camera.getWorldDirection(_aimFwd);
-    let best=null, bestDot=Math.cos(1.8*Math.PI/180);                          // ~1.8° aim cone around the reticle
+    const D2R=Math.PI/180; let bestDot=Math.cos(1.8*D2R), bestLabel=null, bestCi=-1;     // ~1.8° aim cone; bestCi = constellation to reveal (−1 = none)
     const scan=(o)=>{ if(!o||!o.userData||!o.userData.body||!o.visible) return;
       _aimDir.copy(o.position).normalize().applyQuaternion(skyDome.quaternion);
-      const dot=_aimDir.dot(_aimFwd); if(dot>bestDot){ bestDot=dot; best=o.userData.body; } };
+      const dot=_aimDir.dot(_aimFwd); if(dot>bestDot){ bestDot=dot; const b=o.userData.body;
+        bestLabel=(_typeMark[b.type]||'◆')+'  '+b.name.toUpperCase()+'   ·   '+b.type; bestCi=-1; } };
     scan(sunSprite);
     for(const g of [planetGroup,moonGroup,cometGroup]) for(const o of g.children) scan(o);
     if(window.__sky&&window.__sky.saturn_sky){                                 // Saturn itself (a world disc, not on the sky sphere) → aim by its true bearing
-      const s=window.__sky.saturn_sky, D=Math.PI/180, a=s.ra*D, dc=s.dec*D, cd=Math.cos(dc);
+      const s=window.__sky.saturn_sky, a=s.ra*D2R, dc=s.dec*D2R, cd=Math.cos(dc);
       _aimDir.set(cd*Math.cos(a),Math.sin(dc),cd*Math.sin(a)).applyQuaternion(skyDome.quaternion);
-      const dot=_aimDir.dot(_aimFwd); if(dot>bestDot){ bestDot=dot; best={name:'Saturn', type:'ringed planet'}; }
+      const dot=_aimDir.dot(_aimFwd); if(dot>bestDot){ bestDot=dot; bestLabel='🪐  SATURN   ·   ringed planet'; bestCi=-1; }
     }
-    if(best){ const key=best.type+'|'+best.name;
-      if(key!==_aimKey){ _aimKey=key;
-        aimLabel.textContent=(_typeMark[best.type]||'◆')+'  '+best.name.toUpperCase()+'   ·   '+best.type;
+    const C=window.GV_CONSTEL;                                                 // …and the constellation stars — point at one → summon its figure
+    if(C&&C.stars){ for(const st of C.stars){ const a=st[0]*D2R, d=st[1]*D2R, cd=Math.cos(d);
+      _aimDir.set(cd*Math.cos(a),Math.sin(d),cd*Math.sin(a)).applyQuaternion(skyDome.quaternion);
+      const dot=_aimDir.dot(_aimFwd); if(dot>bestDot){ bestDot=dot; const cn=C.con[st[2]].name;
+        bestLabel='✦  '+(st[3]?((''+st[3]).toUpperCase()+'   ·   '+cn):cn); bestCi=st[2]; } } }
+    if(bestLabel){                                                            // dwell gate on EVERY target (bodies + figures): hold your gaze 3s to reveal; a 3s STILL gaze then earns instant reveals until you move/paint
+      if(bestLabel!==_dwellKey){ _dwellKey=bestLabel; _dwellStart=performance.now(); }
+      const held = performance.now()-_dwellStart >= 3000;
+      if(held && !_moving) _instant=true;                                     // completed a 3s gaze while standing still → instant from now on
+      if(!_instant && !held){ bestLabel=null; bestCi=-1; }
+    } else { _dwellKey=''; }
+    revealCon(bestCi);                                                         // light up the pointed figure (or hide all)
+    if(bestLabel){ if(bestLabel!==_aimKey){ _aimKey=bestLabel; aimLabel.textContent=bestLabel;
         aimLabel.style.animation='none'; void aimLabel.offsetWidth; aimLabel.style.animation='gvAimStreak 3s ease-out'; }
       aimLabel.style.opacity='1';
     } else if(_aimKey){ _aimKey=''; aimLabel.style.opacity='0'; }
@@ -1737,6 +1773,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     camera.position.x += velX*dt; camera.position.z += velZ*dt;
     resolveWalls();                                       // solids block you (crystals stay permeable)
     const spd = Math.hypot(velX,velZ);
+    _moving = spraying || spd>0.06; if(_moving) _instant=false;   // walking/painting revokes instant mode → must re-earn it with a 3s still gaze
     bob += spd*dt*1.9;
     // --- vertical: gravity + jump; stand/slide on REAL surfaces (down-ray → true height + normal) ---
     const px=camera.position.x, pz=camera.position.z, feetY=camera.position.y-EYE;
