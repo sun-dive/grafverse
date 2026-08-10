@@ -2161,7 +2161,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     wall:     { base:'box',                             dims:{ w:2,   h:2.4, d:0.15 } },   // box thinned to a slab
     plane:    { base:'plane',                           dims:{ w:2,   d:2 } },
     cylinder: { base:'prism',   res:6,                  dims:{ r:0.7, h:1.6 } },           // column — hexagonal prism
-    cone:     { base:'pyramid', res:4,                  dims:{ r:0.7071, h:0.9 } },         // spire — EXACTLY the pyramid minus its 4 black-triangle corners: square base 1/√2 of the pyramid's, rotated 45°, same apex/height
+    cone:     { base:'pyramid', res:4,                  dims:{ r:0.9, h:1.7 } },            // spire — tall point; ORIGINAL size restored (was wrongly shrunk to r0.7071/h0.9, which miniaturised every saved spire on load). Only the 6→4 default sides was the intended change.
     pyramid:  { base:'pyramid', res:4, align:Math.PI/4, dims:{ r:1.0, h:0.9 } },           // square pyramid
     sphere:   { base:'ball',    res:40,                 dims:{ r:0.9 } },                  // ball — v1 lat/long (→ geodesic in v2)
   };
