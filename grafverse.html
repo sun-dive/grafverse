@@ -1300,6 +1300,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function anyWorld(){ for(let i=0;i<N_SLOTS;i++){ if(_slotFilled(_slotData(i))) return true; } return false; }
   function firstEmptySlot(){ for(let i=0;i<N_SLOTS;i++){ if(!_slotFilled(_slotData(i))) return i; } return -1; }
 
+  // ▶ Click to Begin (landing → ?go=new) → a BRAND-NEW world: switch to the first empty slot NOW, before the
+  //   intro/resume decision below reads the current slot — so the session starts fresh and never resumes the last
+  //   world (which stays safe in its own slot). All slots full → reuse the current one (the picker will handle that later).
+  try{ if(new URLSearchParams(location.search).get('go')==='new'){ const e=firstEmptySlot(); setCurSlot(e<0?curSlot:e); } }catch(e){}
+
   { const q=new URLSearchParams(location.search);
     const shared=q.has('w')||q.has('buy')||q.has('bundle')||q.has('acquire')||q.has('minted');
     let seen=false; try{ seen=localStorage.getItem('gv-intro-seen')==='1'; }catch(_){}
