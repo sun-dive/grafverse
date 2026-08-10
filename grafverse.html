@@ -995,10 +995,20 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   const _egGates=[];
   (function(){
-    const gA=makePleiadesGate(); gA.position.set(18.7,0,-162.3); gA.lookAt(0,6.5,0); scene.add(gA);   // Seven Sisters gate — on the spawn → monolith sight-line, ~163 m out
-    const gB=makeJumpGate(0.08); gB.position.set(40,0,1600); scene.add(gB);        // return gate by Wardenclyffe
-    _egGates.push({grp:gA, x:18.7, z:-162.3, dest:{x:0, z:1540, yaw:Math.PI, side:'far'}});   // behind the monolith → CROSSES to the sub-Saturn side (Saturn overhead, Wardenclyffe beside you)
-    _egGates.push({grp:gB, x:40, z:1600,  dest:{x:0, z:0, yaw:0, side:'near'}});   // → back to the DROID's SPAWN point (0,0,0), facing Unit 21 — Saturn drops beneath again
+    // The Unit 21 → Polaris run is a FIXED world line ∥ Saturn's axis — it never moves; Polaris just rides ~5.7° off it over the orbit.
+    // Both gates live on that one axis. Near: run down-axis (toward Polaris, behind the monolith) → Pleiades crossing. Far: you arrive
+    // FACING Wardenclyffe (the distant landmark AHEAD, anti-axis) with the return gate + Polaris at your BACK → going home mirrors the run in.
+    const AX=new THREE.Vector3(MACHINE_POS.x,0,MACHINE_POS.z).normalize();          // the fixed axis direction (points down-line toward Polaris)
+    const yawFace=Math.atan2(-AX.x,AX.z);                                           // face ANTI-axis (toward Unit 21 / the tower) → the landmark is ahead, the gate + Polaris behind you
+    const nGate=new THREE.Vector3(18.7,0,-162.3);                                   // near Seven Sisters gate — on the spawn → monolith (→Polaris) sight-line, ~163 m out
+    const gA=makePleiadesGate(); gA.position.copy(nGate); gA.lookAt(0,6.5,0); scene.add(gA);
+    const tower=new THREE.Vector3(0,0,1600);                                        // Wardenclyffe's far standing spot (matches setHemisphere)
+    const A=tower.clone().addScaledVector(AX,160);                                  // FAR arrival: 160u down-axis from the tower → tower is the distant landmark AHEAD (unchanged)
+    const gPos=A.clone().addScaledVector(AX,27);                                    // return gate: 27u directly BEHIND you toward Polaris (pulled in from 150 → mimics Unit 21 sitting just off the spawn; tower stays put)
+    const rA=nGate.clone().addScaledVector(AX,-8);                                  // NEAR return arrival: step 8u off the gate toward Unit 21 → you emerge FACING Unit 21 with the gate at your back
+    const gB=makeJumpGate(0.08); gB.position.set(gPos.x,0,gPos.z); gB.lookAt(A.x,0,A.z); scene.add(gB);   // hoop faces the run-line so you pass THROUGH it toward Polaris
+    _egGates.push({grp:gA, x:nGate.x, z:nGate.z, dest:{x:A.x, z:A.z, yaw:yawFace, side:'far'}});   // CROSSES to the sub-Saturn side, dropping you at the antipode looking at the tower
+    _egGates.push({grp:gB, x:gPos.x, z:gPos.z, dest:{x:rA.x, z:rA.z, yaw:yawFace, side:'near'}});  // RETURN → emerge at the near gate FACING Unit 21 in the distance, gate behind you
   })();
   let _gateCool=0, _nearEgGate=null, _egGateT=0;
   function checkGates(px,pz,spd,dt){
