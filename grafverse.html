@@ -509,7 +509,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const spr=new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, color:new THREE.Color(c.color||'#a7f0cf'),
         transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, fog:false, opacity:0.5 }));   // a soft green coma; too faint to notice unless you look — then the reticle names it
       spr.position.set(R*cd*Math.cos(a), R*Math.sin(d), R*cd*Math.sin(a));
-      spr.scale.setScalar(15); spr.renderOrder=17; spr.userData.body={name:c.name, type:'comet'};
+      spr.scale.setScalar(15); spr.renderOrder=17; spr.userData.body={name:c.name, type:'comet', sub:c.desig||'comet'};   // sub = full designation e.g. 10P/Tempel 2
       cometGroup.add(spr);
     }
   }
@@ -534,7 +534,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const scan=(o)=>{ if(!o||!o.userData||!o.userData.body||!o.visible) return;
       _aimDir.copy(o.position).normalize().applyQuaternion(skyDome.quaternion);
       const dot=_aimDir.dot(_aimFwd); if(dot>bestDot){ bestDot=dot; const b=o.userData.body;
-        bestLabel=(_typeMark[b.type]||'◆')+'  '+b.name.toUpperCase()+'   ·   '+b.type; bestCi=-1; } };
+        bestLabel=(_typeMark[b.type]||'◆')+'  '+b.name.toUpperCase()+'   ·   '+(b.sub||b.type); bestCi=-1; } };
     scan(sunSprite);
     for(const g of [planetGroup,moonGroup,cometGroup]) for(const o of g.children) scan(o);
     if(window.__sky&&window.__sky.saturn_sky){                                 // Saturn itself (a world disc, not on the sky sphere) → aim by its true bearing

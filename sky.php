@@ -165,13 +165,14 @@ function h_parse_comet($t){ if(!$t) return null; $L=explode("\n",$t);   // OBSER
         if(count($f)<8) return null; $mag=is_numeric($f[5])?(float)$f[5]:(is_numeric($f[6])?(float)$f[6]:99.0);
         return array('ra'=>(float)$f[3],'dec'=>(float)$f[4],'mag'=>round($mag,1),'dist_au'=>round((float)$f[7],3)); } }
     return null; }
+function h_target_name($t){ if($t && preg_match('/Target body name:\s*(.+?)\s+\{/',$t,$m)) return trim($m[1]); return null; }  // e.g. "10P/Tempel 2"
 function horizons_comets($COMETS){     // best-effort per comet (a failure just drops that one — they move slowly at ~8 AU, so daily is fine)
     $day=gmdate('Y-m-d');
     $base="https://ssd.jpl.nasa.gov/api/horizons.api?format=text&EPHEM_TYPE=%27OBSERVER%27&CENTER=%27@608%27&QUANTITIES=%271,9,20%27"
          ."&ANG_FORMAT=%27DEG%27&CSV_FORMAT=%27YES%27&START_TIME=%27$day%27&STOP_TIME=%27$day%2000:01%27&STEP_SIZE=%271%27";
     $out=array();
-    foreach($COMETS as $des=>$ci){ $c=h_parse_comet(h_fetch($base."&COMMAND=%27DES%3D".rawurlencode($des)."%3BCAP%3B%27"));
-        if($c){ $c['name']=$ci[0]; $c['color']=$ci[1]; $out[]=$c; } }
+    foreach($COMETS as $des=>$ci){ $raw=h_fetch($base."&COMMAND=%27DES%3D".rawurlencode($des)."%3BCAP%3B%27"); $c=h_parse_comet($raw);
+        if($c){ $c['name']=$ci[0]; $c['color']=$ci[1]; $dn=h_target_name($raw); $c['desig']=$dn?$dn:$des; $out[]=$c; } }
     return $out;
 }
 
@@ -192,7 +193,7 @@ $pole_eq = array(cos(deg2rad($SAT_POLE_DEC))*cos(deg2rad($SAT_POLE_RA)),
                  cos(deg2rad($SAT_POLE_DEC))*sin(deg2rad($SAT_POLE_RA)),
                  sin(deg2rad($SAT_POLE_DEC)));
 $Pn = vnorm(equ2ecl($pole_eq, $obl));                            // Saturn's north (ring-plane normal) in ecliptic — for the ring-opening angle
-$elemCache = __DIR__."/sky-elements-$today.json";
+$elemCache = __DIR__."/sky-elements-$today-".@filemtime(__FILE__).".json";   // mtime in the name → a code change / redeploy auto-busts the daily element cache
 $sys = is_file($elemCache) ? json_decode(file_get_contents($elemCache), true) : null;
 if($sys && !isset($sys['moons'])) $sys=null;                     // older cache format → refetch
 if(!$sys){ $m = horizons_moons($MOON_INFO);                      // once per UTC day: fetch + cache the Saturn system (+ comets)
