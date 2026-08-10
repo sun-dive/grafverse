@@ -19,8 +19,8 @@ if ($name === '' && $ok && is_file($dir . '/' . $id . '.name')) $name = substr(p
 $thing = ($type === 's') ? 'creation' : 'world';
 if ($name === '') $name = ($type === 's') ? 'A grafverse creation' : 'A grafverse world';
 if ($desc === '') $desc = ($type === 's')
-  ? 'A hand-painted 3D creation you can walk up to, remix, and own — made in grafverse with the Block Media Format (BMF). Owned, not claimed.'
-  : 'Walk it, paint it, remix it, own it — a hand-painted 3D world you explore free in your browser. Built with grafverse and the Block Media Format (BMF). Owned, not claimed.';
+  ? 'A hand-painted 3D creation you can walk up to, remix, and make your own — made in grafverse, a free first-person browser painting game.'
+  : 'Walk it, paint it, remix it, make it yours — a hand-painted 3D world you explore free in your browser, made in grafverse.';
 
 $origin = 'https://' . preg_replace('/[^a-z0-9.\-:]/i', '', ($_SERVER['HTTP_HOST'] ?? 'grafverse.com'));
 $url    = $origin . '/w.php?id=' . rawurlencode($id);
@@ -91,7 +91,7 @@ endif; ?>
 </style>
 </head><body>
 <main>
-  <div class="tag">grafverse · owned, not claimed</div>
+  <div class="tag">grafverse · a free browser painting game</div>
 <?php if ($ok && $hasImg): ?>
   <img class="shot" src="<?= $h($img) ?>" width="1200" height="630" alt="<?= $h($name) ?> — a hand-painted grafverse <?= $h($thing) ?>">
 <?php endif; ?>
@@ -99,12 +99,12 @@ endif; ?>
   <p class="lede"><?= $h($desc) ?></p>
 <?php if ($ok): ?>
   <a class="enter" href="<?= $h($game) ?>">▶ Enter this <?= $h($thing) ?></a>
-  <p class="hint">Free to explore in your browser — no install, no wallet. Paint on it, and what you paint is <b>yours</b>.</p>
+  <p class="hint">Free to explore in your browser — no install, no download. Paint on it, and what you paint is <b>yours</b>.</p>
 <?php else: ?>
   <p class="hint">This <?= $h($thing) ?> isn’t here — the link may be mistyped, or it expired (shares are kept for 12 months after their last view).</p>
   <a class="enter" href="/grafverse.html">Open grafverse</a>
 <?php endif; ?>
-  <div class="foot"><?= $h($ttl) ?> is a tiny <b>Block Media Format</b> (BMF) manifest — free models composite live in your browser, owned paint stays yours on-chain. <a href="/grafverse.html">Make your own →</a></div>
-  <div class="creed">in the covenant we trust</div>
+  <div class="foot"><?= $h($ttl) ?> made in <b>grafverse</b> — a hand-painted 3D scene you can walk into free in your browser, then paint and make your own. <a href="/grafverse.html">Make your own →</a></div>
+  <div class="creed">paint a moon to life</div>
 </main>
 </body></html>
