@@ -114,14 +114,19 @@
     color:#cfe0ff;font:600 12px system-ui;writing-mode:vertical-rl;letter-spacing:.14em;cursor:pointer;pointer-events:auto;}
   body.building #shapeTab{display:block;}
   body.shaping #shapeTab, body.keep #shapeTab{display:none;}
-  /* wide + 2 balanced columns so the tall tool stack halves in height (fits on screen); auto-collapses to 1 column on a phone. */
-  #shapePanel{position:fixed;right:-480px;top:50%;transform:translateY(-50%);width:min(440px,62vw);z-index:9;
+  #shapePanel{position:fixed;right:-260px;top:50%;transform:translateY(-50%);width:206px;max-height:90svh;overflow-y:auto;z-index:9;
     background:rgba(8,14,26,.94);border:1px solid rgba(120,170,255,.35);border-radius:14px 0 0 14px;border-right:none;
     padding:14px 12px;transition:right .22s ease;pointer-events:none;}
   body.shaping #shapePanel{right:0;pointer-events:auto;}
-  #shapeTools{columns:200px;column-gap:16px;}                                  /* 2 comfortable columns when wide, 1 when narrow — balanced to auto height */
-  #shapeTools > *{break-inside:avoid;}                                         /* keep each row/section whole across the column break */
-  #shapeTools > .srow, #shapeTools > .mkgrid{margin-bottom:7px;}               /* row spacing (multicol has no flex gap); mkhdr keeps its tight hug */
+  #shapeTools{display:flex;flex-direction:column;gap:7px;}
+  /* material picker = its OWN column, sliding out to the LEFT of the conjuring panel (only while choosing a material),
+     so the long list of finishes never grows the conjuring panel's height. */
+  #matPanel{position:fixed;right:-260px;top:50%;transform:translateY(-50%);width:190px;max-height:90svh;overflow-y:auto;z-index:9;
+    background:rgba(8,14,26,.94);border:1px solid rgba(120,170,255,.35);border-radius:14px 0 0 14px;border-right:none;
+    padding:12px 10px;transition:right .22s ease;pointer-events:none;}
+  body.shaping.matpick #matPanel{right:238px;pointer-events:auto;}            /* 238px = just left of the 206px+padding conjuring panel */
+  @media(max-width:520px){ body.shaping.matpick #matPanel{right:0;}           /* phone: no room side-by-side → the material column takes the edge, conjuring panel slides behind it */
+    body.shaping.matpick #shapePanel{right:-260px;pointer-events:none;} }
   .mkhdr{font:700 10px system-ui;letter-spacing:.2em;text-transform:uppercase;color:#7f95bb;text-align:center;margin:2px 0 -1px;}
   .mkgrid{display:flex;flex-wrap:wrap;gap:5px;justify-content:center;}
   .srow{display:flex;gap:6px;align-items:center;justify-content:center;}
@@ -314,6 +319,7 @@
 <div id="shapeTab">◆ make</div>
 <div id="undoBar"><div id="undoBtn" class="ubtn" title="Undo (Ctrl+Z)">↶</div><div id="redoBtn" class="ubtn" title="Redo (Ctrl+Shift+Z)">↷</div></div>
 <div id="shapePanel"><div id="shapeTools"></div></div>
+<div id="matPanel"></div><!-- material picker — its own column, slides out left of the conjuring panel only while choosing a finish -->
 <div id="keepTab">◆ keep</div>
 <div id="exitBtn" title="Leave game">⏻ Exit</div>
 <div id="exitAd">
@@ -2291,6 +2297,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function sbtn(txt,fn,cls){ const b=document.createElement('div'); b.className='sb'+(cls?' '+cls:''); b.textContent=txt; b.addEventListener('click',fn); return b; }
   function buildShapeTools(type){
     const box=document.getElementById('shapeTools'); box.innerHTML='';
+    const mp=document.getElementById('matPanel'); mp.innerHTML=''; document.body.classList.remove('matpick');   // material picker lives in its own left panel — rebuilt fresh below, hidden by default
     // --- MAKE: pick a shape to manifest ahead of you ---
     const mh=document.createElement('div'); mh.className='mkhdr'; mh.textContent='make'; box.appendChild(mh);
     const grid=document.createElement('div'); grid.className='mkgrid';
@@ -2377,14 +2384,16 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
         },'wide'));
         box.appendChild(gr);
       }
-      if(solidPickerOpen && activeShape){                                  // ◼ Solids → material picker (categorised swatch grid); click a swatch to apply
-        const grid=document.createElement('div'); grid.style.cssText='max-height:190px;overflow-y:auto;margin-top:2px;';
+      if(solidPickerOpen && activeShape && !activeShape.userData.crystal){   // ◼ Materials → the picker renders in its OWN left panel (#matPanel), never growing the conjuring panel
+        document.body.classList.add('matpick');
+        const mh2=document.createElement('div'); mh2.className='mkhdr'; mh2.textContent='material'; mp.appendChild(mh2);
+        const grid=document.createElement('div'); grid.style.cssText='margin-top:2px;';
         const cur=activeShape.userData.tex||0;
         const addCat=(label,entries)=>{
-          const lb=document.createElement('div'); lb.textContent=label; lb.style.cssText='font:700 10px system-ui;letter-spacing:.12em;color:#8fa6cc;margin:5px 0 3px;'; grid.appendChild(lb);
+          const lb=document.createElement('div'); lb.textContent=label; lb.style.cssText='font:700 10px system-ui;letter-spacing:.12em;color:#8fa6cc;margin:6px 0 3px;'; grid.appendChild(lb);
           const row=document.createElement('div'); row.style.cssText='display:flex;flex-wrap:wrap;gap:4px;';
           entries.forEach(([tx,m])=>{ const t=+tx, hx=(m.col!=null?m.col:0x2a3550), hs='#'+('000000'+(hx>>>0).toString(16)).slice(-6);
-            const sw=document.createElement('div'); sw.title=m.n; sw.style.cssText='width:20px;height:20px;border-radius:4px;cursor:pointer;background:'+hs+';border:2px solid '+(cur===t?'#fff':'rgba(255,255,255,.22)')+';';
+            const sw=document.createElement('div'); sw.title=m.n; sw.style.cssText='width:22px;height:22px;border-radius:4px;cursor:pointer;background:'+hs+';border:2px solid '+(cur===t?'#fff':'rgba(255,255,255,.22)')+';';
             sw.addEventListener('click',()=>{ applySolid(activeShape,t); buildShapeTools(activeShape.userData.type); });
             row.appendChild(sw); });
           grid.appendChild(row);
@@ -2393,7 +2402,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
         addCat('METAL',Object.entries(METALS));
         addCat('STONE',Object.entries(STONES));
         addCat('WOOD', Object.entries(WOODS));
-        box.appendChild(grid);
+        mp.appendChild(grid);
+        const dn=document.createElement('div'); dn.className='srow'; dn.style.marginTop='8px';
+        dn.appendChild(sbtn('✕ done', ()=>{ solidPickerOpen=false; if(activeShape) buildShapeTools(activeShape.userData.type); }, 'done')); mp.appendChild(dn);
       }
     }
     const close=document.createElement('div'); close.className='srow';
@@ -2403,7 +2414,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function openShape(){ shaping=true; document.body.classList.add('shaping'); buildShapeTools(activeShape?activeShape.userData.type:null);
     if(!MOBILE) document.exitPointerLock();               // free the cursor — you build by clicking
     showHint(MOBILE?'manifest — tap a shape to place it ahead · Grab to move · ✕ close to paint':'manifest — click the ground for a spot, then a shape · drag to look · click-hold to move · right-click to paint'); }
-  function closeShape(){ shaping=false; document.body.classList.remove('shaping');   // leave the editor → first-person PAINT mode
+  function closeShape(){ shaping=false; solidPickerOpen=false; document.body.classList.remove('shaping','matpick');   // leave the editor → first-person PAINT mode; also close the material picker
+    const _mp=document.getElementById('matPanel'); if(_mp) _mp.innerHTML='';
     activeShape=null; heldGhost=null; setMode(); placeMarker=null; if(placeRing) placeRing.visible=false;
     if(!MOBILE) el.requestPointerLock();
     if(hasCan) showHint(MOBILE?'aim + Spray to paint it solid':'aim + hold-click to paint · right-click to manifest'); }
