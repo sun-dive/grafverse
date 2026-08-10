@@ -944,6 +944,21 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     return grp;
   }
   const saturn=makeSaturn(); saturn.position.set(0,-4200,0); scene.add(saturn);   // BENEATH your feet — Unit 21 is the anti-Saturn point, so Saturn (over the sub-Saturn antipode) sits on the far side of the moon: seen straight DOWN through the void among the lower stars. Your paint covers the void → hides it; walk to clear ground to see it again.
+  // ── 🧭 WHEEL AXIS BEHIND THE MONOLITH — spin the drawn Saturn about vertical so its ring-plane normal (= Saturn's north pole,
+  //    which anchorSky maps the whole star sphere onto) points along the spawn→monolith sight-line. Saturn's pole is built at the
+  //    HORIZON (⟂ straight-down), so this puts the celestial pole — and Polaris, 5.7° off it — low behind Unit 21. As Iapetus
+  //    orbits (79 d), the live ephemeris sweeps Saturn's direction 360° around that pole → the fixed stars wheel around it and
+  //    Polaris rises & sets over the horizon. Azimuth only (ring-opening/phase untouched); moons stay strung along the rings. ──
+  (function aimPoleAtMonolith(){
+    const ring=saturn.userData.ring; if(!ring) return;
+    saturn.updateWorldMatrix(true,false);
+    const RN=new THREE.Vector3(0,0,1).applyQuaternion(ring.getWorldQuaternion(new THREE.Quaternion()));
+    const rnH=new THREE.Vector3(RN.x,0,RN.z); if(rnH.lengthSq()<1e-6) return;            // horizontal projection of the ring normal
+    const d=new THREE.Vector3(MACHINE_POS.x,0,MACHINE_POS.z);                            // spawn→monolith bearing (pole sits BEHIND it)
+    const dyaw=Math.atan2(d.x,d.z)-Math.atan2(rnH.x,rnH.z);                              // yaw about world-Y to line the ring normal up with the monolith
+    saturn.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),dyaw));
+    saturn.updateWorldMatrix(true,false);
+  })();
   const _satSunTmp=new THREE.Vector3();   // reused each frame for Saturn's world sun-direction (feeds the terminator shader)
 
   // ── 🌀 JUMP GATES (Easter egg) — Tesla-ether rings, FIXED stage furniture like Wardenclyffe/Saturn (added straight to `scene`, NEVER bShapes) so they can't touch the serialize/mint path. ──
