@@ -1373,7 +1373,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   });
   function setColor(i){ colorIdx=i; [...swWrap.children].forEach((s,k)=>s.classList.toggle('on',k===i));
     meterFill.style.background='#'+COLORS[i].toString(16).padStart(6,'0'); refreshHeldCan(); }
-  function showHint(t){ hint.textContent=t; hint.style.opacity = t?1:0; }
+  let _hintKey=null, _hintKeyM=null;                                        // remember a translated hint's KEY so it re-renders once the async language pack loads
+  function showHint(txt){ _hintKey=null; hint.textContent=txt; hint.style.opacity = txt?1:0; }
+  function hintI18n(key, keyM){ showHint(t(MOBILE?(keyM||key):key)); _hintKey=key; _hintKeyM=keyM||key; }
 
   // ── reliable share-link popup ── the auto-copy after an await burns the user-gesture (clipboard denied),
   //    and a toast isn't selectable. This gives a copyable field + a real Copy button (fresh gesture works),
@@ -1503,14 +1505,14 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       $('splash').classList.add('hidden');
       reticle.style.opacity=1;
       if(_resumeOnStart) unlockBuild(true);   // returned from the wallet → resume the world, skip the intro
-      showHint(MOBILE ? t('hintMoveM') : t('hintMove'));
+      hintI18n('hintMove','hintMoveM');
     }
   }
   function _dropIntoWorld(){                   // a ?w= shared link → land STRAIGHT in the world (no splash tap). The "Enter" click on the OG page is lost on navigation, so audio + pointer-lock still need one gesture on desktop — but there's no separate splash step.
     const sp=$('splash'); if(sp) sp.classList.add('hidden');   // reveal the (already-composited) world
     reticle.style.opacity=1; unlockBuild(true);                // visitor is build-ready (walk free · paint if they like)
     if(MOBILE){ begin(); }                                     // mobile: full control now — no pointer-lock; audio arms on first touch
-    else if(firstStart){ firstStart=false; showHint(t('hintClick')); }   // desktop: world's live; first click grabs the mouse + starts audio
+    else if(firstStart){ firstStart=false; hintI18n('hintClick'); }   // desktop: world's live; first click grabs the mouse + starts audio
   }
 
   // ---------- dialogue (typewriter) ----------
@@ -1707,6 +1709,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     setSel('#exitAd .adtag','merchTag'); setSel('#exitAd h2','merchH'); setSel('#exitAd .adsub','merchSub'); setSel('#exitAd .adteaser','merchTeaser');   // merch ad
     setId('adShop','merchCta'); setId('adContinue','merchSkip');
     try{ if(typeof _updateSpreadChip==='function') _updateSpreadChip(); }catch(_){}   // ◍ spread N
+    if(_hintKey && hint && parseFloat(hint.style.opacity||0)>0) hintI18n(_hintKey, _hintKeyM);   // re-render a live translated hint now the pack's loaded
   }
   const _langTried={en:true};
   function loadLang(code, done){
@@ -2176,9 +2179,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     }
     if(MOBILE){
       const tb=$('talkBtn'); tb.style.display=(nearMachine||talking)?'block':'none'; tb.textContent=talking?'Leave':'Talk';
-      if(nearMachine && !talking) showHint(t('hintTalkM'));
+      if(nearMachine && !talking) hintI18n('hintTalkM');
       else if(!talking && md>12 && dlg.style.opacity!=='0') dlg.style.opacity=0;
-    } else if(nearMachine && !talking){ showHint(t('hintTalk')); }
+    } else if(nearMachine && !talking){ hintI18n('hintTalk'); }
     else if(!talking && md > 12 && dlg.style.opacity!=='0'){ dlg.style.opacity=0; }
   }
 
@@ -2445,7 +2448,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const _mp=document.getElementById('matPanel'); if(_mp) _mp.innerHTML='';
     activeShape=null; heldGhost=null; setMode(); placeMarker=null; if(placeRing) placeRing.visible=false;
     if(!MOBILE) el.requestPointerLock();
-    if(hasCan) showHint(MOBILE?t('hintPaintM'):t('hintPaint')); }
+    if(hasCan) hintI18n('hintPaint','hintPaintM'); }
   addEventListener('keydown', e=>{ if(e.code==='KeyE' && buildUnlocked && !talking && !keepOpen){ e.preventDefault(); shaping?closeShape():openShape(); } });
   addEventListener('keydown', e=>{ if(e.code==='Enter' && shaping && !talking){ e.preventDefault(); closeShape(); } });
   document.getElementById('shapeTab').addEventListener('click', openShape);
@@ -3520,7 +3523,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(introActive){                                          // brand-new player → let the cold-open run, minus the splash tap
       const sp=$('splash'); if(sp) sp.classList.add('hidden');
       reticle.style.opacity=1;
-      if(MOBILE) begin(); else if(firstStart){ firstStart=false; showHint(t('hintClick')); }   // desktop: world's live; first click grabs the mouse (same as a shared link)
+      if(MOBILE) begin(); else if(firstStart){ firstStart=false; hintI18n('hintClick'); }   // desktop: world's live; first click grabs the mouse (same as a shared link)
     } else {                                                  // returning / intro-seen → straight into the world, same path as a shared ?w= link
       _dropIntoWorld();
       if(p.get('go')==='resume'){ try{ scatterInventory(_pastInv); }catch(e){} }   // ▶ Resume also re-strews the droid's past cans (matches the in-game Resume)
