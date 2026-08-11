@@ -194,9 +194,16 @@
   if(sel){ sel.value = init; if(sel.value !== init) sel.value = 'en'; sel.addEventListener('change', function(){ setLang(sel.value); }); }
   setLang(sel ? sel.value : 'en');
 
-  // Resume last world — same-origin localStorage, so we can tell if this browser has a saved world and offer a one-tap return
-  try{ var d = JSON.parse(localStorage.getItem('grafverse-world-v1') || 'null');
-    if(d && ((d.shapes && d.shapes.length) || (d.ground && d.ground.length))) resumeEl.style.display = 'inline-flex';
+  // ↩ Resume last world — read the world store's INDEX (grafverse-index, written by gv-store.js): a tiny synchronous
+  // mirror listing every world that has content, newest first. Reading it here means Resume appears whenever you have
+  // ANY world to come back to. (It used to check only the old slot-0 key `grafverse-world-v1`, so a player whose
+  // worlds lived anywhere else was offered no way back.) Legacy key kept as a fallback for pre-store browsers.
+  try{
+    var ix = JSON.parse(localStorage.getItem('grafverse-index') || 'null');
+    var has = Array.isArray(ix) && ix.length > 0;
+    if(!has){ var d = JSON.parse(localStorage.getItem('grafverse-world-v1') || 'null');
+      has = !!(d && ((d.shapes && d.shapes.length) || (d.ground && d.ground.length))); }
+    if(has) resumeEl.style.display = 'inline-flex';
   }catch(e){}
 })();
 </script>

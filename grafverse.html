@@ -385,12 +385,23 @@ window.__gvLand = (function(){ var t0 = Date.now(), done = false; return functio
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 <script src="bmf-codec.js"></script>
+<script src="gv-store.js"></script><!-- world store: IndexedDB worlds/covers/player + the sync localStorage index (window.GVStore) -->
 <script src="stars.js"></script><!-- real star catalog: window.GV_STARS (Yale Bright Star Catalog, 9096 stars) -->
 <script src="constellations.js"></script><!-- constellation figures + names: window.GV_CONSTEL (d3-celestial, MIT) -->
 
 <script type="module">
 import * as THREE from 'three';
 window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE references working
+
+/* World store ready BEFORE the game runs: builds the sync index (migrating the old 9 slots on first boot) and
+   preloads the current world + player state, so the game's own loadWorld() / inventory reads stay SYNCHRONOUS.
+   boot() never rejects and self-limits, so a wedged IndexedDB can't stop the game starting.
+   The entry intent (?go=new / ?go=resume) is resolved HERE, in one place, against the index — see resolveIntent(). */
+if(window.GVStore){ try{
+  let _intent=null; try{ _intent=new URLSearchParams(location.search).get('go'); }catch(_){}
+  await window.GVStore.boot({ intent:_intent });
+}catch(e){} }
+
 (function(){
   "use strict";
   if(!window.THREE){ document.getElementById('tag2').textContent = "⚠ three.js module failed to load (serve over http, not file://)."; return; }
@@ -1289,29 +1300,19 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   monolith=makeMonolith(); monolith.visible=false; scene.add(monolith);
 
-  // ── WORLD SLOTS — a small fixed library of named worlds. Slot 0 keeps the ORIGINAL key (grafverse-world-v1) so
-  //    existing data is untouched; slots 1..8 get their own keys. SAVE_KEY tracks the CURRENT slot (default 0), so
-  //    with no switching the game behaves exactly as before. The New / Resume / import flows move the current slot. ──
-  const N_SLOTS=9;
-  const slotKey=n=> n===0 ? 'grafverse-world-v1' : 'grafverse-world-s'+n;
-  let curSlot=(function(){ try{ const c=parseInt(localStorage.getItem('grafverse-cur'),10); return (c>=0 && c<N_SLOTS)?c:0; }catch(e){ return 0; } })();
-  let SAVE_KEY=slotKey(curSlot);
-  function setCurSlot(n){ curSlot=Math.max(0,Math.min(N_SLOTS-1,n|0)); SAVE_KEY=slotKey(curSlot); try{ localStorage.setItem('grafverse-cur', String(curSlot)); }catch(e){} }
-  function _slotData(n){ try{ return JSON.parse(localStorage.getItem(slotKey(n))||'null'); }catch(e){ return null; } }
-  function _slotFilled(d){ return !!(d && ((d.shapes&&d.shapes.length)||(d.ground&&d.ground.length))); }
-  function slotMeta(n){ const d=_slotData(n); return { n:n, empty:!_slotFilled(d), name:(d&&d.name)||'', updated:(d&&d.updated)||0 }; }
-  function anyWorld(){ for(let i=0;i<N_SLOTS;i++){ if(_slotFilled(_slotData(i))) return true; } return false; }
-  function firstEmptySlot(){ for(let i=0;i<N_SLOTS;i++){ if(!_slotFilled(_slotData(i))) return i; } return -1; }
+  // ── WORLDS — an unbounded library, each world a record in IndexedDB under its own id (gv-store.js). The old fixed
+  //    9 slots were migrated to ids on first boot; their localStorage keys are copied, never deleted. Reads that must
+  //    happen before anything paints go through the store's synchronous localStorage index, never through IndexedDB. ──
+  const hasStore = !!window.GVStore;
+  function curWorldHasContent(){ return hasStore ? GVStore.currentHasContent() : false; }
 
-  // ▶ Click to Begin (landing → ?go=new) → a BRAND-NEW world: switch to the first empty slot NOW, before the
-  //   intro/resume decision below reads the current slot — so the session starts fresh and never resumes the last
-  //   world (which stays safe in its own slot). All slots full → reuse the current one (the picker will handle that later).
-  try{ if(new URLSearchParams(location.search).get('go')==='new'){ const e=firstEmptySlot(); setCurSlot(e<0?curSlot:e); } }catch(e){}
+  //    Which world is open was already decided by GVStore.boot({intent}) before this module ran — ▶ Begin opens a
+  //    fresh one, ↩ Resume falls back to your latest world WITH CONTENT. Nothing here may move that pointer.
 
   { const q=new URLSearchParams(location.search);
     const shared=q.has('w')||q.has('buy')||q.has('bundle')||q.has('acquire')||q.has('minted');
     let seen=false; try{ seen=localStorage.getItem('gv-intro-seen')==='1'; }catch(_){}
-    let hasWorld=false; try{ const _d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null'); hasWorld=!!(_d && ((_d.shapes&&_d.shapes.length)||(_d.ground&&_d.ground.length))); }catch(_){}   // a RETURNING player (current slot has a saved world) NEVER replays the cold open
+    const hasWorld=curWorldHasContent();   // a RETURNING player (the open world has content) NEVER replays the cold open
     const forceIntro=q.has('intro') || q.get('go')==='new';  // ?intro (testing) OR ▶ Click to Begin → ALWAYS the clean cold open, ignoring gv-intro-seen (shared computers / cafés: every fresh start earns the full void→reveal, never a pre-populated scene)
     if(forceIntro || (!shared && !seen && !hasWorld)){ introActive=true; if(machine) machine.visible=false; monolith.visible=true;
       if(manifestTool) manifestTool.visible=false; if(mtRing) mtRing.visible=false;
@@ -1383,6 +1384,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function _hintF(tpl, m){ var s=_hintTr(tpl); if(m) for(var k in m) s=s.split('{'+k+'}').join(m[k]); return s; }   // translate an english template, then fill {slots}
   function showHint(txt){ _hintKey=null; hint.textContent=_hintTr(txt); hint.style.opacity = txt?1:0; }
   function hintI18n(key, keyM){ showHint(t(MOBILE?(keyM||key):key)); _hintKey=key; _hintKeyM=keyM||key; }
+  // A storage failure must NEVER be silent — the old save swallowed every error, so a full quota meant a player
+  // kept painting and lost the lot on reload. Surface it the moment it happens.
+  if(window.GVStore) GVStore.onError=(kind, msg)=>{ showHint('⚠ '+(msg||'storage problem')+(kind==='save'?' — your world may not be saved':'')); };
 
   // ── reliable share-link popup ── the auto-copy after an await burns the user-gesture (clipboard denied),
   //    and a toast isn't selectable. This gives a copyable field + a real Copy button (fresh gesture works),
@@ -1462,9 +1466,13 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   const invEl=$('inv');
   // ── the droid's inventory persists across sessions. A NEW droid (Begin) starts empty; on RESUME its PAST cans lie strewn
   //    across the world to re-scavenge — until it dawns on the droid they were its own. (Read the snapshot BEFORE this session overwrites it.) ──
-  const INV_KEY='grafverse-inv-v1';
-  let _pastInv=[]; try{ _pastInv=JSON.parse(localStorage.getItem(INV_KEY)||'[]')||[]; }catch(_){ _pastInv=[]; }
-  function saveInv(){ try{ localStorage.setItem(INV_KEY, JSON.stringify(inv.map(c=>({ci:c.ci,amt:Math.round(c.amt)})))); }catch(_){} }
+  //    The inventory is PLAYER state, not world state: it lives in the store's `player` tier and travels with you
+  //    between worlds. Never fold it into a world record — a world is a place, the player is who walks into it.
+  const INV_KEY='grafverse-inv-v1';                                        // legacy key — read once by the store, left in place
+  let _pastInv=[];
+  try{ _pastInv = (window.GVStore && GVStore.player('inventory')) || JSON.parse(localStorage.getItem(INV_KEY)||'[]') || []; }catch(_){ _pastInv=[]; }
+  function saveInv(){ const v=inv.map(c=>({ci:c.ci,amt:Math.round(c.amt)}));
+    if(window.GVStore) GVStore.setPlayer('inventory', v); else { try{ localStorage.setItem(INV_KEY, JSON.stringify(v)); }catch(_){} } }
   addEventListener('pagehide', saveInv); document.addEventListener('visibilitychange', ()=>{ if(document.hidden) saveInv(); });   // capture the ending inventory
   let scatterCans=[];
   function scatterInventory(items){                                        // strew last session's cans around Unit 21 as re-scavengeable pickups
@@ -1809,7 +1817,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     setLang(init, false);   // apply saved/detected language on load (loads its pack if present; else stays English)
   }
   function keysOf(Q){ return Q.needs ? (Array.isArray(Q.needs)?Q.needs:[Q.needs]) : []; }
-  const _returning = (function(){ try{ const d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null'); return !!(d && ((d.shapes&&d.shapes.length)||(d.ground&&d.ground.length))); }catch(_){ return false; } })();   // a saved collection existed at load → a RESUMING player
+  const _returning = curWorldHasContent();   // the open world had content at load → a RESUMING player
   function isDeepOpen(){ return _returning || bShapes.length>=4 || groundStrokes.length>=12 || spent>=333; }   // the DEEPEST questions (lore + "why do I paint") — earned by painting a LOT and/or having saved a world
   function hasMade(){ return bShapes.some(function(m){ return m.userData.painted && !m.userData.crystal; }); }   // conjured + PAINTED at least one solid → the how-to chips open here (lighter than the deep gate)
   function chipVisible(Q){ const ns=keysOf(Q);
@@ -2562,7 +2570,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   { const eb=$('exitBtn'); if(eb){ eb.addEventListener('click', exitGame); eb.addEventListener('touchstart', e=>{ e.preventDefault(); e.stopPropagation(); exitGame(); }, {passive:false}); }
     const ac=$('adContinue'); if(ac) ac.addEventListener('click', _exitToSplash); }
   document.getElementById('kSave').addEventListener('click', saveToServer);   // ☁ Save = persist to the server (updatable + shareable link). Local working state still auto-saves; .bmf export is the LOCAL file save.
-  document.getElementById('kReload').addEventListener('click', ()=>{ saveWorld(); location.reload(); });
+  document.getElementById('kReload').addEventListener('click', async ()=>{ await saveWorld(); location.reload(); });   // await: the reload must not outrun the write
   // ── immortalize: pack the world (binary BMF) → hand off to the wallet to mint (the key never touches the game) ──
   const HANDOFF_URL = 'handoff.php';   // same-origin bridge: POST packed bytes → { id }
   const WORLD_URL   = 'world.php';     // persistent public store for shared FREE worlds → grafverse.com/?w=<id>
@@ -2694,8 +2702,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   document.getElementById('kMint').addEventListener('click', async ()=>{
     if(!window.BMF){ _kNote().textContent='Codec missing (bmf-codec.js didn’t load).'; return; }
-    saveWorld();
-    const plan = worldBundlePlan();                                          // each NEW paint LAYER → its own atom to mint; owned layers → referenced; free geometry → inline
+    await saveWorld();                                                       // await: this handler navigates to the wallet
+    const plan = worldBundlePlan();                                        // each NEW paint LAYER → its own atom to mint; owned layers → referenced; free geometry → inline
     if(!plan.toMint.length && !plan.members.length && !plan.freeShapes.length){ _kNote().textContent='Paint something first — there’s nothing to immortalize yet.'; return; }
     const pkg = { v:1, ground:plan.ground, prov:plan.prov, members:plan.members, freeShapes:plan.freeShapes,   // off-chain handoff bridge — JSON is fine here (never on chain)
       toMint: plan.toMint.map(a=>({ i:a.i, b64: bytesToB64(a.bytes) })) };
@@ -3298,7 +3306,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       else m.scale.copy(t); } }
 
   // ---------- world storage & recall (strokes → localStorage; the WORLD persists, the droid wakes fresh) ----------
-  // SAVE_KEY + the world-slot system are defined up top (SAVE_KEY tracks the current slot).
+  // The world store (window.GVStore, gv-store.js) is booted before this module runs; the open world is defined up top.
   // ── engine shape → the frozen BMF-SOLID record (docs/BMF-SOLID-SPEC.md) — mint-time conversion ──
   // The 3-axis editor scale collapses to a UNIFORM size + proportion RATIOS; the object is ONE owned paint unit.
   const PRESET_ID = { box:122, wall:122, plane:123, cylinder:119, cone:120, pyramid:120, sphere:121 };
@@ -3481,11 +3489,31 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const shapes=[]; for(const m of bShapes){ const rec=shapeToSave(m); if(rec) shapes.push(rec); }
     return { v:2, ground:groundStrokes, shapes, prov:_provenance, name:worldName||undefined, updated:Date.now() };
   }
-  function saveWorld(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(serializeWorld())); }catch(e){} recordHistory(); }
-  let _saveT=null;
-  function scheduleSave(){ if(_saveT) clearTimeout(_saveT); _saveT=setTimeout(saveWorld, 1200); }
-  addEventListener('beforeunload', saveWorld);
-  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) saveWorld(); });
+  // ── SAVE — the record + the store's index update land synchronously; only the IndexedDB write is async, so no
+  //    call site needs to await and nothing blocks a frame mid-paint. `measure` does a full stringify to record the
+  //    world's size for the library card — exit-save only, never on the hot path. ──
+  let _saveT=null, _dirty=false;                                           // declared before saveWorld() — it clears the flag
+  function saveWorld(opts){
+    _dirty=false;
+    const rec=serializeWorld();
+    let p=Promise.resolve(true);
+    if(window.GVStore) p=GVStore.save(rec, opts);
+    else { try{ localStorage.setItem('grafverse-world-v1', JSON.stringify(rec)); }catch(e){} }   // store missing → the original key, so a world is never lost
+    recordHistory();
+    return p;   // callers that then RELOAD or NAVIGATE must await this — an async write loses its race with a page change
+  }
+  function flushSave(){ saveWorld({measure:true}); saveInv(); }             // leaving: persist + measure for the shelf
+  // ── CONTINUOUS PERSISTENCE — the world keeps itself written to storage; nothing depends on a clean exit. ──
+  //    Every commit marks the world dirty and writes on a short debounce; a heartbeat then guarantees a dirty world
+  //    is written even when NO exit event ever fires — a crashed tab, a killed browser, a phone reclaiming memory.
+  //    Exit saves are a last flush, not the thing we rely on.
+  function scheduleSave(){ _dirty=true; if(_saveT) clearTimeout(_saveT); _saveT=setTimeout(saveWorld, 400); }
+  setInterval(()=>{ if(_dirty && !introActive) saveWorld(); }, 5000);       // heartbeat: crash-safety for committed work
+  // visibilitychange→hidden is the PRIMARY exit save — it fires reliably, including when mobile backgrounds the tab.
+  // beforeunload/pagehide stay as a best-effort second attempt (an IndexedDB write started as the page dies may not land).
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) flushSave(); });
+  addEventListener('pagehide', flushSave);
+  addEventListener('beforeunload', flushSave);
   function addShapeFromData(sd){                                            // rebuild one committed shape (used by load AND undo)
     const m=ghostMesh(sd.t, sd.seed);
     m.position.set(sd.p[0],sd.p[1],sd.p[2]);
@@ -3517,8 +3545,10 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     }
     scene.add(m); bShapes.push(m); return m;
   }
-  function loadWorld(){
-    let data; try{ data=JSON.parse(localStorage.getItem(SAVE_KEY)||'null'); }catch(e){ data=null; }
+  function loadWorld(){                                                // SYNC — the store preloaded the open world during boot()
+    let data=null;
+    if(window.GVStore) data=GVStore.current();
+    else { try{ data=JSON.parse(localStorage.getItem('grafverse-world-v1')||'null'); }catch(e){ data=null; } }
     if(!data) return;
     _adoptWorldName(data.name||'');                                    // restore the world's name across reloads
     _provenance=Array.isArray(data.prov)?data.prov:[];                 // restore fork lineage across reloads
@@ -3555,7 +3585,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   loadWorld(); recordHistory();
   // ── Resume last world — if a local save exists, offer a one-tap return on the splash that SKIPS the intro (loadWorld already put the world in the scene) ──
   (function(){
-    let has=false; try{ const d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null'); has=!!(d && ((d.shapes&&d.shapes.length)||(d.ground&&d.ground.length))); }catch(e){}
+    const has=curWorldHasContent();
     const btn=$('resumeBtn'); if(!has || !btn) return;
     btn.style.display='';
     btn.addEventListener('click', e=>{ e.stopPropagation();   // don't also fire the splash's plain "begin"
@@ -3580,6 +3610,10 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       if(p.get('go')==='resume'){ try{ scatterInventory(_pastInv); }catch(e){} }   // ▶ Resume also re-strews the droid's past cans (matches the in-game Resume)
     }
     if(window.__gvLand) window.__gvLand();                     // world's ready → the fall lands (impact + dissolve) into it
+    // ?go is now CONSUMED — strip it, like every other one-shot param here (?minted / ?bought / ?resume / ?w).
+    // Leaving it in the URL made a plain browser REFRESH re-run "start a new world" and strand the world you'd
+    // just painted; a refresh must always put you back exactly where you were.
+    try{ history.replaceState(null,'',location.pathname); }catch(_){}
   })();
   function _welcomeBack(){                                    // returned from the wallet → present the splash as a one-tap RESUME (skip the intro)
     _resumeOnStart=true;
