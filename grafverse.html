@@ -1680,7 +1680,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       hintMove:"WASD to move  ·  Space to jump  ·  move mouse to look", hintMoveM:"left stick to move  ·  drag anywhere to look", hintClick:"Click to look around  ·  WASD to move  ·  Space to jump",
       hintTalk:"Press T to talk", hintTalkM:"Tap Talk to chat", hintPaint:"Aim + hold-click to paint  ·  right-click to make", hintPaintM:"Aim + Spray to paint it solid",
       hdrMake:"make", hdrShape:"shape", hdrColour:"colour", hdrMaterial:"material", catPlain:"PLAIN", catMetal:"METAL", catStone:"STONE", catWood:"WOOD",
-      btnSolidify:"◼ Solidify", btnCrystalize:"◆ Crystalize", btnMaterials:"◼ Materials", btnReset:"⎌ reset", btnClone:"⧉ clone", btnDelete:"🗑 delete", btnBob:"↕ bob", btnRotate:"↻ rotate", btnClose:"✕ close", btnDone:"✕ done" } };
+      btnSolidify:"◼ Solidify", btnCrystalize:"◆ Crystalize", btnMaterials:"◼ Materials", btnReset:"⎌ reset", btnClone:"⧉ clone", btnDelete:"🗑 delete", btnBob:"↕ bob", btnRotate:"↻ rotate", btnClose:"✕ close", btnDone:"✕ done", u21Hello:"Hello young gentlebot, what can I do you for today sir?" } };
   window.GV.registerLang = function(code, pack){ GV_LANG[code] = pack || {}; };   // a lang-<code>.js file calls GV.registerLang('ja', {...})
   let LANG='en', GV_UI={};
   function t(k){ return (GV_UI && GV_UI[k]!=null) ? GV_UI[k] : ((GV_LANG.en.ui && GV_LANG.en.ui[k]!=null) ? GV_LANG.en.ui[k] : k); }   // UI string lookup (step 3 fills each pack's ui{})
@@ -2175,7 +2175,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     nearMachine = !introActive && md < 7;
     if(!greeted && !introActive && md < 7 && performance.now()>=_morseUntil){       // Unit 21 waits until the droid's Morse has fully finished
       greeted=true;
-      speak("Hello young gentlebot, what can I do you for today sir?", MOBILE ? "▸ Tap Talk to chat with me." : "▸ Press T to talk to me.");
+      speak(t('u21Hello'), '▸ '+(MOBILE ? t('hintTalkM') : t('hintTalk')));
     }
     if(MOBILE){
       const tb=$('talkBtn'); tb.style.display=(nearMachine||talking)?'block':'none'; tb.textContent=talking?'Leave':'Talk';
