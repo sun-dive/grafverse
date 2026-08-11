@@ -1277,6 +1277,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     try{ localStorage.setItem('gv-intro-seen','1'); }catch(_){}
     try{ const _dur=speakMorseDroid('OMG ITS FULL OF PAINT',40)||0; _morseUntil=performance.now()+_dur*1000+250; }catch(_){}   // the droid's TWO-TONE Morse ONLY — no English text; Unit 21 stays silent until it finishes
     if(wardenTower) wardenTower.visible=true; if(_egGates) _egGates.forEach(G=>{ G.grp.visible=true; });                        // the gates + Wardenclyffe MANIFEST as the world wakes
+    if(carbonDisk) carbonDisk.visible=true;                                                                        // the solid carbon moon materialises below as the world wakes (near/diamond side)
     // the conjuring item materializes BEHIND the droid — turn around and it's there
     const _bx=Math.sin(yaw), _bz=Math.cos(yaw), _tx=camera.position.x+_bx*3.6, _tz=camera.position.z+_bz*3.6;
     toolHome.set(_tx,0.7,_tz); _toolReady=true;
@@ -1315,6 +1316,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       if(canPickup) canPickup.visible=false; if(ring) ring.visible=false;                 // pure void: no cans in sight —
       if(scavCan) scavCan.visible=false; if(scavRing) scavRing.visible=false;             // only the monolith and its one beacon
       if(wardenTower) wardenTower.visible=false; if(_egGates) _egGates.forEach(G=>G.grp.visible=false);   // gates + tower hidden ONLY during the cold open; they MANIFEST at the reveal (and default-show for returning players)
+      if(carbonDisk) carbonDisk.visible=false;               // the solid carbon moon below is HIDDEN in the void — it materialises at the reveal (the moon isn't solid yet)
       startBeacon(); }   // cold open: the conjuring item + the paint cans all arrive at the reveal
   }
 
