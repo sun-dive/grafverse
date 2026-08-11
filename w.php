@@ -22,7 +22,7 @@ if ($desc === '') $desc = ($type === 's')
   ? 'A hand-painted 3D creation you can walk up to, remix, and make your own — made in grafverse, a free first-person browser painting game.'
   : 'Walk it, paint it, remix it, make it yours — a hand-painted 3D world you explore free in your browser, made in grafverse.';
 
-$origin = 'https://' . preg_replace('/[^a-z0-9.\-:]/i', '', ($_SERVER['HTTP_HOST'] ?? 'grafverse.com'));
+$origin = 'https://grafverse.com';   // FIXED canonical host — consolidate link equity to one domain (matches the JSON-LD @id) even when the same world is served on grafspace.com / www.
 $url    = $origin . '/w.php?id=' . rawurlencode($id);
 $game   = '/grafverse.html?w=' . rawurlencode($id);   // the game now lives at /grafverse.html (root = splash)
 $jpg    = $ok ? ($dir . '/' . $id . '.jpg') : '';
@@ -40,13 +40,16 @@ $h = function ($s) { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); };
 <title><?= $h($name) ?> — grafverse</title>
 <meta name="description" content="<?= $h($desc) ?>">
 <link rel="canonical" href="<?= $h($url) ?>">
+<meta name="robots" content="<?= $ok ? 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1' : 'noindex,follow' ?>">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="grafverse">
+<meta property="og:locale" content="en_US">
 <meta property="og:title" content="<?= $h($name) ?> — a grafverse <?= $h($thing) ?>">
 <meta property="og:description" content="<?= $h($desc) ?>">
 <meta property="og:image" content="<?= $h($img) ?>">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="<?= $h($name) ?> — a hand-painted grafverse <?= $h($thing) ?>">
 <meta property="og:url" content="<?= $h($url) ?>">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="<?= $h($name) ?> — a grafverse <?= $h($thing) ?>">
