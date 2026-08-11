@@ -1309,7 +1309,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const shared=q.has('w')||q.has('buy')||q.has('bundle')||q.has('acquire')||q.has('minted');
     let seen=false; try{ seen=localStorage.getItem('gv-intro-seen')==='1'; }catch(_){}
     let hasWorld=false; try{ const _d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null'); hasWorld=!!(_d && ((_d.shapes&&_d.shapes.length)||(_d.ground&&_d.ground.length))); }catch(_){}   // a RETURNING player (current slot has a saved world) NEVER replays the cold open
-    const forceIntro=q.has('intro');                         // ?intro → always play the cold open (testing aid: bypasses the flags AND cache-busts stale HTML)
+    const forceIntro=q.has('intro') || q.get('go')==='new';  // ?intro (testing) OR ▶ Click to Begin → ALWAYS the clean cold open, ignoring gv-intro-seen (shared computers / cafés: every fresh start earns the full void→reveal, never a pre-populated scene)
     if(forceIntro || (!shared && !seen && !hasWorld)){ introActive=true; if(machine) machine.visible=false; monolith.visible=true;
       if(manifestTool) manifestTool.visible=false; if(mtRing) mtRing.visible=false;
       if(canPickup) canPickup.visible=false; if(ring) ring.visible=false;                 // pure void: no cans in sight —
