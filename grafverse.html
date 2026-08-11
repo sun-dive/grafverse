@@ -1377,7 +1377,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function setColor(i){ colorIdx=i; [...swWrap.children].forEach((s,k)=>s.classList.toggle('on',k===i));
     meterFill.style.background='#'+COLORS[i].toString(16).padStart(6,'0'); refreshHeldCan(); }
   let _hintKey=null, _hintKeyM=null;                                        // remember a translated hint's KEY so it re-renders once the async language pack loads
-  function showHint(txt){ _hintKey=null; hint.textContent=txt; hint.style.opacity = txt?1:0; }
+  // gameplay hints localise by their ENGLISH string: each pack supplies a `hints` map {english → translated}. Static
+  // hints translate with zero call-site changes; dynamic ones pass an english TEMPLATE with {slots} through _hintF.
+  function _hintTr(s){ if(!s) return s; var p=GV_LANG[LANG]; return (p && p.hints && p.hints[s]!=null) ? p.hints[s] : s; }
+  function _hintF(tpl, m){ var s=_hintTr(tpl); if(m) for(var k in m) s=s.split('{'+k+'}').join(m[k]); return s; }   // translate an english template, then fill {slots}
+  function showHint(txt){ _hintKey=null; hint.textContent=_hintTr(txt); hint.style.opacity = txt?1:0; }
   function hintI18n(key, keyM){ showHint(t(MOBILE?(keyM||key):key)); _hintKey=key; _hintKeyM=keyM||key; }
 
   // ── reliable share-link popup ── the auto-copy after an await burns the user-gesture (clipboard denied),
@@ -1438,11 +1442,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const a=document.getElementById('stencilTog'), b=document.getElementById('stencilTog2'), c=document.getElementById('stencilTog3');
     if(a) a.classList.toggle('on', activeStencil==='grafverse'); if(b) b.classList.toggle('on', activeStencil==='evidnus'); if(c) c.classList.toggle('on', activeStencil==='satoshi');
     _updateSpreadChip();
-    showHint(activeStencil ? ('▦ '+activeStencil+' stencil ON — spray any solid; it fills in (◍ spread '+stencilSpread+')') : 'stencil off'); }
+    showHint(activeStencil ? _hintF('▦ {s} stencil ON — spray any solid; it fills in (◍ spread {n})', {s:activeStencil, n:stencilSpread}) : 'stencil off'); }
   function setStencil(kind){ activeStencil=(activeStencil===kind)?null:kind; _applyStencil(); }                 // chip → select/toggle that stencil
   function cycleStencil(){ activeStencil = activeStencil===null?'grafverse':(activeStencil==='grafverse'?'evidnus':(activeStencil==='evidnus'?'satoshi':null)); _applyStencil(); }   // G key → off → grafverse → evidnus → サトシ → off
   function cycleSpread(){ stencilSpread = stencilSpread>=3?1:stencilSpread+1; _updateSpreadChip();              // H key / chip → 1 narrow → 2 broad → 3 wide (lay 3, overpaint 2, finish 1)
-    showHint('◍ '+stencilSpread+' — '+_spreadWord()); }
+    showHint(_hintF('◍ {n} — {w}', {n:stencilSpread, w:_spreadWord()})); }
   { const a=document.getElementById('stencilTog'), b=document.getElementById('stencilTog2'), c=document.getElementById('stencilTog3'), s=document.getElementById('spreadTog');
     if(a){ a.addEventListener('click',()=>setStencil('grafverse')); a.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); setStencil('grafverse'); },{passive:false}); }
     if(b){ b.addEventListener('click',()=>setStencil('evidnus')); b.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation(); setStencil('evidnus'); },{passive:false}); }
@@ -2103,7 +2107,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
         emptyAnnounced=false; addCan(scavColor, 100); treasure();   // full can → its (random) colour, added to your inventory
         if(!hasCan){ hasCan=true; viewCan=makeCan(0.5, COLORS[scavColor]); viewCan.position.set(0.42,-0.34,-0.9); viewCan.rotation.z=-0.15; camera.add(viewCan); }
         revealPaintHUD();                                          // paint fallback — reveals the kit, but NOT the manifest tool
-        showHint('A stashed can — '+COLNAMES[scavColor]+' paint, free. Someone always leaves one back here.');
+        showHint(_hintF('A stashed can — {c} paint, free. Someone always leaves one back here.', {c:COLNAMES[scavColor]}));
         scene.remove(scavCan); scene.remove(scavRing); scavCan=null;
         scavRespawn = performance.now() + 5000;                     // another appears shortly — there's always one
       }
@@ -2145,7 +2149,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
           o.userData.paintAmt=(o.userData.paintAmt||0)+PAINT_DRAIN;
           if(!o.userData.paid && o.userData.paintAmt>=(o.userData.earnAt||40)){
             o.userData.paid=true; custodial+=EARN_PAY; renderWallet();
-            showHint('+'+EARN_PAY+' sats — crystal charged.'); blip(700);
+            showHint(_hintF('+{n} sats — crystal charged.', {n:EARN_PAY})); blip(700);
           }
         } else {                                           // ── normal shape → paint & solidify it ──
           solidify(o);
@@ -2165,7 +2169,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
             o.userData.paintAmt=(o.userData.paintAmt||0)+PAINT_DRAIN;                 // paint-to-earn: ~half-cover a solid shape → a can's pay
             if(!o.userData.paid && o.userData.paintAmt>=(o.userData.earnAt||45)){
               o.userData.paid=true; custodial+=EARN_PAY; renderWallet();
-              showHint('+'+EARN_PAY+' sats — enough for another can. Paint to earn.'); blip(700);
+              showHint(_hintF('+{n} sats — enough for another can. Paint to earn.', {n:EARN_PAY})); blip(700);
             }
           }
         }
@@ -2780,7 +2784,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function enterPortal(m){
     _portaling=true; _nearGate=null;
     const dest=m.userData.portalTx;
-    showHint('◈ entering world '+dest.slice(0,8)+'… — free assets load, owned assets ask to purchase');
+    showHint(_hintF('◈ entering world {id}… — free assets load, owned assets ask to purchase', {id:dest.slice(0,8)}));
     trailPush(serializeWorld());                                   // ← breadcrumb: remember the world you're LEAVING so you can go Back
     saveWorld();                                                   // keep THIS world before the jump
     loadFromChain(dest);                                           // free → loads · rights-reserved/owned → the buy-offer (same traversal we built)
@@ -3608,7 +3612,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   }
   { const _p = new URLSearchParams(location.search);
     const _minted=_p.get('minted'), _bought=_p.get('bought'), _resume=_p.get('resume');
-    if(_minted){ _welcomeBack(); showHint('✦ Immortalized on-chain — '+_minted.slice(0,8)+'… It’s yours forever.'); try{ history.replaceState(null,'',location.pathname); }catch(_){} if(/^[0-9a-f]{64}$/i.test(_minted)) applyMintedWorld(_minted.toLowerCase()); }
+    if(_minted){ _welcomeBack(); showHint(_hintF('✦ Immortalized on-chain — {id}… It’s yours forever.', {id:_minted.slice(0,8)})); try{ history.replaceState(null,'',location.pathname); }catch(_){} if(/^[0-9a-f]{64}$/i.test(_minted)) applyMintedWorld(_minted.toLowerCase()); }
     else if(_bought && /^[0-9a-f]{64}$/i.test(_bought)){ _welcomeBack(); try{ history.replaceState(null,'',location.pathname); }catch(_){}
       openKeep(); loadFromChain(_bought.toLowerCase(), true); }
     else if(_resume){ _welcomeBack(); try{ history.replaceState(null,'',location.pathname); }catch(_){} }
