@@ -1711,6 +1711,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   })();
   function tr(id){ var p=GV_LANG[LANG]; return (p && p.tr && p.tr[id]!=null) ? p.tr[id] : null; }        // translated variant list, or null
   function qLabel(Q){ var p=GV_LANG[LANG]; return (p && p.qtr && p.qtr[Q.q]!=null) ? p.qtr[Q.q] : Q.q; } // chip label in the active language (English key)
+  function tw(s){ if(s==null) return s; var p=GV_LANG[LANG]; return (p && p.words && p.words[s]!=null) ? p.words[s] : s; }   // short make-HUD word (shape / material / axis label), keyed by English
   function sayTpl(enTpl, sub, id){                                   // speak an English template: Morse=English, display=translated variant (or English)
     var r=spinVar(enTpl||''), list=id?tr(id):null;
     var disp=(list && list[r.v]!=null) ? spin(list[r.v]) : r.text;   // the translated variant gets its OWN inner spin
@@ -2381,17 +2382,17 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const grid=document.createElement('div'); grid.className='mkgrid';
     BSHAPES.forEach((s,i)=>{ const b=document.createElement('div');
       b.className='pbtn'+(activeShape&&activeShape.userData.type===s?' on':'');
-      b.innerHTML='<b>'+(i+1)+'</b>'+(LABELS[s]||s); b.addEventListener('click',()=>conjure(s)); grid.appendChild(b); });
+      b.innerHTML='<b>'+(i+1)+'</b>'+tw(LABELS[s]||s); b.addEventListener('click',()=>conjure(s)); grid.appendChild(b); });
     box.appendChild(grid);
     if(activeShape){                                        // --- SHAPE: tune the active shape before you paint it solid ---
       const sh=document.createElement('div'); sh.className='mkhdr'; sh.textContent=t('hdrShape'); box.appendChild(sh);
       (AXES[type]||[]).forEach(([label,axis])=>{ const row=document.createElement('div'); row.className='srow';
         row.appendChild(sbtn('−',()=>scaleAxis(axis,1/1.12)));
-        const s=document.createElement('span'); s.textContent=label; row.appendChild(s);
+        const s=document.createElement('span'); s.textContent=tw(label); row.appendChild(s);
         row.appendChild(sbtn('+',()=>scaleAxis(axis,1.12))); box.appendChild(row); });
       if(type==='cylinder' || type==='cone' || type==='sphere'){   // facets slider: gem (few) ↔ lens/ball (smooth)
         const fr=document.createElement('div'); fr.className='srow';
-        const fl=document.createElement('span'); fl.textContent='facets'; fl.style.width='auto'; fr.appendChild(fl);
+        const fl=document.createElement('span'); fl.textContent=tw('facets'); fl.style.width='auto'; fr.appendChild(fl);
         const sl=document.createElement('input'); sl.type='range'; sl.min='3'; sl.max='48'; sl.step='1';
         sl.value=String(activeShape.userData.res||RES[type]||6); sl.style.flex='1'; sl.style.accentColor='#7fd8e8';
         const fv=document.createElement('span'); fv.textContent=sl.value; fv.style.width='2.2em'; fv.style.textAlign='right';
@@ -2473,7 +2474,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
           const lb=document.createElement('div'); lb.textContent=label; lb.style.cssText='font:700 10px system-ui;letter-spacing:.12em;color:#8fa6cc;margin:6px 0 3px;'; grid.appendChild(lb);
           const row=document.createElement('div'); row.style.cssText='display:flex;flex-wrap:wrap;gap:4px;';
           entries.forEach(([tx,m])=>{ const t=+tx, hx=(m.col!=null?m.col:0x2a3550), hs='#'+('000000'+(hx>>>0).toString(16)).slice(-6);
-            const sw=document.createElement('div'); sw.title=m.n; sw.style.cssText='width:22px;height:22px;border-radius:4px;cursor:pointer;background:'+hs+';border:2px solid '+(cur===t?'#fff':'rgba(255,255,255,.22)')+';';
+            const sw=document.createElement('div'); sw.title=tw(m.n); sw.style.cssText='width:22px;height:22px;border-radius:4px;cursor:pointer;background:'+hs+';border:2px solid '+(cur===t?'#fff':'rgba(255,255,255,.22)')+';';
             sw.addEventListener('click',()=>{ applySolid(activeShape,t); buildShapeTools(activeShape.userData.type); });
             row.appendChild(sw); });
           grid.appendChild(row);
@@ -3023,7 +3024,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     mesh.userData.crystal=true; mesh.userData.gemIdx=tex; mesh.userData.tex=tex; mesh.userData.painted=true; mesh.userData.paid=false; mesh.userData.paintAmt=0; mesh.userData.tint=0;
     seen.add('crystal');   // ★ unlocks Unit 21's "What are these crystals?" chip — only after you've actually cut one
     mesh.children.forEach(ch=>{ if(ch.material && ch.material.isLineBasicMaterial){ ch.material.color.set(color); ch.material.opacity=0.5; ch.material.needsUpdate=true; } });
-    showHint('◆ '+g.n+(g.mo?' — '+g.mo+' birthstone':''));                 // name it as you cut it
+    showHint(g.mo ? _hintF('◆ {g} — {mo} birthstone', {g:tw(g.n), mo:tw(g.mo)}) : _hintF('◆ {g}', {g:tw(g.n)}));   // name it as you cut it
     scheduleSave();                                                        // a crystal is owned the moment it's cut — persist it
   }
   function q332(c){                                                       // snap a colour to 8-bit RGB332 (256 colours) = the 1-byte crystal colour on the wire
@@ -3145,7 +3146,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     mesh.userData.painted=true;
     applyFinish(mesh, tex);
     mesh.children.forEach(ch=>{ if(ch.material && ch.material.isLineBasicMaterial){ ch.material.color.set(0x5fa0e0); ch.material.opacity=0.65; ch.material.needsUpdate=true; } });
-    showHint('◼ '+(tex===0?'plain solid':(M?M.n:'solid'))); scheduleSave();
+    showHint(_hintF('◼ {m}', {m: tex===0? tw('plain solid') : (M? tw(M.n) : tw('solid'))})); scheduleSave();
   }
   // ── real-time reflections: ONE shared cube probe so metal mirrors the ACTUAL scene (ground · shapes · sky · your can), refreshed periodically ──
   let _cubeRT=null, _cubeCam=null, _reflFrame=0;
