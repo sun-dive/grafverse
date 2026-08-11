@@ -1536,12 +1536,20 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
 
   // ---------- vending-machine chat (keyword match + spintext, fully offline) ----------
   function spin(s){ let p; do{ p=s; s=s.replace(/\{([^{}]*)\}/g,(_,b)=>{const o=b.split('|');return o[Math.floor(Math.random()*o.length)];}); }while(s!==p); return s; }
-  // ── path-based spin: spinPath records WHICH option it chose at each {…} slot (leftmost-innermost first); applyPath
-  //    replays that exact choice-path on ANY parallel template. So the same path on the English + translated versions
-  //    of an answer yields the SAME variant → English text for the Morse, matching translated text for the display.
-  //    Contract: a translated template must mirror the English's {…} structure (same slots, same order). ──
-  function spinPath(s){ const path=[]; let p; do{ p=s; s=s.replace(/\{([^{}]*)\}/,(_,b)=>{ const o=b.split('|'); const i=Math.floor(Math.random()*o.length); path.push(i); return o[i]; }); }while(s!==p); return { text:s, path }; }
-  function applyPath(s, path){ let i=0, p; do{ p=s; s=s.replace(/\{([^{}]*)\}/,(_,b)=>{ const o=b.split('|'); const k=path[i++]|0; return o[((k%o.length)+o.length)%o.length]; }); }while(s!==p); return s; }
+  // ── i18n spine (keep-nested): English answers stay authored as nested "{A|B|C}" templates, each top-level | option a
+  //    whole VARIANT (which answer Unit 21 gives). spinVar picks a variant, records its index v, then spin() resolves
+  //    that variant's inner {…} flourishes → the English text (drives the Morse + keyword-absorb). A translation is a
+  //    LIST of templates, one per variant: display = spin(tr[id][v]) — its OWN spin run, so the target language keeps
+  //    full inner variety too. Only the VARIANT must align across languages (same meaning); the Morse needn't match the
+  //    translated inner words (≈nobody reads Morse). Non-single-group templates collapse to one variant (v=0). ──
+  function _grpBody(s){ s=s.trim(); if(s[0]!=='{') return null;           // if s is exactly ONE {…} group → its inner body, else null
+    let d=0; for(let i=0;i<s.length;i++){ const c=s[i]; if(c==='{')d++; else if(c==='}'){ if(--d===0) return i===s.length-1 ? s.slice(1,i) : null; } }
+    return null; }
+  function _splitTop(body){ const out=[]; let d=0,cur=''; for(const c of body){ if(c==='{')d++; else if(c==='}')d--; if(c==='|'&&d===0){ out.push(cur); cur=''; } else cur+=c; } out.push(cur); return out; }
+  function spinVar(s){ const g=_grpBody(s);                               // → {text, v}: v = chosen top-level variant (0 for flat templates)
+    if(g==null) return { text:spin(s), v:0 };
+    const opts=_splitTop(g); const v=Math.floor(Math.random()*opts.length);
+    return { text:spin(opts[v]), v }; }
   // DRAFT — rewrite in Unit 21's voice (yours to write). The deep "why paint?" answer: the observer / owned-reality
   // metaphysics — nothing exists till observed → you paint reality into being → owned, not claimed. Shared by the typed rule + the chip.
   const WHYPAINT="{Why do you paint? Now that's a real question, gentlebot|Careful — you'll make an old machine think|Sit yourself down for that one}. {Look out there — nothing, isn't it? Just void|The moon's not real yet, see — not till you say so}. {Nothing out here exists till a droid looks at it and sprays it so|Nothing's real till someone observes it into being}. {You don't FIND a world, gentlebot — you paint one|You're not colouring a moon, you're DECIDING one}. {Every empty can collapses a heap of maybe into a something|One good spray pins down a single reality out of a thousand that never were}. {And here's the part the suits can't stomach|And the kicker}: {whatever you paint is YOURS|it's owned, not claimed} — {nobody paints your reality but you|your world, your signature, forever}. {Now, which colour|Anyway — buying, or shall we sit here inventing the universe all day}?";
@@ -1600,7 +1608,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   let FALLBACK="{Hah, you've lost me there|Not sure I follow, {sir|friend}|The dust must be in my speakers}. {I sell paint and WD40 — {what'll it be|what do you need}?|Ask me about paint, prices, or this godforsaken rock}.";
   // a grumpy brush-off Unit 21 throws at ANY question at random (~1 in 5) — the user's retort
   let DEFLECT="{{Why do you ask these things, young droid|Why do you ask me these things, gentlebot|What's with all the questions}? {Are you just here to yak|You just here to yak}? {You've got a world to paint|There's a world out there wants painting}. {What colour do you want|What colour do you want, then}?|{Enough questions, young droid|Less chatter, gentlebot}. {Are you here to yak, or to paint|You've painting to do, not yakking}? {What colour do you want|Which colour'll it be}?}";
-  function maybeDeflect(){ return Math.random()<0.20 ? spin(DEFLECT) : null; }   // null = answer normally · string = brush the question off
+  function _deflect(){ return Math.random()<0.20; }   // true ~1 in 5 → Unit 21 brushes the question off (spoken via say('_deflect'))
   // Unit 21 knows the truth about the pay — but it's TRUST-GATED (guarded until you've proven yourself)
   const WGUARD="{Save? Of course you can save, {young gentlebot|friend}! Work hard, paint your quota, and you'll have your fare home before you know it.|A diligent droid always gets ahead — that's the Bit Graf way. Honest pay for honest work, steady as the stars.|Bit Graf takes care of its own, gentlebot. Nothing to fret over — keep your optics on the work and the sats add up.|Everything's in order. Paint hard, spend wise, and you'll do just fine, {sir|young gentlebot}.|In the covenant we trust, as they say — the Corporation's never let a hardworking droid down. Now, what'll it be?}";
   // the reveal is KEY-LOCKED (XOR+base64) so it can't be read from page source — decoded only the moment Unit 21 speaks it
@@ -1613,11 +1621,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     talkedU21=true;                                      // any real exchange counts as "haggled" → tools unlock on leaving
     const pad=' '+text.toLowerCase().replace(/[^a-z0-9'\s-]/g,' ').replace(/\s+/g,' ')+' ';
     const hit=k=> k.includes(' ') ? pad.includes(k) : pad.includes(' '+k+' ');
-    if(MONEYK.some(hit)){ trust++;                       // knows — but won't tell a droid he doesn't trust yet
-      return {reply:spin(trust>=4 && hasPainted ? _dec(_R) : WGUARD), bye:false}; }
-    const d=maybeDeflect(); if(d) return {reply:d, bye:false};   // random brush-off (never on the money-gate above — that path is the sealed trust logic)
-    for(const rule of RULES){ if(rule.k.some(hit)){ trust++; return {reply:spin(rule.r), bye:!!rule.bye}; } }
-    return {reply:spin(FALLBACK), bye:false};
+    if(MONEYK.some(hit)){ trust++;                       // knows — but won't tell a droid he doesn't trust yet (sealed trust logic, never deflected)
+      return (trust>=4 && hasPainted) ? {raw:_dec(_R), bye:false} : {id:'_wguard', bye:false}; }
+    if(_deflect()) return {id:'_deflect', bye:false};    // random brush-off (never on the money-gate above)
+    for(const rule of RULES){ if(rule.k.some(hit)){ trust++; return {id:rule.id, bye:!!rule.bye}; } }
+    return {id:'_fallback', bye:false};
   }
   // mobile: tap-to-ask chips instead of the keyboard
   // ---------- staged dialogue: a few questions at first; more unlock by SPEND (sats sunk into paint) ----------
@@ -1635,7 +1643,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   let REFUSE="{Your wallet is empty, gentlebot|Empty, is it — not a sat to your name|Nothing in that wallet of yours}. {We don't offer credit here|No credit here, never have|You'll get no credit from me}. {I'm running a real business|This is a real business, gentlebot|I've a business to run}, {I can't just hand out cans of paint for free|I don't give paint away for free|free cans would see me scrapped in a week}. {Go look for some discarded cans|Go scavenge some empties|Go find yourself some cast-off cans} and {solidify something into existence|make something real for once|paint something into being} — {and quick, if you know what's best for you|and be quick about it|before the transport comes looking for you}.";
   let SCAVENGE="You better {go scavenge for a full can of paint|go find yourself a full can of paint} and paint something to make it solid, {if you know what's good for you|if you want to see me again tomorrow|and come back when you've earned your keep}.";
   let TAUNT="{I see young droids like you every day|Young droids like you come through here every day} — young, dumb, and out of paint. {Go earn your keep|Go scavenge something and get to work|Best get busy, gentlebot}.";
-  function brokeReply(){ return [REFUSE,SCAVENGE,TAUNT][Math.floor(Math.random()*3)]; }   // empty-wallet response pool
+  function brokeSay(){ return say(['_refuse','_scavenge','_taunt'][Math.floor(Math.random()*3)],''); }   // empty-wallet response pool
   let WHATCOLOUR="{What colour, gentlebot|Name your shade|Which'll it be}? {Take your pick off the rack|I've every colour going|Pick one and it's yours}.";
   let COMINGUP="{Coming right up|There you are, gentlebot|One can, coming up}. {Mind you don't waste it on the ground|Spend it wise|Pleasure doing business, as always}.";
   let QUESTIONS=[
@@ -1675,6 +1683,34 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     { q:"How do I share it?",      lore:true, made:true, a:ruleAns('share') },
     // deeper questions carry a spend: threshold, e.g. { q:"...", needs:'covenant', spend:333, a:"..." } — the mind-wipe / black-market reveal lives at a HIGH spend.
   ];
+  // ── id-indexed answers (i18n spine): every Unit 21 line has a stable id → its English template (EN_BY_ID). say(id)
+  //    spins the English (Morse + variant index v), then shows tr(id)[v] (that translated variant, spun) or falls back
+  //    to English. Rule ids = the rule's first keyword; lore chips SHARE the rule id; openers key on their English text;
+  //    synthetic ids cover the standalone lines. English stays canonical — only tr[id] (+ qtr for chip labels) localises. ──
+  const EN_BY_ID={};
+  (function buildIds(){
+    RULES.forEach(function(r){ r.id=r.k[0]; EN_BY_ID[r.id]=r.r; });
+    const std={ _fallback:FALLBACK, _deflect:DEFLECT, _wguard:WGUARD, _whatcolour:WHATCOLOUR,
+                _comingup:COMINGUP, _sale:SALE, _refuse:REFUSE, _scavenge:SCAVENGE, _taunt:TAUNT };
+    Object.keys(std).forEach(function(k){ EN_BY_ID[k]=std[k]; });
+    QUESTIONS.forEach(function(Q){
+      var fn=(typeof Q.a==='function'), tpl=fn?Q.a():Q.a;
+      var rule=RULES.find(function(r){ return r.r===tpl; });        // lore chip / WHYPAINT → SHARE the rule's id
+      if(rule){ Q.id=rule.id; return; }
+      if(tpl===SALE){ Q.id='_sale'; return; }
+      if(tpl===SCAVENGE){ Q.id='_scavenge'; return; }
+      Q.id='q:'+Q.q;                                                 // opener with its own inline answer
+      if(!fn) EN_BY_ID[Q.id]=tpl;                                    // static → cache; dynamic (colours) → say() calls Q.a() live
+    });
+  })();
+  function tr(id){ var p=GV_LANG[LANG]; return (p && p.tr && p.tr[id]!=null) ? p.tr[id] : null; }        // translated variant list, or null
+  function qLabel(Q){ var p=GV_LANG[LANG]; return (p && p.qtr && p.qtr[Q.q]!=null) ? p.qtr[Q.q] : Q.q; } // chip label in the active language (English key)
+  function sayTpl(enTpl, sub, id){                                   // speak an English template: Morse=English, display=translated variant (or English)
+    var r=spinVar(enTpl||''), list=id?tr(id):null;
+    var disp=(list && list[r.v]!=null) ? spin(list[r.v]) : r.text;   // the translated variant gets its OWN inner spin
+    speak(disp, sub||'', r.text); return r.text;                    // returns ENGLISH text → callers absorb() it for keyword follow-ups
+  }
+  function say(id, sub){ return sayTpl(EN_BY_ID[id], sub, id); }
   // ── i18n SCAFFOLD — Unit 21 + UI language packs. English is built-in; ja / zh-Hant / zh-Hans lazy-load a lang-<code>.js file (GV.registerLang). Buttons-only UI → only SHOWN text is translated; keyword keys + the sealed _R/WGUARD/MONEYK path stay English. ──
   window.GV_LANG = window.GV_LANG || {};
   window.GV = window.GV || {};
@@ -1693,8 +1729,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function t(k){ return (GV_UI && GV_UI[k]!=null) ? GV_UI[k] : ((GV_LANG.en.ui && GV_LANG.en.ui[k]!=null) ? GV_LANG.en.ui[k] : k); }   // UI string lookup (step 3 fills each pack's ui{})
   function applyLang(code){
     const en=GV_LANG.en, p=GV_LANG[code]||en; LANG=(GV_LANG[code]?code:'en');
-    RULES=p.RULES||en.RULES; QUESTIONS=p.QUESTIONS||en.QUESTIONS; FALLBACK=p.FALLBACK||en.FALLBACK; DEFLECT=p.DEFLECT||en.DEFLECT;
-    WHATCOLOUR=p.WHATCOLOUR||en.WHATCOLOUR; COMINGUP=p.COMINGUP||en.COMINGUP; REFUSE=p.REFUSE||en.REFUSE; SCAVENGE=p.SCAVENGE||en.SCAVENGE; TAUNT=p.TAUNT||en.TAUNT;
+    // dialogue stays English-canonical — translation now comes per-answer via tr(id) / qtr (the pack's maps). Only labels swap.
     COLNAMES=p.COLNAMES||en.COLNAMES; GV_UI=p.ui||{};
     applyUI();
     try{ if(document.body.classList.contains('mtalk')) buildChips(); }catch(_){}   // re-render Unit 21's chips in the new language if he's mid-talk
@@ -1797,7 +1832,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     while(_shown.filter(Boolean).length<CAP_CHIPS && p<pool.length){ _shown.push(pool[p++]); }      // grow toward three (the opening, or when new topics unlock)
     _shown=_shown.filter(Boolean).slice(0,CAP_CHIPS);
     const box=$('chips'); box.innerHTML='';
-    _shown.forEach(Q=>{ const b=document.createElement('div'); b.className='chip'; b.textContent=Q.q;
+    _shown.forEach(Q=>{ const b=document.createElement('div'); b.className='chip'; b.textContent=qLabel(Q);   // label in the active language; Q.q stays the English key
       b.addEventListener('click', ()=>ask(Q)); box.appendChild(b); });
     const bye=document.createElement('div'); bye.className='chip'; bye.style.opacity='.7'; bye.textContent='(walk away)';
     bye.addEventListener('click', ()=>leaveTalk(true)); box.appendChild(bye);
@@ -1811,19 +1846,18 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     { const _i=_shown.findIndex(x=>x&&x.q===Q.q); if(_i>=0) _shown[_i]=null; }   // vacate ONLY this slot → buildChips fills it with one fresh question; the other two stay put
     if(Q.buy){                                             // buying a can → colour sub-menu (or the broke brush-off)
       askThenReply(Q.q, ()=>{
-        if(custodial < 111){ speak(spin(brokeReply()),''); buildChips(); return; }
-        speak(spin(WHATCOLOUR),''); buildColourChips();
+        if(custodial < 111){ brokeSay(); buildChips(); return; }
+        say('_whatcolour',''); buildColourChips();
       }); return;
     }
     if(Q.colours){                                         // "What colours?" → list them, then show the swatches to pick/buy (shop always one tap away)
       askThenReply(Q.q, ()=>{
-        const raw=(typeof Q.a==='function')?Q.a():Q.a; const line=spin(raw); speak(line,''); absorb(line); buildColourChips();
+        const en=sayTpl((typeof Q.a==='function')?Q.a():Q.a, '', Q.id); absorb(en); buildColourChips();   // dynamic list → say live; absorb the English
       }); return;
     }
     askThenReply(Q.q, ()=>{
-      const raw = (typeof Q.a==='function') ? Q.a() : Q.a;   // answers can be conditional (e.g. broke vs flush)
-      const d=maybeDeflect();                                 // ~1 in 5 → Unit 21 brushes the question off instead of answering (no absorb → doesn't unlock follow-ups)
-      const line=d||spin(raw); speak(line,''); if(!d) absorb(line); buildChips();
+      if(_deflect()){ say('_deflect',''); buildChips(); return; }   // ~1 in 5 brush-off — no absorb, so it unlocks no follow-ups
+      const en=say(Q.id,''); absorb(en); buildChips();              // absorb the ENGLISH answer → keyword follow-ups unlock in every language
     }); }
   function buildColourChips(){                             // the "What colour?" sub-menu
     const box=$('chips'); box.innerHTML='';
@@ -1836,10 +1870,10 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     bye.addEventListener('click', ()=>leaveTalk(true)); box.appendChild(bye);
   }
   function buyCan(ci){
-    if(custodial < 111){ speak(spin(brokeReply()),''); buildChips(); return; }
+    if(custodial < 111){ brokeSay(); buildChips(); return; }
     custodial -= 111; spent += 111; renderWallet();        // 111 sats — and SPENDING is what turns Unit 21's reveal-gauge
     addCan(ci, 100);                                        // full can of the chosen colour → inventory (becomes active)
-    speak(spin(COMINGUP),''); buildChips();
+    say('_comingup',''); buildChips();
   }
   function enterTalk(){
     if(talking) return; talking=true;
@@ -1857,7 +1891,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   chatInput.addEventListener('keydown', e=>{
     e.stopPropagation();
     if(e.code==='Enter'){ const v=chatInput.value.trim(); if(!v) return; chatInput.value='';
-      askThenReply(v, ()=>{ const res=respond(v); speak(res.reply,''); if(res.bye) setTimeout(()=>leaveTalk(false),1500); }); }
+      askThenReply(v, ()=>{ const res=respond(v); if(res.raw) sayTpl(res.raw,''); else say(res.id,''); if(res.bye) setTimeout(()=>leaveTalk(false),1500); }); }
     else if(e.code==='Escape'){ leaveTalk(true); }
   });
 
