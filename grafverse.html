@@ -1675,7 +1675,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       worldHdr:"Your world", namePh:"✎ Name your world…", kSave:"☁ Save & Share", kReload:"↻ Reload world", kExport:"📤 Save to File (.bmf)", kImport:"📥 Load from File (.bmf)", kMint:"⬆ Save to Chain", kChain:"⬇ Load from Chain", kBack:"← Back to previous world", kWallet:"👛 Open Wallet — balance & NFTs", kDone:"✓ close",
       keepTab:"◆ keep", exitBtn:"⏻ Exit", makeTab:"◆ make", spray:"Spray", grab:"Grab", talk:"Talk", own:"Own / remix", spread:"spread", spNarrow:"narrow", spBroad:"broad", spWide:"wide",
       merchTag:"grafverse merch", merchH:"Wear the graffiti.", merchSub:"Grafverse tees, posters & more.", merchCta:"🛍 Shop the merch →", merchTeaser:"👕 Coming soon — wear the world YOU painted.", merchSkip:"No thanks — continue →",
-      hintMove:"WASD to move  ·  Space to jump  ·  move mouse to look", hintMoveM:"left stick to move  ·  drag anywhere to look", hintClick:"Click to look around  ·  WASD to move  ·  Space to jump" } };
+      hintMove:"WASD to move  ·  Space to jump  ·  move mouse to look", hintMoveM:"left stick to move  ·  drag anywhere to look", hintClick:"Click to look around  ·  WASD to move  ·  Space to jump",
+      hintTalk:"Press T to talk", hintTalkM:"Tap Talk to chat", hintPaint:"Aim + hold-click to paint  ·  right-click to make", hintPaintM:"Aim + Spray to paint it solid" } };
   window.GV.registerLang = function(code, pack){ GV_LANG[code] = pack || {}; };   // a lang-<code>.js file calls GV.registerLang('ja', {...})
   let LANG='en', GV_UI={};
   function t(k){ return (GV_UI && GV_UI[k]!=null) ? GV_UI[k] : ((GV_LANG.en.ui && GV_LANG.en.ui[k]!=null) ? GV_LANG.en.ui[k] : k); }   // UI string lookup (step 3 fills each pack's ui{})
@@ -2173,9 +2174,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     }
     if(MOBILE){
       const tb=$('talkBtn'); tb.style.display=(nearMachine||talking)?'block':'none'; tb.textContent=talking?'Leave':'Talk';
-      if(nearMachine && !talking) showHint('tap Talk to chat');
+      if(nearMachine && !talking) showHint(t('hintTalkM'));
       else if(!talking && md>12 && dlg.style.opacity!=='0') dlg.style.opacity=0;
-    } else if(nearMachine && !talking){ showHint('Press  T  to talk'); }
+    } else if(nearMachine && !talking){ showHint(t('hintTalk')); }
     else if(!talking && md > 12 && dlg.style.opacity!=='0'){ dlg.style.opacity=0; }
   }
 
@@ -2442,7 +2443,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const _mp=document.getElementById('matPanel'); if(_mp) _mp.innerHTML='';
     activeShape=null; heldGhost=null; setMode(); placeMarker=null; if(placeRing) placeRing.visible=false;
     if(!MOBILE) el.requestPointerLock();
-    if(hasCan) showHint(MOBILE?'aim + Spray to paint it solid':'aim + hold-click to paint · right-click to manifest'); }
+    if(hasCan) showHint(MOBILE?t('hintPaintM'):t('hintPaint')); }
   addEventListener('keydown', e=>{ if(e.code==='KeyE' && buildUnlocked && !talking && !keepOpen){ e.preventDefault(); shaping?closeShape():openShape(); } });
   addEventListener('keydown', e=>{ if(e.code==='Enter' && shaping && !talking){ e.preventDefault(); closeShape(); } });
   document.getElementById('shapeTab').addEventListener('click', openShape);
