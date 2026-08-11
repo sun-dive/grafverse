@@ -1326,7 +1326,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(e.code==='Escape' && talking){ leaveTalk(true); return; }
     if(talking) return;
     keys[e.code]=true;
-    if(!actx){ try{ initAudio(); }catch(_){} } else if(actx.state==='suspended'){ try{ actx.resume(); }catch(_){} }   // a key press is a user gesture → arm audio even if the player walked to the monolith without clicking (else the reveal Morse is silent)
+    if(!actx){ try{ initAudio(); }catch(_){} } if(actx && actx.state==='suspended'){ try{ actx.resume(); }catch(_){} }   // a key press is a user gesture → CREATE and RESUME audio in the SAME gesture (matches the click path), so W arms sound on a clean start
     if(e.code==='KeyT' && nearMachine){ enterTalk(); }
     if(e.code==='Space' && !e.repeat && !airborne && !firstStart && !keepOpen && !shaping && !introActive){ e.preventDefault(); velY=JUMP_V; airborne=true; }   // jump — but NOT during the cold open (the moon isn't solid yet)
   });
