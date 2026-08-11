@@ -594,7 +594,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   let _aimKey='';
   let _moving=false, _instant=false, _dwellKey='', _dwellStart=0;   // a 3s STILL gaze earns instant reveals (any body); moving/painting revokes it → must re-earn with another 3s gaze
   function updateAim(){
-    if(introActive){ aimLabel.style.opacity='0'; _aimKey=''; revealCon(-1); return; }   // no naming during the cold open
+    if(introActive || talking || keepOpen || shaping){ aimLabel.style.opacity='0'; _aimKey=''; revealCon(-1); return; }   // no star/constellation naming during the cold open, a Unit 21 chat, or while any HUD (Keep / conjuring) is open
     camera.getWorldDirection(_aimFwd);
     const D2R=Math.PI/180; let bestDot=Math.cos(1.8*D2R), bestLabel=null, bestCi=-1;     // ~1.8° aim cone; bestCi = constellation to reveal (−1 = none)
     const scan=(o)=>{ if(!o||!o.userData||!o.userData.body||!o.visible) return;
