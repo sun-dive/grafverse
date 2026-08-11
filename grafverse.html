@@ -1725,7 +1725,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       hintMove:"WASD to move  ·  Space to jump  ·  move mouse to look", hintMoveM:"left stick to move  ·  drag anywhere to look", hintClick:"Click to look around  ·  WASD to move  ·  Space to jump",
       hintTalk:"Press T to talk", hintTalkM:"Tap Talk to chat", hintPaint:"Aim + hold-click to paint  ·  right-click to make", hintPaintM:"Aim + Spray to paint it solid",
       hdrMake:"make", hdrShape:"shape", hdrColour:"colour", hdrMaterial:"material", catPlain:"PLAIN", catMetal:"METAL", catStone:"STONE", catWood:"WOOD",
-      btnSolidify:"◼ Solidify", btnCrystalize:"◆ Crystalize", btnMaterials:"◼ Materials", btnReset:"⎌ reset", btnClone:"⧉ clone", btnDelete:"🗑 delete", btnBob:"↕ bob", btnRotate:"↻ rotate", btnClose:"✕ close", btnDone:"✕ done", u21Hello:"Hello young gentlebot, what can I do you for today sir?" } };
+      btnSolidify:"◼ Solidify", btnCrystalize:"◆ Crystalize", btnMaterials:"◼ Materials", btnReset:"⎌ reset", btnClone:"⧉ clone", btnDelete:"🗑 delete", btnBob:"↕ bob", btnRotate:"↻ rotate", btnClose:"✕ close", btnDone:"✕ done", u21Hello:"Hello young gentlebot, what can I do you for today sir?",
+      chipBye:"(walk away)", chipNvm:"(never mind)", talkPick:"pick a question · Esc to leave" } };
   window.GV.registerLang = function(code, pack){ GV_LANG[code] = pack || {}; };   // a lang-<code>.js file calls GV.registerLang('ja', {...})
   let LANG='en', GV_UI={};
   function t(k){ return (GV_UI && GV_UI[k]!=null) ? GV_UI[k] : ((GV_LANG.en.ui && GV_LANG.en.ui[k]!=null) ? GV_LANG.en.ui[k] : k); }   // UI string lookup (step 3 fills each pack's ui{})
@@ -1836,7 +1837,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const box=$('chips'); box.innerHTML='';
     _shown.forEach(Q=>{ const b=document.createElement('div'); b.className='chip'; b.textContent=qLabel(Q);   // label in the active language; Q.q stays the English key
       b.addEventListener('click', ()=>ask(Q)); box.appendChild(b); });
-    const bye=document.createElement('div'); bye.className='chip'; bye.style.opacity='.7'; bye.textContent='(walk away)';
+    const bye=document.createElement('div'); bye.className='chip'; bye.style.opacity='.7'; bye.textContent=t('chipBye');
     bye.addEventListener('click', ()=>leaveTalk(true)); box.appendChild(bye);
   }
   // the droid ASKS in its two-tone dialect, THEN Unit 21 answers once the chirp finishes (two distinct Morse voices, never overlapping)
@@ -1868,9 +1869,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     COLORS.forEach((c,i)=>{ const b=document.createElement('div'); b.className='chip';
       b.innerHTML='<span style="display:inline-block;width:13px;height:13px;border-radius:50%;vertical-align:middle;margin-right:9px;background:#'+c.toString(16).padStart(6,'0')+'"></span>'+COLNAMES[i];
       b.addEventListener('click', ()=>buyCan(i)); box.appendChild(b); });
-    const back=document.createElement('div'); back.className='chip'; back.style.opacity='.7'; back.textContent='(never mind)';
+    const back=document.createElement('div'); back.className='chip'; back.style.opacity='.7'; back.textContent=t('chipNvm');
     back.addEventListener('click', ()=>buildChips()); box.appendChild(back);
-    const bye=document.createElement('div'); bye.className='chip'; bye.style.opacity='.6'; bye.textContent='(walk away)';   // walking away is ALWAYS available, even mid-purchase
+    const bye=document.createElement('div'); bye.className='chip'; bye.style.opacity='.6'; bye.textContent=t('chipBye');   // walking away is ALWAYS available, even mid-purchase
     bye.addEventListener('click', ()=>leaveTalk(true)); box.appendChild(bye);
   }
   function buyCan(ci){
@@ -1883,7 +1884,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(talking) return; talking=true;
     buildChips(); document.body.classList.add('mtalk');
     if(!MOBILE) document.exitPointerLock();               // free the cursor so you can pick a question
-    showHint(MOBILE ? '' : 'pick a question · Esc to leave');
+    showHint(MOBILE ? '' : t('talkPick'));
   }
   function leaveTalk(relock){
     talking=false;
