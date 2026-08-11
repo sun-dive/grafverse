@@ -72,7 +72,7 @@
       { q:"怎么分享？",            lore:true, a:R('share') }
     ],
     wallet: { wBack:"← 返回游戏", wWallet:"🔑 钱包", wYourAddr:"你的地址", wWatchOnly:"仅查看", wCopy:"复制", wBalance:"余额", wFund:"＋ 购买 BSV 充值", wMyNfts:"🎨 我的 NFT ▾", wSend:"💸 发送 BSV", wSendAddrPh:"收款人 BSV 地址 (1…)", wSendAmtPh:"金额（聪）", wSendMax:"全部发送", wSendBtn:"发送", wSendHint:"一笔发送到任何地址的普通 BSV 付款。找零会回到这个钱包。签名在本页面进行——你的私钥永远不会离开这里。", wRecovery:"恢复助记词 — 12 个词", wReveal:"👁 显示", wCopyBtn:"复制", wWritten:"✓ 已记下", wPrivKey:"私钥（WIF）", wAdvanced:"高级 — 恢复、仅查看、导出", wRestoreLbl:"用 12 词助记词或 WIF 私钥恢复", wRestoreBtn:"恢复钱包", wWatchBtn:"仅查看（公钥）", wImmortalize:"✦ 永久保存", wFooter:"grafspace · 于 Bitcoin SV 区块链" },
-    ui: { hintTalk:"按 T 交谈", hintTalkM:"点「交谈」开始聊天", hintPaint:"瞄准并按住点击上色  ·  右键创建", hintPaintM:"瞄准并喷漆使其变实体",
+    ui: { hdrMake:"创建", hdrShape:"形状", hdrColour:"颜色", hdrMaterial:"材质", catPlain:"素面", catMetal:"金属", catStone:"石头", catWood:"木头", btnSolidify:"◼ 固化", btnCrystalize:"◆ 结晶", btnMaterials:"◼ 材质", btnReset:"⎌ 重置", btnClone:"⧉ 复制", btnDelete:"🗑 删除", btnBob:"↕ 浮动", btnRotate:"↻ 旋转", btnClose:"✕ 关闭", btnDone:"✕ 完成", hintTalk:"按 T 交谈", hintTalkM:"点「交谈」开始聊天", hintPaint:"瞄准并按住点击上色  ·  右键创建", hintPaintM:"瞄准并喷漆使其变实体",
       splashTag:"你涂的，就是你。涂出你自己。", splashTag2:"没涂之前，什么都不存在。", splashBegin:"▶ 开始", splashResume:"↩ 回到上个世界", splashCreed:"契约之中，我们信之", introReveal:"…全是颜料。",
       worldHdr:"你的世界", namePh:"✎ 为世界命名…", kSave:"☁ 保存并分享", kReload:"↻ 重新载入世界", kExport:"📤 保存成档案 (.bmf)", kImport:"📥 从档案载入 (.bmf)", kMint:"⬆ 保存到链上", kChain:"⬇ 从链上载入", kBack:"← 回到上个世界", kWallet:"👛 开启钱包 — 余额与NFT", kDone:"✓ 关闭",
       keepTab:"◆ 选单", exitBtn:"⏻ 离开", makeTab:"◆ 制作", spray:"喷漆", grab:"抓取", talk:"对话", own:"拥有 / 改作", spread:"扩散", spNarrow:"窄", spBroad:"中", spWide:"宽",

@@ -1676,7 +1676,9 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       keepTab:"◆ keep", exitBtn:"⏻ Exit", makeTab:"◆ make", spray:"Spray", grab:"Grab", talk:"Talk", own:"Own / remix", spread:"spread", spNarrow:"narrow", spBroad:"broad", spWide:"wide",
       merchTag:"grafverse merch", merchH:"Wear the graffiti.", merchSub:"Grafverse tees, posters & more.", merchCta:"🛍 Shop the merch →", merchTeaser:"👕 Coming soon — wear the world YOU painted.", merchSkip:"No thanks — continue →",
       hintMove:"WASD to move  ·  Space to jump  ·  move mouse to look", hintMoveM:"left stick to move  ·  drag anywhere to look", hintClick:"Click to look around  ·  WASD to move  ·  Space to jump",
-      hintTalk:"Press T to talk", hintTalkM:"Tap Talk to chat", hintPaint:"Aim + hold-click to paint  ·  right-click to make", hintPaintM:"Aim + Spray to paint it solid" } };
+      hintTalk:"Press T to talk", hintTalkM:"Tap Talk to chat", hintPaint:"Aim + hold-click to paint  ·  right-click to make", hintPaintM:"Aim + Spray to paint it solid",
+      hdrMake:"make", hdrShape:"shape", hdrColour:"colour", hdrMaterial:"material", catPlain:"PLAIN", catMetal:"METAL", catStone:"STONE", catWood:"WOOD",
+      btnSolidify:"◼ Solidify", btnCrystalize:"◆ Crystalize", btnMaterials:"◼ Materials", btnReset:"⎌ reset", btnClone:"⧉ clone", btnDelete:"🗑 delete", btnBob:"↕ bob", btnRotate:"↻ rotate", btnClose:"✕ close", btnDone:"✕ done" } };
   window.GV.registerLang = function(code, pack){ GV_LANG[code] = pack || {}; };   // a lang-<code>.js file calls GV.registerLang('ja', {...})
   let LANG='en', GV_UI={};
   function t(k){ return (GV_UI && GV_UI[k]!=null) ? GV_UI[k] : ((GV_LANG.en.ui && GV_LANG.en.ui[k]!=null) ? GV_LANG.en.ui[k] : k); }   // UI string lookup (step 3 fills each pack's ui{})
@@ -2322,14 +2324,14 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     const box=document.getElementById('shapeTools'); box.innerHTML='';
     const mp=document.getElementById('matPanel'); mp.innerHTML=''; document.body.classList.remove('matpick');   // material picker lives in its own left panel — rebuilt fresh below, hidden by default
     // --- MAKE: pick a shape to manifest ahead of you ---
-    const mh=document.createElement('div'); mh.className='mkhdr'; mh.textContent='make'; box.appendChild(mh);
+    const mh=document.createElement('div'); mh.className='mkhdr'; mh.textContent=t('hdrMake'); box.appendChild(mh);
     const grid=document.createElement('div'); grid.className='mkgrid';
     BSHAPES.forEach((s,i)=>{ const b=document.createElement('div');
       b.className='pbtn'+(activeShape&&activeShape.userData.type===s?' on':'');
       b.innerHTML='<b>'+(i+1)+'</b>'+(LABELS[s]||s); b.addEventListener('click',()=>conjure(s)); grid.appendChild(b); });
     box.appendChild(grid);
     if(activeShape){                                        // --- SHAPE: tune the active shape before you paint it solid ---
-      const sh=document.createElement('div'); sh.className='mkhdr'; sh.textContent='shape'; box.appendChild(sh);
+      const sh=document.createElement('div'); sh.className='mkhdr'; sh.textContent=t('hdrShape'); box.appendChild(sh);
       (AXES[type]||[]).forEach(([label,axis])=>{ const row=document.createElement('div'); row.className='srow';
         row.appendChild(sbtn('−',()=>scaleAxis(axis,1/1.12)));
         const s=document.createElement('span'); s.textContent=label; row.appendChild(s);
@@ -2354,8 +2356,8 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       const r=document.createElement('div'); r.className='srow';
       r.appendChild(sbtn('↺',()=>rotY(-Math.PI/12))); r.appendChild(sbtn('↻',()=>rotY(Math.PI/12)));
       r.appendChild(sbtn('◣',()=>lean(Math.PI/12)));  r.appendChild(sbtn('◢',()=>lean(-Math.PI/12))); box.appendChild(r);
-      const d=document.createElement('div'); d.className='srow'; d.appendChild(sbtn('⎌ reset',resetShape,'wide')); d.appendChild(sbtn('⧉ clone',cloneActive,'wide')); box.appendChild(d);
-      const dl=document.createElement('div'); dl.className='srow'; dl.appendChild(sbtn('🗑 delete', ()=>{ if(activeShape) deleteShape(activeShape); }, 'wide')); box.appendChild(dl);   // remove this object from the world (undoable)
+      const d=document.createElement('div'); d.className='srow'; d.appendChild(sbtn(t('btnReset'),resetShape,'wide')); d.appendChild(sbtn(t('btnClone'),cloneActive,'wide')); box.appendChild(d);
+      const dl=document.createElement('div'); dl.className='srow'; dl.appendChild(sbtn(t('btnDelete'), ()=>{ if(activeShape) deleteShape(activeShape); }, 'wide')); box.appendChild(dl);   // remove this object from the world (undoable)
       // (base colour swatches moved into the Materials panel — see #matPanel below — to keep the conjuring HUD short)
       if(activeShape.userData.tex && (STONES[activeShape.userData.tex]||WOODS[activeShape.userData.tex])){   // rotate the grain/pattern 90° (stone & wood only)
         const tr=document.createElement('div'); tr.className='srow';
@@ -2366,15 +2368,15 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       // ── the TWO ways to commit a ghost into a real object — convertible but EXPLICIT; the current kind shows a ✓ ──
       const _isC=activeShape.userData.crystal, _isSolid=activeShape.userData.painted && !_isC;
       const mkr=document.createElement('div'); mkr.className='srow';
-      mkr.appendChild(sbtn((_isSolid?'✓ ':'')+'◼ Solidify', ()=>{ if(activeShape) applySolid(activeShape, activeShape.userData.tex||0); },'wide'));     // commit AS a paintable solid — the tex index CARRIES (same value read as a material here, as a gem when crystalline)
-      mkr.appendChild(sbtn((_isC?'✓ ':'')+'◆ Crystalize', ()=>{ if(activeShape) crystallizeShape(activeShape, _isC ? (activeShape.userData.gemIdx>=MAXGEM?1:activeShape.userData.gemIdx+1) : (activeShape.userData.tex||1)); },'wide'));   // commit AS a gem crystal — a non-crystal uses its current tex as the gem (change the material → a different gem); re-press cycles 1…16
+      mkr.appendChild(sbtn((_isSolid?'✓ ':'')+t('btnSolidify'), ()=>{ if(activeShape) applySolid(activeShape, activeShape.userData.tex||0); },'wide'));     // commit AS a paintable solid — the tex index CARRIES (same value read as a material here, as a gem when crystalline)
+      mkr.appendChild(sbtn((_isC?'✓ ':'')+t('btnCrystalize'), ()=>{ if(activeShape) crystallizeShape(activeShape, _isC ? (activeShape.userData.gemIdx>=MAXGEM?1:activeShape.userData.gemIdx+1) : (activeShape.userData.tex||1)); },'wide'));   // commit AS a gem crystal — a non-crystal uses its current tex as the gem (change the material → a different gem); re-press cycles 1…16
       box.appendChild(mkr);
       const anr=document.createElement('div'); anr.className='srow';   // ✧ motion — independent bob + rotate (owned, persist in the mint)
-      anr.appendChild(sbtn((activeShape.userData.bob?'✓ ':'')+'↕ bob', ()=>{ const m=activeShape; m.userData.bob=!m.userData.bob; buildShapeTools(m.userData.type); scheduleSave(); },'wide'));
-      anr.appendChild(sbtn((activeShape.userData.spin?'✓ ':'')+'↻ rotate', ()=>{ const m=activeShape; m.userData.spin=!m.userData.spin; buildShapeTools(m.userData.type); scheduleSave(); },'wide'));
+      anr.appendChild(sbtn((activeShape.userData.bob?'✓ ':'')+t('btnBob'), ()=>{ const m=activeShape; m.userData.bob=!m.userData.bob; buildShapeTools(m.userData.type); scheduleSave(); },'wide'));
+      anr.appendChild(sbtn((activeShape.userData.spin?'✓ ':'')+t('btnRotate'), ()=>{ const m=activeShape; m.userData.spin=!m.userData.spin; buildShapeTools(m.userData.type); scheduleSave(); },'wide'));
       box.appendChild(anr);
       const cr=document.createElement('div'); cr.className='srow';   // ◼ Materials — the SOLID's finish (plain · metal · stone · wood…); crystal gems are cycled via ◆ Crystalize
-      cr.appendChild(sbtn('◼ Materials', ()=>{ solidPickerOpen=!solidPickerOpen; if(activeShape) buildShapeTools(activeShape.userData.type); },'wide'));   // open/close the material picker grid
+      cr.appendChild(sbtn(t('btnMaterials'), ()=>{ solidPickerOpen=!solidPickerOpen; if(activeShape) buildShapeTools(activeShape.userData.type); },'wide'));   // open/close the material picker grid
       box.appendChild(cr);
       if(activeShape.userData.painted && !activeShape.userData.crystal){   // 💰 SELL (mint) + FREE channel (download / share link) for THIS painted solid
         const sr=document.createElement('div'); sr.className='srow';
@@ -2402,7 +2404,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       if(solidPickerOpen && activeShape && !activeShape.userData.crystal){   // ◼ Materials → colour + material picker in its OWN left panel (#matPanel), never growing the conjuring panel
         document.body.classList.add('matpick');
         // ── base colour (relocated here from the conjuring panel) ──
-        const ch=document.createElement('div'); ch.className='mkhdr'; ch.textContent='colour'; mp.appendChild(ch);
+        const ch=document.createElement('div'); ch.className='mkhdr'; ch.textContent=t('hdrColour'); mp.appendChild(ch);
         const bcr=document.createElement('div'); bcr.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin-top:2px;';
         const curBase=activeShape.userData.base!=null?activeShape.userData.base:0x0c1526, bsw=[];
         BASE_PAL.forEach(hx=>{ const cc=new THREE.Color(hx); q332(cc); const q=cc.getHex(), hs='#'+('000000'+q.toString(16)).slice(-6);
@@ -2411,7 +2413,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
           sw.addEventListener('click',()=>{ setBaseColor(hs); bsw.forEach(s=>s.style.borderColor=(s._q===q?'#fff':'rgba(255,255,255,.25)')); });
           bsw.push(sw); bcr.appendChild(sw); });
         mp.appendChild(bcr);
-        const mh2=document.createElement('div'); mh2.className='mkhdr'; mh2.textContent='material'; mh2.style.marginTop='8px'; mp.appendChild(mh2);
+        const mh2=document.createElement('div'); mh2.className='mkhdr'; mh2.textContent=t('hdrMaterial'); mh2.style.marginTop='8px'; mp.appendChild(mh2);
         const grid=document.createElement('div'); grid.style.cssText='margin-top:2px;';
         const cur=activeShape.userData.tex||0;
         const addCat=(label,entries)=>{
@@ -2423,17 +2425,17 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
             row.appendChild(sw); });
           grid.appendChild(row);
         };
-        addCat('PLAIN',[[0,{n:'plain',col:0x2a3550}]]);
-        addCat('METAL',Object.entries(METALS));
-        addCat('STONE',Object.entries(STONES));
-        addCat('WOOD', Object.entries(WOODS));
+        addCat(t('catPlain'),[[0,{n:'plain',col:0x2a3550}]]);
+        addCat(t('catMetal'),Object.entries(METALS));
+        addCat(t('catStone'),Object.entries(STONES));
+        addCat(t('catWood'), Object.entries(WOODS));
         mp.appendChild(grid);
         const dn=document.createElement('div'); dn.className='srow'; dn.style.marginTop='8px';
-        dn.appendChild(sbtn('✕ done', ()=>{ solidPickerOpen=false; if(activeShape) buildShapeTools(activeShape.userData.type); }, 'done')); mp.appendChild(dn);
+        dn.appendChild(sbtn(t('btnDone'), ()=>{ solidPickerOpen=false; if(activeShape) buildShapeTools(activeShape.userData.type); }, 'done')); mp.appendChild(dn);
       }
     }
     const close=document.createElement('div'); close.className='srow';
-    close.appendChild(sbtn('✕ close',closeShape,'done')); box.appendChild(close);
+    close.appendChild(sbtn(t('btnClose'),closeShape,'done')); box.appendChild(close);
   }
   // MANIFEST mode = the free-cursor editor (HUD open). PAINT mode = first-person, pointer-locked, spray.
   function openShape(){ shaping=true; document.body.classList.add('shaping'); buildShapeTools(activeShape?activeShape.userData.type:null);
