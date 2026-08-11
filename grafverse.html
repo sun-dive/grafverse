@@ -1326,6 +1326,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(e.code==='Escape' && talking){ leaveTalk(true); return; }
     if(talking) return;
     keys[e.code]=true;
+    if(!actx){ try{ initAudio(); }catch(_){} } else if(actx.state==='suspended'){ try{ actx.resume(); }catch(_){} }   // a key press is a user gesture → arm audio even if the player walked to the monolith without clicking (else the reveal Morse is silent)
     if(e.code==='KeyT' && nearMachine){ enterTalk(); }
     if(e.code==='Space' && !e.repeat && !airborne && !firstStart && !keepOpen && !shaping && !introActive){ e.preventDefault(); velY=JUMP_V; airborne=true; }   // jump — but NOT during the cold open (the moon isn't solid yet)
   });
@@ -1521,10 +1522,10 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   let talkedU21=false, buildUnlocked=false;   // the tools wake up only after you've haggled with Unit 21
   let spent=0;                                // cumulative sats sunk into paint — the gauge for how much Unit 21 reveals
   const chatInput=document.getElementById('chatInput');
-  function speak(line, sub){
+  function speak(line, sub, morse){
     dlg.style.opacity=1;
     dtext.textContent=''; dsub.textContent='';
-    speakMorse(line);                              // Unit 21's true voice: beep the line in Morse
+    speakMorse(morse||line);                       // Unit 21's true voice: beep in Morse (Morse is Latin — translated lines pass an English `morse` so it isn't cut short)
     let i=0; clearInterval(typing);
     typing=setInterval(()=>{
       const ch=line[i]; dtext.textContent=line.slice(0,++i);
@@ -2175,7 +2176,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     nearMachine = !introActive && md < 7;
     if(!greeted && !introActive && md < 7 && performance.now()>=_morseUntil){       // Unit 21 waits until the droid's Morse has fully finished
       greeted=true;
-      speak(t('u21Hello'), '▸ '+(MOBILE ? t('hintTalkM') : t('hintTalk')));
+      speak(t('u21Hello'), '▸ '+(MOBILE ? t('hintTalkM') : t('hintTalk')), (GV_LANG.en.ui&&GV_LANG.en.ui.u21Hello));
     }
     if(MOBILE){
       const tb=$('talkBtn'); tb.style.display=(nearMachine||talking)?'block':'none'; tb.textContent=talking?'Leave':'Talk';
