@@ -22,6 +22,7 @@ deployment:
     - /bin/cp w.php "$DEPLOYPATH"                         # shareable, crawlable OG/SEO landing page per shared world/solid (→ ./?w=<id>)
     - /bin/cp og.php "$DEPLOYPATH"                        # serves a share's rendered 1200×630 OG cover (falls back to og.jpg)
     - /bin/cp bmf-codec.js "$DEPLOYPATH"                  # shared thrifty BMF pack/unpack codec (game packs before mint)
+    - /bin/cp gv-store.js "$DEPLOYPATH"                   # world store: IndexedDB worlds/covers/player + the sync index — REQUIRED, the game boots through it
     - /bin/cp stars.js "$DEPLOYPATH"                      # sky data pack (loaded by the game backdrop)
     - /bin/cp constellations.js "$DEPLOYPATH"             # constellation figure-lines + names (loaded by the game backdrop)
     - /bin/cp milkyway.webp "$DEPLOYPATH"                 # all-sky backdrop image
