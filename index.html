@@ -177,6 +177,9 @@
   }
   function setLang(code){
     try{ localStorage.setItem('grafverse-lang', code); }catch(e){}   // the game reads this on load → opens in this language
+    // the game's detectLang() reads the gvlang COOKIE *first* (cross-subdomain), then localStorage — so set the SAME
+    // cookie here, else a stale cookie from a previous game visit would override the splash's choice.
+    try{ var rd=location.hostname.replace(/^wallet\./,''); if(rd.indexOf('.')>0) document.cookie='gvlang='+encodeURIComponent(code)+';path=/;max-age=31536000;domain=.'+rd+';samesite=lax'; }catch(e){}
     load(code, function(){ apply(code); });
   }
 
