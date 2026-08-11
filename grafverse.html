@@ -1325,7 +1325,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(talking) return;
     keys[e.code]=true;
     if(e.code==='KeyT' && nearMachine){ enterTalk(); }
-    if(e.code==='Space' && !e.repeat && !airborne && !firstStart && !keepOpen && !shaping){ e.preventDefault(); velY=JUMP_V; airborne=true; }   // jump
+    if(e.code==='Space' && !e.repeat && !airborne && !firstStart && !keepOpen && !shaping && !introActive){ e.preventDefault(); velY=JUMP_V; airborne=true; }   // jump — but NOT during the cold open (the moon isn't solid yet)
   });
   addEventListener('keyup', e=> keys[e.code]=false);
 
@@ -2008,7 +2008,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     if(airborne){ velY+=GRAV*dt; camera.position.y+=velY*dt;
       if(velY<=0 && camera.position.y<=standY){ camera.position.y=standY; velY=0; airborne=false; } }   // landed
     else if(camera.position.y>standY+0.06){ airborne=true; }                                            // walked off an edge → fall
-    else camera.position.y = standY + (slope>rest?0:Math.sin(bob)*0.05*Math.min(1,spd/SPEED));          // grounded: head-bob (flush while sliding)
+    else camera.position.y = standY + ((slope>rest||introActive)?0:Math.sin(bob)*0.05*Math.min(1,spd/SPEED));          // grounded: head-bob (flush while sliding; none during the cold open — a weightless drift over the not-yet-solid moon)
     // --- slope slide: too steep to hold → accelerate down the fall-line (wet lowers rest angle + friction) ---
     if(!airborne && slope>rest){ const dl=Math.hypot(nX,nZ)||1, pull=SLIDE_G*Math.sin(slope);
       slideX+=(nX/dl)*pull*dt; slideZ+=(nZ/dl)*pull*dt; }
@@ -2022,7 +2022,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       smearSurf=cSurf; smearU=cU; smearV=cV;
     } else smearSurf=null;
     // --- footfalls + wet-paint footprints (grounded on the actual ground, not sliding) ---
-    if(spd>0.4 && !airborne && slope<=rest){ const ph=Math.floor(bob/Math.PI);
+    if(spd>0.4 && !airborne && slope<=rest && !introActive){ const ph=Math.floor(bob/Math.PI);   // no footfalls during the cold open — the moon isn't solid yet, you drift over the void
       if(ph!==stepPhase){ stepPhase=ph; footstep(); if(floorY<0.1) leaveFootprint(px,pz,velX,velZ,ph); } }
 
     // can pickup
