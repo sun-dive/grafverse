@@ -1536,6 +1536,12 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
 
   // ---------- vending-machine chat (keyword match + spintext, fully offline) ----------
   function spin(s){ let p; do{ p=s; s=s.replace(/\{([^{}]*)\}/g,(_,b)=>{const o=b.split('|');return o[Math.floor(Math.random()*o.length)];}); }while(s!==p); return s; }
+  // ── path-based spin: spinPath records WHICH option it chose at each {…} slot (leftmost-innermost first); applyPath
+  //    replays that exact choice-path on ANY parallel template. So the same path on the English + translated versions
+  //    of an answer yields the SAME variant → English text for the Morse, matching translated text for the display.
+  //    Contract: a translated template must mirror the English's {…} structure (same slots, same order). ──
+  function spinPath(s){ const path=[]; let p; do{ p=s; s=s.replace(/\{([^{}]*)\}/,(_,b)=>{ const o=b.split('|'); const i=Math.floor(Math.random()*o.length); path.push(i); return o[i]; }); }while(s!==p); return { text:s, path }; }
+  function applyPath(s, path){ let i=0, p; do{ p=s; s=s.replace(/\{([^{}]*)\}/,(_,b)=>{ const o=b.split('|'); const k=path[i++]|0; return o[((k%o.length)+o.length)%o.length]; }); }while(s!==p); return s; }
   // DRAFT — rewrite in Unit 21's voice (yours to write). The deep "why paint?" answer: the observer / owned-reality
   // metaphysics — nothing exists till observed → you paint reality into being → owned, not claimed. Shared by the typed rule + the chip.
   const WHYPAINT="{Why do you paint? Now that's a real question, gentlebot|Careful — you'll make an old machine think|Sit yourself down for that one}. {Look out there — nothing, isn't it? Just void|The moon's not real yet, see — not till you say so}. {Nothing out here exists till a droid looks at it and sprays it so|Nothing's real till someone observes it into being}. {You don't FIND a world, gentlebot — you paint one|You're not colouring a moon, you're DECIDING one}. {Every empty can collapses a heap of maybe into a something|One good spray pins down a single reality out of a thousand that never were}. {And here's the part the suits can't stomach|And the kicker}: {whatever you paint is YOURS|it's owned, not claimed} — {nobody paints your reality but you|your world, your signature, forever}. {Now, which colour|Anyway — buying, or shall we sit here inventing the universe all day}?";
