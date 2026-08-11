@@ -152,14 +152,13 @@
      against the index — which only ever contains worlds that HAVE CONTENT. That makes Resume mean "the world as you
      left it" rather than "whatever a pointer happens to say", so no navigation accident can strand your work. */
   function resolveIntent(intent){
-    var a = GVStore.index();                                        // newest-first, content-only
-    var known = idxFind(idx(), _curId) >= 0;                        // does the open world have content?
-    if(intent==='new'){
-      if(known){ _curId=newId(); lsSet(CUR_KEY,_curId); }           // painted → start a genuinely new one
-      return;                                                       // current world still empty → reuse it, don't mint orphans
+    if(intent==='new'){                                             // ▶ Click to Begin is ALWAYS a genuine new world.
+      _curId=newId(); lsSet(CUR_KEY,_curId);                        // No conditions, no index lookup: an empty world costs
+      return;                                                       // nothing (it is never stored or listed until painted).
     }
-    if(intent==='resume' && !known && a.length){                    // pointer points at nothing → fall back to your latest work
-      _curId=a[0].id; lsSet(CUR_KEY,_curId);
+    if(intent==='resume'){
+      var a = GVStore.index();                                      // newest-first, CONTENT ONLY (see save())
+      if(idxFind(idx(), _curId) < 0 && a.length){ _curId=a[0].id; lsSet(CUR_KEY,_curId); }   // pointer points at nothing → your latest real work
     }
   }
 
@@ -218,7 +217,15 @@
       _cur=rec;
       var bytes=null;
       if(opts && opts.measure){ try{ bytes=JSON.stringify(rec).length; }catch(e){} }   // only on the exit save — a full stringify is not a hot-path cost
-      idxWrite(_curId, rec, bytes);
+      /* THE INDEX LISTS ONLY WORLDS THAT ARE REAL — i.e. that have paint. "Paint to make it real" is a storage law,
+         not just a tagline: an unpainted world is a ghost, and must never appear in the library, be offered by
+         ↩ Resume, or be mistaken for work in progress. */
+      var wasReal = idxFind(idx(), _curId) >= 0;
+      if(filled(rec)) idxWrite(_curId, rec, bytes);
+      else idxDrop(_curId);
+      // A never-painted world is not written at all — ▶ Begin can then be pressed all day without littering storage.
+      // One that HAD content still writes when emptied, so deleting every shape actually persists.
+      if(!filled(rec) && !wasReal) return Promise.resolve(true);
       var seq=++_saveSeq;
       return putWorld(_curId, rec).then(function(){ return true; }).catch(function(e){
         if(seq===_saveSeq && GVStore.onError) GVStore.onError('save', (e && e.name==='QuotaExceededError') ? 'storage is full' : 'could not save your world');
