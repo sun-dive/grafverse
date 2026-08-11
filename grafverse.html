@@ -1190,7 +1190,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function speakMorse(text){
     if(!morseVoice || !actx) return;
     stopMorse();
-    if(actx.state==='suspended'){ try{ actx.resume(); }catch(e){} }
+    if(actx.state!=='running'){ try{ actx.resume(); }catch(e){} }
     const chars=(String(text).toUpperCase().match(/[A-Z0-9.,?\/]/g)||[]).slice(0,18);   // a burst, not a drone
     const u=0.05, dah=u*3, symGap=u, letterGap=u*3, wordGap=u*7;                          // ~24 WPM dit=50ms
     const on=[]; let t=actx.currentTime+0.03;
@@ -1204,6 +1204,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       g.gain.setValueAtTime(0.0001,s); g.gain.exponentialRampToValueAtTime(0.075,s+0.006);
       g.gain.setValueAtTime(0.075,s+d-0.008); g.gain.exponentialRampToValueAtTime(0.0001,s+d); }
     o.start(on[0][0]); o.stop(t+0.05); _morseOsc=o;
+    o.onended=()=>{ try{ o.disconnect(); g.disconnect(); }catch(_){} };   // free the nodes so rapid beeps don't pile up and choke output
   }
   // the DROID's dialect — TWO-TONE Morse: every symbol EQUAL length, PITCH carries it
   // (dot = high · dash = a perfect fifth lower, 660:440 = 3:2). Asian-speech flourish: the FINAL tone is held 4×
@@ -1211,7 +1212,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
   function speakMorseDroid(text, maxChars){
     if(!morseVoice || !actx) return 0;
     stopMorse();
-    if(actx.state==='suspended'){ try{ actx.resume(); }catch(e){} }
+    if(actx.state!=='running'){ try{ actx.resume(); }catch(e){} }
     const chars=(String(text).toUpperCase().match(/[A-Z0-9]/g)||[]).slice(0, maxChars||10);   // a chirp, not a drone (the reveal passes a bigger cap for its full line)
     const u=0.065, HI=660, LO=440;                                 // HI:LO = 3:2 = a perfect fifth
     const seq=[]; let t=actx.currentTime+0.03;
@@ -1228,6 +1229,7 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
       g.gain.setValueAtTime(0.085,s+d-0.02); g.gain.exponentialRampToValueAtTime(0.0001,s+d); }
     const last=seq[seq.length-1], end=last[0]+last[1];
     o.start(seq[0][0]); o.stop(end+0.08); _morseOsc=o;
+    o.onended=()=>{ try{ o.disconnect(); g.disconnect(); }catch(_){} };   // free the nodes so rapid chirps don't pile up and choke output
     return (end - actx.currentTime) + 0.05;
   }
   { const mt=document.getElementById('morseTog');
@@ -1838,9 +1840,11 @@ window.THREE = THREE;   // keep the existing global-THREE guard + window.THREE r
     bye.addEventListener('click', ()=>leaveTalk(true)); box.appendChild(bye);
   }
   // the droid ASKS in its two-tone dialect, THEN Unit 21 answers once the chirp finishes (two distinct Morse voices, never overlapping)
+  let _replyTimer=null;
   function askThenReply(qText, replyThunk){
+    clearTimeout(_replyTimer); _replyTimer=null;                           // a fresh tap cancels any pending reply → no stale answers stacking + cross-cancelling on rapid taps
     let d=0; try{ d=speakMorseDroid(qText)||0; }catch(_){}
-    if(d>0.06) setTimeout(replyThunk, (d+0.03)*1000); else replyThunk();   // wait out the WHOLE chirp incl. the held final tone — never clip it
+    if(d>0.06) _replyTimer=setTimeout(replyThunk, (d+0.03)*1000); else replyThunk();   // wait out the WHOLE chirp incl. the held final tone — never clip it
   }
   function ask(Q){ talkedU21=true; asked.add(Q.q); _lastAsked=Q.q;
     { const _i=_shown.findIndex(x=>x&&x.q===Q.q); if(_i>=0) _shown[_i]=null; }   // vacate ONLY this slot → buildChips fills it with one fresh question; the other two stay put
