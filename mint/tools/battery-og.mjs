@@ -12,7 +12,7 @@
 // Zero dependencies — the PNG is encoded here with node's own zlib. The arithmetic is the same
 // multiply-first-divide-last order the covenant uses, so this card cannot drift from the chain.
 import { deflateSync } from 'node:zlib'
-import { writeFileSync } from 'node:fs'
+import { writeFileSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -139,3 +139,18 @@ writeFileSync(OUT, png)
 const doneP = (d.progress * 100).toFixed(4)
 console.log(`  tick ${d.ticks} · frame ${d.level} · ${doneP}% drawn · ${d.fuel.toLocaleString()} sat`)
 console.log(`  wrote ${OUT}  (${CARD_W}x${CARD_H}, ${(png.length / 1024).toFixed(1)} KB)`)
+
+/* Stamp the tick into the og:image URL. Without this the card is cached FOREVER by every platform that
+   has ever unfurled the page — regenerating the PNG changes nothing they will ever look at again. And
+   the page URL cannot be used to bust it, because og:url declares a canonical address without a query,
+   which well-behaved unfurlers key their cache on. So the IMAGE url has to carry the version. */
+const HTML = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'battery.html')
+const before = readFileSync(HTML, 'utf8')
+const after = before.replace(/battery-og\.png(\?v=\d+)?/g, `battery-og.png?v=${d.ticks}`)
+if (after !== before) {
+  writeFileSync(HTML, after)
+  const n = (after.match(/battery-og\.png\?v=/g) || []).length
+  console.log(`  battery.html: ${n} image refs → battery-og.png?v=${d.ticks}`)
+} else {
+  console.log(`  battery.html already at ?v=${d.ticks}`)
+}

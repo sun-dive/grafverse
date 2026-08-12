@@ -121,11 +121,17 @@ function advance(&$c, $hint = null) {
 }
 
 // Best-effort discovery of an EXTERNAL spend (a tick not reported via POST): WoC scripthash history.
-// scripthash = sha256(outputScript) hex. Returns [txid, tx] of the spend, or null if unresolved.
+//
+// ⚠ The scripthash is SHA-256(script) **BYTE-REVERSED** — the Electrum/WoC convention, and what
+// `wocScriptHash()` in mint/src/editionBuilder.ts has always done. This line previously used the
+// un-reversed digest, which 404s every single time, so discovery NEVER worked: the board could only
+// ever learn about ticks that reported themselves via POST. Nothing was lost while every tick came
+// from brc226.html (which does POST), but a tick broadcast any other way — or one whose POST failed —
+// would have been invisible permanently, freezing `n` with no error while the chain moved on.
 function discover_spender($tipTxid, $vout) {
   $tip = get_tx($tipTxid); if (!$tip) return null;
   $scriptHex = $tip['vout'][$vout]['scriptPubKey']['hex'] ?? null; if (!$scriptHex) return null;
-  $sh = hash('sha256', hex2bin($scriptHex));                 // WoC scripthash (big-endian sha256 hex)
+  $sh = bin2hex(strrev(hash('sha256', hex2bin($scriptHex), true)));
   $hist = woc_get("/script/$sh/history"); if (!is_array($hist)) return null;
   foreach ($hist as $h) {
     $txid = $h['tx_hash'] ?? ''; if ($txid === '' || $txid === $tipTxid) continue;
