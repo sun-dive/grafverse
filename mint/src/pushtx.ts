@@ -28,7 +28,7 @@
  *
  * Validated against the @bsv/sdk 2.x `Spend` interpreter with transactionVersion = 2.
  */
-import { BigNumber, Curve, PrivateKey, TransactionSignature, OP as OPCODES, type ScriptChunk } from '@bsv/sdk'
+import { BigNumber, Curve, Hash, PrivateKey, TransactionSignature, OP as OPCODES, type ScriptChunk } from '@bsv/sdk'
 
 const SIGHASH_ALL_FORKID = 0x41 // SIGHASH_ALL | SIGHASH_FORKID
 
@@ -173,6 +173,38 @@ export function pushTxPreimage(p: PreimageParams): number[] {
     lockTime: p.lockTime,
     scope: p.scope ?? SIGHASH_ALL_FORKID,
   })
+}
+
+/**
+ * Does the signature this preimage will DERIVE satisfy the LOW_S rule (`s ≤ n/2`)?
+ *
+ * Low-S is a standardness rule from BIP 62, adopted as mempool policy across the Bitcoin lineage to kill
+ * signature malleability: for any valid `(r, s)`, `(r, n−s)` is equally valid, so a third party could
+ * alter a transaction's signature and change its txid without invalidating it. Requiring `s ≤ n/2` picks
+ * one canonical form. It is POLICY, not consensus — a high-S transaction is perfectly valid and minable,
+ * it simply will not relay through nodes that enforce the rule. ARC does:
+ *
+ *   arc error 461: Non-canonical signature: S value is unnecessarily high
+ *
+ * An ordinary signer never notices, because it holds the key and just negates `s` when it comes out high.
+ * An OP_PUSH_TX covenant cannot: `s` is DERIVED in-script from fixed constants, with no cheap way to
+ * conditionally negate it. So a covenant spend is a coin flip, and the only lever is to change the
+ * preimage — vary the fee or `nLockTime` and re-derive. That grind is free and entirely off-chain.
+ *
+ * This recomputes the same `s` the script will, so a builder can test a candidate before broadcasting.
+ */
+export function derivedSigIsLowS(preimage: number[]): boolean {
+  const curve = new Curve()
+  const n = curve.n
+  const aKey = PrivateKey.fromString(A_HEX, 16)
+  const kKey = PrivateKey.fromString(K_HEX, 16)
+  const a = new BigNumber(aKey.toArray())
+  const k = new BigNumber(kKey.toArray())
+  const r = kKey.toPublicKey().x!.umod(n)
+  // e = HASH256(preimage) read big-endian — the script reverses the hash, then reads it little-endian
+  const e = new BigNumber(Hash.hash256(preimage) as number[])
+  const s = k.invm(n).mul(e.add(r.mul(a).umod(n)).umod(n)).umod(n)
+  return s.cmp(n.shrn(1)) <= 0        // s ≤ n/2
 }
 
 /** Helper to push arbitrary data with the correct (minimal) push opcode. */
