@@ -86,11 +86,26 @@
   .cell span{display:block;font-size:11px;color:var(--faint);letter-spacing:.03em}
   .cell b{display:block;font-size:19px;font-variant-numeric:tabular-nums;margin-top:3px}
   .flat b{color:var(--mag)}
-  .live .gauge{height:11px}
-  .lowfuel i{background:var(--mag)}
+  /* ── the fuel meter, drawn as an actual battery ── */
+  .batt{display:flex;align-items:stretch;gap:4px;margin:6px 0 4px}
+  .batt-body{position:relative;flex:1;height:44px;border:2px solid rgba(120,170,255,.42);border-radius:9px;
+             background:rgba(4,8,16,.62);overflow:hidden}
+  .batt-fill{position:absolute;inset:0;width:0;background:linear-gradient(90deg,var(--lime),var(--tang));
+             transition:width .6s ease}
+  .batt-body.low .batt-fill{background:linear-gradient(90deg,var(--mag),#ff7a4d)}
+  .batt-cells{position:absolute;inset:0;background:repeating-linear-gradient(90deg,
+              transparent 0 calc(10% - 2px),rgba(4,8,16,.55) calc(10% - 2px) 10%)}
+  .batt-txt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:8px;
+            font:800 17px/1 system-ui;font-variant-numeric:tabular-nums;color:#eaf4ff;
+            text-shadow:0 1px 3px rgba(0,0,0,.75);letter-spacing:.01em}
+  .batt-txt small{font:600 11.5px/1 system-ui;color:rgba(234,244,255,.72);letter-spacing:.02em}
+  .batt-nub{width:7px;align-self:center;height:20px;border-radius:0 4px 4px 0;background:rgba(120,170,255,.42)}
 
   /* the on-chain picture — NOT the simulator. Every solid pixel was paid for. */
-  .shot{margin:0 0 14px}
+  .shot{margin:0 0 14px;position:relative}
+  .shot .wm,.toy .panel .wm{position:absolute;right:9px;bottom:9px;font:600 11px system-ui;
+       color:rgba(56,225,255,.72);text-shadow:0 1px 4px rgba(0,0,0,.85);pointer-events:none;letter-spacing:.02em}
+  .toy .panel{position:relative}
   .shot canvas{width:100%;height:auto;display:block;border-radius:11px;image-rendering:pixelated;
                background:#04060b;border:1px solid var(--line)}
   .shot-legend{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:11.5px;color:var(--faint);margin-top:7px}
@@ -156,6 +171,7 @@
          bit-identical to what the script computed. Solid = done on chain. Ghost = not yet. -->
     <div class="shot">
       <canvas id="lv-cv" width="256" height="192"></canvas>
+      <span class="wm">grafverse.com</span>
       <div class="shot-legend">
         <span><i class="sw solid"></i>computed on chain</span>
         <span><i class="sw ghost"></i>not yet — needs fuel</span>
@@ -170,13 +186,23 @@
       <div class="cell"><span>frame</span><b id="lv-level">—</b></div>
     </div>
 
-    <div class="gauge" id="lv-gauge"><i id="lv-bar" style="width:0"></i></div>
+    <!-- the fuel meter. Fill = how much of the REMAINING work in this frame the pot can actually pay
+         for, totalled exactly while the picture is drawn. An empty battery is honest, not a failure. -->
+    <div class="batt">
+      <div class="batt-body" id="lv-batt">
+        <i class="batt-fill" id="lv-bar"></i>
+        <div class="batt-cells"></div>
+        <div class="batt-txt"><span id="lv-battn">—</span><small id="lv-batts"></small></div>
+      </div>
+      <div class="batt-nub"></div>
+    </div>
     <div class="stat"><span id="lv-prog">—</span><b id="lv-raised"></b></div>
 
     <div class="row">
       <button id="lv-fuelit" style="flex:1;min-width:190px">⚡ Fuel it — and sign the board</button>
+      <button id="lv-dl" class="ghost" style="flex:0 1 auto">⬇ Save this state</button>
       <a id="lv-tip" class="ghost" href="#" target="_blank" rel="noopener"
-         style="flex:1;min-width:150px;text-align:center;padding:11px 18px;border-radius:24px;border:1px solid var(--line);color:var(--dim);text-decoration:none;font:600 14px system-ui">the tip on chain ↗</a>
+         style="flex:1;min-width:140px;text-align:center;padding:11px 18px;border-radius:24px;border:1px solid var(--line);color:var(--dim);text-decoration:none;font:600 14px system-ui">the tip on chain ↗</a>
     </div>
 
     <p class="note" id="lv-note">Advancing it needs <b>no key and no wallet</b> — the covenant authorises with a proof about the transaction, not a signature. Only <b>topping it up</b> is signed, because only topping it up spends someone's money.</p>
@@ -263,6 +289,7 @@
   <div class="grid">
     <div class="panel">
       <canvas id="cv" width="240" height="180"></canvas>
+      <span class="wm">grafverse.com</span>
       <div class="row">
         <button id="run">▶ Run</button>
         <button id="step" class="ghost">Step ×100</button>
@@ -380,6 +407,7 @@
      MULTIPLY FIRST, DIVIDE LAST. (2*zr*zi)/S and (zr*zi/S)*2 differ by one ulp, and the chain's order is
      the only correct one — reorder these and the picture slowly drifts away from what was actually paid for. */
   var CW=256, CH=192, CS=Math.pow(2,32), CESC=4*CS;
+  var frameCost=0, frameLeft=0;                // exact iteration totals, accumulated while drawing
   function drawChain(d){
     var cv=$('lv-cv'), ctx=cv.getContext('2d');
     if(!d||!d.state){ return }
@@ -388,6 +416,7 @@
     var col=Math.round((s.cr-cr0)/step), row=Math.round((s.ci-ci0)/step);
     var done=row*CW+col;                       // pixels finished; the rest is unpaid-for future
     var img=ctx.createImageData(CW,CH), px=img.data;
+    frameCost=0; frameLeft=0;
 
     for(var p=0;p<CW*CH;p++){
       var x=p%CW, y=(p-x)/CW;
@@ -399,6 +428,8 @@
         var nzi=Math.trunc(2*zr*zi/CS)+ci;     // multiply first, divide last
         zr=zr2-zi2+cr; zi=nzi; i++;
       }
+      /* one tick = one iteration, so the escape count IS this pixel's price */
+      frameCost+=i; if(p>=done) frameLeft+=i;
       var inside=(i>=mx);
       /* escape count → the page's own ramp: lime → tangerine → magenta, interior stays near-black */
       var t=inside?0:(i/mx);
@@ -431,14 +462,21 @@
     $('lv-ticks').textContent=fmt(d.ticks);
     $('lv-level').textContent=d.level==null?'—':(d.level+' of 21');
 
-    /* The gauge is the FRAME's progress, not the fuel's — the picture is what people came to see.
-       Fuel gets its own cell, and turns red when the battery is nearly flat. */
-    var pct=Math.max(0.4,(d.progress||0)*100);
-    $('lv-bar').style.width=pct.toFixed(3)+'%';
-    $('lv-prog').textContent='frame '+(d.level||1)+' is '+((d.progress||0)*100).toFixed(4)+'% drawn';
+    /* The battery reads against the work LEFT IN THIS FRAME — the only honest denominator, since the
+       pot has no notion of "full" (anyone may top it up without limit). A nearly-flat battery next to a
+       barely-started picture is exactly the true state of things, and it is the whole point of the demo:
+       a program you can watch run out of power is more legible as a machine than one that never stops. */
+    var need=frameLeft||1;
+    var frac=Math.min(1, (d.ticksLeft||0)/need);
+    $('lv-bar').style.width=(frac*100).toFixed(2)+'%';
+    $('lv-battn').textContent=fmt(d.ticksLeft)+' ticks';
+    $('lv-batts').textContent=frac>=1 ? 'this frame is fully funded'
+      : (frac*100).toFixed(frac<0.01?2:1)+'% of what frame '+(d.level||1)+' still needs';
+    $('lv-batt').className='batt-body'+(frac<0.25?' low':'');
+    $('lv-prog').textContent='frame '+(d.level||1)+' is '+((d.progress||0)*100).toFixed(4)+'% drawn · '+
+      fmt(frameCost)+' ticks for the whole frame';
     $('lv-raised').textContent=d.raised?('+'+fmt(d.raised)+' sat contributed'):'';
     $('lv-leftcell').className='cell'+(d.ticksLeft<50?' flat':'');
-    $('lv-gauge').className='gauge'+(d.ticksLeft<50?' lowfuel':'');
     $('lv-when').textContent=d.ticksLeft>0
       ? 'it advances whenever anyone ticks it — no permission needed'
       : 'the fuel has run out — it is waiting for someone to top it up';
@@ -457,6 +495,41 @@
              '<span class="amt">'+fmt(b.sats)+' sat</span></li>';
     }).join('');
   }
+
+  /* ── export ───────────────────────────────────────────────────────────────────────────────────────
+     A shared stamper for BOTH canvases. The watermark is drawn into the exported PIXELS, not laid over
+     the page with CSS, so it survives being saved, re-shared and re-posted — a shared frame should carry
+     its way home. The on-page canvas is left untouched: nothing is painted over the real picture, and a
+     stamped pixel must never be mistaken for one the chain paid for.
+     Exposed on window so the toy's own save button can use the same stamp. */
+  function stampShot(src, caption, scale){
+    var sw=src.width||src.naturalWidth, sh=src.height||src.naturalHeight, s=scale||4;
+    var W=sw*s, H=sh*s;
+    var out=document.createElement('canvas'); out.width=W; out.height=H;
+    var c=out.getContext('2d');
+    c.imageSmoothingEnabled=false;             // keep the pixels crisp, never blurred
+    c.fillStyle='#05070d'; c.fillRect(0,0,W,H);
+    c.drawImage(src,0,0,W,H);
+    var bar=Math.max(20,Math.round(H*0.058)), fs=Math.round(bar*0.52), pad=Math.round(bar*0.45);
+    c.fillStyle='rgba(4,7,14,.66)'; c.fillRect(0,H-bar,W,bar);
+    c.font='600 '+fs+'px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';
+    c.textBaseline='middle';
+    c.textAlign='left';  c.fillStyle='rgba(174,191,224,.95)'; c.fillText(caption||'', pad, H-bar/2);
+    c.textAlign='right'; c.fillStyle='rgba(56,225,255,.95)';  c.fillText('grafverse.com', W-pad, H-bar/2);
+    return out;
+  }
+  window.stampShot=stampShot;
+
+  function download(dataUrl,name){
+    var a=document.createElement('a'); a.href=dataUrl; a.download=name; a.click();
+  }
+
+  $('lv-dl').onclick=function(){
+    var d=live; if(!d||!d.state) return;
+    var cap='tick '+fmt(d.ticks)+' · frame '+(d.level||1)+' · '+fmt(d.fuel)+' sat of fuel';
+    download(stampShot($('lv-cv'),cap,4).toDataURL('image/png'),
+             'bitcoin-battery-tick-'+d.ticks+'.png');
+  };
 
   function load(sync){
     return jget('/battery.php'+(sync?'?sync=1':'')).then(paint).catch(function(){
@@ -871,8 +944,20 @@
   });
   $('save').addEventListener('click',function(){
     var list = frames.length ? frames : [cv.toDataURL('image/png')];
-    list.forEach(function(d,n){ var a=document.createElement('a');
-      a.href=d; a.download='battery-'+String(n+1).padStart(3,'0')+'.png'; a.click(); });
+    /* Stamp every saved frame with grafverse.com, baked into the pixels — a shared loop should carry
+       its way home. `frames` are data URLs from the loop preview, so each is loaded before stamping. */
+    var cap = cfg.W+'x'+cfg.H+' · maxIter '+cfg.maxIter+' · level '+level;
+    var stamp = window.stampShot;
+    list.forEach(function(d,n){
+      var name='battery-'+String(n+1).padStart(3,'0')+'.png';
+      var img=new Image();
+      img.onload=function(){
+        var url = stamp ? stamp(img,cap,4).toDataURL('image/png') : d;
+        var a=document.createElement('a'); a.href=url; a.download=name; a.click();
+      };
+      img.onerror=function(){ var a=document.createElement('a'); a.href=d; a.download=name; a.click(); };
+      img.src=d;
+    });
     $('status').textContent='Saved '+list.length+' frame'+(list.length===1?'':'s')+
       '. Assemble with ImageMagick:  convert -delay 12 -loop 0 battery-*.png battery.webp';
   });
