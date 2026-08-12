@@ -291,6 +291,19 @@
       <div class="lc-lastlab">the last 21 signers</div>
       <ul class="lc-signers" id="lc-signers"><li class="empty" id="lc-status">connecting to the chain…</li></ul>
     </div>
+    <details class="howto" id="lc-break">
+      <summary>⚡ try to break it — take the counter for yourself</summary>
+      <div style="padding:14px 16px 18px">
+        <p class="pm-note" style="text-align:left">Nothing guards this counter but its own script — no server, no admin, no key. So try to beat it. Your browser will build a <b>real transaction</b> that breaks one of its rules and hand it to a <b>real node</b>. Watch what happens.</p>
+        <p class="pm-note" style="text-align:left"><b>This costs nothing and risks nothing.</b> The counter needs no signature to spend, so no wallet is involved and you sign nothing. A transaction the network refuses never exists — no sats move, nothing is touched.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:14px 0 6px">
+          <button class="pm-btn" id="brk-steal" style="flex:1 1 auto">Steal its coin</button>
+          <button class="pm-btn" id="brk-jump" style="flex:1 1 auto">Skip it forward</button>
+          <button class="pm-btn" id="brk-stiff" style="flex:1 1 auto">Don&rsquo;t pay the last poster</button>
+        </div>
+        <div class="pm-status pm-mono" id="brk-out" style="white-space:pre-wrap;text-align:left"></div>
+      </div>
+    </details>
     <details class="howto" id="lc-howto">
       <summary>🐇 how to post — leave your mark on the wall</summary>
       <div class="howbody">
@@ -749,6 +762,54 @@
     $('pm-dtx').textContent=txid.slice(0,12)+'…'+txid.slice(-6); $('pm-dtx').href='https://whatsonchain.com/tx/'+txid;
     try{ if(window.__lcReload) setTimeout(window.__lcReload,1500); }catch(e){}
   }
+  /* ── ⚡ TRY TO BREAK IT ────────────────────────────────────────────────────────────────────────────────────
+     Build a REAL transaction that spends the live counter while breaking one of its rules, and hand it to a
+     real node. The covenant is unlocked by an OP_PUSH_TX preimage, NOT a signature — so this needs no wallet,
+     no key and no funding, and the visitor signs nothing.
+     Why it costs nothing: every attempt's outputs total exactly the counter's own 1 sat, so the fee is 0 and
+     the node evaluates the SCRIPT before it ever considers the fee (measured: it answers
+     "mandatory-script-verify-flag-failed", not a fee error). A refused transaction never existed — no sats
+     move, no UTXO is touched, and the counter is untouched for the next honest poster.
+     NB outputs must be ≥1 sat: a 0-sat output trips the dust policy and gets rejected BEFORE the script runs,
+     which would prove nothing. The whole point is to be refused by the covenant, not by a policy rule. */
+  var BRK={ steal:'take its coin and put the counter back', jump:'jump the count from n to n+2',
+            stiff:'advance it without repaying the previous poster' };
+  function brkOut(msg, cls){ var el=$('brk-out'); if(el){ el.textContent=msg; el.className='pm-status pm-mono'+(cls?' '+cls:''); } }
+  function breakIt(kind){
+    brkOut('building a transaction that tries to '+BRK[kind]+'…');
+    var tip;
+    ensureGM().then(function(){ return fetch('/tip.php',{cache:'no-store'}).then(function(r){return r.json()}); })
+    .then(function(t){ tip=t; if(!tip||tip.tipTxid==null) throw Error('the counter isn’t live yet');
+      return wt('/tx/'+tip.tipTxid+'/hex'); })
+    .then(function(hex){
+      var tipTx=GM.Transaction.fromHex(hex), out0=tipTx.outputs[0], V=out0.satoshis;
+      var lastFunder=out0.lockingScript.toBinary().slice(12,32), author=hexToBytes(tip.author);
+      var prevLock=GM.buildLiveCounterLock({n:tip.n,lastFunderHash:lastFunder,authorHash:author});
+      if(prevLock.toHex()!==out0.lockingScript.toHex()) throw Error('couldn’t reproduce the counter’s script');
+      var mine=GM.keyHash160(GM.PrivateKey.fromRandom());          // "me" — the would-be thief
+      var tx=new GM.Transaction(); tx.version=2;
+      tx.addInput({ sourceTransaction:tipTx, sourceOutputIndex:0, sequence:0xffffffff,
+        unlockingScriptTemplate: GM.tickUnlockTemplate({ prevLock:prevLock, sourceSatoshis:V, newFunderHash:mine }) });
+      if(kind==='steal') tx.addOutput({ lockingScript:new GM.P2PKH().lock(GM.PrivateKey.fromRandom().toAddress()), satoshis:V });
+      else tx.addOutput({ lockingScript:GM.buildLiveCounterLock({ n:tip.n+(kind==='jump'?2:1), lastFunderHash:mine, authorHash:author }), satoshis:V });
+      return tx.sign().then(function(){ return tx.toHex(); });
+    })
+    .then(function(raw){ brkOut('broadcasting '+(raw.length/2)+' bytes to a node on the live network…'); return bcast(raw); })
+    .then(function(b){
+      if(b.ok){ brkOut('⚠ ACCEPTED — that should be impossible. Please tell me: '+b.body,'pm-err'); return; }
+      b.body=(b.body||'').replace(/^unexpected response code \d+:\s*/i,'');   // drop the relay's HTTP wrapper — show the NODE's own words
+      // Be honest about WHICH refusal this was. Only a script failure proves the covenant held; a stale tip
+      // ("missing inputs") just means someone posted first, and claiming that as proof would be a lie.
+      if(/script|verify-flag|false\/empty/i.test(b.body))
+        brkOut('✋ Bitcoin refused it.\n\n'+b.body+'\n\nThe script ran and the rules did not hold, so the transaction was thrown away. Nothing moved — it never existed. Try another one.','pm-ok');
+      else if(/missing inputs|conflict|spent|already/i.test(b.body))
+        brkOut('the counter moved on mid-attempt — someone posted before you.\n\n'+b.body+'\n\nThat is not the covenant refusing you, just a stale target. Press it again to try against the new tip.');
+      else
+        brkOut('rejected, but not by the script:\n\n'+b.body+'\n\nThat proves nothing about the covenant — try again.');
+    })
+    .catch(function(e){ brkOut('couldn’t run the attempt: '+(e.message||e),'pm-err'); });
+  }
+
   function fail(msg){ if(timer){clearInterval(timer);timer=null;} show('err'); $('pm-emsg').textContent=msg;
     // Offer the raw key ONLY while one exists — after a successful tick or sweep the state is cleared and there is
     // nothing left to recover, so the panel must not appear (and must never show a stale key).
@@ -787,6 +848,7 @@
   $('pm-begin').addEventListener('click', begin);
   $('pm-resume-go').addEventListener('click', function(){ ensureGM().then(toFund); });
   $('pm-copy').addEventListener('click', function(){ try{navigator.clipboard.writeText(S.throwAddr);this.textContent='Copied ✓';}catch(e){} });
+  ['steal','jump','stiff'].forEach(function(k){ var b=$('brk-'+k); if(b) b.addEventListener('click', function(){ breakIt(k); }); });
   $('pm-rcopy').addEventListener('click', function(){ var k=$('pm-rkey').textContent; if(!k) return; try{navigator.clipboard.writeText(k);this.textContent='Copied ✓';}catch(e){} });
   $('pm-sweep').addEventListener('click', sweep);
   $('pm-sweep2').addEventListener('click', sweep);
