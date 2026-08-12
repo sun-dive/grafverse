@@ -32,5 +32,6 @@ deployment:
     - /bin/cp robots.txt "$DEPLOYPATH"                    # crawl directives (allow content, disallow the .php endpoints + /worlds/) + Sitemap: pointer
     - /bin/cp sitemap.php "$DEPLOYPATH"                   # dynamic XML sitemap of the crawlable pages (/, /grafverse.html, /brc226.html) with real lastmod
     - /bin/cp tip.php "$DEPLOYPATH"                        # BRC-226 LiveCounter board cache: follows the covenant chain → { n, tipTxid, last21[] }
+    - /bin/cp battery-og.png "$DEPLOYPATH"                # the battery's social card — the REAL picture so far (regen: node mint/tools/battery-og.mjs)
     - /bin/cp battery.php "$DEPLOYPATH"                    # BRC-226 Battery chain-follow cache: → { fuel, ticks, state, level, board[] } (the top-21 contributions)
     - /bin/cp sky.php "$DEPLOYPATH"                        # daily-cached backdrop sky-data (per-UTC-date; the game fetches it to place the backdrop bodies)
