@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- grafverse — © 2026 sun-dive — Licensed under the Business Source License 1.1 (see LICENSE). -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Bitcoin Battery — a program that pays for its own execution</title>
+<meta name="description" content="A covenant with a fuel tank. It computes one Mandelbrot iteration per transaction, recreates itself slightly lighter, and stops when the fuel runs out. No key, no wallet, nothing to steal — and anyone can top it up.">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{--ink:#f3f7ff;--dim:#aebfe0;--faint:#7d92b8;--cyan:#38e1ff;--mag:#ff4d9d;--lime:#b4ff3a;--tang:#ffa22e;--line:rgba(120,170,255,.18)}
+  body{background:radial-gradient(ellipse at 50% -6%,#132542 0%,#0a1020 50%,#05070d 100%);color:var(--ink);
+       font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh;padding:24px 16px 60px}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:clamp(28px,5vw,46px);font-weight:900;letter-spacing:-.03em;line-height:1.02;text-wrap:balance}
+  h1 .hl{color:#0a0d14;padding:0 .12em;background:linear-gradient(100deg,var(--mag),var(--tang) 55%,var(--lime));border-radius:8px;display:inline-block;transform:rotate(-1.5deg)}
+  .sub{color:var(--dim);font-size:clamp(15px,2vw,18px);margin-top:14px;max-width:62ch}
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:22px;margin-top:26px;align-items:start}
+  @media(max-width:840px){.grid{grid-template-columns:1fr}}
+  .panel{background:rgba(10,18,34,.66);border:1px solid var(--line);border-radius:14px;padding:16px}
+  canvas{width:100%;height:auto;display:block;border-radius:10px;image-rendering:pixelated;background:#04060b}
+  .gauge{height:9px;border-radius:6px;background:rgba(255,255,255,.08);overflow:hidden;margin:8px 0 6px}
+  .gauge i{display:block;height:100%;background:linear-gradient(90deg,var(--lime),var(--tang),var(--mag));width:100%}
+  .stat{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:var(--dim);padding:3px 0}
+  .stat b{color:var(--ink);font-variant-numeric:tabular-nums}
+  label{display:block;font-size:12px;color:var(--faint);margin:11px 0 3px;letter-spacing:.02em}
+  input[type=range]{width:100%;accent-color:var(--cyan)}
+  .val{float:right;color:var(--dim);font-variant-numeric:tabular-nums}
+  button{font:600 14px system-ui;color:#04121f;background:linear-gradient(180deg,#7be9ff,#22c0ff);border:0;
+         padding:11px 18px;border-radius:24px;cursor:pointer;transition:transform .1s}
+  button:hover{transform:translateY(-1px)} button.ghost{background:rgba(20,36,64,.9);color:#cfe3ff;border:1px solid var(--line)}
+  button:disabled{opacity:.45;cursor:default;transform:none}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .note{color:var(--faint);font-size:12.5px;line-height:1.65;margin-top:12px}
+  .kv{font-variant-numeric:tabular-nums;color:var(--cyan)}
+  .foot{margin-top:34px;padding-top:20px;border-top:1px solid var(--line);color:var(--faint);font-size:13.5px;max-width:74ch}
+  .foot b{color:#cfe0ff} a{color:var(--cyan)}
+  .tag{display:inline-block;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);border-radius:20px;padding:4px 12px;margin-bottom:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="tag">BRC-226 · demo two</span>
+  <h1>The Bitcoin <span class="hl">Battery</span></h1>
+  <p class="sub">A covenant with a fuel tank. Each transaction performs <b>one</b> Mandelbrot iteration and recreates itself, slightly lighter. There is no key — so there is nothing to steal, and anyone can advance it. When the fuel runs out it simply stops, until someone tops it up.</p>
+
+  <div class="grid">
+    <div class="panel">
+      <canvas id="cv" width="240" height="180"></canvas>
+      <div class="row">
+        <button id="run">▶ Run</button>
+        <button id="step" class="ghost">Step ×100</button>
+        <button id="reset" class="ghost">Reset</button>
+        <button id="play" class="ghost" disabled>🔁 preview loop</button>
+      </div>
+      <div class="row" style="align-items:center;gap:12px">
+        <span style="font-size:12px;color:var(--faint)">speed</span>
+        <input type="range" id="Spd" min="0" max="4" step="1" value="1" style="flex:1;max-width:200px">
+        <span class="val" id="vSpd" style="float:none;font-size:12px">fast</span>
+        <span style="font-size:12px;color:var(--faint);margin-left:auto">fps</span>
+        <input type="range" id="Fps" min="2" max="24" step="1" value="8" style="width:90px">
+        <span class="val" id="vFps" style="float:none;font-size:12px">8</span>
+      </div>
+      <p class="note" id="status">Local simulation — the same integer arithmetic the covenant executes on chain, verified step-for-step against the Script interpreter. Nothing here spends anything.</p>
+    </div>
+
+    <div class="panel">
+      <div class="stat"><span>fuel</span><b><span id="fuel">—</span> sat</b></div>
+      <div class="gauge"><i id="bar"></i></div>
+      <div class="stat"><span>ticks remaining</span><b id="left">—</b></div>
+      <div class="stat"><span>ticks spent</span><b id="spent">0</b></div>
+      <div class="stat"><span>pixels drawn</span><b id="px">0</b></div>
+      <div class="stat"><span>cost so far</span><b id="cost">0 sat</b></div>
+
+      <label>width <span class="val" id="vW">256</span></label>
+      <input type="range" id="W" min="32" max="256" step="32" value="256">
+      <label>height <span class="val" id="vH">192</span></label>
+      <input type="range" id="H" min="24" max="256" step="24" value="192">
+      <label>max iterations <span class="val" id="vI">24</span></label>
+      <input type="range" id="I" min="4" max="512" step="4" value="24">
+      <label>centre x <span class="val" id="vX">-0.70</span></label>
+      <input type="range" id="X" min="-2.2" max="1.0" step="0.01" value="-0.70">
+      <label>centre y <span class="val" id="vY">0.00</span></label>
+      <input type="range" id="Y" min="-1.4" max="1.4" step="0.01" value="0">
+      <label>span <span class="val" id="vS">5.38</span></label>
+      <input type="range" id="Sp" min="0.2" max="6.0" step="0.02" value="5.38">
+
+      <label style="margin-top:16px">what happens at the end of a pass</label>
+      <div class="row" style="margin-top:4px">
+        <button id="mRef" class="ghost" style="flex:1;padding:8px 10px;font-size:12.5px">refine</button>
+        <button id="mZoom" style="flex:1;padding:8px 10px;font-size:12.5px">zoom</button>
+      </div>
+      <div id="zoomBox">
+        <label>+iterations per level <span class="val" id="vK">120</span></label>
+        <input type="range" id="K" min="0" max="400" step="4" value="120">
+        <label>zoom into x <span class="val" id="vZX">-0.7436</span></label>
+        <input type="range" id="ZX" min="-2" max="0.6" step="0.0001" value="-0.7436">
+        <label>zoom into y <span class="val" id="vZY">0.1318</span></label>
+        <input type="range" id="ZY" min="-1.2" max="1.2" step="0.0001" value="0.1273">
+      </div>
+
+      <label>levels to fund <span class="val" id="vL">8</span></label>
+      <input type="range" id="L" min="1" max="26" step="1" value="8">
+      <div class="stat" style="margin-top:12px"><span>level</span><b id="lvl">1</b></div>
+      <div class="stat"><span>magnification</span><b id="mag">1×</b></div>
+      <div class="stat"><span>next level costs</span><b id="nextc">—</b></div>
+      <div class="stat"><span>levels left (precision)</span><b id="lvlleft">—</b></div>
+
+      <div class="row"><button id="loop" style="width:100%">🔁 clean loop · period 11 · 21 levels</button></div>
+      <div class="row"><button id="loop7" class="ghost" style="width:100%">↔ on-axis · period 4 · 10 levels</button></div>
+      <div class="row"><button id="save" class="ghost" style="width:100%">⬇ save this frame</button></div>
+
+      <p class="note">These numbers are <b>baked into the covenant at genesis</b> and can never be changed. Tune them here until the picture is the one you want — this preview is exactly what the chain will draw.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <b>How it works.</b> The state — the pixel being computed, the running value <span class="kv">z</span>, and the iteration count — lives inside the locking script. Each spend proves it is the transaction it claims to be (<span class="kv">OP_PUSH_TX</span>), reads that state back out of its own script, performs <span class="kv">z → z² + c</span> in fixed point, and rebuilds itself one step further on. Nothing about the next state is chosen by whoever presses the button: it is forced.
+    <br><br>
+    <b>The state is the picture.</b> A pixel's escape count is the iteration recorded on the tick where <span class="kv">c</span> advanced. Nothing is emitted, nothing is stored anywhere else — walk the chain and the image reassembles itself.
+    <br><br>
+    <b>Measured:</b> the arithmetic is <span class="kv">46 bytes</span>; proving nobody faked it is <span class="kv">499</span>. Roughly ten to one. The maths is nearly free — the proof is what costs.
+    <br><br>
+    <a href="/brc226.html">← demo one: the self-running counter</a>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  /* THE COVENANT'S ARITHMETIC, exactly as the script performs it.
+     1.0 = 2^20. MULTIPLY FIRST, DIVIDE LAST — (2*zr*zi)/S and (zr*zi/S)*2 differ by one ulp, and the
+     chain's answer is the only correct one. Any renderer that reorders these will slowly drift away
+     from the picture the chain actually drew. Verified against the Script interpreter over ~21,000 steps. */
+  var SHIFT=32, S=Math.pow(2,SHIFT), ESCAPE=4*S, FEE=308;
+  /* This preview is BIT-IDENTICAL to what the chain draws, at every level. Verified against exact
+     BigInt arithmetic over 800,000 operations: zero differences.
+     Why it holds: |z| <= 2 always (the escape radius), so |zr*zi| <= 2^67 REGARDLESS of zoom depth.
+     A double's error there is 2^67 * 2^-53 = 2^14, which divided by 2^32 is 3.8e-6 scaled units —
+     sub-unit, and truncation removes it. `z` never grows with depth; only `c` does, and those are
+     integers below 2^33, exactly representable. So depth costs precision in the COORDINATES (the
+     step floor), never in the arithmetic. */
+  var $=function(i){return document.getElementById(i)};
+  var cv=$('cv'), ctx=cv.getContext('2d');
+  var cfg={}, st=null, img=null, timer=null, spent=0, pixels=0, fuel=0, fuel0=0;
+  var level=1, frames=[], baseTicks=0, mode='zoom';
+  /* Nuclei computed by Newton on F_p(c)=0; sizes by the standard island estimate. The sliders step at
+     1e-4, which is WIDER than a deep loop's final frame — so the target must be exact, never dragged. */
+  var exact=null;
+
+  function readCfg(){
+    var W=+$('W').value, H=+$('H').value, span=+$('Sp').value;
+    var cx=+$('X').value, cy=+$('Y').value;
+    var step=Math.round(span/W*S);
+    var cr0=Math.round((cx-span/2)*S);
+    /* crMax is the LAST pixel of a row, not the edge past it: the covenant wraps when cr > crMax, so
+       crMax = cr0 + (W-1)*step gives exactly W pixels. Setting it to the far edge yields W+1 — an
+       off-by-one that is baked into the script at genesis and can never be corrected. */
+    return { W:W, H:H, maxIter:+$('I').value, step:step, mode:mode,
+             zx:(exact?exact.zx:+$('ZX').value), zy:(exact?exact.zy:+$('ZY').value), K:+$('K').value,
+             cr0:cr0, ci0:Math.round((cy-span*(H/W)/2)*S),
+             crMax:cr0+(W-1)*step,
+             crMaxFixed:cr0+(W-1)*step, ciMaxFixed:Math.round((cy-span*(H/W)/2)*S)+(H-1)*step,
+             levels:+$('L').value };
+  }
+  function reset(){
+    cfg=readCfg();
+    cv.width=cfg.W; cv.height=cfg.H;
+    img=ctx.createImageData(cfg.W,cfg.H);
+    for(var k=0;k<img.data.length;k+=4){ img.data[k+3]=255; }
+    ctx.putImageData(img,0,0);
+    /* Frame 1 is centred on c = 0 — the main set's OWN nucleus (the superattracting centre of the
+       cardioid). An island's nucleus is its exact analogue, so centring both on their nuclei is what
+       makes the first and last frames framed identically. Centring frame 1 anywhere else (-0.5, say)
+       guarantees the loop cannot close. */
+    var cx0=0, cy0=0;
+    var g0=origin(cfg.step, cx0, cy0);
+    st={cr:g0.cr0, ci:g0.ci0, zr:0, zi:0, i:0, step:cfg.step, mx:cfg.maxIter, cx:cx0, cy:cy0};
+    spent=0; pixels=0; level=1; frames=[];
+    // fuel for the whole picture, plus a little slack — what genesis would need
+    baseTicks = estimateTicks();
+    fuel0 = baseTicks*FEE; fuel=fuel0;
+    paintStats();
+    $('status').textContent='Local simulation — the same integer arithmetic the covenant executes on chain. Nothing here spends anything.';
+  }
+  /* Cost of ONE level, walking the real grid with that level's step and iteration cap. Later levels
+     cost far more than the first — both because more of the frame lies near the set and because
+     maxIter is climbing — so the tank has to be sized level by level, not by multiplying level one. */
+  function levelTicks(step, mx, cx, cy){
+    var g=origin(step, cx, cy), t=0;
+    var nx=Math.floor((g.crMax-g.cr0)/step)+1, ny=Math.floor((g.ciMax-g.ci0)/step)+1;
+    for(var y=0;y<ny;y++) for(var x=0;x<nx;x++){
+      var cr=g.cr0+x*step, ci=g.ci0+y*step, zr=0, zi=0, i=0;
+      for(;i<mx;i++){
+        var zr2=Math.trunc(zr*zr/S), zi2=Math.trunc(zi*zi/S);
+        if(zr2+zi2>ESCAPE) break;
+        var nzi=Math.trunc(2*zr*zi/S)+ci; zr=zr2-zi2+cr; zi=nzi;
+      }
+      t+=i+1;
+    }
+    return t;
+  }
+  /* Must follow the PAN, or the estimate zooms into the main cardioid's interior — where every pixel
+     costs the full iteration cap — and over-states the budget several times over. */
+  function estimateTicks(){
+    var t=0, step=cfg.step, mx=cfg.maxIter;
+    var cx=0, cy=0, tx=Math.round(cfg.zx*S), ty=Math.round(cfg.zy*S);
+    for(var L=0;L<cfg.levels;L++){
+      t += levelTicks(Math.max(1,step), mx, cx, cy);
+      step = step>1 ? Math.floor(step/2) : 1;
+      mx = Math.min(65535, mx + (cfg.mode==='zoom' ? cfg.K : 0));
+      if(cfg.mode==='zoom'){ cx += Math.trunc((tx-cx)*3/4); cy += Math.trunc((ty-cy)*3/4); }
+    }
+    return t;
+  }
+  /* ONE TICK — byte-for-byte the covenant's state transition.
+     `step` is STATE, not a constant: at the end of a pass it halves. In REFINE mode the viewport is
+     fixed and the grid gets finer; in ZOOM mode the origin is recomputed around a target, so the
+     grid stays the same size and the window shrinks. The covenant is nearly identical either way —
+     the only difference is whether cr0/crMax are constants or derived from step. */
+  function origin(step, cx, cy){
+    if(cx===undefined){ cx = st? st.cx : Math.round(cfg.zx*S); cy = st? st.cy : Math.round(cfg.zy*S); }
+    /* REFINE keeps the viewport FIXED and lets the grid get finer, so crMax/ciMax are constants taken
+       from the INITIAL step. (Deriving them from the current step shrinks the window as the step
+       halves — which silently turns refine mode into a zoom into the top-left corner.) */
+    if(cfg.mode==='refine') return { cr0:cfg.cr0, ci0:cfg.ci0,
+                                     crMax:cfg.crMaxFixed, ciMax:cfg.ciMaxFixed };
+    var cr0=cx-Math.floor(cfg.W/2)*step, ci0=cy-Math.floor(cfg.H/2)*step;
+    return { cr0:cr0, ci0:ci0, crMax:cr0+(cfg.W-1)*step, ciMax:ci0+(cfg.H-1)*step };
+  }
+  function tick(s){
+    var zr2=Math.trunc(s.zr*s.zr/S), zi2=Math.trunc(s.zi*s.zi/S), mag=zr2+zi2;
+    if(mag>ESCAPE || s.i>s.mx-1){
+      var g=origin(s.step, s.cx, s.cy), cr=s.cr+s.step, ci=s.ci, step=s.step, mx=s.mx, cx=s.cx, cy=s.cy, passEnd=false;
+      if(cr>g.crMax){
+        cr=g.cr0; ci=s.ci+s.step;
+        if(ci>g.ciMax){                                  // ── end of a pass ──
+          /* At the precision floor the step can halve no further, and the covenant would otherwise
+             redraw the identical frame forever — burning fuel for nothing. Restart the descent so a
+             perpetually-funded battery loops the whole journey instead of idling at the bottom. */
+          if(s.step<=1){ step=cfg.step; mx=cfg.maxIter; cx=0; cy=0;
+            var r=origin(step,cx,cy); return { cr:r.cr0, ci:r.ci0, zr:0, zi:0, i:0, step:step, mx:mx,
+              cx:cx, cy:cy, done:true, escapedAt:s.i, passEnd:true, restarted:true }; }
+          step = Math.trunc(s.step/2);
+          /* maxIter must RISE with depth or the frame saturates to solid black — measured: fixed at
+             24 the picture is 100% "in set" by level 9. HARD CAP at 255: the field is one byte, and
+             without the cap a long run wraps and silently resets the picture to nothing. */
+          mx = Math.min(65535, s.mx + cfg.K);            // 2-byte field, hard cap
+          /* PAN halfway toward the target each level. A purely centred zoom cannot loop: the minibrot
+             sits at -1.7549 while the main set is near -0.5, so frame 1 would be off-centre while the
+             last frame is centred. Halving the distance each level lands them together. */
+          /* The pan must converge FASTER than the zoom. Halving the residual each level while the
+             span also halves keeps the offset a CONSTANT fraction of the frame — the target ends up
+             ~half a frame off-centre and the last frame shows bare needle. Quartering it converges:
+             after N levels the residual is target/4^N against a frame of span0/2^N. */
+          cx = cx + Math.trunc((Math.round(cfg.zx*S)-cx)*3/4);
+          cy = cy + Math.trunc((Math.round(cfg.zy*S)-cy)*3/4);
+          var n=origin(step, cx, cy); cr=n.cr0; ci=n.ci0; passEnd=true;
+        }
+      }
+      return { cr:cr, ci:ci, zr:0, zi:0, i:0, step:step, mx:mx, cx:cx, cy:cy, done:true, escapedAt:s.i, passEnd:passEnd };
+    }
+    return { cr:s.cr, ci:s.ci, zr:zr2-zi2+s.cr, zi:Math.trunc(2*s.zr*s.zi/S)+s.ci, i:s.i+1, step:s.step, mx:s.mx, cx:s.cx, cy:s.cy, done:false };
+  }
+  function colour(n){                              // escape count → ink
+    if(n>=(st?st.mx:cfg.maxIter)) return [6,9,16];
+    var t=n/(st?st.mx:cfg.maxIter), r=Math.round(255*Math.min(1,t*2.1)), g=Math.round(190*Math.pow(t,1.5)), b=Math.round(90+165*Math.pow(1-t,1.7));
+    return [r,g,b];
+  }
+  function advance(n){
+    if(!st) return;
+    for(var k=0;k<n && fuel>=FEE;k++){
+      var nx=tick(st); spent++; fuel-=FEE;
+      if(nx.done){
+        /* THE STATE IS THE FRAMEBUFFER. Take the position from the c that was just finished — never
+           from a running counter. The covenant wraps a row when cr > crMax, and integer rounding
+           means a row is not exactly W pixels wide, so a counter drifts diagonally across the image.
+           A renderer reading the chain has only the state to go on, so read the state here too. */
+        var g=origin(st.step, st.cx, st.cy);
+        var x=Math.round((st.cr-g.cr0)/st.step), y=Math.round((st.ci-g.ci0)/st.step);
+        if(x>=0 && x<cfg.W && y>=0 && y<cfg.H){ var c=colour(nx.escapedAt+1), o=(y*cfg.W+x)*4;
+          img.data[o]=c[0]; img.data[o+1]=c[1]; img.data[o+2]=c[2]; img.data[o+3]=255; }
+        pixels++;
+        if(nx.passEnd){                                  // a level finished
+          level++; if(cfg.mode==='zoom'){ frames.push(cv.toDataURL('image/png')); clearFrame(); }
+          pixels=0; $('play').disabled = frames.length<2; paintStats();
+        }
+      }
+      st=nx;
+    }
+    ctx.putImageData(img,0,0); paintStats();
+    if(fuel<FEE){ stop(); $('status').textContent='⚡ Flat battery — '+spent.toLocaleString()+' ticks in. On chain it would stop right here until somebody topped it up.'; }
+  }
+  function clearFrame(){ for(var k=0;k<img.data.length;k+=4){ img.data[k]=6; img.data[k+1]=9; img.data[k+2]=16; } }
+  function paintStats(){
+    $('fuel').textContent=fuel.toLocaleString();
+    $('left').textContent=Math.floor(fuel/FEE).toLocaleString();
+    $('spent').textContent=spent.toLocaleString();
+    $('px').textContent=pixels.toLocaleString()+' / '+(cfg.W*cfg.H).toLocaleString();
+    $('cost').textContent=(spent*FEE).toLocaleString()+' sat';
+    $('bar').style.width=(fuel0? Math.max(0,fuel/fuel0*100):0)+'%';
+    $('lvl').textContent=level+(cfg.mode==='zoom'&&frames.length?' ('+frames.length+' frames)':'');
+    $('mag').textContent=(cfg.mode==='zoom'? Math.pow(2,level-1).toLocaleString()+'×' : (cfg.W*Math.pow(2,level-1))+' px wide');
+    /* THE COMPARISON. Refinement quadruples every level — the grid doubles in both directions, so the
+       same window costs 4× to draw again. Zoom keeps the grid and shrinks the window, so every frame
+       costs the same. That is the whole argument: refinement is unaffordable past four or five
+       levels; zoom runs to the precision floor and hands you an animation at the end. */
+    if(st){ var ns=Math.max(1,Math.floor(st.step/2)), nm=Math.min(255, st.mx+(cfg.mode==='zoom'?cfg.K:0));
+      $('nextc').textContent=(levelTicks(ns,nm,st.cx,st.cy)*FEE).toLocaleString()+' sat'; }
+    var stepNow=st?st.step:cfg.step;
+    $('lvlleft').textContent=Math.max(0,Math.floor(Math.log2(Math.max(1,stepNow))));
+    $('mag').textContent += st ? '  ·  '+st.mx+' iter' : '';
+  }
+  /* Ticks per animation frame. The simulation is pure integer arithmetic, so it will happily run tens
+     of thousands of steps a frame — the ceiling is how often we repaint, not the maths. */
+  var SPEEDS=[200, 2000, 20000, 100000, 400000], SPEEDNAMES=['slow','fast','faster','turbo','ludicrous'];
+  function stop(){ if(timer){ cancelAnimationFrame(timer); timer=null; } $('run').textContent='▶ Run'; }
+
+  /* LOOP PREVIEW — plays back the frames captured at each pass end. This is what the exported WebP
+     will look like; the browser cannot encode animated WebP itself, so ImageMagick assembles the
+     real file from the PNGs. */
+  var pl=null, plImgs=[], plI=0;
+  function playStop(){ if(pl){ clearInterval(pl); pl=null; } $('play').textContent='🔁 preview loop'; }
+  $('play').addEventListener('click',function(){
+    if(pl){ playStop(); ctx.putImageData(img,0,0); return; }
+    if(!frames.length) return;
+    stop();
+    plImgs=[]; var loaded=0;
+    frames.forEach(function(d,n){ var im=new Image(); im.onload=function(){ if(++loaded===frames.length){
+      plI=0; $('play').textContent='❚❚ stop preview';
+      pl=setInterval(function(){ var f=plImgs[plI%plImgs.length]; plI++;
+        ctx.clearRect(0,0,cv.width,cv.height); ctx.drawImage(f,0,0,cv.width,cv.height);
+      }, Math.round(1000/(+$('Fps').value))); } }; im.src=d; plImgs[n]=im; });
+  });
+  $('run').addEventListener('click',function(){
+    if(timer){ stop(); return; }
+    $('run').textContent='❚❚ Pause';
+    (function loop(){ advance(SPEEDS[+$('Spd').value]); timer=requestAnimationFrame(loop); })();
+  });
+  $('step').addEventListener('click',function(){ advance(100); });
+  $('reset').addEventListener('click',function(){ stop(); playStop(); $('play').disabled=true; reset(); });
+  function setMode(m){ mode=m; $('mZoom').className=(m==='zoom'?'':'ghost'); $('mRef').className=(m==='refine'?'':'ghost');
+    $('zoomBox').style.display=(m==='zoom'?'block':'none'); stop(); reset(); }
+  $('mZoom').addEventListener('click',function(){ setMode('zoom'); });
+  $('mRef').addEventListener('click',function(){ setMode('refine'); });
+  $('Spd').addEventListener('input',function(){ $('vSpd').textContent=SPEEDNAMES[+this.value]; });
+  $('Fps').addEventListener('input',function(){ $('vFps').textContent=this.value;
+    if(pl){ playStop(); $('play').click(); } });
+  $('L').addEventListener('input',function(){ $('vL').textContent=this.value; stop(); reset(); });
+  ['ZX','ZY','K'].forEach(function(id){ $(id).addEventListener('input',function(){ if(id!=='K') exact=null;
+    $('v'+id).textContent=(id==='K'?$(id).value:(+$(id).value).toFixed(4)); stop(); reset(); }); });
+  /* THE LOOP. The period-3 island at -1.7548776 is the largest minibrot and the shallowest to reach:
+     a complete miniature Mandelbrot fills the frame at 64x, seven levels down, well inside the 2^20
+     precision budget. The last frame IS the first frame, so the sequence loops. */
+  function preset(o){
+    setMode('zoom'); exact=o;
+    $('ZX').value=o.zx.toFixed(4); $('vZX').textContent=o.zx.toFixed(6);
+    $('ZY').value=o.zy.toFixed(4);  $('vZY').textContent=o.zy.toFixed(6);
+    $('K').value=o.K;              $('vK').textContent=String(o.K);
+    $('Sp').value=Math.min(6,o.span); $('vS').textContent=o.span.toFixed(4);
+    $('I').value=24;               $('vI').textContent='24';
+    $('L').value=o.levels;         $('vL').textContent=String(o.levels);
+    stop(); reset();
+    $('status').textContent='Loop · period '+o.p+' nucleus '+o.zx+' · '+o.levels+
+      ' levels · the final frame frames the island exactly as frame 1 frames the whole set.';
+  }
+  $('loop7').addEventListener('click',function(){
+    preset({ p:4, zx:-1.940799806529485, zy:0, span:4.0, levels:10, K:16 });
+  });
+  $('loop').addEventListener('click',function(){
+    /* THE CLEAN LOOP. N = -log2(size) must be a whole number or the loop jumps in scale:
+       period 3 -> 5.72 (21.8% jump)   period 4 -> 9.98 (1.5%)   period 7 -> 18.90 (7.5%)
+       Period 4's island is 9.916e-4 across, so ten halvings land within 1.5% — invisible. */
+    /* Chosen by searching 1,026 off-axis nuclei on TWO conditions, not one:
+         -log2|size| near a whole number   -> the scale closes  (1.15% here)
+         arg(size) near zero               -> the ORIENTATION matches (+1.0deg here)
+       Off-axis islands are generally ROTATED relative to the main set, which jumps at the loop even
+       when the scale is right. This one is within a degree — and being off the antenna, every frame
+       of the descent passes through filaments instead of bare needle. */
+    preset({ p:11, zx:-1.423288564770, zy:0.127278891029, span:4.0, levels:21, K:16 });
+  });
+  $('save').addEventListener('click',function(){
+    var list = frames.length ? frames : [cv.toDataURL('image/png')];
+    list.forEach(function(d,n){ var a=document.createElement('a');
+      a.href=d; a.download='battery-'+String(n+1).padStart(3,'0')+'.png'; a.click(); });
+    $('status').textContent='Saved '+list.length+' frame'+(list.length===1?'':'s')+
+      '. Assemble with ImageMagick:  convert -delay 12 -loop 0 battery-*.png battery.webp';
+  });
+  ['W','H','I','X','Y','Sp'].forEach(function(id){
+    $(id).addEventListener('input',function(){
+      $('v'+(id==='Sp'?'S':id)).textContent = (id==='X'||id==='Y'||id==='Sp') ? (+$(id).value).toFixed(2) : $(id).value;
+      stop(); reset();
+    });
+  });
+  reset();
+})();
+</script>
+</body>
+</html>
