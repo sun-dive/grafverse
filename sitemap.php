@@ -14,6 +14,7 @@ $pages = [
   ['/',               'index.html',     'weekly',  '1.0'],   // splash / landing (the crawlable home)
   ['/grafverse.html', 'grafverse.html', 'weekly',  '0.9'],   // the game itself
   ['/brc226.html',    'brc226.html',    'monthly', '0.6'],   // BRC-226 blueprint (coined-term page)
+  ['/battery.html',   'battery.html',   'monthly', '0.6'],   // BRC-226 demo two — the Bitcoin battery (coined-term page)
 ];
 
 echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";

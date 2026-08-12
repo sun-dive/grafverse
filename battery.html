@@ -6,6 +6,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Bitcoin Battery — a program that pays for its own execution</title>
 <meta name="description" content="A covenant with a fuel tank. It computes one Mandelbrot iteration per transaction, recreates itself slightly lighter, and stops when the fuel runs out. No key, no wallet, nothing to steal — and anyone can top it up.">
+<meta name="author" content="sun-dive">
+<link rel="canonical" href="https://grafverse.com/battery.html">
+<meta name="theme-color" content="#05070d">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><text x=%221%22 y=%2214%22 font-size=%2214%22>🔋</text></svg>">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="grafverse">
+<meta property="og:title" content="The Bitcoin Battery — a program that pays for its own execution">
+<meta property="og:description" content="Don't give an AI agent a wallet. Give it a battery. OP_PUSH_TX needs no signature, so the agent holds no key at all — there is nothing to steal, and the worst a compromised agent can do is spend fuel doing exactly what the covenant was built to do.">
+<meta property="og:url" content="https://grafverse.com/battery.html">
+<meta property="og:image" content="https://grafverse.com/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The Bitcoin Battery — a program that pays for its own execution">
+<meta name="twitter:description" content="A Bitcoin battery can power a Mandelbrot generator, or an AI agent. One iteration per transaction, computed in Script, paid for out of its own carried value.">
+<meta name="twitter:image" content="https://grafverse.com/og.jpg">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "The Bitcoin Battery — a program that pays for its own execution",
+  "description": "A BRC-226 covenant carrying its own fuel. Each spend performs one Mandelbrot iteration inside Bitcoin Script and recreates itself slightly lighter, paying the fee from its own carried value. Because OP_PUSH_TX authorises with a proof about the transaction rather than a signature, nobody holds a key to it.",
+  "author": { "@type": "Person", "name": "sun-dive" },
+  "publisher": { "@type": "Organization", "name": "grafverse", "url": "https://grafverse.com" },
+  "mainEntityOfPage": { "@type": "WebPage", "@id": "https://grafverse.com/battery.html" },
+  "url": "https://grafverse.com/battery.html",
+  "image": "https://grafverse.com/og.jpg",
+  "inLanguage": "en",
+  "about": [
+    { "@type": "Thing", "name": "Bitcoin battery" },
+    { "@type": "Thing", "name": "agent battery" },
+    { "@type": "Thing", "name": "a program that pays for its own execution" },
+    { "@type": "Thing", "name": "BRC-226" },
+    { "@type": "Thing", "name": "OP_PUSH_TX covenant" }
+  ],
+  "isPartOf": { "@type": "WebSite", "name": "grafverse", "url": "https://grafverse.com" },
+  "relatedLink": "https://grafverse.com/brc226.html"
+}
+</script>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   :root{--ink:#f3f7ff;--dim:#aebfe0;--faint:#7d92b8;--cyan:#38e1ff;--mag:#ff4d9d;--lime:#b4ff3a;--tang:#ffa22e;--line:rgba(120,170,255,.18)}
