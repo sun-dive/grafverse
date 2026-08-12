@@ -606,6 +606,7 @@
           <button class="pm-btn ghost" id="pm-copy">Copy address</button>
         </div></details>
         <p class="pm-note"><b>1,000 sat is a refundable deposit</b> — returned to you when the next person posts. Anything extra comes back as change.</p>
+        <p class="pm-note">⚠ The throwaway key that posts for you lives <b>in this browser only</b>. Don&rsquo;t clear your browsing data until your post confirms — if you do, whatever you&rsquo;ve sent here can&rsquo;t be recovered.</p>
         <span class="pm-cancel" id="pm-sweep">cancel &amp; sweep my sats back</span>
       </div>
 
@@ -626,6 +627,15 @@
       <div id="pm-err" style="display:none">
         <div class="pm-status pm-err" id="pm-emsg"></div>
         <button class="pm-btn ghost" id="pm-sweep3">Sweep my sats back to me</button>
+        <!-- Escape hatch: the throwaway key exists ONLY in this browser's localStorage. If Sweep can't run — wrong
+             device, cleared history, a wallet the page can't reach — showing the key is the difference between a
+             two-minute recovery and sats that are visible forever and spendable never. -->
+        <details class="pm-alt" id="pm-recover" style="display:none"><summary>sweep not working? recover from any wallet ▾</summary><div class="in">
+          <p class="pm-note">Import this one-time key into any BSV wallet and move the sats wherever you like. It was made in your browser for this post alone and holds nothing else — but it exists <b>only here</b>, so copy it before you close this.</p>
+          <div class="pm-addr" id="pm-raddr">…</div>
+          <div class="pm-addr" id="pm-rkey">…</div>
+          <button class="pm-btn ghost" id="pm-rcopy">Copy key</button>
+        </div></details>
         <button class="pm-btn" id="pm-close3">Close</button>
       </div>
     </div>
@@ -739,7 +749,12 @@
     $('pm-dtx').textContent=txid.slice(0,12)+'…'+txid.slice(-6); $('pm-dtx').href='https://whatsonchain.com/tx/'+txid;
     try{ if(window.__lcReload) setTimeout(window.__lcReload,1500); }catch(e){}
   }
-  function fail(msg){ if(timer){clearInterval(timer);timer=null;} show('err'); $('pm-emsg').textContent=msg; }
+  function fail(msg){ if(timer){clearInterval(timer);timer=null;} show('err'); $('pm-emsg').textContent=msg;
+    // Offer the raw key ONLY while one exists — after a successful tick or sweep the state is cleared and there is
+    // nothing left to recover, so the panel must not appear (and must never show a stale key).
+    var rec=$('pm-recover'); if(!rec) return;
+    if(S && S.wif){ $('pm-raddr').textContent=S.throwAddr; $('pm-rkey').textContent=S.wif; rec.style.display='block'; }
+    else { rec.style.display='none'; rec.removeAttribute('open'); $('pm-raddr').textContent=''; $('pm-rkey').textContent=''; } }
   function sweep(){
     if(!S){ fail('Nothing to sweep.'); return; }
     show('watch'); $('pm-wtitle').textContent='Sweeping your sats back…'; $('pm-wsub').textContent='';
@@ -772,6 +787,7 @@
   $('pm-begin').addEventListener('click', begin);
   $('pm-resume-go').addEventListener('click', function(){ ensureGM().then(toFund); });
   $('pm-copy').addEventListener('click', function(){ try{navigator.clipboard.writeText(S.throwAddr);this.textContent='Copied ✓';}catch(e){} });
+  $('pm-rcopy').addEventListener('click', function(){ var k=$('pm-rkey').textContent; if(!k) return; try{navigator.clipboard.writeText(k);this.textContent='Copied ✓';}catch(e){} });
   $('pm-sweep').addEventListener('click', sweep);
   $('pm-sweep2').addEventListener('click', sweep);
   $('pm-sweep3').addEventListener('click', sweep);
