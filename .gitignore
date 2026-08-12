@@ -4,3 +4,6 @@ node_modules
 atoms/
 sky-cache-*.json
 sky-elements-*.json
+
+# chain-follow caches (server-side, regenerated on demand)
+*-tip.json

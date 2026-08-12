@@ -7,6 +7,7 @@ Disallow: /world.php
 Disallow: /worlds/
 Disallow: /handoff.php
 Disallow: /tip.php
+Disallow: /battery.php
 Disallow: /sky.php
 
 Sitemap: https://grafverse.com/sitemap.php

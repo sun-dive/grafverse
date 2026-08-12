@@ -73,6 +73,55 @@
   .foot{margin-top:34px;padding-top:20px;border-top:1px solid var(--line);color:var(--faint);font-size:13.5px;max-width:74ch}
   .foot b{color:#cfe0ff} a{color:var(--cyan)}
   .tag{display:inline-block;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);border-radius:20px;padding:4px 12px;margin-bottom:16px}
+
+  /* ── the LIVE battery: real chain state, not the simulator ── */
+  .live{background:linear-gradient(180deg,rgba(56,225,255,.07),rgba(10,18,34,.66));border:1px solid rgba(56,225,255,.32);
+        border-radius:16px;padding:18px;margin-top:22px}
+  .live-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .live-h b{font-size:17px}
+  .pulse{width:8px;height:8px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 0 rgba(180,255,58,.6);animation:p 2.2s infinite}
+  @keyframes p{70%{box-shadow:0 0 0 9px rgba(180,255,58,0)}100%{box-shadow:0 0 0 0 rgba(180,255,58,0)}}
+  .live-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:12px;margin:4px 0 14px}
+  .cell{background:rgba(4,8,16,.5);border:1px solid var(--line);border-radius:11px;padding:10px 12px}
+  .cell span{display:block;font-size:11px;color:var(--faint);letter-spacing:.03em}
+  .cell b{display:block;font-size:19px;font-variant-numeric:tabular-nums;margin-top:3px}
+  .flat b{color:var(--mag)}
+  .live .gauge{height:11px}
+  .lowfuel i{background:var(--mag)}
+
+  /* ── the board: top 21 contributions, ranked by amount ── */
+  .board{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+  .board ol{list-style:none;counter-reset:b}
+  .board li{counter-increment:b;display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:baseline;
+            padding:7px 0;border-bottom:1px solid rgba(120,170,255,.08);font-size:13.5px}
+  .board li::before{content:counter(b);color:var(--faint);font-size:11px;font-variant-numeric:tabular-nums}
+  .board .mk{color:var(--ink);word-break:break-word;overflow-wrap:anywhere}
+  .board .amt{color:var(--lime);font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:700}
+  .board .empty{color:var(--faint);font-size:13px;padding:10px 0;border:0}
+
+  /* ── contribute modal — the signed half ── */
+  .ov{position:fixed;inset:0;background:rgba(3,6,12,.82);backdrop-filter:blur(3px);display:none;
+      align-items:center;justify-content:center;padding:18px;z-index:50}
+  .ov.on{display:flex}
+  .md{background:#0a1524;border:1px solid var(--line);border-radius:16px;max-width:460px;width:100%;
+      max-height:92vh;overflow:auto}
+  .md-h{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid var(--line)}
+  .md-b{padding:16px 18px}
+  .md-x{background:none;color:var(--dim);font-size:22px;padding:0 6px;border-radius:8px}
+  .md label{display:block;font-size:12px;color:var(--faint);margin:12px 0 4px}
+  .md input[type=text],.md input[type=number]{width:100%;background:rgba(4,8,16,.6);border:1px solid var(--line);
+      border-radius:10px;color:var(--ink);padding:10px 12px;font:14px system-ui}
+  .bytes{font-size:11px;color:var(--faint);text-align:right;margin-top:3px}
+  .err{color:var(--mag);font-size:12.5px;min-height:16px;margin-top:6px}
+  .ok{color:var(--lime)}
+  .qr{background:#fff;border-radius:12px;padding:12px;margin:10px auto;width:max-content;max-width:100%}
+  .qr svg{display:block;width:200px;max-width:56vw;height:auto}
+  .addr{font-family:var(--mono,ui-monospace,monospace);font-size:11.5px;word-break:break-all;color:var(--dim);
+        background:rgba(4,8,16,.6);border:1px solid var(--line);border-radius:9px;padding:9px}
+  .amt-big{font-size:26px;font-weight:800;text-align:center;color:var(--cyan);font-variant-numeric:tabular-nums;margin:6px 0}
+  .spin{width:20px;height:20px;border:2px solid var(--line);border-top-color:var(--cyan);border-radius:50%;
+        margin:12px auto;animation:sp .8s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -80,6 +129,93 @@
   <span class="tag">BRC-226 · demo two</span>
   <h1>The Bitcoin <span class="hl">Battery</span></h1>
   <p class="sub">A covenant with a fuel tank. Each transaction performs <b>one</b> Mandelbrot iteration and recreates itself, slightly lighter. There is no key — so there is nothing to steal, and anyone can advance it. When the fuel runs out it simply stops, until someone tops it up.</p>
+
+  <!-- ── THE LIVE BATTERY ─────────────────────────────────────────────────────────────────────────── -->
+  <section class="live" id="live">
+    <div class="live-h">
+      <span class="pulse" id="lv-pulse"></span>
+      <b>It is running now</b>
+      <span class="note" style="margin:0" id="lv-when">reading the chain…</span>
+    </div>
+
+    <div class="live-grid">
+      <div class="cell"><span>fuel</span><b id="lv-fuel">—</b></div>
+      <div class="cell" id="lv-leftcell"><span>ticks of fuel left</span><b id="lv-left">—</b></div>
+      <div class="cell"><span>iterations done</span><b id="lv-ticks">—</b></div>
+      <div class="cell"><span>frame</span><b id="lv-level">—</b></div>
+    </div>
+
+    <div class="gauge" id="lv-gauge"><i id="lv-bar" style="width:0"></i></div>
+    <div class="stat"><span id="lv-prog">—</span><b id="lv-raised"></b></div>
+
+    <div class="row">
+      <button id="lv-fuelit" style="flex:1;min-width:190px">⚡ Fuel it — and sign the board</button>
+      <a id="lv-tip" class="ghost" href="#" target="_blank" rel="noopener"
+         style="flex:1;min-width:150px;text-align:center;padding:11px 18px;border-radius:24px;border:1px solid var(--line);color:var(--dim);text-decoration:none;font:600 14px system-ui">the tip on chain ↗</a>
+    </div>
+
+    <p class="note" id="lv-note">Advancing it needs <b>no key and no wallet</b> — the covenant authorises with a proof about the transaction, not a signature. Only <b>topping it up</b> is signed, because only topping it up spends someone's money.</p>
+
+    <!-- the board is a VIEW over the chain: the hops where the fuel went up -->
+    <div class="board" id="lv-board">
+      <div class="stat" style="padding-bottom:6px">
+        <span>top 21 contributions — every bid buys computation</span>
+        <b id="lv-count"></b>
+      </div>
+      <ol id="lv-list"><li class="empty">reading the chain…</li></ol>
+      <p class="note">Ranked by amount, not by time — so visibility has an ongoing price and the list needs no moderator. Marks are shown as plain text and are <b>never linked</b>. Nothing is ever deleted; only the display is bounded.</p>
+    </div>
+  </section>
+
+  <!-- ── contribute ───────────────────────────────────────────────────────────────────────────────── -->
+  <div class="ov" id="ov" role="dialog" aria-modal="true" aria-labelledby="md-t">
+    <div class="md">
+      <div class="md-h"><b id="md-t">⚡ Fuel the battery</b><button class="md-x" id="md-x" aria-label="close">×</button></div>
+      <div class="md-b">
+
+        <div id="st-compose">
+          <label for="c-amt">how much fuel · sat</label>
+          <input type="number" id="c-amt" min="1000" step="1000" value="100000" inputmode="numeric">
+          <div class="bytes" id="c-ticks">— iterations</div>
+
+          <label for="c-mark">your mark · up to 220 bytes · any language</label>
+          <input type="text" id="c-mark" maxlength="220" placeholder="this arc ran on my sats" autocomplete="off" spellcheck="false">
+          <div class="bytes" id="c-bytes">0/220</div>
+
+          <label for="c-recv">your BSV address — change comes back here</label>
+          <input type="text" id="c-recv" placeholder="1…" autocomplete="off" spellcheck="false">
+
+          <div class="err" id="c-err"></div>
+          <button id="c-go" style="width:100%;margin-top:6px">Continue →</button>
+          <p class="note">A throwaway key is made <b>in this browser</b> — your own wallet is never touched. You send it the fuel, it builds the top-up, and the change returns to your address. One transaction adds the fuel, advances the picture and writes your mark, atomically.</p>
+        </div>
+
+        <div id="st-fund" style="display:none">
+          <p class="note" style="margin-top:0">Send exactly this, from any BSV wallet:</p>
+          <div class="amt-big" id="f-amt">—</div>
+          <div class="qr" id="f-qr"></div>
+          <div class="addr" id="f-addr">…</div>
+          <div class="stat" style="margin-top:10px"><span id="f-watch">📡 watching for your send…</span></div>
+          <div class="spin"></div>
+          <div class="err" id="f-err"></div>
+          <button id="f-cancel" class="ghost" style="width:100%;margin-top:8px">Cancel &amp; sweep my sats back</button>
+          <p class="note">⚠ The throwaway key lives <b>in this browser only</b>. Don't clear your browsing data until this completes — if you do, whatever you have sent here cannot be recovered.</p>
+        </div>
+
+        <div id="st-done" style="display:none">
+          <p class="note ok" style="margin-top:0;font-size:14px"><b>Done — your fuel is in the battery.</b></p>
+          <div class="stat"><span>you added</span><b id="d-added">—</b></div>
+          <div class="stat"><span>battery now holds</span><b id="d-fuel">—</b></div>
+          <div class="stat"><span>your mark</span><b id="d-mark" style="font-weight:400;text-align:right;max-width:60%"></b></div>
+          <div class="addr" id="d-txid" style="margin-top:10px">…</div>
+          <a id="d-link" class="ghost" href="#" target="_blank" rel="noopener"
+             style="display:block;text-align:center;margin-top:10px;padding:11px;border-radius:24px;border:1px solid var(--line);color:var(--cyan);text-decoration:none;font:600 14px system-ui">see it on chain ↗</a>
+          <button id="d-close" style="width:100%;margin-top:8px">Close</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
 
   <div class="grid">
     <div class="panel">
@@ -163,13 +299,235 @@
 </div>
 
 <script>
+/* ══ THE LIVE BATTERY ═══════════════════════════════════════════════════════════════════════════════
+   Everything below reads the real covenant on mainnet. The simulator further down is a separate thing:
+   it draws the SAME arithmetic locally so you can see where the picture is going, but it spends nothing.
+
+   Two halves, and the split is the whole point:
+     TICKING   no key, no wallet, nothing at stake — OP_PUSH_TX authorises with a proof about the tx
+     TOPPING UP  signed, deliberate, costs money — so it is the only half that needs a wallet
+   ═══════════════════════════════════════════════════════════════════════════════════════════════════ */
+(function(){
+  "use strict";
+  var $=function(i){return document.getElementById(i)};
+  var WOC='https://api.whatsonchain.com/v1/bsv/main';
+  var FEEPAD=700;                 // covers the top-up's own fee (~350 sat); the remainder returns as change
+  var LSK='battery_pending';      // a throwaway key mid-flight, browser-only
+  var GM=null, live=null;
+
+  var fmt=function(n){return (n||0).toLocaleString()};
+  var esc=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
+  var bytesOf=function(s){return new TextEncoder().encode(s||'').length};
+
+  function jget(u){return fetch(u).then(function(r){return r.ok?r.json():Promise.reject(Error(r.status))})}
+  function ensureGM(){
+    if(GM)return Promise.resolve(GM);
+    if(window.GrafMint){GM=window.GrafMint;return Promise.resolve(GM)}
+    return new Promise(function(res,rej){
+      var s=document.createElement('script'); s.src='/vendor/grafmint.js';
+      s.onload=function(){GM=window.GrafMint;res(GM)};
+      s.onerror=function(){rej(Error('could not load the signer'))};
+      document.head.appendChild(s);
+    });
+  }
+  function ensureQR(){
+    if(window.qrcode)return Promise.resolve();
+    return new Promise(function(res){var s=document.createElement('script');s.src='/vendor/qr.min.js';
+      s.onload=res;s.onerror=res;document.head.appendChild(s)});
+  }
+
+  /* ── paint the live panel + the board ─────────────────────────────────────────────────────────── */
+  function paint(d){
+    live=d;
+    if(!d||d.error){ $('lv-when').textContent='the battery is not reachable right now'; return }
+    $('lv-fuel').textContent=fmt(d.fuel)+' sat';
+    $('lv-left').textContent=fmt(d.ticksLeft);
+    $('lv-ticks').textContent=fmt(d.ticks);
+    $('lv-level').textContent=d.level==null?'—':(d.level+' of 21');
+
+    /* The gauge is the FRAME's progress, not the fuel's — the picture is what people came to see.
+       Fuel gets its own cell, and turns red when the battery is nearly flat. */
+    var pct=Math.max(0.4,(d.progress||0)*100);
+    $('lv-bar').style.width=pct.toFixed(3)+'%';
+    $('lv-prog').textContent='frame '+(d.level||1)+' is '+((d.progress||0)*100).toFixed(4)+'% drawn';
+    $('lv-raised').textContent=d.raised?('+'+fmt(d.raised)+' sat contributed'):'';
+    $('lv-leftcell').className='cell'+(d.ticksLeft<50?' flat':'');
+    $('lv-gauge').className='gauge'+(d.ticksLeft<50?' lowfuel':'');
+    $('lv-when').textContent=d.ticksLeft>0
+      ? 'it advances whenever anyone ticks it — no permission needed'
+      : 'the fuel has run out — it is waiting for someone to top it up';
+    if(d.tipTxid){ $('lv-tip').href='https://whatsonchain.com/tx/'+d.tipTxid; }
+
+    var ol=$('lv-list');
+    if(!d.board||!d.board.length){
+      ol.innerHTML='<li class="empty">No contributions yet. The first mark on this board is still unwritten.</li>';
+      $('lv-count').textContent='';
+      return;
+    }
+    $('lv-count').textContent=d.board.length+' of 21';
+    ol.innerHTML=d.board.map(function(b){
+      /* marks are user bytes on a public chain: escaped, shown as TEXT, never turned into a link */
+      return '<li><span class="mk">'+(esc(b.mark)||'<i style="color:var(--faint)">(no mark)</i>')+'</span>'+
+             '<span class="amt">'+fmt(b.sats)+' sat</span></li>';
+    }).join('');
+  }
+
+  function load(sync){
+    return jget('/battery.php'+(sync?'?sync=1':'')).then(paint).catch(function(){
+      $('lv-when').textContent='could not reach the chain cache';
+    });
+  }
+  load(true);
+  setInterval(function(){load(true)},45000);
+
+  /* ── contribute: the signed half ──────────────────────────────────────────────────────────────── */
+  var ov=$('ov');
+  function show(step){ ['st-compose','st-fund','st-done'].forEach(function(id){
+    $(id).style.display = id===step?'':'none' }) }
+  function open(){ ov.classList.add('on'); var p=pending(); if(p){ show('st-fund'); resume(p) } else show('st-compose') }
+  function close(){ ov.classList.remove('on'); if(poll){clearInterval(poll);poll=null} }
+  $('lv-fuelit').onclick=open; $('md-x').onclick=close; $('d-close').onclick=function(){close();load(true)};
+  ov.addEventListener('click',function(e){ if(e.target===ov) close() });
+
+  function pending(){ try{ return JSON.parse(localStorage.getItem(LSK)||'null') }catch(e){ return null } }
+  function setPending(p){ try{ p?localStorage.setItem(LSK,JSON.stringify(p)):localStorage.removeItem(LSK) }catch(e){} }
+
+  $('c-mark').addEventListener('input',function(){
+    var n=bytesOf(this.value); $('c-bytes').textContent=n+'/220';
+    $('c-bytes').style.color = n>220 ? 'var(--mag)' : '';
+  });
+  $('c-amt').addEventListener('input',function(){
+    var v=+this.value||0;
+    $('c-ticks').textContent = v>0 ? ('≈ '+fmt(Math.floor(v/312))+' iterations of the picture') : '— iterations';
+  });
+  $('c-amt').dispatchEvent(new Event('input'));
+
+  var poll=null;
+  $('c-go').onclick=function(){
+    var amt=Math.floor(+$('c-amt').value||0), mark=$('c-mark').value.trim(), recv=$('c-recv').value.trim();
+    var e=$('c-err'); e.textContent='';
+    if(!(amt>=1000)) return e.textContent='Send at least 1,000 sat — a top-up costs ~350 sat in fees whatever its size.';
+    if(bytesOf(mark)>220) return e.textContent='That mark is over 220 bytes.';
+    if(!/^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(recv)) return e.textContent='That does not look like a BSV address.';
+    ensureGM().then(function(G){
+      var k=G.PrivateKey.fromRandom();
+      var p={wif:k.toWif(),addr:k.toAddress(),amt:amt,mark:mark,recv:recv,need:amt+FEEPAD};
+      setPending(p); show('st-fund'); resume(p);
+    }).catch(function(err){ e.textContent=err.message });
+  };
+
+  function resume(p){
+    $('f-amt').textContent=fmt(p.need)+' sat';
+    $('f-addr').textContent=p.addr;
+    $('f-err').textContent='';
+    ensureQR().then(function(){
+      try{ var q=window.qrcode(0,'M'); q.addData('bitcoin:'+p.addr+'?sv&amount='+(p.need/1e8).toFixed(8));
+           q.make(); $('f-qr').innerHTML=q.createSvgTag({cellSize:4,margin:1,scalable:true}) }catch(e){}
+    });
+    if(poll)clearInterval(poll);
+    poll=setInterval(function(){watch(p)},4000); watch(p);
+  }
+
+  /* mempool-aware: a fresh send shows up in /unconfirmed/unspent before it is in /unspent */
+  function utxos(addr){
+    return Promise.all([
+      jget(WOC+'/address/'+addr+'/unspent/all').catch(function(){return null}),
+      jget(WOC+'/address/'+addr+'/unconfirmed/unspent').catch(function(){return null})
+    ]).then(function(r){
+      var a=(r[0]&&r[0].result)||(Array.isArray(r[0])?r[0]:[])||[];
+      var b=Array.isArray(r[1])?r[1]:((r[1]&&r[1].result)||[]);
+      var seen={},out=[];
+      a.concat(b).forEach(function(u){ var k=u.tx_hash+':'+u.tx_pos; if(!seen[k]){seen[k]=1;out.push(u)} });
+      return out;
+    });
+  }
+
+  var busy=false;
+  function watch(p){
+    if(busy)return;
+    utxos(p.addr).then(function(us){
+      var u=us.filter(function(x){return x.value>=p.need}).sort(function(a,b){return a.value-b.value})[0];
+      if(!u)return;
+      busy=true; if(poll){clearInterval(poll);poll=null}
+      $('f-watch').textContent='✓ received '+fmt(u.value)+' sat — building your top-up…';
+      return contribute(p,u);
+    }).catch(function(){}).then(function(){busy=false});
+  }
+
+  /* Build the top-up from the CURRENT tip. One tx: adds the fuel, advances one iteration, writes the mark. */
+  function contribute(p,u){
+    var G,tipTx,fundTx,d;
+    return ensureGM().then(function(g){G=g; return load(true)}).then(function(){
+      d=live; if(!d||!d.tipTxid) throw Error('could not read the battery tip');
+      return Promise.all([
+        fetch(WOC+'/tx/'+d.tipTxid+'/hex').then(function(r){return r.text()}),
+        fetch(WOC+'/tx/'+u.tx_hash+'/hex').then(function(r){return r.text()})
+      ]);
+    }).then(function(hex){
+      tipTx=G.Transaction.fromHex(hex[0].trim());
+      fundTx=G.Transaction.fromHex(hex[1].trim());
+      return G.buildBatteryTopUpTx({
+        battery:{ sourceTransaction:tipTx, outputIndex:0, state:d.state, value:d.fuel },
+        addSats:p.amt,
+        key:G.PrivateKey.fromWif(p.wif),
+        funder:{ sourceTransaction:fundTx, outputIndex:u.tx_pos },
+        mark:p.mark||null,
+        changeAddress:p.recv
+      });
+    }).then(function(tx){
+      var raw=tx.toHex(), txid=tx.id('hex');
+      $('f-watch').textContent='broadcasting '+fmt(raw.length/2)+' bytes…';
+      return fetch(WOC+'/tx/raw',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({txhex:raw})}).then(function(r){
+        return r.text().then(function(t){ if(!r.ok) throw Error(t||'broadcast rejected'); return {txid:txid,tx:tx} });
+      });
+    }).then(function(r){
+      setPending(null);
+      /* tell the board straight away — it verifies on chain before recording, so this is a hint, not a claim */
+      fetch('/battery.php',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({txid:r.txid})}).catch(function(){});
+      $('d-added').textContent=fmt(p.amt)+' sat';
+      $('d-fuel').textContent=fmt((r.tx.outputs[0].satoshis)||0)+' sat';
+      $('d-mark').textContent=p.mark||'(no mark)';
+      $('d-txid').textContent=r.txid;
+      $('d-link').href='https://whatsonchain.com/tx/'+r.txid;
+      show('st-done'); load(true);
+    }).catch(function(err){
+      $('f-err').textContent=err.message+' — your sats are still on the throwaway key; retry or sweep.';
+      $('f-watch').textContent='📡 watching…';
+      if(!poll) poll=setInterval(function(){watch(p)},4000);
+    });
+  }
+
+  /* Escape hatch: send whatever is on the throwaway key back, and forget it. */
+  $('f-cancel').onclick=function(){
+    var p=pending(); if(!p){ close(); return }
+    var e=$('f-err'); e.textContent='sweeping…';
+    if(poll){clearInterval(poll);poll=null}
+    ensureGM().then(function(G){
+      return utxos(p.addr).then(function(us){
+        if(!us.length){ setPending(null); show('st-compose'); e.textContent=''; return }
+        /* sendMax sweeps the whole balance back — the throwaway key is meant to end at zero */
+        return G.sendPayment(new G.WalletProvider(p.addr), G.PrivateKey.fromWif(p.wif),
+                             { toAddress:p.recv, amountSats:0, sendMax:true })
+          .then(function(){ setPending(null); show('st-compose'); e.textContent='' });
+      });
+    }).catch(function(err){
+      e.textContent='sweep failed: '+err.message+' — your key is still saved, try again.';
+    });
+  };
+})();
+</script>
+
+<script>
 (function(){
   "use strict";
   /* THE COVENANT'S ARITHMETIC, exactly as the script performs it.
      1.0 = 2^20. MULTIPLY FIRST, DIVIDE LAST — (2*zr*zi)/S and (zr*zi/S)*2 differ by one ulp, and the
      chain's answer is the only correct one. Any renderer that reorders these will slowly drift away
      from the picture the chain actually drew. Verified against the Script interpreter over ~21,000 steps. */
-  var SHIFT=32, S=Math.pow(2,SHIFT), ESCAPE=4*S, FEE=308;
+  var SHIFT=32, S=Math.pow(2,SHIFT), ESCAPE=4*S, FEE=312;   /* MAX_FEE — measured, and permanent since genesis */
   /* This preview is BIT-IDENTICAL to what the chain draws, at every level. Verified against exact
      BigInt arithmetic over 800,000 operations: zero differences.
      Why it holds: |z| <= 2 always (the escape radius), so |zr*zi| <= 2^67 REGARDLESS of zoom depth.

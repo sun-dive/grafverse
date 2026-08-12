@@ -44,6 +44,20 @@ export {
   buildLiveCounterLock, markByteLength, nField,
   MARK_MAX_BYTES, GENESIS_MARK, LIVECOUNTER_SCOPE, RECORD_LIVECOUNTER,
 } from './liveCounter.ts'
+
+// ── BRC-226 THE BATTERY — demo two's tx builders, so battery.html can build a top-up in the browser ──
+// A tick needs no key and no wallet; only a TOP-UP is signed, because only a top-up spends someone's money.
+export {
+  buildBatteryTopUpTx, buildBatteryTickTx, buildBatteryGenesisTx, nextBatteryUtxo,
+  tickUnlockTemplate as batteryTickUnlockTemplate,   // liveCounterTx exports the same name
+  type BatteryUtxo, type BatteryTopUpParams, type BatteryTickParams,
+} from './batteryTx.ts'
+export {
+  buildBatteryLock, genesisState, refState, ticksRemaining, opReturnScript, fixedField, u64le,
+  BATTERY_MAX_FEE, BATTERY_FEE_PER_KB, BATTERY_SCOPE, BATTERY_GEOMETRY, BATTERY_STATE_LAYOUT,
+  FIELDS, FIELD_WIDTHS, step0, S, SHIFT, ESCAPE, RECORD_BATTERY,
+  type BatteryState, type BatteryGeometry,
+} from './battery.ts'
 // ── @bsv/sdk primitives the browser modal needs directly (throwaway key gen, tip-tx parse, P2PKH) ──
 export { PrivateKey, Transaction, P2PKH, SatoshisPerKilobyte } from '@bsv/sdk'
 
