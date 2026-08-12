@@ -378,7 +378,6 @@
 (function(){
   "use strict";
   var $=function(i){return document.getElementById(i)};
-  var WOC='https://api.whatsonchain.com/v1/bsv/main';
   var FEEPAD=700;                 // covers the top-up's own fee (~350 sat); the remainder returns as change
   var LSK='battery_pending';      // a throwaway key mid-flight, browser-only
   var GM=null, live=null;
@@ -389,6 +388,15 @@
   var bytesOf=function(s){return new TextEncoder().encode(s||'').length};
 
   function jget(u){return fetch(u).then(function(r){return r.ok?r.json():Promise.reject(Error(r.status))})}
+
+  /* ── ALL chain traffic goes through grafmint's serializing queue ───────────────────────────────────
+     WalletProvider funnels every call through one global queue with a 350 ms floor and automatic 429
+     backoff, and its broadcast fans the same signed tx to BOTH relays, succeeding on the first
+     acceptance. Calling fetch() directly — as this page first did — bursts straight past all of that and
+     is exactly how an IP earns a block. The address argument is unused on the read/broadcast paths, and
+     for a tick there IS no address: that is the point of the covenant. */
+  var prov=null;
+  function chain(){ return ensureGM().then(function(G){ if(!prov) prov=new G.WalletProvider(''); return prov }) }
   function ensureGM(){
     if(GM)return Promise.resolve(GM);
     if(window.GrafMint){GM=window.GrafMint;return Promise.resolve(GM)}
@@ -558,17 +566,14 @@
       var d=live;
       if(!d||!d.tipTxid) throw Error('could not read the battery tip');
       if((d.ticksLeft||0)<1) throw Error('the battery is flat — it needs fuel before it can tick again');
-      return fetch(WOC+'/tx/'+d.tipTxid+'/hex').then(function(r){return r.text()}).then(function(hex){
+      return chain().then(function(P){ return P.getSourceTransaction(d.tipTxid) }).then(function(src){
         return G.buildBatteryTickTx({ battery:{
-          sourceTransaction:G.Transaction.fromHex(hex.trim()), outputIndex:0, state:d.state, value:d.fuel } });
+          sourceTransaction:src, outputIndex:0, state:d.state, value:d.fuel } });
       });
     }).then(function(tx){
-      var raw=tx.toHex(), txid=tx.id('hex');
+      var raw=tx.toHex();
       msg.textContent='broadcasting '+fmt(raw.length/2)+' bytes — no signature…';
-      return fetch(WOC+'/tx/raw',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({txhex:raw})}).then(function(r){
-        return r.text().then(function(t){ if(!r.ok) throw Error(t||'rejected'); return txid });
-      });
+      return chain().then(function(P){ return P.broadcast(raw) });   // queued, both relays
     }).then(function(txid){
       fetch('/battery.php',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({txid:txid})}).catch(function(){});
@@ -594,8 +599,19 @@
       $('lv-when').textContent='could not reach the chain cache';
     });
   }
+  /* Poll politely. Every open page asks the server to reconcile, and the server's calls all leave one
+     IP — so a fleet of idle background tabs is the thing most likely to get us rate-limited. Only sync
+     while the tab is actually being looked at, and jitter the interval so N visitors do not arrive
+     together in a thundering herd every 45 seconds. */
   load(true);
-  setInterval(function(){load(true)},45000);
+  (function schedule(){
+    var base=45000, jitter=Math.floor(Math.random()*15000);
+    setTimeout(function(){
+      var hidden = (typeof document.hidden==='boolean') ? document.hidden : false;
+      (hidden ? Promise.resolve() : load(true)).then(schedule, schedule);
+    }, base+jitter);
+  })();
+  document.addEventListener('visibilitychange',function(){ if(!document.hidden) load(true) });
 
   /* ── contribute: the signed half ──────────────────────────────────────────────────────────────── */
   var ov=$('ov');
@@ -645,18 +661,16 @@
     poll=setInterval(function(){watch(p)},4000); watch(p);
   }
 
-  /* mempool-aware: a fresh send shows up in /unconfirmed/unspent before it is in /unspent */
+  /* Mempool-aware AND queued: the provider merges confirmed + unconfirmed and rate-limits itself.
+     Returned in this page's shape ({tx_hash, tx_pos, value}) so the rest of the flow is unchanged. */
   function utxos(addr){
-    return Promise.all([
-      jget(WOC+'/address/'+addr+'/unspent/all').catch(function(){return null}),
-      jget(WOC+'/address/'+addr+'/unconfirmed/unspent').catch(function(){return null})
-    ]).then(function(r){
-      var a=(r[0]&&r[0].result)||(Array.isArray(r[0])?r[0]:[])||[];
-      var b=Array.isArray(r[1])?r[1]:((r[1]&&r[1].result)||[]);
-      var seen={},out=[];
-      a.concat(b).forEach(function(u){ var k=u.tx_hash+':'+u.tx_pos; if(!seen[k]){seen[k]=1;out.push(u)} });
-      return out;
-    });
+    return ensureGM().then(function(G){ return new G.WalletProvider(addr).getUtxos() })
+      .then(function(us){
+        return (us||[]).map(function(u){
+          return { tx_hash:u.txId||u.tx_hash, tx_pos:(u.outputIndex!=null?u.outputIndex:u.tx_pos),
+                   value:(u.satoshis!=null?u.satoshis:u.value) };
+        });
+      }).catch(function(){ return [] });
   }
 
   var busy=false;
@@ -686,13 +700,13 @@
     var G,tipTx,fundTx,d;
     return ensureGM().then(function(g){G=g; return load(true)}).then(function(){
       d=live; if(!d||!d.tipTxid) throw Error('could not read the battery tip');
-      return Promise.all([
-        fetch(WOC+'/tx/'+d.tipTxid+'/hex').then(function(r){return r.text()}),
-        fetch(WOC+'/tx/'+u.tx_hash+'/hex').then(function(r){return r.text()})
-      ]);
-    }).then(function(hex){
-      tipTx=G.Transaction.fromHex(hex[0].trim());
-      fundTx=G.Transaction.fromHex(hex[1].trim());
+      return chain().then(function(P){
+        return P.getSourceTransaction(d.tipTxid).then(function(a){    // queued, one at a time
+          return P.getSourceTransaction(u.tx_hash).then(function(b){ return [a,b] });
+        });
+      });
+    }).then(function(txs){
+      tipTx=txs[0]; fundTx=txs[1];
       return G.buildBatteryTopUpTx({
         battery:{ sourceTransaction:tipTx, outputIndex:0, state:d.state, value:d.fuel },
         addSats:add,
@@ -702,12 +716,10 @@
         changeAddress:p.recv
       });
     }).then(function(tx){
-      var raw=tx.toHex(), txid=tx.id('hex');
+      var raw=tx.toHex();
       $('f-watch').textContent='broadcasting '+fmt(raw.length/2)+' bytes…';
-      return fetch(WOC+'/tx/raw',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({txhex:raw})}).then(function(r){
-        return r.text().then(function(t){ if(!r.ok) throw Error(t||'broadcast rejected'); return {txid:txid,tx:tx} });
-      });
+      return chain().then(function(P){ return P.broadcast(raw) })
+        .then(function(txid){ return {txid:txid,tx:tx} });
     }).then(function(r){
       setPending(null);
       /* tell the board straight away — it verifies on chain before recording, so this is a hint, not a claim */

@@ -49,13 +49,37 @@ const BAT_FIELDS = [
   ['step', 34, 5], ['cx', 40, 5], ['cy', 46, 5], ['mx', 52, 2],
 ];
 
-// ── tiny WoC client ─────────────────────────────────────────────────────────
+// ── rate-limited WoC client ─────────────────────────────────────────────────
+// EVERY call from this file leaves the ONE server IP, and every open page asks us to reconcile. So the
+// browser's per-visitor limit does not protect us: N visitors concentrate into a single client here, and
+// a burst of catch-up hops is exactly the shape that gets an IP blocked. Three guards, cheapest first:
+//
+//   1. a minimum interval between calls (the same 350 ms floor the browser queue uses)
+//   2. a hard budget of calls per request, so one slow visitor cannot walk 60 hops x 3 calls
+//   3. on 429, stop immediately and remember it — a blocked IP must not be hammered into a longer block
+//
+// Being behind is harmless: the state is derived, the cache heals on the next request, and a board that
+// lags a few seconds is far better than one that gets the site's IP banned from the chain.
+$WOC_LAST = 0.0;          // monotonic-ish timestamp of the previous call
+$WOC_CALLS = 0;           // calls made during THIS request
+$WOC_BLOCKED = false;     // set when a relay rate-limits us
+const WOC_MIN_INTERVAL = 0.35;   // seconds between calls
+const WOC_CALL_BUDGET  = 90;     // per request
+
 function woc_get($path) {
-  global $WOC;
+  global $WOC, $WOC_LAST, $WOC_CALLS, $WOC_BLOCKED;
+  if ($WOC_BLOCKED || $WOC_CALLS >= WOC_CALL_BUDGET) return null;
+
+  $wait = WOC_MIN_INTERVAL - (microtime(true) - $WOC_LAST);
+  if ($wait > 0) usleep((int) ($wait * 1000000));
+
   $ch = curl_init($WOC . $path);
   curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8,
     CURLOPT_USERAGENT => 'grafverse-battery/1', CURLOPT_HTTPHEADER => ['Accept: application/json']]);
   $out = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+  $WOC_LAST = microtime(true); $WOC_CALLS++;
+
+  if ($code === 429 || $code === 403) { $WOC_BLOCKED = true; return null; }
   if ($out === false || $code !== 200) return null;
   $j = json_decode($out, true);
   return is_array($j) ? $j : null;
@@ -148,11 +172,21 @@ function init_cache() {
   ];
 }
 
-/** Walk any new hops onto the cache. $hint = a candidate spender txid (from POST) for the FIRST hop. */
+/**
+ * Walk any new hops onto the cache. $hint = a candidate spender txid (from POST) for the FIRST hop.
+ *
+ * ⚠ Bounded by WALL CLOCK as well as hop count. Paced calls make a cold walk slow — 21 hops took ~59 s
+ * in testing — and PHP's default max_execution_time is 30 s, so an unbounded loop would be KILLED
+ * mid-walk. Since progress is only saved after the loop, that would discard everything and restart from
+ * genesis on the next request: a walk that can never finish, however many times it is tried.
+ * Breaking out cleanly instead means whatever was reached IS saved, and the next request carries on.
+ */
 function advance(&$c, $hint = null) {
   global $BATTERY_VOUT, $MAX_ADVANCE, $BOARD;
   $moved = 0;
+  $deadline = microtime(true) + 10.0;
   for ($i = 0; $i < $MAX_ADVANCE; $i++) {
+    if (microtime(true) > $deadline) break;      // resume on the next request; the cache keeps the ground gained
     $tipTxid = $c['tip']['txid'];
     $spender = null;
     if ($i === 0 && $hint && preg_match('/^[0-9a-f]{64}$/', $hint)) {
@@ -186,6 +220,10 @@ function advance(&$c, $hint = null) {
     usort($c['board'], function ($a, $b) { return $b['sats'] <=> $a['sats'] ?: $a['tick'] <=> $b['tick']; });
     if (count($c['board']) > $BOARD) $c['board'] = array_slice($c['board'], 0, $BOARD);
     $c['updated'] = time();
+    save_cache($c);
+  } elseif ($GLOBALS['WOC_BLOCKED']) {
+    // rate-limited: push the next reconcile well out rather than retrying into a longer block
+    $c['updated'] = time() + 60;
     save_cache($c);
   }
   return $moved;
