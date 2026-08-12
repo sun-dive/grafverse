@@ -28,6 +28,7 @@ deployment:
     - /bin/cp milkyway.webp "$DEPLOYPATH"                 # all-sky backdrop image
     - /bin/cp lang-*.js "$DEPLOYPATH"                     # i18n language packs (lang-ja.js, lang-zh-Hant.js, …) lazy-loaded by the game
     - /bin/cp brc226.html "$DEPLOYPATH"                   # BRC-226 blueprint — self-contained, crawlable (coined-term SEO); shareable at grafverse.com/brc226.html
+    - /bin/cp battery.html "$DEPLOYPATH"                  # BRC-226 demo two — the Bitcoin battery: simulator, presets, fuel gauge, loop preview
     - /bin/cp robots.txt "$DEPLOYPATH"                    # crawl directives (allow content, disallow the .php endpoints + /worlds/) + Sitemap: pointer
     - /bin/cp sitemap.php "$DEPLOYPATH"                   # dynamic XML sitemap of the crawlable pages (/, /grafverse.html, /brc226.html) with real lastmod
     - /bin/cp tip.php "$DEPLOYPATH"                        # BRC-226 LiveCounter board cache: follows the covenant chain → { n, tipTxid, last21[] }
