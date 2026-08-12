@@ -3,20 +3,26 @@
 //
 //   bundle:     node -e "import('esbuild').then(e=>e.build({entryPoints:['tools/battery.ts'],bundle:true,format:'esm',platform:'node',target:'esnext',outfile:'tools/battery.mjs'}))"
 //   self-test:  node tools/battery.mjs --selftest                        (no key, no network)
-//   dry build:  BATTERY_WIF=<wif> node tools/battery.mjs --genesis --fuel 8000
-//   broadcast:  BATTERY_WIF=<wif> node tools/battery.mjs --genesis --fuel 8000 --broadcast
-//   tick:       node tools/battery.mjs --tick 20 --broadcast             (NO KEY — this is the point)
 //   status:     node tools/battery.mjs --status
+//   tick:       node tools/battery.mjs --tick 20 --broadcast             (NO KEY — this is the point)
+//   top up:     BATTERY_WIF=<wif> node tools/battery.mjs --topup 1000000 --mark "…" --broadcast
+//   genesis:    BATTERY_WIF=<wif> node tools/battery.mjs --genesis --fuel 8000 --broadcast
+//
+// ★ THE CANONICAL BATTERY IS ALREADY LIVE — genesis d9a55ddb6c52bc51425f3c9e1416033179899e76abd634-
+// deda4510eed3790146, first ticked 2026-08-12, confirmed in block 961,975. `--genesis` exists to build
+// a battery, not to re-launch this one; a second genesis with identical parameters is simply a
+// different and irrelevant chain.
 //
 // The deployer key funds the genesis and receives the change. It has NO authority over the battery
 // afterwards — there is no key that can amend, stop or drain it. Ticking needs no key at all: the
-// OP_PUSH_TX preimage IS the authorisation, so anyone can advance it with nothing at stake.
+// OP_PUSH_TX preimage IS the authorisation, so anyone can advance it with nothing at stake. Only a
+// top-up is signed, because only a top-up spends someone's money.
 import { PrivateKey, Transaction, P2PKH, Spend } from '@bsv/sdk'
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { importWif } from '../src/wallet.ts'
-import { buildBatteryGenesisTx, buildBatteryTickTx, nextBatteryUtxo, type BatteryUtxo } from '../src/batteryTx.ts'
+import { buildBatteryGenesisTx, buildBatteryTickTx, buildBatteryTopUpTx, nextBatteryUtxo, type BatteryUtxo } from '../src/batteryTx.ts'
 import {
   buildBatteryLock, genesisState, refState, ticksRemaining,
   BATTERY_MAX_FEE, BATTERY_GEOMETRY, BATTERY_STATE_LAYOUT, type BatteryState,
@@ -206,6 +212,59 @@ async function tick(): Promise<void> {
   if (has('--broadcast')) console.log(`\n${st.ticks} ticks total. A real node agrees with the interpreter.`)
 }
 
+// ── top-up ──────────────────────────────────────────────────────────────────────────────────────────
+// The half that costs money and is therefore deliberate and signed. One transaction adds fuel, advances
+// the state, and carries the contributor's mark for the board — atomic by construction, so the board is
+// a VIEW over the chain (find the ticks where out0's value rose, read the mark) with nothing to administer.
+async function topup(): Promise<void> {
+  const st = loadState()
+  if (!st) { console.error(`No battery recorded in ${STATE_FILE}. Run --genesis first.`); process.exit(1) }
+  const wif = process.env.BATTERY_WIF
+  if (!wif) { console.error('Set BATTERY_WIF=<sponsor WIF> — a top-up is signed, unlike a tick.'); process.exit(1) }
+  const add = Number(arg('--topup') ?? 0)
+  if (!Number.isInteger(add) || add < 1000) { console.error('--topup must be an integer ≥ 1000 sat'); process.exit(1) }
+  const mark = arg('--mark') ?? null
+  if (mark != null && new TextEncoder().encode(mark).length > 220) { console.error('--mark exceeds 220 bytes'); process.exit(1) }
+
+  const key = importWif(wif), addr = key.toAddress()
+  console.log('battery  :', st.genesisTxid)
+  console.log('tip      :', `${st.tipTxid} · ${st.ticks} ticks · ${st.fuel} sat (≈ ${ticksRemaining(st.fuel)} left)`)
+  console.log('sponsor  :', addr)
+
+  const utxos = await getJson(`/address/${addr}/unspent`)
+  const pick = (Array.isArray(utxos) ? utxos : [])
+    .filter((u: any) => u.value >= add + 1000).sort((a: any, b: any) => a.value - b.value)[0]
+  if (!pick) { console.error(`No UTXO ≥ ${add + 1000} sat at ${addr} — fund it first.`); process.exit(1) }
+  console.log('funding  :', `${pick.tx_hash}:${pick.tx_pos} (${pick.value} sat)`)
+
+  const tipTx = Transaction.fromHex(await getText(`/tx/${st.tipTxid}/hex`))
+  const src = Transaction.fromHex(await getText(`/tx/${pick.tx_hash}/hex`))
+  const tx = await buildBatteryTopUpTx({
+    battery: { sourceTransaction: tipTx, outputIndex: 0, state: stateAfter(st.ticks), value: st.fuel },
+    addSats: add, key, funder: { sourceTransaction: src, outputIndex: pick.tx_pos },
+    mark,
+  })
+  const raw = tx.toHex(), txid = tx.id('hex'), newFuel = tx.outputs[0].satoshis ?? 0
+
+  console.log('\n── TOP-UP · built + signed LOCALLY ──')
+  console.log('txid     :', txid)
+  console.log('adds     :', add.toLocaleString(), 'sat →', newFuel.toLocaleString(), 'sat', `(≈ ${ticksRemaining(newFuel).toLocaleString()} ticks)`)
+  if (mark != null) console.log('mark     :', JSON.stringify(mark))
+  console.log('change   :', tx.outputs[tx.outputs.length - 1].satoshis, 'sat →', addr)
+  console.log('size     :', raw.length / 2, 'bytes\n')
+
+  if (!has('--broadcast')) {
+    console.log('(dry build — re-run with --broadcast to send.)')
+    console.log('raw hex  :\n' + raw)
+    return
+  }
+  await broadcast(raw)
+  if (!await awaitInMempool(txid)) console.error('   ↳ not acknowledged yet; check before ticking again.')
+  st.tipTxid = txid; st.ticks += 1; st.fuel = newFuel
+  saveState(st)
+  console.log(`\n🔋 Fuelled. ${newFuel.toLocaleString()} sat ≈ ${ticksRemaining(newFuel).toLocaleString()} ticks.`)
+}
+
 // ── status ──────────────────────────────────────────────────────────────────────────────────────────
 async function status(): Promise<void> {
   const st = loadState()
@@ -222,8 +281,14 @@ async function status(): Promise<void> {
 async function main(): Promise<void> {
   if (has('--selftest')) return void await selftest()
   if (has('--genesis')) return await genesis()
+  if (has('--topup')) return await topup()
   if (has('--tick')) return await tick()
   if (has('--status')) return await status()
-  console.log('usage: --selftest | --genesis --fuel <sat> [--broadcast] | --tick <n> [--broadcast] | --status')
+  console.log('usage:')
+  console.log('  --selftest                                       no key, no network')
+  console.log('  --genesis --fuel <sat> [--broadcast]             BATTERY_WIF · once, permanent')
+  console.log('  --topup <sat> [--mark "…"] [--broadcast]         BATTERY_WIF · signed, adds fuel + a board mark')
+  console.log('  --tick <n> [--broadcast]                         NO KEY — the autonomous half')
+  console.log('  --status                                         where the battery is now')
 }
 main().catch(e => { console.error('ERROR:', (e as Error).message); process.exit(1) })
