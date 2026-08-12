@@ -199,13 +199,20 @@
     <div class="stat"><span id="lv-prog">—</span><b id="lv-raised"></b></div>
 
     <div class="row">
-      <button id="lv-fuelit" style="flex:1;min-width:190px">⚡ Fuel it — and sign the board</button>
+      <!-- THE POINT OF THE WHOLE DEMO. No key, no wallet, nothing at stake — the covenant authorises
+           with a proof about the transaction, so a stranger with an empty browser can advance it. -->
+      <button id="lv-tick" style="flex:1;min-width:200px">▶ Tick it — one iteration, no key</button>
+      <button id="lv-fuelit" class="ghost" style="flex:1;min-width:190px">⚡ Fuel it — and sign the board</button>
+    </div>
+    <div class="stat" id="lv-tickmsg" style="min-height:20px;color:var(--faint)"></div>
+
+    <div class="row">
       <button id="lv-dl" class="ghost" style="flex:0 1 auto">⬇ Save this state</button>
       <a id="lv-tip" class="ghost" href="#" target="_blank" rel="noopener"
          style="flex:1;min-width:140px;text-align:center;padding:11px 18px;border-radius:24px;border:1px solid var(--line);color:var(--dim);text-decoration:none;font:600 14px system-ui">the tip on chain ↗</a>
     </div>
 
-    <p class="note" id="lv-note">Advancing it needs <b>no key and no wallet</b> — the covenant authorises with a proof about the transaction, not a signature. Only <b>topping it up</b> is signed, because only topping it up spends someone's money.</p>
+    <p class="note" id="lv-note"><b>Tick it</b> and your browser builds a Bitcoin transaction with <b>one input, one output and no signature</b>, then broadcasts it. The covenant authorises with a proof about the transaction rather than a key, so it costs you nothing and risks nothing — the ~312 sat fee comes out of the battery's own fuel, which is what the fuel is for. Only <b>topping it up</b> is signed, because only topping it up spends someone's money.</p>
 
     <!-- the board is a VIEW over the chain: the hops where the fuel went up -->
     <div class="board" id="lv-board">
@@ -478,7 +485,7 @@
     $('lv-raised').textContent=d.raised?('+'+fmt(d.raised)+' sat contributed'):'';
     $('lv-leftcell').className='cell'+(d.ticksLeft<50?' flat':'');
     $('lv-when').textContent=d.ticksLeft>0
-      ? 'it advances whenever anyone ticks it — no permission needed'
+      ? 'press Tick it below — no key, no wallet, no permission'
       : 'the fuel has run out — it is waiting for someone to top it up';
     if(d.tipTxid){ $('lv-tip').href='https://whatsonchain.com/tx/'+d.tipTxid; }
 
@@ -530,6 +537,57 @@
     download(stampShot($('lv-cv'),cap,4).toDataURL('image/png'),
              'bitcoin-battery-tick-'+d.ticks+'.png');
   };
+
+  /* ── TICKING — the keyless half, and the thing the page exists to demonstrate ─────────────────────
+     One input, one output, no signature, no funding, no wallet. The fee comes out of the battery's own
+     carried value, so pressing this costs the visitor nothing and risks nothing: there is no key here to
+     steal or to sign with. It spends ~312 sat OF THE BATTERY, which is precisely what the fuel is for.
+
+     The only real failure is a stale tip — if someone else ticked first, the transaction spends an
+     already-spent output and the node says so. Re-syncing and rebuilding is the whole fix, so it retries
+     once by itself rather than making the visitor understand any of that. */
+  var ticking=false;
+  $('lv-tick').onclick=function(){ if(!ticking) doTick(true) };
+
+  function doTick(retry){
+    var msg=$('lv-tickmsg'), btn=$('lv-tick');
+    ticking=true; btn.disabled=true; msg.style.color='var(--faint)';
+    msg.textContent='building the transaction…';
+    var G;
+    return ensureGM().then(function(g){ G=g; return load(true) }).then(function(){
+      var d=live;
+      if(!d||!d.tipTxid) throw Error('could not read the battery tip');
+      if((d.ticksLeft||0)<1) throw Error('the battery is flat — it needs fuel before it can tick again');
+      return fetch(WOC+'/tx/'+d.tipTxid+'/hex').then(function(r){return r.text()}).then(function(hex){
+        return G.buildBatteryTickTx({ battery:{
+          sourceTransaction:G.Transaction.fromHex(hex.trim()), outputIndex:0, state:d.state, value:d.fuel } });
+      });
+    }).then(function(tx){
+      var raw=tx.toHex(), txid=tx.id('hex');
+      msg.textContent='broadcasting '+fmt(raw.length/2)+' bytes — no signature…';
+      return fetch(WOC+'/tx/raw',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({txhex:raw})}).then(function(r){
+        return r.text().then(function(t){ if(!r.ok) throw Error(t||'rejected'); return txid });
+      });
+    }).then(function(txid){
+      fetch('/battery.php',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({txid:txid})}).catch(function(){});
+      msg.style.color='var(--lime)';
+      msg.innerHTML='✓ one iteration computed on chain — '+
+        '<a href="https://whatsonchain.com/tx/'+txid+'" target="_blank" rel="noopener">'+
+        esc(txid.slice(0,12))+'…</a>';
+      return load(true);
+    }).catch(function(err){
+      /* a tip that moved under us is the ordinary case, not an error worth showing */
+      if(retry && /missing inputs|already|conflict|txn-mempool/i.test(err.message||'')){
+        msg.textContent='someone ticked first — rebuilding…';
+        ticking=false; btn.disabled=false;
+        return doTick(false);
+      }
+      msg.style.color='var(--mag)';
+      msg.textContent=(err.message||'could not tick').slice(0,160);
+    }).then(function(){ ticking=false; btn.disabled=false });
+  }
 
   function load(sync){
     return jget('/battery.php'+(sync?'?sync=1':'')).then(paint).catch(function(){
