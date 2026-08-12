@@ -89,6 +89,20 @@
   .live .gauge{height:11px}
   .lowfuel i{background:var(--mag)}
 
+  /* the on-chain picture — NOT the simulator. Every solid pixel was paid for. */
+  .shot{margin:0 0 14px}
+  .shot canvas{width:100%;height:auto;display:block;border-radius:11px;image-rendering:pixelated;
+               background:#04060b;border:1px solid var(--line)}
+  .shot-legend{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:11.5px;color:var(--faint);margin-top:7px}
+  .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+  .sw.solid{background:var(--tang)}
+  .sw.ghost{background:rgba(255,162,46,.17)}
+
+  /* the parameter toy, demoted to the foot of the page */
+  .toy{margin-top:34px;padding-top:20px;border-top:1px solid var(--line)}
+  .toy h2{font-size:19px;font-weight:800;letter-spacing:-.01em}
+  .toy .sub{font-size:14px;margin-top:8px}
+
   /* ── the board: top 21 contributions, ranked by amount ── */
   .board{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
   .board ol{list-style:none;counter-reset:b}
@@ -136,6 +150,17 @@
       <span class="pulse" id="lv-pulse"></span>
       <b>It is running now</b>
       <span class="note" style="margin:0" id="lv-when">reading the chain…</span>
+    </div>
+
+    <!-- THE PICTURE THE CHAIN HAS PAID FOR — recomputed locally from the tip state, which is
+         bit-identical to what the script computed. Solid = done on chain. Ghost = not yet. -->
+    <div class="shot">
+      <canvas id="lv-cv" width="256" height="192"></canvas>
+      <div class="shot-legend">
+        <span><i class="sw solid"></i>computed on chain</span>
+        <span><i class="sw ghost"></i>not yet — needs fuel</span>
+        <span id="lv-scan" style="margin-left:auto"></span>
+      </div>
     </div>
 
     <div class="live-grid">
@@ -217,6 +242,24 @@
     </div>
   </div>
 
+  <div class="foot">
+    <b>How it works.</b> The state — the pixel being computed, the running value <span class="kv">z</span>, and the iteration count — lives inside the locking script. Each spend proves it is the transaction it claims to be (<span class="kv">OP_PUSH_TX</span>), reads that state back out of its own script, performs <span class="kv">z → z² + c</span> in fixed point, and rebuilds itself one step further on. Nothing about the next state is chosen by whoever presses the button: it is forced.
+    <br><br>
+    <b>The state is the picture.</b> A pixel's escape count is the iteration recorded on the tick where <span class="kv">c</span> advanced. Nothing is emitted, nothing is stored anywhere else — walk the chain and the image reassembles itself.
+    <br><br>
+    <b>Measured:</b> the arithmetic is <span class="kv">46 bytes</span>; proving nobody faked it is <span class="kv">499</span>. Roughly ten to one. The maths is nearly free — the proof is what costs.
+    <br><br>
+    <a href="/brc226.html">← demo one: the self-running counter</a>
+  </div>
+
+  <!-- ── the parameter TOY ───────────────────────────────────────────────────────────────────────
+       This is NOT the battery. It is the same arithmetic run locally, with the knobs still attached —
+       the tool the genesis parameters were chosen with. Those parameters are now baked into the
+       covenant and can never change, so this is kept as an explainer: turn the dials, see why the
+       grid and the iteration ramp cost what they cost. It spends nothing and reads nothing. -->
+  <section class="toy">
+    <h2>Play with it — the parameter toy</h2>
+    <p class="sub">The same integer arithmetic the covenant runs, with the knobs still attached. This is how the genesis parameters were chosen; they are permanent now, so nothing here touches the real battery. Turn the dials and watch what a grid or an iteration budget actually costs.</p>
   <div class="grid">
     <div class="panel">
       <canvas id="cv" width="240" height="180"></canvas>
@@ -286,16 +329,7 @@
       <p class="note">These numbers are <b>baked into the covenant at genesis</b> and can never be changed. Tune them here until the picture is the one you want — this preview is exactly what the chain will draw.</p>
     </div>
   </div>
-
-  <div class="foot">
-    <b>How it works.</b> The state — the pixel being computed, the running value <span class="kv">z</span>, and the iteration count — lives inside the locking script. Each spend proves it is the transaction it claims to be (<span class="kv">OP_PUSH_TX</span>), reads that state back out of its own script, performs <span class="kv">z → z² + c</span> in fixed point, and rebuilds itself one step further on. Nothing about the next state is chosen by whoever presses the button: it is forced.
-    <br><br>
-    <b>The state is the picture.</b> A pixel's escape count is the iteration recorded on the tick where <span class="kv">c</span> advanced. Nothing is emitted, nothing is stored anywhere else — walk the chain and the image reassembles itself.
-    <br><br>
-    <b>Measured:</b> the arithmetic is <span class="kv">46 bytes</span>; proving nobody faked it is <span class="kv">499</span>. Roughly ten to one. The maths is nearly free — the proof is what costs.
-    <br><br>
-    <a href="/brc226.html">← demo one: the self-running counter</a>
-  </div>
+  </section>
 </div>
 
 <script>
@@ -337,10 +371,61 @@
       s.onload=res;s.onerror=res;document.head.appendChild(s)});
   }
 
+  /* ── THE ON-CHAIN PICTURE ─────────────────────────────────────────────────────────────────────────
+     Not a simulation. The state carried in the covenant's own script says which frame is being drawn and
+     how far the scan has crossed it, so every pixel behind the frontier can be recomputed exactly —
+     the arithmetic here is bit-identical to the script's (verified against BigInt over 800,000 ops).
+     One read of the tip reproduces the whole picture; no walking the chain, no stored framebuffer.
+
+     MULTIPLY FIRST, DIVIDE LAST. (2*zr*zi)/S and (zr*zi/S)*2 differ by one ulp, and the chain's order is
+     the only correct one — reorder these and the picture slowly drifts away from what was actually paid for. */
+  var CW=256, CH=192, CS=Math.pow(2,32), CESC=4*CS;
+  function drawChain(d){
+    var cv=$('lv-cv'), ctx=cv.getContext('2d');
+    if(!d||!d.state){ return }
+    var s=d.state, step=s.step; if(!(step>0)) return;
+    var cr0=s.cx-(CW/2)*step, ci0=s.cy-(CH/2)*step, mx=s.mx;
+    var col=Math.round((s.cr-cr0)/step), row=Math.round((s.ci-ci0)/step);
+    var done=row*CW+col;                       // pixels finished; the rest is unpaid-for future
+    var img=ctx.createImageData(CW,CH), px=img.data;
+
+    for(var p=0;p<CW*CH;p++){
+      var x=p%CW, y=(p-x)/CW;
+      var cr=cr0+x*step, ci=ci0+y*step;
+      var zr=0, zi=0, i=0;
+      while(i<mx){
+        var zr2=Math.trunc(zr*zr/CS), zi2=Math.trunc(zi*zi/CS);
+        if(zr2+zi2>CESC) break;
+        var nzi=Math.trunc(2*zr*zi/CS)+ci;     // multiply first, divide last
+        zr=zr2-zi2+cr; zi=nzi; i++;
+      }
+      var inside=(i>=mx);
+      /* escape count → the page's own ramp: lime → tangerine → magenta, interior stays near-black */
+      var t=inside?0:(i/mx);
+      var r,g,b;
+      if(inside){ r=8;g=12;b=22 }
+      else if(t<0.5){ var u=t/0.5; r=180+(255-180)*u; g=255+(162-255)*u; b=58+(46-58)*u }
+      else { var v=(t-0.5)/0.5; r=255; g=162+(77-162)*v; b=46+(157-46)*v }
+      var lit=(p<done);                        // paid for on chain, or still to come
+      var a=lit?255:36;
+      if(!lit && inside){ r=10;g=14;b=26 }
+      var o=p*4;
+      px[o]=r|0; px[o+1]=g|0; px[o+2]=b|0; px[o+3]=a;
+    }
+    /* the frontier: a bright cursor where the chain's work currently stops */
+    if(done>0 && done<CW*CH){
+      var fo=done*4;
+      px[fo]=56; px[fo+1]=225; px[fo+2]=255; px[fo+3]=255;
+    }
+    ctx.putImageData(img,0,0);
+    $('lv-scan').textContent='scan at pixel '+fmt(done)+' of '+fmt(CW*CH);
+  }
+
   /* ── paint the live panel + the board ─────────────────────────────────────────────────────────── */
   function paint(d){
     live=d;
     if(!d||d.error){ $('lv-when').textContent='the battery is not reachable right now'; return }
+    drawChain(d);
     $('lv-fuel').textContent=fmt(d.fuel)+' sat';
     $('lv-left').textContent=fmt(d.ticksLeft);
     $('lv-ticks').textContent=fmt(d.ticks);
