@@ -295,8 +295,8 @@
       <summary>🐇 how to post — leave your mark on the wall</summary>
       <div class="howbody">
         <ol>
-          <li><b>Tap "Post to the wall"</b> → write your mark: up to <b>111 bytes</b>, any language, any emoji, carved into the chain forever — plus your own BSV address (your deposit comes back to it).</li>
-          <li><b>Scan &amp; send from <em>any</em> wallet.</b> A throwaway key is minted in your browser; just scan its QR and send ~<b>1,400 sats</b>. Works straight from an exchange or custodial wallet — RockWallet, HandCash, anything that can send. <b>Your own keys are never touched.</b></li>
+          <li><b>Tap "Post to the wall"</b> → write your mark: up to <b>111 bytes</b>, any language, any emoji, carved into the chain forever — plus a BSV address <b>you hold the keys to</b>. Your deposit and change come back to it, so an exchange or custodial deposit address won&rsquo;t do — many are single-use, and most won&rsquo;t credit a payment they weren&rsquo;t expecting.</li>
+          <li><b>Scan &amp; send from <em>any</em> wallet.</b> A throwaway key is minted in your browser; just scan its QR and send ~<b>1,400 sats</b>. The <b>sending</b> side can be anything — RockWallet, HandCash, any wallet that can send. <b>Your own keys are never touched.</b></li>
           <li><b>Done.</b> It builds + broadcasts your tick for you. Your <b>1,000-sat deposit and any extra come back to your address</b> — the deposit refunds the moment the next person posts. True cost ≈ a fee + one satoshi.</li>
         </ol>
         <p class="howfoot"><b>No account · no owner · no off-switch.</b> Anyone can push the counter forward, no mark can ever be deleted, and because each post costs real (if tiny) sats, spam prices itself out — no moderators. Coins trapped in a walled garden? <a href="https://wallet.grafverse.com" target="_blank" rel="noopener">own your keys →</a> 🎱</p>
@@ -586,7 +586,7 @@
         <label for="pm-mark">your mark · up to 111 bytes · any language</label>
         <input id="pm-mark" maxlength="111" placeholder="gm from taipei 🐇" autocomplete="off" spellcheck="false">
         <div class="pm-bytes" id="pm-mbytes">0/111</div>
-        <label for="pm-recv">your BSV address — your 1,000-sat deposit refunds here</label>
+        <label for="pm-recv">your BSV address — one you control; your 1,000-sat deposit refunds here</label>
         <input id="pm-recv" placeholder="1…" autocomplete="off" spellcheck="false">
         <div class="pm-status pm-err" id="pm-cerr"></div>
         <button class="pm-btn" id="pm-begin">Continue →</button>
