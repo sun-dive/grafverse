@@ -191,7 +191,7 @@
         </div>
 
         <div id="st-fund" style="display:none">
-          <p class="note" style="margin-top:0">Send exactly this, from any BSV wallet:</p>
+          <p class="note" style="margin-top:0">Send about this, from any BSV wallet — a round number is fine. Whatever arrives becomes the fuel, minus the fee, and the remainder returns to your address:</p>
           <div class="amt-big" id="f-amt">—</div>
           <div class="qr" id="f-qr"></div>
           <div class="addr" id="f-addr">…</div>
@@ -447,16 +447,26 @@
   function watch(p){
     if(busy)return;
     utxos(p.addr).then(function(us){
-      var u=us.filter(function(x){return x.value>=p.need}).sort(function(a,b){return a.value-b.value})[0];
-      if(!u)return;
+      /* Take the LARGEST utxo and contribute whatever actually arrived, rather than demanding an exact
+         amount. Asking for `amount + fee` and then refusing anything smaller means a round-number send
+         scans forever while the sats sit right there — and topping up afterwards cannot rescue it,
+         because a covenant spend needs ONE funding input, not a combined balance. */
+      var u=us.sort(function(a,b){return b.value-a.value})[0];
+      if(!u) return;
+      if(u.value < 1000+FEEPAD){
+        $('f-watch').textContent='received '+fmt(u.value)+' sat — that is below the '+fmt(1000+FEEPAD)+' sat minimum; send a little more';
+        return;
+      }
       busy=true; if(poll){clearInterval(poll);poll=null}
-      $('f-watch').textContent='✓ received '+fmt(u.value)+' sat — building your top-up…';
-      return contribute(p,u);
+      var add=Math.min(p.amt, u.value-FEEPAD);          // never more than asked; never more than arrived
+      $('f-watch').textContent='✓ received '+fmt(u.value)+' sat — fuelling with '+fmt(add)+'…';
+      return contribute(p,u,add);
     }).catch(function(){}).then(function(){busy=false});
   }
 
-  /* Build the top-up from the CURRENT tip. One tx: adds the fuel, advances one iteration, writes the mark. */
-  function contribute(p,u){
+  /* Build the top-up from the CURRENT tip. One tx: adds the fuel, advances one iteration, writes the mark.
+     `add` is what actually goes in — derived from the utxo that arrived, not from what was typed. */
+  function contribute(p,u,add){
     var G,tipTx,fundTx,d;
     return ensureGM().then(function(g){G=g; return load(true)}).then(function(){
       d=live; if(!d||!d.tipTxid) throw Error('could not read the battery tip');
@@ -469,7 +479,7 @@
       fundTx=G.Transaction.fromHex(hex[1].trim());
       return G.buildBatteryTopUpTx({
         battery:{ sourceTransaction:tipTx, outputIndex:0, state:d.state, value:d.fuel },
-        addSats:p.amt,
+        addSats:add,
         key:G.PrivateKey.fromWif(p.wif),
         funder:{ sourceTransaction:fundTx, outputIndex:u.tx_pos },
         mark:p.mark||null,
@@ -487,7 +497,7 @@
       /* tell the board straight away — it verifies on chain before recording, so this is a hint, not a claim */
       fetch('/battery.php',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({txid:r.txid})}).catch(function(){});
-      $('d-added').textContent=fmt(p.amt)+' sat';
+      $('d-added').textContent=fmt(add)+' sat';
       $('d-fuel').textContent=fmt((r.tx.outputs[0].satoshis)||0)+' sat';
       $('d-mark').textContent=p.mark||'(no mark)';
       $('d-txid').textContent=r.txid;
