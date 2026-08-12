@@ -74,6 +74,25 @@
   .foot b{color:#cfe0ff} a{color:var(--cyan)}
   .tag{display:inline-block;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);border-radius:20px;padding:4px 12px;margin-bottom:16px}
 
+  /* ── one battery, two loads — the claim the whole page exists to make ── */
+  .thesis{margin-top:24px;border:1px solid rgba(180,255,58,.28);border-radius:16px;overflow:hidden;
+          background:linear-gradient(180deg,rgba(180,255,58,.06),rgba(10,18,34,.6))}
+  .thesis-q{padding:20px 20px 16px;font-size:clamp(18px,2.7vw,25px);font-weight:800;line-height:1.28;
+            letter-spacing:-.015em;text-wrap:balance}
+  .thesis-q em{font-style:normal;color:var(--lime)}
+  .loads{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line)}
+  @media(max-width:620px){.loads{grid-template-columns:1fr}}
+  .load{background:#0a1322;padding:15px 18px}
+  .load h4{font-size:14.5px;font-weight:800;margin-bottom:3px}
+  .load .who{font-size:11px;text-transform:uppercase;letter-spacing:.11em;color:var(--faint)}
+  .load p{font-size:13px;color:var(--dim);margin-top:7px;line-height:1.55}
+  .load.seen h4{color:var(--tang)} .load.unseen h4{color:var(--cyan)}
+  .thesis-b{padding:16px 20px 18px;font-size:13.5px;line-height:1.72;color:var(--dim)}
+  .thesis-b b{color:#dcecff}
+  .thesis-b .punch{display:block;font-size:15.5px;font-weight:800;color:var(--ink);margin-bottom:9px}
+  .thesis-b .care{display:block;margin-top:12px;padding-top:11px;border-top:1px solid var(--line);
+                  font-size:12.5px;color:var(--faint)}
+
   /* ── the LIVE battery: real chain state, not the simulator ── */
   .live{background:linear-gradient(180deg,rgba(56,225,255,.07),rgba(10,18,34,.66));border:1px solid rgba(56,225,255,.32);
         border-radius:16px;padding:18px;margin-top:22px}
@@ -158,6 +177,35 @@
   <span class="tag">BRC-226 · demo two</span>
   <h1>The Bitcoin <span class="hl">Battery</span></h1>
   <p class="sub">A covenant with a fuel tank. Each transaction performs <b>one</b> Mandelbrot iteration and recreates itself, slightly lighter. There is no key — so there is nothing to steal, and anyone can advance it. When the fuel runs out it simply stops, until someone tops it up.</p>
+
+  <!-- ── ONE BATTERY, TWO LOADS ───────────────────────────────────────────────────────────────────
+       The claim the page exists to make. The battery is the product; the fractal is only the load you
+       can see. Kept precise on purpose: it powers an agent's ON-CHAIN ACTIONS, never its thinking —
+       over-claim and someone will correctly point out the AI is not running on Bitcoin. -->
+  <section class="thesis">
+    <p class="thesis-q">A Bitcoin battery can power a <em>Mandelbrot generator</em>, or an <em>autonomous AI agent</em> — with no hot wallet anywhere in the picture.</p>
+
+    <div class="loads">
+      <div class="load seen">
+        <span class="who">the load you can see</span>
+        <h4>Mandelbrot generator</h4>
+        <p><b>The chain thinks.</b> Every step is deterministic and forced — nobody chooses the next pixel, not even the person who built it. You are watching Bitcoin Script do arithmetic.</p>
+      </div>
+      <div class="load unseen">
+        <span class="who">the load you cannot</span>
+        <h4>Autonomous AI agent</h4>
+        <p><b>The agent thinks; the chain bounds it.</b> It decides what to do, and the covenant constrains what it is able to do — and pays for it.</p>
+      </div>
+    </div>
+
+    <div class="thesis-b">
+      <span class="punch">Don't give an agent a hot wallet. Give it a battery.</span>
+      A key is unbounded capability. Funding a hot wallet bounds the <b>amount</b>, never the <b>behaviour</b> — you simply get robbed in small amounts, repeatedly. <code class="kv">OP_PUSH_TX</code> unlocks with a proof <i>about the transaction</i> rather than a signature, so the agent holds <b>no credential at all</b>. "The agent's wallet got drained" becomes a category error: there is nothing to exfiltrate, and nothing a prompt injection can extract. The worst a fully compromised agent can do is spend fuel doing exactly what the covenant was built to do. The failure mode is a <b>flat battery, not a theft</b>.
+
+      <span class="care"><b>Said precisely, because the precise version is the stronger one:</b> the battery powers an agent's on-chain <b>actions</b> — writing, paying, proving. Not its thinking. The agent thinks wherever it likes; it can only <i>act</i> within the covenant.<br><br>
+      <b>And the visible load proves the invisible one.</b> Nobody can verify "an agent cannot be robbed" by reading a claim about it. You can watch a fractal draw itself below, with no key in existence — and having seen that, the agent claim needs no defending.</span>
+    </div>
+  </section>
 
   <!-- ── THE LIVE BATTERY ─────────────────────────────────────────────────────────────────────────── -->
   <section class="live" id="live">
