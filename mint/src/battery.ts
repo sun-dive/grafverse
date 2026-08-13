@@ -75,6 +75,43 @@ export const S = Math.pow(2, SHIFT)
 /** Escape radius squared, scaled: |z|² > 4 means this pixel is outside the set. */
 export const ESCAPE = 4 * S
 
+/**
+ * `trunc(a · b / 2³²)` computed EXACTLY, which `Math.trunc(a * b / S)` is not.
+ *
+ * |zr| reaches ~2·2³², so `zr · zr` reaches 2⁶⁶ — and a double represents every integer only to 2⁵³.
+ * The product is therefore rounded before it is ever divided, and the truncation that was supposed to
+ * discard the error instead sometimes crosses an integer boundary and keeps it. Measured against exact
+ * BigInt: the reference disagreed with true integer arithmetic on the order of 1 iteration in 600,000.
+ *
+ * ⚠ WHY THAT MATTERS MORE THAN IT SOUNDS: Bitcoin Script is exact. So on a disagreeing tick it is the
+ * REFERENCE that is wrong, and `buildBatteryTickTx` derives the next locking script from it — the
+ * covenant recomputes the state itself and rejects an output that does not match. The transaction is
+ * refused. No funds are lost, but our own tool cannot advance the battery past that pixel.
+ *
+ * This is NOT a field-width problem and more bytes would not fix it: `zr` stores comfortably (the
+ * widest field runs at 4.7% of its capacity at every resolution). The limit is the mantissa of a
+ * double, and it is 53 bits whatever the covenant stores.
+ *
+ * The fix keeps doubles, so the renderer stays fast. Split each operand at 2¹⁶ and accumulate the
+ * partial products separately; every intermediate then stays under 2⁵³ and is exact:
+ *
+ *     a·b = xh·yh·2³² + (xh·yl + xl·yh)·2¹⁶ + xl·yl
+ *     ⌊a·b / 2³²⌋ = xh·yh + ⌊mid / 2¹⁶⌋ + ⌊((mid mod 2¹⁶)·2¹⁶ + xl·yl) / 2³²⌋
+ *
+ * Sign is handled by taking magnitudes and negating, which truncates toward zero — matching both
+ * `Math.trunc` and Script's OP_DIV.
+ */
+export function mulShift(a: number, b: number): number {
+  const neg = (a < 0) !== (b < 0)
+  const x = Math.abs(a), y = Math.abs(b)
+  const xh = Math.floor(x / 65536), xl = x - xh * 65536
+  const yh = Math.floor(y / 65536), yl = y - yh * 65536
+  const mid = xh * yl + xl * yh
+  const midHi = Math.floor(mid / 65536), midLo = mid - midHi * 65536
+  const q = xh * yh + midHi + Math.floor((midLo * 65536 + xl * yl) / 4294967296)
+  return neg ? -q : q
+}
+
 /** Grid, target and ramp — all baked into the script as constants, so all of it is PERMANENT. */
 export interface BatteryGeometry {
   /** Grid width in pixels. */
@@ -156,7 +193,7 @@ export function genesisState(g: BatteryGeometry = BATTERY_GEOMETRY): BatteryStat
  */
 export function refState(s: BatteryState, g: BatteryGeometry = BATTERY_GEOMETRY): BatteryState {
   const HW = Math.floor(g.W / 2), HH = Math.floor(g.H / 2), ST0 = step0(g)
-  const zr2 = Math.trunc(s.zr * s.zr / S), zi2 = Math.trunc(s.zi * s.zi / S), mag = zr2 + zi2
+  const zr2 = mulShift(s.zr, s.zr), zi2 = mulShift(s.zi, s.zi), mag = zr2 + zi2
   if (mag > ESCAPE || s.i >= s.mx) {
     // this pixel is finished — advance the scan, and at the end of a pass zoom in (or restart)
     const cr0 = s.cx - HW * s.step, crMax = cr0 + (g.W - 1) * s.step
@@ -184,7 +221,9 @@ export function refState(s: BatteryState, g: BatteryGeometry = BATTERY_GEOMETRY)
   return {
     cr: s.cr, ci: s.ci,
     zr: zr2 - zi2 + s.cr,
-    zi: Math.trunc(2 * s.zr * s.zi / S) + s.ci,
+    // ⚠ trunc(2·zr·zi / S), NOT 2·trunc(zr·zi / S) — those differ whenever the quotient has a
+    // fractional half, and the script computes the former. Double one operand, not the result.
+    zi: mulShift(2 * s.zr, s.zi) + s.ci,
     i: s.i + 1, step: s.step, cx: s.cx, cy: s.cy, mx: s.mx,
   }
 }
