@@ -355,7 +355,7 @@
           <div class="stat"><span>battery now holds</span><b id="d-fuel">—</b></div>
           <div class="stat"><span>your mark</span><b id="d-mark" style="font-weight:400;text-align:right;max-width:60%"></b></div>
           <div class="addr" id="d-txid" style="margin-top:10px">…</div>
-          <a id="d-link" class="ghost" href="#" target="_blank" rel="noopener"
+          <a id="d-link" class="ghost" href="#" target="_blank" rel="nofollow noopener"
              style="display:block;text-align:center;margin-top:10px;padding:11px;border-radius:24px;border:1px solid var(--line);color:var(--cyan);text-decoration:none;font:600 14px system-ui">see it on chain ↗</a>
           <button id="d-close" style="width:100%;margin-top:8px">Close</button>
         </div>
@@ -673,7 +673,7 @@
         body:JSON.stringify({txid:txid})}).catch(function(){});
       msg.style.color='var(--lime)';
       msg.innerHTML='✓ one iteration computed on chain — '+
-        '<a href="https://whatsonchain.com/tx/'+txid+'" target="_blank" rel="noopener">'+
+        '<a href="https://whatsonchain.com/tx/'+txid+'" target="_blank" rel="nofollow noopener">'+
         esc(txid.slice(0,12))+'…</a>';
       return load(true);
     }).catch(function(err){
