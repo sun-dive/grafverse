@@ -1376,6 +1376,7 @@
   var level=1, frames=[], baseTicks=0, mode='zoom';
   var CAPTURE_MAX=1024*768;                  // biggest grid we keep a PNG frame ARRAY for
   var lastFrame=document.createElement('canvas');   // the most recent finished frame, at any size
+  var nextCost={ k:'', v:0 };                       // memo for the "next level costs" readout
   /* Nuclei computed by Newton on F_p(c)=0; sizes by the standard island estimate. The sliders step at
      1e-4, which is WIDER than a deep loop's final frame — so the target must be exact, never dragged. */
   /* Seeded with the GENESIS target, not left null. The sliders step at 1e-4 while the covenant's
@@ -1425,19 +1426,28 @@
   /* Cost of ONE level, walking the real grid with that level's step and iteration cap. Later levels
      cost far more than the first — both because more of the frame lies near the set and because
      maxIter is climbing — so the tank has to be sized level by level, not by multiplying level one. */
+  /* SAMPLED, not scanned. Sizing the tank and pricing the next level are estimates, but this was a
+     full O(W x H x iterations) sweep — 147 ms at 1024x768 and 562 ms at 2048x1536 — and paintStats()
+     runs it on EVERY repaint. At the old defaults (256x192, maxIter 6) that was 1 ms and invisible;
+     at 1K with MX0 128 it meant a seventh of a second of arithmetic per animation frame, purely to
+     refresh a cost readout. That is what made the page crawl.
+
+     Sampling ~20,000 pixels costs 3-5 ms at ANY resolution and lands within 1% — measured against the
+     exact figure at 0.03%, 0.27%, 0.25% and 0.95%. Well inside what a tank estimate needs. */
   function levelTicks(step, mx, cx, cy){
-    var g=origin(step, cx, cy), t=0;
+    var g=origin(step, cx, cy), t=0, n=0;
     var nx=Math.floor((g.crMax-g.cr0)/step)+1, ny=Math.floor((g.ciMax-g.ci0)/step)+1;
-    for(var y=0;y<ny;y++) for(var x=0;x<nx;x++){
+    var stride=Math.max(1, Math.round(Math.sqrt(nx*ny/20000)));
+    for(var y=0;y<ny;y+=stride) for(var x=0;x<nx;x+=stride){
       var cr=g.cr0+x*step, ci=g.ci0+y*step, zr=0, zi=0, i=0;
       for(;i<mx;i++){
         var zr2=Math.trunc(zr*zr/S), zi2=Math.trunc(zi*zi/S);
         if(zr2+zi2>ESCAPE) break;
         var nzi=Math.trunc(2*zr*zi/S)+ci; zr=zr2-zi2+cr; zi=nzi;
       }
-      t+=i+1;
+      t+=i+1; n++;
     }
-    return t;
+    return n ? Math.round(t / n * nx * ny) : 0;
   }
   /* Must follow the PAN, or the estimate zooms into the main cardioid's interior — where every pixel
      costs the full iteration cap — and over-states the budget several times over. */
@@ -1589,8 +1599,12 @@
        same window costs 4× to draw again. Zoom keeps the grid and shrinks the window, so every frame
        costs the same. That is the whole argument: refinement is unaffordable past four or five
        levels; zoom runs to the precision floor and hands you an animation at the end. */
+    /* MEMOISED. Every input to this is constant within a level, so recomputing it per repaint was pure
+       waste — the answer cannot change until the level does. */
     if(st){ var ns=Math.max(1,Math.floor(st.step/2)), nm=Math.min(255, st.mx+(cfg.mode==='zoom'?cfg.K:0));
-      $('nextc').textContent=(levelTicks(ns,nm,st.cx,st.cy)*FEE).toLocaleString()+' sat'; }
+      var nk=ns+'|'+nm+'|'+st.cx+'|'+st.cy+'|'+cfg.W+'x'+cfg.H;
+      if(nk!==nextCost.k) nextCost={ k:nk, v:levelTicks(ns,nm,st.cx,st.cy) };
+      $('nextc').textContent=(nextCost.v*FEE).toLocaleString()+' sat'; }
     var stepNow=st?st.step:cfg.step;
     $('lvlleft').textContent=Math.max(0,Math.floor(Math.log2(Math.max(1,stepNow))));
     $('mag').textContent += st ? '  ·  '+st.mx+' iter' : '';
