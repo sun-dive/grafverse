@@ -166,10 +166,27 @@ function frame_progress($state) {
 function load_cache() { global $CACHE; $j = @file_get_contents($CACHE); $c = $j ? json_decode($j, true) : null; return is_array($c) ? $c : null; }
 function save_cache($c) { global $CACHE; @file_put_contents($CACHE, json_encode($c), LOCK_EX); }
 
-/** The genesis, as a board entry. Its OP_RETURN is the published state layout, not a personal message,
- *  so it carries a plain label and a seed flag the page can style differently. */
+/**
+ * The genesis, as a board entry.
+ *
+ * Its OP_RETURN is `LAYOUT|MARK` — the published state layout, then the opening message. The layout
+ * uses '|' as its field separator and deliberately contains none inside a field (the ink recipe says
+ * `log abs z`, not `log|z|`, for exactly this reason), so the text after the LAST pipe is the mark.
+ *
+ * Falls back to a plain label if the tail still looks like a spec field, so an unmarked genesis — or
+ * a future one written differently — degrades to something sensible instead of printing machine text
+ * at the top of the board.
+ */
 function genesis_entry($sats, $txid, $tx) {
-  return ['sats' => $sats, 'mark' => 'genesis seed funding', 'txid' => $txid,
+  $mark = 'genesis seed funding';
+  $raw  = mark_of($tx);
+  if ($raw !== '' && strpos($raw, '|') !== false) {
+    $tail = trim(substr($raw, strrpos($raw, '|') + 1));
+    // a spec field looks like "key value"; a mark is prose. Reject the known spec prefixes.
+    $isSpec = $tail === '' || preg_match('/^(fields|widths|sign-mag|1=|mul |grid |mx0 |maxfee|ink )/i', $tail);
+    if (!$isSpec) $mark = $tail;
+  }
+  return ['sats' => $sats, 'mark' => $mark, 'txid' => $txid,
           'tick' => 0, 'at' => (int) ($tx['time'] ?? time()), 'seed' => true];
 }
 

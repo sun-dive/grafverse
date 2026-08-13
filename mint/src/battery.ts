@@ -533,14 +533,19 @@ export function tickUnlockingOps(p: { spenderOutputs: number[]; newValue: number
  * from the chain by anyone, WITHOUT this page. If the descent takes years, the artefact must not quietly
  * depend on a website staying up. Owned, not hosted.
  */
-/* 196 bytes, against an OP_RETURN limit of 220. Everything here is something a rebuilder CANNOT
+/* 192 bytes, leaving room for the opening mark — the genesis writes LAYOUT|MARK and the whole thing
+   must fit 220. The 'fields' label is dropped because the list is self-evidently the field names once
+   'widths' labels the second list; that bought the 7 bytes that 'abs z' costs over '|z|'. Everything here is something a rebuilder CANNOT
    derive from a tip: the field layout to parse the state at all, the grid, the ramp constants that
    govern levels not yet reached, and the ink recipe. `span` is omitted deliberately — it is
    W·step/2^32, recoverable from the state. Written compactly because the full prose ran to 276. */
 export const BATTERY_STATE_LAYOUT =
-  'BRC-226 BATTERY v1|fields cr,ci,zr,zi,i,step,cx,cy,mx|widths 5,5,5,5,2,5,5,5,2|' +
+  'BRC-226 BATTERY v1|cr,ci,zr,zi,i,step,cx,cy,mx|widths 5,5,5,5,2,5,5,5,2|' +
   'sign-mag LE|1=2^32|mul first div last|grid 3840x2160|mx0 128 k 128 cap 32767|' +
-  'maxfee 314|ink esc+1-log2(log|z|) mod 32'
+  /* `abs z`, not `|z|`: the pipe is the field separator, and |z| would put two of them INSIDE a
+     field. The genesis OP_RETURN is layout + '|' + the opening mark, so a reader splitting on the
+     last pipe has to be able to trust it. Same formula, unambiguous encoding. */
+  'maxfee 314|ink esc+1-log2(log abs z) mod 32'
 
 /** OP_FALSE OP_RETURN <data> — an unspendable output carrying bytes. */
 export function opReturnScript(data: number[]): LockingScript {
