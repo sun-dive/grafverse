@@ -106,20 +106,10 @@
   .cell span{display:block;font-size:11px;color:var(--faint);letter-spacing:.03em}
   .cell b{display:block;font-size:19px;font-variant-numeric:tabular-nums;margin-top:3px}
   .flat b{color:var(--mag)}
-  /* ── the fuel meter, drawn as an actual battery ── */
-  .batt{display:flex;align-items:stretch;gap:4px;margin:6px 0 4px}
-  .batt-body{position:relative;flex:1;height:44px;border:2px solid rgba(120,170,255,.42);border-radius:9px;
-             background:rgba(4,8,16,.62);overflow:hidden}
-  .batt-fill{position:absolute;inset:0;width:0;background:linear-gradient(90deg,var(--lime),var(--tang));
-             transition:width .6s ease}
-  .batt-body.low .batt-fill{background:linear-gradient(90deg,var(--mag),#ff7a4d)}
-  .batt-cells{position:absolute;inset:0;background:repeating-linear-gradient(90deg,
-              transparent 0 calc(10% - 2px),rgba(4,8,16,.55) calc(10% - 2px) 10%)}
-  .batt-txt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:8px;
-            font:800 17px/1 system-ui;font-variant-numeric:tabular-nums;color:#eaf4ff;
-            text-shadow:0 1px 3px rgba(0,0,0,.75);letter-spacing:.01em}
-  .batt-txt small{font:600 11.5px/1 system-ui;color:rgba(234,244,255,.72);letter-spacing:.02em}
-  .batt-nub{width:7px;align-self:center;height:20px;border-radius:0 4px 4px 0;background:rgba(120,170,255,.42)}
+  /* The old horizontal meter lived here. It was replaced by the vertical casing below, but its
+     `.batt-fill{width:0}` rule outlived it — and when the new charge reused that class name, the
+     dead `width:0` silently applied and the battery rendered 539px tall and 0px wide: no colour,
+     no funders, nothing. Deleted rather than left lying around. */
 
   /* the on-chain picture — NOT the simulator. Every solid pixel was paid for. */
   .shot{margin:0 0 14px;position:relative}
