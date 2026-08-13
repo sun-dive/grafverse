@@ -256,6 +256,39 @@ function discover_spender($tipTxid, $vout) {
   return null;
 }
 
+/**
+ * Backfill the recent-hop list by walking BACKWARDS from the tip.
+ *
+ * Needed because a cache that is already caught up never calls advance(), so `hops` would stay empty
+ * forever on any battery that was being followed before hop-tracking existed.
+ *
+ * Walking back needs NO INDEX: every transaction names its own parent in its vin. Forward discovery
+ * requires a script-hash history lookup — an indexer, the very thing BRC-113 exists to do without.
+ * Backwards is both cheaper and more honest, so the backfill uses the direction the chain is built in.
+ */
+function backfill_hops(&$c) {
+  global $BATTERY_VOUT, $HOPS;
+  $have = $c['hops'] ?? [];
+  if (count($have) >= $HOPS) return;
+
+  $chain = [];
+  $txid = $c['tip']['txid'] ?? null;
+  $genesis = $c['genesis'] ?? '';
+  for ($i = 0; $i < $HOPS && $txid; $i++) {
+    array_unshift($chain, $txid);
+    if ($txid === $genesis) break;                    // reached the anchor; nothing before it
+    $tx = get_tx($txid); if (!$tx) break;
+    $parent = null;
+    foreach (($tx['vin'] ?? []) as $in) {
+      // the covenant input is the one spending a battery output 0 — the others are funding
+      if ((int) ($in['vout'] ?? -1) === $BATTERY_VOUT) { $parent = $in['txid'] ?? null; break; }
+    }
+    if (!$parent) break;
+    $txid = $parent;
+  }
+  if (count($chain) > count($have)) { $c['hops'] = $chain; save_cache($c); }
+}
+
 // ── request handling ─────────────────────────────────────────────────────────
 if (php_sapi_name() === 'cli' && empty($GLOBALS['BATTERY_RUN'])) return;   // CLI include → expose parsers for tests
 
@@ -271,6 +304,8 @@ if ($method === 'POST') {
 } elseif (isset($_GET['sync'])) {
   if (time() - ($c['updated'] ?? 0) >= $THROTTLE) advance($c);
 }
+
+backfill_hops($c);        // a caught-up cache would otherwise never populate the hop list
 
 $fuel  = (int) ($c['tip']['fuel'] ?? 0);
 $state = $c['tip']['state'] ?? null;

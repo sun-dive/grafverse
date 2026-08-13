@@ -689,8 +689,13 @@
          so there is a deliberate gap between them — and per BRC-113 that gap needs no verification at
          all: miners already validated the middle through the UTXO model. Treating it as a broken link
          would be inventing a failure. Verify the anchor, verify the recent run, and say so exactly. */
+      /* The chain MUST end at the tip: the script comparison below is against d.state, which is the
+         TIP's state. Falling back to [genesis] compared the genesis script to the current state — a
+         guaranteed mismatch, and the cause of a spurious "verification incomplete". Be defensive about
+         what the courier hands over: dedupe, and make sure the tip is the last entry whatever arrives. */
       var hops=(d.hops||[]).filter(function(x,i,a){return a.indexOf(x)===i});
-      var chain=hops.length?hops:[d.genesisAnchor];
+      if(!hops.length || hops[hops.length-1]!==d.tipTxid) hops=hops.concat([d.tipTxid]);
+      var chain=hops.filter(function(x,i,a){return a.indexOf(x)===i});
 
       /* fetch by TXID only — chain data, never an address/script index */
       return P.getMerkleProof(d.genesisAnchor).then(function(gp){
@@ -741,16 +746,25 @@
              check; "the last 12" is a vague one — and the gap to genesis is stated, not glossed over. */
           var lastTick=d.ticks, firstTick=Math.max(1, lastTick-(checked-1));
           var ok = anchor.anchored && scriptOk && linked===checked-1 && spends===checked-1;
+          var tail='<span style="color:var(--faint)">No indexer and no UTXO lookup — BRC-113. The single '+
+                   'thing taken on trust is the block header itself, which you can check against any explorer.</span>';
           el.style.color = ok ? 'var(--lime)' : 'var(--mag)';
-          el.innerHTML = ok
+          if(!ok){
+            /* say WHICH check failed — "incomplete" tells a reader nothing and tells us less */
+            el.innerHTML='⚠ '+(!anchor.anchored ? 'genesis not anchored yet'
+              : !scriptOk ? 'the tip does not match the covenant'
+              : linked!==checked-1 ? 'a hop does not spend the one before it ('+linked+'/'+(checked-1)+')'
+              : 'a covenant spend did not re-execute ('+spends+'/'+(checked-1)+')');
+            return;
+          }
+          el.innerHTML = checked<2
             ? '✓ <b>verified in your browser</b> — genesis anchored in block '+fmt(anchor.height)+
+              ' · the tip matches the covenant byte for byte. '+tail
+            : '✓ <b>verified in your browser</b> — genesis anchored in block '+fmt(anchor.height)+
               ' · hops '+fmt(firstTick)+'–'+fmt(lastTick)+' each spend the one before, with '+spends+
               ' covenant spends re-executed here · the tip matches the covenant byte for byte. '+
               '<span style="color:var(--faint)">Ticks 1–'+fmt(firstTick-1)+' are inherited, not proved: '+
-              'miners already validated them through the UTXO model. No indexer and no UTXO lookup — BRC-113. '+
-              'The single thing taken on trust is the block header itself, which you can check against any '+
-              'explorer.</span>'
-            : '⚠ verification incomplete'+(anchor.anchored?'':' — genesis not anchored yet');
+              'miners already validated them through the UTXO model. </span>'+tail;
         });
       });
     }).catch(function(err){
