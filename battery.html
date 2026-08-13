@@ -667,9 +667,17 @@
      Step 3 is the one with no network in it whatsoever, and for this artefact it is the strongest: the
      state is DETERMINISTIC, so the picture at tick N is the same picture whoever reports N.
 
-     ⚠ Stated honestly, because hand-waving here would be the whole point missed: the block header itself
-     still arrives from an API. A full implementation validates a header chain by PROOF OF WORK — the one
-     thing a lying source cannot fabricate. Until then the anchor is trusted, and this says so. */
+     ON THE ONE THING TAKEN ON TRUST — the block header for the genesis block, fetched from a node.
+     That is a deliberate boundary, not an oversight. Verifying proof of work properly would mean the
+     header chain back to 2009, which is its own donkey cart — a bigger one — to look at a fractal.
+
+     What matters is HOW NARROW the trust is. Trusting an indexer for CURRENT STATE is unbounded and
+     continuous: what is the tip, what is unspent, believe me every time. Trusting one header for one
+     PUBLISHED genesis is a single static fact that never changes and that anyone can confirm in any
+     block explorer in ten seconds. That is a checkpoint, and checkpoints are ordinary SPV practice.
+
+     Everything downstream of the anchor is arithmetic done here: linkage, the covenant interpreter, and
+     a locking script rebuilt from our own parameters with no network at all. */
   function verifyFromGenesis(d){
     var el=$('lv-spv');
     if(!d||!d.genesisAnchor){ el.textContent=''; return }
@@ -739,7 +747,9 @@
               ' · hops '+fmt(firstTick)+'–'+fmt(lastTick)+' each spend the one before, with '+spends+
               ' covenant spends re-executed here · the tip matches the covenant byte for byte. '+
               '<span style="color:var(--faint)">Ticks 1–'+fmt(firstTick-1)+' are inherited, not proved: '+
-              'miners already validated them through the UTXO model. No indexer, no UTXO lookup — BRC-113.</span>'
+              'miners already validated them through the UTXO model. No indexer and no UTXO lookup — BRC-113. '+
+              'The single thing taken on trust is the block header itself, which you can check against any '+
+              'explorer.</span>'
             : '⚠ verification incomplete'+(anchor.anchored?'':' — genesis not anchored yet');
         });
       });
