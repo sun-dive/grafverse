@@ -148,6 +148,16 @@
   .noskim .lic{margin-top:11px;padding-top:10px;border-top:1px solid rgba(120,170,255,.08);
                font-size:12.5px;color:var(--faint)}
 
+  /* the picture and the people who paid for it, side by side — the board is not a footnote */
+  .stage{display:grid;grid-template-columns:minmax(0,1fr) 336px;gap:18px;align-items:start;margin-bottom:14px}
+  @media(max-width:880px){.stage{grid-template-columns:1fr}}
+  .stage .shot{margin:0}
+  .stage .board{margin:0;border-top:0;padding-top:0;background:rgba(4,8,16,.5);
+                border:1px solid var(--line);border-radius:12px;padding:13px 14px}
+  .stage .board ol{max-height:330px;overflow:auto}
+  .stage .board li{grid-template-columns:20px 1fr auto;font-size:12.5px;padding:5px 0}
+  .stage .board .amt{font-size:12.5px}
+
   /* ── the board: top 21 contributions, ranked by amount ── */
   .board{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
   .board ol{list-style:none;counter-reset:b}
@@ -228,6 +238,7 @@
 
     <!-- THE PICTURE THE CHAIN HAS PAID FOR — recomputed locally from the tip state, which is
          bit-identical to what the script computed. Solid = done on chain. Ghost = not yet. -->
+    <div class="stage">
     <div class="shot">
       <canvas id="lv-cv" width="256" height="192"></canvas>
       <span class="wm">grafverse.com</span>
@@ -237,6 +248,17 @@
         <span id="lv-scan" style="margin-left:auto"></span>
       </div>
     </div>
+    <div class="board" id="lv-board">
+      <div class="stat" style="padding-bottom:6px">
+        <span>top 21 funders</span>
+        <b id="lv-count"></b>
+      </div>
+      <ol id="lv-list"><li class="empty">reading the chain…</li></ol>
+      <p class="note" style="font-size:11.5px;margin-top:9px">Ranked by amount, not by time — visibility has an ongoing price, so the list needs no moderator. Marks are plain text and are <b>never linked</b>.</p>
+
+    </div>
+    </div>
+
 
     <div class="live-grid">
       <div class="cell"><span>fuel</span><b id="lv-fuel">—</b></div>
@@ -276,19 +298,10 @@
 
     <p class="note" id="lv-note"><b>Tick it</b> and your browser builds a Bitcoin transaction with <b>one input, one output and no signature</b>, then broadcasts it. The covenant authorises with a proof about the transaction rather than a key, so it costs you nothing and risks nothing — the ~312 sat fee comes out of the battery's own fuel, which is what the fuel is for. Only <b>topping it up</b> is signed, because only topping it up spends someone's money.</p>
 
-    <!-- the board is a VIEW over the chain: the hops where the fuel went up -->
-    <div class="board" id="lv-board">
-      <div class="stat" style="padding-bottom:6px">
-        <span>top 21 contributions — every bid buys computation</span>
-        <b id="lv-count"></b>
-      </div>
-      <ol id="lv-list"><li class="empty">reading the chain…</li></ol>
-      <p class="note">Ranked by amount, not by time — so visibility has an ongoing price and the list needs no moderator. Marks are shown as plain text and are <b>never linked</b>. Nothing is ever deleted; only the display is bounded.</p>
-
       <!-- Verified before writing: the covenant has no author output, no crumb, no platform cut.
            A tick is ONE input and ONE output; the entire difference is the miner's fee. Demo one
            does take a one-satoshi crumb for its author — this one takes nothing, deliberately. -->
-      <div class="noskim">
+    <div class="noskim">
         <b>Every satoshi pays a miner. There is no toll gate and no turnstile.</b>
         The covenant has no author output, no crumb and no platform cut — nothing is skimmed on the way
         past, because there is no way past. Fuel you contribute sits in the battery until it is spent to
@@ -373,7 +386,6 @@
     <b>Measured:</b> the arithmetic is <span class="kv">46 bytes</span>; proving nobody faked it is <span class="kv">499</span>. Roughly ten to one. The maths is nearly free — the proof is what costs.
     <br><br>
     <a href="/brc226.html">← demo one: the self-running counter</a>
-  </div>
 
   <!-- ── the parameter TOY ───────────────────────────────────────────────────────────────────────
        This is NOT the battery. It is the same arithmetic run locally, with the knobs still attached —
