@@ -56,7 +56,12 @@ const BASE = {
   TX: Math.round(-1.423288564770 * S), TY: Math.round(0.127278891029 * S),
   MXCAP: 32767,
 }
-const GRIDS: Array<[number, number]> = [[256, 192], [1024, 768], [2048, 1536], [4096, 3072]]
+// 4:3 and 16:9 both — nothing in the script requires an aspect, so both are candidates, and a result
+// proved at 4:3 says nothing about 16:9 on its own.
+const GRIDS: Array<[number, number]> = [
+  [256, 192], [1024, 768], [2048, 1536], [4096, 3072],      // 4:3
+  [1280, 720], [1920, 1080], [2560, 1440], [3840, 2160],    // 16:9
+]
 const MX0 = 128, K = 16, LEVELS = 21
 
 /** Geometry of level L: step halves, the centre quarters its residual toward the target. */
