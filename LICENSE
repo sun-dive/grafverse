@@ -15,6 +15,12 @@ file.
          → Open BSV License Version 6
          Derived from PHAR LAP / MPT. May only be used on the BSV Blockchain.
 
+  •  BRC-226 demonstrations  ·  brc226.html, battery.html, tip.php, battery.php
+         → Open BSV License Version 6
+         Working reference examples of the self-running counter and the Bitcoin
+         battery, published so anyone can read, test, fork and run them. These are
+         demonstrations of the protocol, not game or application code.
+
   •  Game & application  ·  grafverse.html, wallet/, handoff.php, .cpanel.yml
          → Business Source License 1.1
          The grafspace game engine and application code. Source-available;

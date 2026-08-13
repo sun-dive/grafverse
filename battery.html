@@ -1,7 +1,8 @@
 <!doctype html>
 <html lang="en">
 <head>
-<!-- grafverse — © 2026 sun-dive — Licensed under the Business Source License 1.1 (see LICENSE). -->
+<!-- BRC-226 demo two · The Bitcoin Battery — © 2026 sun-dive — Open BSV License Version 6 (see LICENSE).
+     A working example, free to read, test and fork. Nothing here is a game asset. -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Bitcoin Battery — a program that pays for its own execution</title>
@@ -136,6 +137,16 @@
   .toy{margin-top:34px;padding-top:20px;border-top:1px solid var(--line)}
   .toy h2{font-size:19px;font-weight:800;letter-spacing:-.01em}
   .toy .sub{font-size:14px;margin-top:8px}
+
+  /* ── no toll gate: where the money actually goes ── */
+  .noskim{margin-top:14px;border-top:1px solid var(--line);padding-top:14px;font-size:13.5px;
+          line-height:1.7;color:var(--dim)}
+  .noskim b{color:var(--ink)}
+  .noskim .flow{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:11px 0;
+                font-size:12.5px;font-variant-numeric:tabular-nums}
+  .noskim .flow i{color:var(--lime);font-style:normal;white-space:nowrap}
+  .noskim .lic{margin-top:11px;padding-top:10px;border-top:1px solid rgba(120,170,255,.08);
+               font-size:12.5px;color:var(--faint)}
 
   /* ── the board: top 21 contributions, ranked by amount ── */
   .board{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
@@ -272,6 +283,32 @@
       </div>
       <ol id="lv-list"><li class="empty">reading the chain…</li></ol>
       <p class="note">Ranked by amount, not by time — so visibility has an ongoing price and the list needs no moderator. Marks are shown as plain text and are <b>never linked</b>. Nothing is ever deleted; only the display is bounded.</p>
+
+      <!-- Verified before writing: the covenant has no author output, no crumb, no platform cut.
+           A tick is ONE input and ONE output; the entire difference is the miner's fee. Demo one
+           does take a one-satoshi crumb for its author — this one takes nothing, deliberately. -->
+      <div class="noskim">
+        <b>Every satoshi pays a miner. There is no toll gate and no turnstile.</b>
+        The covenant has no author output, no crumb and no platform cut — nothing is skimmed on the way
+        past, because there is no way past. Fuel you contribute sits in the battery until it is spent to
+        have the next iteration computed, and that is the entire path.
+
+        <div class="flow">
+          <i>in&nbsp;&nbsp;901,657 sat</i><span>the battery, before a tick</span>
+          <i>out&nbsp;901,348 sat</i><span>the battery, one iteration further on</span>
+          <i>→&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;309 sat</i><span>the miner — the whole difference, every time</span>
+        </div>
+
+        Don't take that on trust either: open any tick on chain. <b>One input, one output.</b> If a
+        satoshi were being taken, there would have to be an output to take it with.
+
+        <div class="lic">
+          The covenant, its transaction builders and this page are published under the
+          <b>Open BSV License Version 6</b> — a working example, here to be read, tested, forked and
+          played with. <a href="https://github.com/sun-dive/grafverse" target="_blank" rel="noopener">the
+          source</a> · <a href="/brc226.html">demo one</a>
+        </div>
+      </div>
     </div>
   </section>
 
