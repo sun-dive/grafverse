@@ -443,6 +443,7 @@
       <div class="row">
         <button id="run">▶ Run</button>
         <button id="step" class="ghost">Step ×100</button>
+        <button id="frame" class="ghost">⏭ Next frame</button>
         <button id="reset" class="ghost">Reset</button>
         <button id="play" class="ghost" disabled>🔁 preview loop</button>
       </div>
@@ -1456,7 +1457,10 @@
     var t=n/(st?st.mx:cfg.maxIter), r=Math.round(255*Math.min(1,t*2.1)), g=Math.round(190*Math.pow(t,1.5)), b=Math.round(90+165*Math.pow(1-t,1.7));
     return [r,g,b];
   }
-  function advance(n){
+  /* stopAtFrame: return the instant a full frame's worth of pixels is on screen. The boundary has to
+     be caught INSIDE the loop — checking after the chunk let one press of Next frame run 250,000 ticks
+     and land eight levels later, because a small grid finishes a level in a fraction of that. */
+  function advance(n, stopAtFrame){
     if(!st) return;
     for(var k=0;k<n && fuel>=FEE;k++){
       var nx=tick(st); spent++; fuel-=FEE;
@@ -1476,6 +1480,7 @@
         }
       }
       st=nx;
+      if(stopAtFrame && nx.passEnd) break;     // pixels drawn == resolution: the frame is complete
     }
     ctx.putImageData(img,0,0); paintStats();
     if(fuel<FEE){ stop(); $('status').textContent='⚡ Flat battery — '+spent.toLocaleString()+' ticks in. On chain it would stop right here until somebody topped it up.'; }
@@ -1522,12 +1527,33 @@
       }, Math.round(1000/(+$('Fps').value))); } }; im.src=d; plImgs[n]=im; });
   });
   $('run').addEventListener('click',function(){
+    frameStop();
     if(timer){ stop(); return; }
     $('run').textContent='❚❚ Pause';
     (function loop(){ advance(SPEEDS[+$('Spd').value]); timer=requestAnimationFrame(loop); })();
   });
   $('step').addEventListener('click',function(){ advance(100); });
-  $('reset').addEventListener('click',function(){ stop(); playStop(); $('play').disabled=true; reset(); });
+
+  /* NEXT FRAME — run to the end of this level and stop, so frames can be compared one at a time
+     instead of watching a pass crawl. Chunked through rAF rather than one long loop: a level at a
+     high MX0 is over a million ticks, and doing that synchronously would lock the tab with no way
+     to stop it and nothing repainting. Bites are fixed and large — this is not an animation, and
+     the speed dial is about watching, not arriving. */
+  var frTimer=null;
+  function frameStop(){ if(frTimer){ cancelAnimationFrame(frTimer); frTimer=null } $('frame').textContent='⏭ Next frame' }
+  $('frame').addEventListener('click',function(){
+    if(frTimer){ frameStop(); return }
+    stop();                                   // never let Run and Next frame drive the state at once
+    var from=level;
+    $('frame').textContent='❚❚ stop';
+    (function chunk(){
+      advance(250000, true);                   // returns early the moment the frame closes
+      if(level>from || fuel<FEE || !st){ frameStop(); return }
+      $('frame').textContent='❚❚ stop · '+Math.round(pixels/(cfg.W*cfg.H)*100)+'%';
+      frTimer=requestAnimationFrame(chunk);
+    })();
+  });
+  $('reset').addEventListener('click',function(){ stop(); frameStop(); playStop(); $('play').disabled=true; reset(); });
   function setMode(m){ mode=m; $('mZoom').className=(m==='zoom'?'':'ghost'); $('mRef').className=(m==='refine'?'':'ghost');
     $('zoomBox').style.display=(m==='zoom'?'block':'none'); stop(); reset(); }
   $('mZoom').addEventListener('click',function(){ setMode('zoom'); });
@@ -1583,14 +1609,19 @@
        K:16 with maxIter pinned at 24, which drew a prettier descent than the chain actually draws. */
     preset(GENESIS_TOY);
   });
+  /* THE FRAME ON SCREEN — not every frame ever captured. The label says "frame" and it used to dump
+     the whole captured loop whenever one existed, which is a different thing and a surprising one;
+     exporting the loop is what the animation button is for. The caption carries MX0, K, level and the
+     mx in force, so a folder of these is self-labelling when comparing candidates side by side. */
   $('save').addEventListener('click',function(){
-    var list = frames.length ? frames : [cv.toDataURL('image/png')];
+    var list = [cv.toDataURL('image/png')];
     /* Stamp every saved frame with grafverse.com, baked into the pixels — a shared loop should carry
        its way home. `frames` are data URLs from the loop preview, so each is loaded before stamping. */
-    var cap = cfg.W+'x'+cfg.H+' · maxIter '+cfg.maxIter+' · level '+level;
+    var cap = cfg.W+'x'+cfg.H+' · MX0 '+cfg.maxIter+' · K '+cfg.K+
+              ' · level '+level+' · mx '+(st?st.mx:cfg.maxIter);
     var stamp = window.stampShot;
     list.forEach(function(d,n){
-      var name='battery-'+String(n+1).padStart(3,'0')+'.png';
+      var name='battery-mx0-'+cfg.maxIter+'-K'+cfg.K+'-level'+level+'.png';
       var img=new Image();
       img.onload=function(){
         var url = stamp ? stamp(img,cap,4).toDataURL('image/png') : d;
