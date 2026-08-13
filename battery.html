@@ -466,10 +466,18 @@
       <div class="stat"><span>pixels drawn</span><b id="px">0</b></div>
       <div class="stat"><span>cost so far</span><b id="cost">0 sat</b></div>
 
+      <label>resolution <span class="val" style="color:var(--faint);font-weight:400">4:3, as the covenant draws it</span></label>
+      <div class="row" style="margin-top:4px;flex-wrap:wrap;gap:5px">
+        <button class="res ghost" data-w="256"  data-h="192"  style="flex:1;padding:6px 4px;font-size:11.5px">256</button>
+        <button class="res ghost" data-w="512"  data-h="384"  style="flex:1;padding:6px 4px;font-size:11.5px">512</button>
+        <button class="res ghost" data-w="1024" data-h="768"  style="flex:1;padding:6px 4px;font-size:11.5px">1K</button>
+        <button class="res ghost" data-w="2048" data-h="1536" style="flex:1;padding:6px 4px;font-size:11.5px">2K</button>
+        <button class="res ghost" data-w="4096" data-h="3072" style="flex:1;padding:6px 4px;font-size:11.5px">4K</button>
+      </div>
       <label>width <span class="val" id="vW">256</span></label>
-      <input type="range" id="W" min="32" max="256" step="32" value="256">
+      <input type="range" id="W" min="32" max="4096" step="32" value="256">
       <label>height <span class="val" id="vH">192</span></label>
-      <input type="range" id="H" min="24" max="256" step="24" value="192">
+      <input type="range" id="H" min="24" max="3072" step="24" value="192">
       <label>max iterations <span class="val" id="vI">6</span></label>
       <input type="range" id="I" min="1" max="512" step="1" value="6">
       <label>centre x <span class="val" id="vX">0.00</span></label>
@@ -1366,6 +1374,8 @@
   var cv=$('cv'), ctx=cv.getContext('2d');
   var cfg={}, st=null, img=null, timer=null, spent=0, pixels=0, fuel=0, fuel0=0;
   var level=1, frames=[], baseTicks=0, mode='zoom';
+  var CAPTURE_MAX=1024*768;                  // biggest grid we keep a PNG frame ARRAY for
+  var lastFrame=document.createElement('canvas');   // the most recent finished frame, at any size
   /* Nuclei computed by Newton on F_p(c)=0; sizes by the standard island estimate. The sliders step at
      1e-4, which is WIDER than a deep loop's final frame — so the target must be exact, never dragged. */
   /* Seeded with the GENESIS target, not left null. The sliders step at 1e-4 while the covenant's
@@ -1547,8 +1557,14 @@
                the last chunk ended: with small chunks a nearly-complete frame, with large ones a
                blank one. That made captured frames quietly depend on the speed dial. */
             ctx.putImageData(img,0,0);
-            frames.push(cv.toDataURL('image/png'));
-            clearFrame();
+            /* The finished frame is kept as a CANVAS — one of those is a few MB of pixels even at 4K,
+               where a 21-entry array of PNG data URLs is hundreds of megabytes and kills the tab. The
+               ARRAY is only needed by the loop preview and the animation, so it stops above 1024x768;
+               single frames still render, display and download at any size. */
+            lastFrame.width=cfg.W; lastFrame.height=cfg.H;
+            lastFrame.getContext('2d').drawImage(cv,0,0);
+            if(cfg.W*cfg.H<=CAPTURE_MAX) frames.push(cv.toDataURL('image/png'));
+            clearFrame();                       // always — or the next level draws over this one
           }
           pixels=0; $('play').disabled = frames.length<2; paintStats();
         }
@@ -1628,10 +1644,9 @@
            buffer for the next level, so stopping here would leave a blank canvas — the one thing this
            button exists to prevent. Blit the captured frame back so it can be looked at, compared and
            downloaded. */
-        if(level>from && frames.length){
-          var im=new Image();
-          im.onload=function(){ ctx.clearRect(0,0,cv.width,cv.height); ctx.drawImage(im,0,0,cv.width,cv.height) };
-          im.src=frames[frames.length-1];
+        if(level>from && lastFrame.width){
+          ctx.clearRect(0,0,cv.width,cv.height);
+          ctx.drawImage(lastFrame,0,0);
         }
         return;
       }
@@ -1648,6 +1663,26 @@
   $('Fps').addEventListener('input',function(){ $('vFps').textContent=this.value;
     if(pl){ playStop(); $('play').click(); } });
   $('L').addEventListener('input',function(){ $('vL').textContent=this.value; stop(); reset(); });
+  /* Resolution presets. The covenant's grid is 4:3, so these move BOTH sliders together — dragging two
+     independent sliders to an exact 1024x768 is fiddly and easy to get subtly wrong. */
+  Array.prototype.forEach.call(document.querySelectorAll('button.res'), function(b){
+    b.addEventListener('click', function(){
+      $('W').value=b.getAttribute('data-w'); $('vW').textContent=b.getAttribute('data-w');
+      $('H').value=b.getAttribute('data-h'); $('vH').textContent=b.getAttribute('data-h');
+      stop(); frameStop(); reset();
+      var px=(+b.getAttribute('data-w'))*(+b.getAttribute('data-h'));
+      if(px>CAPTURE_MAX) $('status').textContent=
+        'Frame capture is off above 1024x768 — a 21-frame loop at '+b.textContent+' would be hundreds of '+
+        'megabytes of PNG held in memory. Single frames still render and download; the loop preview and '+
+        'the animation need 1K or smaller. ' +
+        (px>=4096*3072
+          ? '⚠ 4K is SLOW: a frame at MX0 128 is ~263 million simulated ticks and can take many minutes. '
+          : 'At 2K a frame is ~66 million ticks — expect to wait. ') +
+        'Nothing here is a covenant limit: the fields do not overflow at any of these sizes, and 21 '+
+        'levels of zoom hold up to 16384 wide. This is only how fast a browser can simulate.';
+    });
+  });
+
   /* The ramp only inks pixels as they are drawn, so switching it has to restart the frame — otherwise
      you get half the picture in one palette and half in the other, which is worse than either. */
   $('RAMP').addEventListener('change',function(){ stop(); frameStop(); reset(); });
