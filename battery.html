@@ -675,9 +675,16 @@
      it names, vin included. Nothing here is taken from an index: no script-hash history, no UTXO
      lookup, no address query. The only trusted input is the block header of the genesis transaction —
      immutable, and checkable by anyone in any explorer in ten seconds. */
+  /* Verification is driven by paint(), which runs on every poll — so without this it would re-derive an
+     identical answer every 45 seconds, three network calls at a time, per open tab, forever. The result
+     can only change when the TIP changes: the genesis proof is immutable and the state is a pure
+     function of the tick count. So verify once per tip and then stop touching the network. */
+  var verifiedTip=null, verifying=false;
   function verifyBackToGenesis(d){
     var el=$('lv-spv');
     if(!d||!d.genesisAnchor||!d.tipTxid){ el.textContent=''; return }
+    if(verifying || d.tipTxid===verifiedTip) return;      // already answered for this tip
+    verifying=true;
     el.style.color='var(--faint)'; el.textContent='verifying against the genesis block header…';
 
     /* The genesis proof is immutable — fetched once per browser, then never again. */
@@ -739,6 +746,7 @@
                 'it. Two Merkle paths, whatever the chain\'s length. The only thing taken on trust is the '+
                 'block header of the genesis transaction itself — immutable, and checkable in any explorer. '+
                 'No indexer, no UTXO lookup. BRC-113.</span>';
+              verifiedTip=d.tipTxid;                       // answered; do not ask again until it moves
             });
           });
         });
@@ -746,7 +754,7 @@
     }).catch(function(err){
       el.style.color='var(--faint)';
       el.textContent='could not verify right now'+(err&&err.message?' ('+err.message+')':'');
-    });
+    }).then(function(){ verifying=false });
   }
 
   function load(sync){
