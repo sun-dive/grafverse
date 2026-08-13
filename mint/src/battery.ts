@@ -540,7 +540,7 @@ export function tickUnlockingOps(p: { spenderOutputs: number[]; newValue: number
    govern levels not yet reached, and the ink recipe. `span` is omitted deliberately — it is
    W·step/2^32, recoverable from the state. Written compactly because the full prose ran to 276. */
 export const BATTERY_STATE_LAYOUT =
-  'BRC-226 BATTERY v1|cr,ci,zr,zi,i,step,cx,cy,mx|widths 5,5,5,5,2,5,5,5,2|' +
+  'BITCOIN BATTERY v1|cr,ci,zr,zi,i,step,cx,cy,mx|widths 5,5,5,5,2,5,5,5,2|' +
   'sign-mag LE|1=2^32|mul first div last|grid 3840x2160|mx0 128 k 128 cap 32767|' +
   /* `abs z`, not `|z|`: the pipe is the field separator, and |z| would put two of them INSIDE a
      field. The genesis OP_RETURN is layout + '|' + the opening mark, so a reader splitting on the
