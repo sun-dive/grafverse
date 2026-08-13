@@ -14,6 +14,7 @@
  * Verification can be done offline with pre-fetched headers.
  */
 import { Transaction } from '@bsv/sdk'
+import { verifyMerkleProof } from './tokenProtocol.ts'
 import type { MerkleProofEntry, MerklePathNode, BlockHeader as SpvBlockHeader } from './tokenProtocol'
 
 // Use local proxy on localhost to avoid CORS issues
@@ -555,7 +556,17 @@ export class WalletProvider {
     // Prefer BananaBlocks (independent + non-pruning → a more complete proof index than WoC); fall back to WoC.
     // The two return DIFFERENT tsc `target`s — BananaBlocks = merkle root, WoC = block hash — so each has its own
     // adapter below. Both anchor merkleRoot to the block HEADER (not the proof's self-reported target).
-    return (await this.merkleProofBanana(txId)) ?? (await this.merkleProofWoC(txId))
+    // Verify before returning, and fall through if it fails. A relay handing back a proof that does not
+    // reproduce its own root is exactly the case this layer exists to catch — accepting it because it
+    // arrived first would make the verification decorative. Found live: BananaBlocks' '*' duplicate
+    // nodes were being mis-parsed, so a real proof failed while WoC's equivalent would have passed.
+    const banana = await this.merkleProofBanana(txId)
+    if (banana && verifyMerkleProof(banana)) return banana
+    if (banana) console.debug(`getMerkleProof: banana proof failed verification for ${txId.slice(0, 12)}… — trying WoC`)
+    const woc = await this.merkleProofWoC(txId)
+    if (woc && verifyMerkleProof(woc)) return woc
+    if (woc) console.debug(`getMerkleProof: woc proof failed verification for ${txId.slice(0, 12)}…`)
+    return null
   }
 
   /** TSC `nodes` + tx `index` → L/R sibling path ('*' = duplicate-up, no sibling). Shared by both sources. */
@@ -563,7 +574,10 @@ export class WalletProvider {
     const path: MerklePathNode[] = []
     let idx = index
     for (const node of nodes) {
-      if (node === '*') { idx = idx >> 1; continue }
+      // '*' means the sibling at this level IS the running hash (an odd node duplicated against itself).
+      // That is still a HASHING STEP. Dropping it — as this did — removes a level from the tree and the
+      // computed root comes out wrong, while every other proof still passes. WoC materialises the
+      // duplicate explicitly; BananaBlocks sends '*'. Both are valid TSC, so both must be handled.
       path.push({ hash: node, position: (idx % 2 === 0) ? 'R' : 'L' })
       idx = idx >> 1
     }

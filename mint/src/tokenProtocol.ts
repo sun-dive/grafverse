@@ -136,7 +136,9 @@ export function verifyMerkleProof(entry: MerkleProofEntry): boolean {
   let current = hexToBytes(entry.txId).reverse()
 
   for (const node of entry.path) {
-    const sibling = hexToBytes(node.hash).reverse()
+    // TSC uses '*' for a node whose sibling is ITSELF — an odd node at that level, duplicated. The
+    // sibling is then the running hash rather than a supplied one, and the level is still hashed.
+    const sibling = node.hash === '*' ? current : hexToBytes(node.hash).reverse()
     const combined = node.position === 'R'
       ? [...current, ...sibling]
       : [...sibling, ...current]
