@@ -16,11 +16,11 @@
 <meta property="og:title" content="The Bitcoin Battery — a program that pays for its own execution">
 <meta property="og:description" content="Don't give an AI agent a wallet. Give it a battery. OP_PUSH_TX needs no signature, so the agent holds no key at all — there is nothing to steal, and the worst a compromised agent can do is spend fuel doing exactly what the covenant was built to do.">
 <meta property="og:url" content="https://grafverse.com/battery.html">
-<meta property="og:image" content="https://grafverse.com/battery-og.png?v=28">
+<meta property="og:image" content="https://grafverse.com/battery-og.png?v=30">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="The Bitcoin Battery — a program that pays for its own execution">
 <meta name="twitter:description" content="A Bitcoin battery can power a Mandelbrot generator, or an AI agent. One iteration per transaction, computed in Script, paid for out of its own carried value.">
-<meta name="twitter:image" content="https://grafverse.com/battery-og.png?v=28">
+<meta name="twitter:image" content="https://grafverse.com/battery-og.png?v=30">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -31,7 +31,7 @@
   "publisher": { "@type": "Organization", "name": "grafverse", "url": "https://grafverse.com" },
   "mainEntityOfPage": { "@type": "WebPage", "@id": "https://grafverse.com/battery.html" },
   "url": "https://grafverse.com/battery.html",
-  "image": "https://grafverse.com/battery-og.png?v=28",
+  "image": "https://grafverse.com/battery-og.png?v=30",
   "inLanguage": "en",
   "about": [
     { "@type": "Thing", "name": "Bitcoin battery" },
@@ -269,6 +269,7 @@
 
     <div class="row">
       <button id="lv-dl" class="ghost" style="flex:0 1 auto">⬇ Save this state</button>
+      <button id="lv-anim" class="ghost" style="flex:0 1 auto">🎞 Save the story so far</button>
       <a id="lv-tip" class="ghost" href="#" target="_blank" rel="nofollow noopener"
          style="flex:1;min-width:140px;text-align:center;padding:11px 18px;border-radius:24px;border:1px solid var(--line);color:var(--dim);text-decoration:none;font:600 14px system-ui">the tip on chain ↗</a>
     </div>
@@ -447,7 +448,10 @@
 
       <div class="row"><button id="loop" style="width:100%">🔁 clean loop · period 11 · 21 levels</button></div>
       <div class="row"><button id="loop7" class="ghost" style="width:100%">↔ on-axis · period 4 · 10 levels</button></div>
-      <div class="row"><button id="save" class="ghost" style="width:100%">⬇ save this frame</button></div>
+      <div class="row">
+        <button id="save" class="ghost" style="flex:1">⬇ frame (png)</button>
+        <button id="saveanim" class="ghost" style="flex:1">🎞 animation (webp)</button>
+      </div>
 
       <p class="note">These numbers are <b>baked into the covenant at genesis</b> and can never be changed. Tune them here until the picture is the one you want — this preview is exactly what the chain will draw.</p>
     </div>
@@ -629,9 +633,109 @@
   }
   window.stampShot=stampShot;
 
+  /* ── ANIMATED WebP, muxed in the browser ──────────────────────────────────────────────────────────
+     A canvas can encode a SINGLE WebP frame (toDataURL('image/webp')) but browsers give you no way to
+     make an ANIMATED one. The old flow therefore downloaded a pile of PNGs and told the reader to go and
+     install ImageMagick — which is not a feature, it is homework.
+
+     So mux it here. An animated WebP is a RIFF file: a VP8X header declaring the canvas and the ANIMATION
+     flag, an ANIM chunk carrying loop count, then one ANMF chunk per frame wrapping that frame's own
+     bitstream. Each still WebP the canvas hands us already contains a 'VP8 ' or 'VP8L' chunk; we lift it
+     out and re-wrap it. No library, no build step, works offline. */
+  function u24(n){ return [n&0xff,(n>>8)&0xff,(n>>16)&0xff] }
+  function u32(n){ return [n&0xff,(n>>8)&0xff,(n>>16)&0xff,(n>>24)&0xff] }
+  function riffChunk(fourcc,payload){
+    var out=[].concat([fourcc.charCodeAt(0),fourcc.charCodeAt(1),fourcc.charCodeAt(2),fourcc.charCodeAt(3)],
+                      u32(payload.length), payload);
+    if(payload.length&1) out.push(0);                 // chunks are padded to an even length
+    return out;
+  }
+  /* pull the raw bitstream chunk ('VP8 ' or 'VP8L') out of a still WebP produced by the canvas */
+  function webpBitstream(bytes){
+    var i=12;                                          // skip 'RIFF' <size> 'WEBP'
+    while(i+8<=bytes.length){
+      var cc=String.fromCharCode(bytes[i],bytes[i+1],bytes[i+2],bytes[i+3]);
+      var len=bytes[i+4]|(bytes[i+5]<<8)|(bytes[i+6]<<16)|(bytes[i+7]<<24);
+      if(cc==='VP8 '||cc==='VP8L') return { fourcc:cc, data:Array.prototype.slice.call(bytes, i+8, i+8+len) };
+      i += 8 + len + (len&1);
+    }
+    return null;
+  }
+  function dataUrlToBytes(u){
+    var b=atob(u.split(',')[1]), a=new Uint8Array(b.length);
+    for(var i=0;i<b.length;i++) a[i]=b.charCodeAt(i);
+    return a;
+  }
+  /** frames: array of still-WebP data URLs, all the same size. delay: ms per frame. → Blob */
+  function webpAnimation(frames, w, h, delay){
+    var body=[];
+    body=body.concat(riffChunk('VP8X',[0x02,0,0,0].concat(u24(w-1), u24(h-1))));   // 0x02 = ANIMATION
+    body=body.concat(riffChunk('ANIM',[0,0,0,0].concat([0,0])));                   // bg transparent, loop forever
+    for(var f=0;f<frames.length;f++){
+      var bs=webpBitstream(dataUrlToBytes(frames[f]));
+      if(!bs) return null;
+      var sub=riffChunk(bs.fourcc, bs.data);
+      var anmf=[].concat(u24(0), u24(0), u24(w-1), u24(h-1), u24(delay), [0], sub);
+      body=body.concat(riffChunk('ANMF', anmf));
+    }
+    var riff=[0x52,0x49,0x46,0x46].concat(u32(4+body.length),[0x57,0x45,0x42,0x50]).concat(body);
+    return new Blob([new Uint8Array(riff)], {type:'image/webp'});
+  }
+  window.webpAnimation=webpAnimation;                  // the toy's save button uses this too
+
+  function downloadBlob(blob,name){
+    var u=URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=u; a.download=name; a.click();
+    setTimeout(function(){ URL.revokeObjectURL(u) }, 4000);
+  }
+  window.downloadBlob=downloadBlob;
+
   function download(dataUrl,name){
     var a=document.createElement('a'); a.href=dataUrl; a.download=name; a.click();
   }
+
+  /* The story so far: the picture rebuilt at increasing tick counts, one frame per step, muxed into a
+     single animated WebP. Every frame is recomputed locally from the genesis parameters — this is not a
+     recording of the page, it is the chain's work replayed. Short today; longer every day. */
+  $('lv-anim').onclick=function(){
+    var d=live; if(!d||!d.state) return;
+    var b=$('lv-anim'), was=b.textContent; b.disabled=true; b.textContent='rendering…';
+    setTimeout(function(){
+      try{
+        var s=d.state, step=s.step, W=256, H=192;
+        var cr0=s.cx-(W/2)*step, ci0=s.ci!=null?(s.cy-(H/2)*step):0, mx=s.mx;
+        var col=Math.round((s.cr-cr0)/step), row=Math.round((s.ci-ci0)/step), done=row*W+col;
+        var STEPS=Math.min(48, Math.max(2, done));               // one frame per pixel, capped
+        var cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+        var ctx=cv.getContext('2d'), frames=[];
+        for(var f=1; f<=STEPS; f++){
+          var upto=Math.round(done*f/STEPS);
+          var img=ctx.createImageData(W,H), px=img.data;
+          for(var p=0;p<W*H;p++){
+            var x=p%W, y=(p-x)/W, cr=cr0+x*step, ci=ci0+y*step;
+            var zr=0, zi=0, i=0;
+            while(i<mx){
+              var zr2=Math.trunc(zr*zr/CS), zi2=Math.trunc(zi*zi/CS);
+              if(zr2+zi2>CESC) break;
+              var nzi=Math.trunc(2*zr*zi/CS)+ci; zr=zr2-zi2+cr; zi=nzi; i++;
+            }
+            var inside=(i>=mx), t=inside?0:(i/mx), r,g,bl;
+            if(inside){ r=8;g=12;bl=22 }
+            else if(t<0.5){ var u=t/0.5; r=180+75*u; g=255-93*u; bl=58-12*u }
+            else { var v=(t-0.5)/0.5; r=255; g=162-85*v; bl=46+111*v }
+            if(p>=upto){ var a=0.42; r=5+(r-5)*a; g=7+(g-7)*a; bl=13+(bl-13)*a; if(inside){r=16;g=22;bl=40} }
+            var o=p*4; px[o]=r|0; px[o+1]=g|0; px[o+2]=bl|0; px[o+3]=255;
+          }
+          ctx.putImageData(img,0,0);
+          frames.push(cv.toDataURL('image/webp', 0.92));
+        }
+        var blob=window.webpAnimation(frames, W, H, 120);
+        if(blob) window.downloadBlob(blob, 'bitcoin-battery-tick-'+d.ticks+'.webp');
+        else alert('this browser cannot encode WebP');
+      }catch(e){ alert('could not build the animation: '+e.message) }
+      b.disabled=false; b.textContent=was;
+    }, 30);
+  };
 
   $('lv-dl').onclick=function(){
     var d=live; if(!d||!d.state) return;
@@ -1156,8 +1260,8 @@
   function stop(){ if(timer){ cancelAnimationFrame(timer); timer=null; } $('run').textContent='▶ Run'; }
 
   /* LOOP PREVIEW — plays back the frames captured at each pass end. This is what the exported WebP
-     will look like; the browser cannot encode animated WebP itself, so ImageMagick assembles the
-     real file from the PNGs. */
+     will look like — and now also what the exported file IS: the frames are re-encoded to WebP
+     and muxed into a single animated file in the browser, with no external tool. */
   var pl=null, plImgs=[], plI=0;
   function playStop(){ if(pl){ clearInterval(pl); pl=null; } $('play').textContent='🔁 preview loop'; }
   $('play').addEventListener('click',function(){
@@ -1234,8 +1338,37 @@
       img.onerror=function(){ var a=document.createElement('a'); a.href=d; a.download=name; a.click(); };
       img.src=d;
     });
-    $('status').textContent='Saved '+list.length+' frame'+(list.length===1?'':'s')+
-      '. Assemble with ImageMagick:  convert -delay 12 -loop 0 battery-*.png battery.webp';
+    $('status').textContent='Saved '+list.length+' frame'+(list.length===1?'':'s')+' as PNG.';
+  });
+
+  /* One animated WebP instead of "here are 8 PNGs, now go and install ImageMagick". The loop preview
+     already holds the frames; they are re-encoded to WebP through a canvas and muxed in the browser. */
+  $('saveanim').addEventListener('click',function(){
+    if(!frames.length){ $('status').textContent='Press 🔁 preview loop first — that is what makes the frames.'; return }
+    var btn=$('saveanim'), was=btn.textContent; btn.disabled=true; btn.textContent='encoding…';
+    var cap=cfg.W+'x'+cfg.H+' · maxIter '+cfg.maxIter, out=[], n=0;
+    var c2=document.createElement('canvas'), x2=c2.getContext('2d');
+    (function next(){
+      if(n>=frames.length){
+        var blob=window.webpAnimation ? window.webpAnimation(out, c2.width, c2.height, 120) : null;
+        if(blob){ window.downloadBlob(blob,'battery-loop.webp');
+                  $('status').textContent='Saved '+out.length+' frames as one animated WebP.'; }
+        else $('status').textContent='this browser cannot encode WebP';
+        btn.disabled=false; btn.textContent=was;
+        return;
+      }
+      var img=new Image();
+      img.onload=function(){
+        var st=window.stampShot ? window.stampShot(img,cap,2) : null, src=st||img;
+        c2.width=src.width; c2.height=src.height;
+        x2.imageSmoothingEnabled=false; x2.drawImage(src,0,0);
+        out.push(c2.toDataURL('image/webp',0.92)); n++;
+        btn.textContent='encoding '+n+'/'+frames.length+'…';
+        next();
+      };
+      img.onerror=function(){ n++; next() };
+      img.src=frames[n];
+    })();
   });
   ['W','H','I','X','Y','Sp'].forEach(function(id){
     $(id).addEventListener('input',function(){
