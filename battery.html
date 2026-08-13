@@ -719,22 +719,59 @@
   /* The story so far: the picture rebuilt at increasing tick counts, one frame per step, muxed into a
      single animated WebP. Every frame is recomputed locally from the genesis parameters — this is not a
      recording of the page, it is the chain's work replayed. Short today; longer every day. */
+  /* ── THE STORY SO FAR — picture and battery, side by side, tick by tick ───────────────────────────
+     Rebuilding a cold cache showed the thing worth animating: the battery drains to 38% over the first
+     twenty ticks, then a contribution arrives and charges it back to 99%. The picture alone cannot tell
+     that; the two together are the whole system in one loop.
+
+     Every frame is DERIVED, not recorded. The state at tick n comes from replaying the covenant n times
+     from genesis, and the fuel from:
+
+         fuel(n) = genesis + contributions up to n − (pure ticks up to n) × fee
+
+     A top-up tick costs the battery nothing, because the sponsor pays that fee — which is why the
+     arithmetic closes exactly against the live numbers rather than approximately. */
   $('lv-anim').onclick=function(){
     var d=live; if(!d||!d.state) return;
     var b=$('lv-anim'), was=b.textContent; b.disabled=true; b.textContent='rendering…';
     setTimeout(function(){
-      try{
-        var s=d.state, step=s.step, W=256, H=192;
-        var cr0=s.cx-(W/2)*step, ci0=s.ci!=null?(s.cy-(H/2)*step):0, mx=s.mx;
-        var col=Math.round((s.cr-cr0)/step), row=Math.round((s.ci-ci0)/step), done=row*W+col;
-        var STEPS=Math.min(48, Math.max(2, done));               // one frame per pixel, capped
-        var cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+      ensureGM().then(function(G){
+        var W=256, H=192, GAP=10, BW=54, CW=W+GAP+BW, CH=H;
+        var ticks=d.ticks||0, MAXF=60;
+        var board=(d.board||[]).slice().sort(function(x,y){return (x.tick||0)-(y.tick||0)});
+        /* Derive the per-tick cost from the live figures rather than assuming MAX_FEE. Ticks pay what the
+           network needs (309 today) and the grind can nudge it, so a hard 312 drifts — and the last
+           frame would not land on the fuel the battery actually holds. This makes it land exactly. */
+        var capNow=board.reduce(function(a,x){return a+x.sats},0);
+        var topupsAll=board.filter(function(x){return (x.tick||0)>0}).length;
+        var purePaid=Math.max(1, ticks-topupsAll);
+        var FEE=Math.max(1, Math.round((capNow-(d.fuel||0))/purePaid));
+
+        /* what the battery held, and what it could hold, at tick n */
+        function charge(n){
+          var cap=0, contributed=0, topups=0;
+          for(var i=0;i<board.length;i++) if((board[i].tick||0)<=n){ cap+=board[i].sats; contributed+=board[i].sats;
+            if((board[i].tick||0)>0) topups++ }
+          var pure=Math.max(0, n-topups);                  // a top-up tick is paid for by its sponsor
+          var fuel=Math.max(0, contributed-pure*FEE);
+          return { cap:cap, fuel:fuel, pc:cap>0?Math.min(1,fuel/cap):0 };
+        }
+
+        var cv=document.createElement('canvas'); cv.width=CW; cv.height=CH;
         var ctx=cv.getContext('2d'), frames=[];
-        for(var f=1; f<=STEPS; f++){
-          var upto=Math.round(done*f/STEPS);
+        var step=Math.max(1, Math.ceil(ticks/MAXF));
+
+        for(var n=0; n<=ticks; n+=step){
+          /* the picture: replay the covenant n times — the same arithmetic the chain ran */
+          var st=G.genesisState();
+          for(var k=0;k<n;k++) st=G.refState(st);
+          var s0=st.step, cr0=st.cx-(W/2)*s0, ci0=st.cy-(H/2)*s0, mx=st.mx;
+          var doneP=Math.round((st.ci-ci0)/s0)*W+Math.round((st.cr-cr0)/s0);
+
+          ctx.fillStyle='#05070d'; ctx.fillRect(0,0,CW,CH);
           var img=ctx.createImageData(W,H), px=img.data;
           for(var p=0;p<W*H;p++){
-            var x=p%W, y=(p-x)/W, cr=cr0+x*step, ci=ci0+y*step;
+            var x=p%W, y=(p-x)/W, cr=cr0+x*s0, ci=ci0+y*s0;
             var zr=0, zi=0, i=0;
             while(i<mx){
               var zr2=Math.trunc(zr*zr/CS), zi2=Math.trunc(zi*zi/CS);
@@ -745,17 +782,37 @@
             if(inside){ r=8;g=12;bl=22 }
             else if(t<0.5){ var u=t/0.5; r=180+75*u; g=255-93*u; bl=58-12*u }
             else { var v=(t-0.5)/0.5; r=255; g=162-85*v; bl=46+111*v }
-            if(p>=upto){ var a=0.42; r=5+(r-5)*a; g=7+(g-7)*a; bl=13+(bl-13)*a; if(inside){r=16;g=22;bl=40} }
+            if(p>=doneP){ var a=0.42; r=5+(r-5)*a; g=7+(g-7)*a; bl=13+(bl-13)*a; if(inside){r=16;g=22;bl=40} }
             var o=p*4; px[o]=r|0; px[o+1]=g|0; px[o+2]=bl|0; px[o+3]=255;
           }
           ctx.putImageData(img,0,0);
+
+          /* the battery beside it, at the same instant */
+          var c=charge(n), bx=W+GAP, nubW=18, nubH=5, top=nubH+2, bh=CH-top-14;
+          ctx.fillStyle='rgba(120,170,255,.5)';
+          ctx.fillRect(bx+(BW-nubW)/2, 0, nubW, nubH);
+          ctx.strokeStyle='rgba(120,170,255,.45)'; ctx.lineWidth=2;
+          ctx.strokeRect(bx+1, top, BW-2, bh);
+          var fh=Math.round((bh-4)*c.pc);
+          if(fh>0){
+            var grad=ctx.createLinearGradient(0, top+bh-2-fh, 0, top+bh-2);
+            grad.addColorStop(0,'#b4ff3a'); grad.addColorStop(1,'#7fc521');
+            ctx.fillStyle = c.pc<0.25 ? '#ff4d9d' : grad;
+            ctx.fillRect(bx+3, top+bh-2-fh, BW-6, fh);
+          }
+          ctx.fillStyle='#eaf4ff'; ctx.font='bold 11px system-ui'; ctx.textAlign='center';
+          ctx.fillText(Math.round(c.pc*100)+'%', bx+BW/2, top+bh+11);
+          ctx.fillStyle='rgba(174,191,224,.85)'; ctx.font='9px system-ui';
+          ctx.fillText('tick '+n, bx+BW/2, top+bh-6+16-16);
+          ctx.textAlign='left';
+
           frames.push(cv.toDataURL('image/webp', 0.92));
         }
-        var blob=window.webpAnimation(frames, W, H, 120);
-        if(blob) window.downloadBlob(blob, 'bitcoin-battery-tick-'+d.ticks+'.webp');
+        var blob=window.webpAnimation(frames, CW, CH, 140);
+        if(blob) window.downloadBlob(blob, 'bitcoin-battery-story-tick-'+ticks+'.webp');
         else alert('this browser cannot encode WebP');
-      }catch(e){ alert('could not build the animation: '+e.message) }
-      b.disabled=false; b.textContent=was;
+        b.disabled=false; b.textContent=was;
+      }).catch(function(e){ alert('could not build the animation: '+e.message); b.disabled=false; b.textContent=was });
     }, 30);
   };
 

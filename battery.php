@@ -161,7 +161,7 @@ function save_cache($c) { global $CACHE; @file_put_contents($CACHE, json_encode(
 /** The genesis, as a board entry. Its OP_RETURN is the published state layout, not a personal message,
  *  so it carries a plain label and a seed flag the page can style differently. */
 function genesis_entry($sats, $txid, $tx) {
-  return ['sats' => $sats, 'mark' => 'the genesis — first fuel', 'txid' => $txid,
+  return ['sats' => $sats, 'mark' => 'genesis seed funding', 'txid' => $txid,
           'tick' => 0, 'at' => (int) ($tx['time'] ?? time()), 'seed' => true];
 }
 
@@ -328,6 +328,13 @@ if ($method === 'POST') {
 if (!empty($c['genesis'])) {
   $hasSeed = false;
   foreach ($c['board'] ?? [] as $b) if (($b['txid'] ?? '') === $c['genesis']) { $hasSeed = true; break; }
+  foreach ($c['board'] ?? [] as $i => $b) {                 // correct an earlier label in place
+    if (($b['txid'] ?? '') === $c['genesis'] && ($b['mark'] ?? '') !== 'genesis seed funding') {
+      $c['board'][$i]['mark'] = 'genesis seed funding';
+      $c['board'][$i]['seed'] = true;
+      save_cache($c);
+    }
+  }
   if (!$hasSeed) {
     $gtx = get_tx($c['genesis']);
     $gsats = $gtx ? battery_value($gtx) : null;
