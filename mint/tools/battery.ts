@@ -34,8 +34,9 @@ import { join } from 'node:path'
 import { importWif } from '../src/wallet.ts'
 import { buildBatteryGenesisTx, buildBatteryTickTx, buildBatteryTopUpTx, nextBatteryUtxo, type BatteryUtxo } from '../src/batteryTx.ts'
 import {
-  buildBatteryLock, genesisState, refState, ticksRemaining,
-  BATTERY_MAX_FEE, BATTERY_GEOMETRY, BATTERY_STATE_LAYOUT, type BatteryState,
+  buildBatteryLock, genesisState, refState, ticksRemaining, S,
+  BATTERY_MAX_FEE, BATTERY_GEOMETRY, BATTERY_STATE_LAYOUT,
+  type BatteryState, type BatteryGeometry,
 } from '../src/battery.ts'
 
 const WOC = 'https://api.whatsonchain.com/v1/bsv/main'
@@ -59,15 +60,41 @@ const getText = async (p: string): Promise<string> => {
 }
 
 /** Working state of a rehearsal: where the battery is now, and how many ticks it has taken. */
-interface Rehearsal { genesisTxid: string; tipTxid: string; ticks: number; fuel: number }
+/**
+ * A battery's own parameters travel WITH its state record.
+ *
+ * They used to come from BATTERY_GEOMETRY, so the tool could only operate the battery whose constants
+ * happened to be compiled in. The moment the genesis moved to 3840x2160, the 256x192 battery already
+ * on chain became untickable: stateAfter() would replay the wrong machine and buildBatteryTickTx would
+ * build the wrong lock, producing a transaction that looks fine and that the covenant rejects.
+ *
+ * A battery IS its constants. Recording them beside its txid is the only arrangement in which
+ * "advance the battery in this file" cannot come to mean something else next week.
+ */
+interface Rehearsal {
+  genesisTxid: string; tipTxid: string; ticks: number; fuel: number
+  geometry?: BatteryGeometry; maxFee?: number
+}
+
+/** The battery minted before geometry was recorded. An absent field means this one. */
+const LEGACY_GEOMETRY: BatteryGeometry = {
+  W: 256, H: 192, SPAN0: 4.0,
+  TX: Math.round(-1.423288564770 * S), TY: Math.round(0.127278891029 * S),
+  MX0: 6, K: 4, MXCAP: 32767,
+}
+const LEGACY_MAX_FEE = 312
+/** The constants of the battery a record describes — its own, not whatever is compiled in today. */
+function paramsOf(st: Rehearsal): { geometry: BatteryGeometry; maxFee: number } {
+  return { geometry: st.geometry ?? LEGACY_GEOMETRY, maxFee: st.maxFee ?? LEGACY_MAX_FEE }
+}
 const loadState = (): Rehearsal | null =>
   existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, 'utf8')) as Rehearsal : null
 const saveState = (s: Rehearsal): void => writeFileSync(STATE_FILE, JSON.stringify(s, null, 2) + '\n')
 
 /** The state after `n` ticks — derived, never stored. Anyone can recompute this from the genesis alone. */
-function stateAfter(n: number): BatteryState {
-  let s = genesisState()
-  for (let k = 0; k < n; k++) s = refState(s)
+function stateAfter(n: number, g: BatteryGeometry = BATTERY_GEOMETRY): BatteryState {
+  let s = genesisState(g)
+  for (let k = 0; k < n; k++) s = refState(s, g)
   return s
 }
 
@@ -178,9 +205,57 @@ async function genesis(): Promise<void> {
     return
   }
   await broadcast(raw)
-  saveState({ genesisTxid: txid, tipTxid: txid, ticks: 0, fuel })
+  saveState({ genesisTxid: txid, tipTxid: txid, ticks: 0, fuel,
+              geometry: BATTERY_GEOMETRY, maxFee: BATTERY_MAX_FEE })
   console.log(`\n🔋 The battery is on-chain. State recorded in ${STATE_FILE}`)
   console.log(`   Advance it with:  node tools/battery.mjs --tick 20 --broadcast   (no key needed)`)
+}
+
+/**
+ * Re-derive the local record from the chain.
+ *
+ * The state file is a convenience, not a source of truth, and it goes stale the moment the battery is
+ * ticked from anywhere else — the page, another machine, a stranger. It was 14 ticks and 896,000 sat
+ * behind when this was written, which would have made the next --tick spend an output that no longer
+ * existed.
+ *
+ * THE TIP IS THE ONE THING THAT CANNOT BE DERIVED. Finding it means asking who spent an output, which
+ * is an index; everything else this tool does deliberately avoids one. So the tip is supplied, and
+ * then VERIFIED the direction that needs nobody: every transaction names its own parent, so walking
+ * back from the tip to the genesis proves the lineage and counts the ticks at the same time.
+ */
+async function resync(): Promise<void> {
+  const st = loadState()
+  if (!st) { console.error(`No battery recorded in ${STATE_FILE}.`); process.exit(1) }
+  const tip = arg('--tip')
+  if (!tip || !/^[0-9a-f]{64}$/i.test(tip)) {
+    console.error('--resync --tip <txid>   (the current tip; take it from the page or an explorer)')
+    process.exit(1)
+  }
+  const { geometry, maxFee } = paramsOf(st)
+  console.log(`walking back from ${tip}`)
+  console.log(`params   : ${geometry.W}x${geometry.H} · MX0 ${geometry.MX0} · MAX_FEE ${maxFee}\n`)
+
+  let cursor: string | null = tip, hops = 0, tipValue = 0
+  const seen = new Set<string>()
+  while (cursor && hops < 100_000) {
+    if (seen.has(cursor)) { console.error('   ↳ a cycle — this is not a battery chain'); process.exit(1) }
+    seen.add(cursor)
+    const tx = Transaction.fromHex(await getText(`/tx/${cursor}/hex`))
+    if (hops === 0) tipValue = tx.outputs[0].satoshis ?? 0
+    if (cursor === st.genesisTxid) break
+    const covIn = tx.inputs.find(i => i.sourceOutputIndex === 0)   // input 0 is the covenant; others fund
+    if (!covIn?.sourceTXID) { console.error('   ↳ this chain does not reach the genesis'); process.exit(1) }
+    cursor = covIn.sourceTXID
+    hops++
+    if (hops % 10 === 0) process.stdout.write(`   …${hops} hops\r`)
+  }
+  if (cursor !== st.genesisTxid) { console.error('   ↳ never reached the genesis — wrong battery?'); process.exit(1) }
+
+  console.log(`   ${hops} ticks back to the genesis — lineage proved by vin, no indexer`)
+  console.log(`   tip holds ${tipValue.toLocaleString()} sat (≈ ${ticksRemaining(tipValue, maxFee)} ticks left)`)
+  saveState({ ...st, tipTxid: tip, ticks: hops, fuel: tipValue })
+  console.log(`\n   recorded in ${STATE_FILE}`)
 }
 
 // ── keyless ticking ─────────────────────────────────────────────────────────────────────────────────
@@ -193,11 +268,17 @@ async function tick(): Promise<void> {
   console.log(`battery  : genesis ${st.genesisTxid}`)
   console.log(`tip      : ${st.tipTxid} · ${st.ticks} ticks · ${st.fuel} sat (≈ ${ticksRemaining(st.fuel)} left)\n`)
 
+  const { geometry, maxFee } = paramsOf(st)
+  console.log(`params   : ${geometry.W}x${geometry.H} · MX0 ${geometry.MX0} · K ${geometry.K} · ` +
+    `MAX_FEE ${maxFee}${st.geometry ? '' : '   ← no geometry recorded, assuming the legacy battery'}`)
+
   let source = Transaction.fromHex(await getText(`/tx/${st.tipTxid}/hex`))
-  let utxo: BatteryUtxo = { sourceTransaction: source, outputIndex: 0, state: stateAfter(st.ticks), value: st.fuel }
+  let utxo: BatteryUtxo = {
+    sourceTransaction: source, outputIndex: 0, state: stateAfter(st.ticks, geometry), value: st.fuel,
+  }
 
   for (let k = 0; k < count; k++) {
-    const tx = await buildBatteryTickTx({ battery: utxo })
+    const tx = await buildBatteryTickTx({ battery: utxo, geometry, maxFee })
     const raw = tx.toHex(), txid = tx.id('hex')
     const fee = utxo.value - (tx.outputs[0].satoshis ?? 0)
     console.log(`tick ${st.ticks + 1}  : ${txid}  ${raw.length / 2} B · fee ${fee} sat`)
@@ -250,7 +331,7 @@ async function topup(): Promise<void> {
   const tipTx = Transaction.fromHex(await getText(`/tx/${st.tipTxid}/hex`))
   const src = Transaction.fromHex(await getText(`/tx/${pick.tx_hash}/hex`))
   const tx = await buildBatteryTopUpTx({
-    battery: { sourceTransaction: tipTx, outputIndex: 0, state: stateAfter(st.ticks), value: st.fuel },
+    battery: { sourceTransaction: tipTx, outputIndex: 0, state: stateAfter(st.ticks, paramsOf(st).geometry), value: st.fuel },
     addSats: add, key, funder: { sourceTransaction: src, outputIndex: pick.tx_pos },
     mark,
   })
@@ -279,7 +360,7 @@ async function topup(): Promise<void> {
 async function status(): Promise<void> {
   const st = loadState()
   if (!st) { console.log(`No battery recorded in ${STATE_FILE}.`); return }
-  const s = stateAfter(st.ticks)
+  const s = stateAfter(st.ticks, paramsOf(st).geometry)
   console.log('genesis :', st.genesisTxid)
   console.log('tip     :', st.tipTxid)
   console.log('ticks   :', st.ticks)
@@ -292,12 +373,14 @@ async function main(): Promise<void> {
   if (has('--selftest')) return void await selftest()
   if (has('--genesis')) return await genesis()
   if (has('--topup')) return await topup()
+  if (has('--resync')) return await resync()
   if (has('--tick')) return await tick()
   if (has('--status')) return await status()
   console.log('usage:')
   console.log('  --selftest                                       no key, no network')
   console.log('  --genesis --fuel <sat> [--broadcast]             BATTERY_WIF · once, permanent')
   console.log('  --topup <sat> [--mark "…"] [--broadcast]         BATTERY_WIF · signed, adds fuel + a board mark')
+  console.log('  --resync --tip <txid>                            re-derive the record from the chain')
   console.log('  --tick <n> [--broadcast]                         NO KEY — the autonomous half')
   console.log('  --status                                         where the battery is now')
 }
