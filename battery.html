@@ -648,45 +648,81 @@
     var w=(t-0.5)/0.5; return [255, 162-85*w, 46+111*w];
   }
   window.batteryInk=batteryInk;
-  var frameCost=0, frameLeft=0;                // exact iteration totals, accumulated while drawing
-  function drawChain(d){
-    var cv=$('lv-cv'), ctx=cv.getContext('2d');
-    if(!d||!d.state){ return }
-    var s=d.state, step=s.step; if(!(step>0)) return;
+  var frameCost=0, frameLeft=0;                // iteration totals, accumulated while drawing
+
+  /* ── PREVIEW SCALE ────────────────────────────────────────────────────────────────────────────────
+     The covenant's grid can be far larger than anything a browser can usefully draw. At 3840x2160,
+     recomputing every pixel takes 2 seconds at level 1 and up to 40 at depth — on EVERY poll — to fill
+     a box a few hundred pixels wide. So render ONE preview pixel per N of the covenant's, chosen so the
+     backing store is about the size it is actually displayed at.
+
+     Nothing about the chain changes. Each preview pixel is a real pixel of the real grid, computed with
+     the real arithmetic and lit against the real `done` index; we simply stop computing detail that
+     cannot be shown. Full resolution is still rendered on demand for download, where waiting is fine
+     because you asked for it. */
+  function previewScale(cv){
+    var want = Math.max(320, Math.round((cv.clientWidth || 640) * (window.devicePixelRatio || 1)));
+    return Math.max(1, Math.ceil(CW / want));
+  }
+
+  /* Render the chain's picture into `cv` at 1 preview pixel per `sc` covenant pixels.
+     sc = 1 is the full grid — used for downloads. Returns the exact-if-sc-1 iteration totals. */
+  function renderChain(cv, d, sc){
+    var ctx=cv.getContext('2d');
+    var s=d.state, step=s.step;
     var cr0=s.cx-(CW/2)*step, ci0=s.cy-(CH/2)*step, mx=s.mx;
     var col=Math.round((s.cr-cr0)/step), row=Math.round((s.ci-ci0)/step);
-    var done=row*CW+col;                       // pixels finished; the rest is unpaid-for future
-    var img=ctx.createImageData(CW,CH), px=img.data;
-    frameCost=0; frameLeft=0;
+    var done=row*CW+col;                       // pixels finished, in TRUE grid units
+    var PW=Math.max(1,Math.ceil(CW/sc)), PH=Math.max(1,Math.ceil(CH/sc));
+    if(cv.width!==PW || cv.height!==PH){ cv.width=PW; cv.height=PH }
+    var img=ctx.createImageData(PW,PH), px=img.data;
+    var cost=0, left=0;
 
-    for(var p=0;p<CW*CH;p++){
-      var x=p%CW, y=(p-x)/CW;
-      var cr=cr0+x*step, ci=ci0+y*step;
-      var zr=0, zi=0, i=0, emag=0;
-      while(i<mx){
-        var zr2=mulShift(zr,zr), zi2=mulShift(zi,zi);
-        if(zr2+zi2>CESC){ emag=zr2+zi2; break }   // keep |z|² — smooth shading needs it
-        var nzi=mulShift(2*zr,zi)+ci;          // trunc(2·zr·zi/S), as the script computes it
-        zr=zr2-zi2+cr; zi=nzi; i++;
+    for(var py=0;py<PH;py++){
+      var y=Math.min(CH-1, py*sc), ciY=ci0+y*step, rowBase=y*CW;
+      for(var pxi=0;pxi<PW;pxi++){
+        var x=Math.min(CW-1, pxi*sc);
+        var cr=cr0+x*step, ci=ciY;
+        var zr=0, zi=0, i=0, emag=0;
+        while(i<mx){
+          var zr2=mulShift(zr,zr), zi2=mulShift(zi,zi);
+          if(zr2+zi2>CESC){ emag=zr2+zi2; break }   // keep |z|² — smooth shading needs it
+          var nzi=mulShift(2*zr,zi)+ci;             // trunc(2·zr·zi/S), as the script computes it
+          zr=zr2-zi2+cr; zi=nzi; i++;
+        }
+        var p=rowBase+x;                       // TRUE index — `done` is measured in covenant pixels
+        cost+=i; if(p>=done) left+=i;
+        var inside=(i>=mx);
+        var ink=batteryInk(i, mx, emag);
+        var r=ink[0], g=ink[1], b=ink[2];
+        var lit=(p<done);                      // paid for on chain, or still to come
+        var a=lit?255:36;
+        if(!lit && inside){ r=10;g=14;b=26 }
+        var o=(py*PW+pxi)*4;
+        px[o]=r|0; px[o+1]=g|0; px[o+2]=b|0; px[o+3]=a;
       }
-      /* one tick = one iteration, so the escape count IS this pixel's price */
-      frameCost+=i; if(p>=done) frameLeft+=i;
-      var inside=(i>=mx);
-      var ink=batteryInk(i, mx, emag);
-      var r=ink[0], g=ink[1], b=ink[2];
-      var lit=(p<done);                        // paid for on chain, or still to come
-      var a=lit?255:36;
-      if(!lit && inside){ r=10;g=14;b=26 }
-      var o=p*4;
-      px[o]=r|0; px[o+1]=g|0; px[o+2]=b|0; px[o+3]=a;
     }
     /* the frontier: a bright cursor where the chain's work currently stops */
     if(done>0 && done<CW*CH){
-      var fo=done*4;
-      px[fo]=56; px[fo+1]=225; px[fo+2]=255; px[fo+3]=255;
+      var fx=Math.floor((done%CW)/sc), fy=Math.floor(Math.floor(done/CW)/sc);
+      if(fx<PW && fy<PH){ var fo=(fy*PW+fx)*4; px[fo]=56; px[fo+1]=225; px[fo+2]=255; px[fo+3]=255 }
     }
     ctx.putImageData(img,0,0);
-    $('lv-scan').textContent='scan at pixel '+fmt(done)+' of '+fmt(CW*CH);
+    /* Sampled at sc>1, so scale back to the whole grid. Same trade as the toy's tick estimate: a
+       uniform sample of a smooth field, and the figure is a cost readout, not a consensus value. */
+    var f=sc*sc;
+    return { cost:Math.round(cost*f), left:Math.round(left*f), done:done, exact:sc===1 };
+  }
+
+  function drawChain(d){
+    var cv=$('lv-cv');
+    if(!d||!d.state) return;
+    if(!(d.state.step>0)) return;
+    var sc=previewScale(cv);
+    var r=renderChain(cv, d, sc);
+    frameCost=r.cost; frameLeft=r.left;
+    $('lv-scan').textContent='scan at pixel '+fmt(r.done)+' of '+fmt(CW*CH)+
+      (sc>1 ? ' · preview at 1:'+sc : '');
   }
 
   /* ── paint the live panel + the board ─────────────────────────────────────────────────────────── */
@@ -926,11 +962,28 @@
     }, 30);
   };
 
+  /* FULL RESOLUTION, not the preview. The on-page canvas is deliberately downsampled — at a 4K
+     covenant it is 1 pixel in 3 or 4 — so stamping it would hand back a picture smaller than the one
+     the chain actually computed. Re-render the whole grid offscreen instead: it costs seconds, but
+     only when someone has asked for the file. */
   $('lv-dl').onclick=function(){
     var d=live; if(!d||!d.state) return;
-    var cap='tick '+fmt(d.ticks)+' · frame '+(d.level||1)+' · '+fmt(d.fuel)+' sat of fuel';
-    download(stampShot($('lv-cv'),cap,4).toDataURL('image/png'),
-             'bitcoin-battery-tick-'+d.ticks+'.png');
+    var b=$('lv-dl'), was=b.textContent;
+    var full=CW*CH>1200000;                   // only warn when it is genuinely going to take a moment
+    b.disabled=true; b.textContent=full ? 'rendering '+CW+'x'+CH+'…' : 'rendering…';
+    setTimeout(function(){
+      try{
+        var off=document.createElement('canvas');
+        renderChain(off, d, 1);               // sc = 1 — every pixel the covenant has
+        var cap='tick '+fmt(d.ticks)+' · frame '+(d.level||1)+' · '+CW+'x'+CH+' · '+fmt(d.fuel)+' sat of fuel';
+        /* Already at full grid resolution, so stamp at 1x — the 4x upscale exists for the 256x192
+           era, where a raw frame was too small to read. */
+        var scale = CW>=1024 ? 1 : 4;
+        download(stampShot(off,cap,scale).toDataURL('image/png'),
+                 'bitcoin-battery-tick-'+d.ticks+'-'+CW+'x'+CH+'.png');
+      }catch(e){ alert('could not render the full picture: '+e.message) }
+      b.disabled=false; b.textContent=was;
+    }, 30);
   };
 
   /* ── TICKING — the keyless half, and the thing the page exists to demonstrate ─────────────────────
