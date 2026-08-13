@@ -466,11 +466,13 @@
       <div class="stat"><span>pixels drawn</span><b id="px">0</b></div>
       <div class="stat"><span>cost so far</span><b id="cost">0 sat</b></div>
 
-      <label>resolution <span class="val" style="color:var(--faint);font-weight:400">4:3, as the covenant draws it</span></label>
+      <label>resolution <span class="val" style="color:var(--faint);font-weight:400">4:3 unless marked</span></label>
       <div class="row" style="margin-top:4px;flex-wrap:wrap;gap:5px">
         <button class="res ghost" data-w="256"  data-h="192"  style="flex:1;padding:6px 4px;font-size:11.5px">256</button>
         <button class="res ghost" data-w="512"  data-h="384"  style="flex:1;padding:6px 4px;font-size:11.5px">512</button>
         <button class="res ghost" data-w="1024" data-h="768"  style="flex:1;padding:6px 4px;font-size:11.5px">1K</button>
+        <button class="res ghost" data-w="1920" data-h="1080" style="flex:1;padding:6px 4px;font-size:11.5px"
+                title="1920x1080 — 16:9, not 4:3 like the others">1080p</button>
         <button class="res ghost" data-w="2048" data-h="1536" style="flex:1;padding:6px 4px;font-size:11.5px">2K</button>
         <button class="res ghost" data-w="4096" data-h="3072" style="flex:1;padding:6px 4px;font-size:11.5px">4K</button>
       </div>
@@ -588,6 +590,30 @@
      the only correct one — reorder these and the picture slowly drifts away from what was actually paid for. */
   var CW=256, CH=192, CS=Math.pow(2,32), CESC=4*CS;
 
+  /* ── EXACT trunc(a·b / 2³²) ────────────────────────────────────────────────────────────────────────
+     `Math.trunc(a*b/CS)` is NOT exact here. |zr| reaches ~2·2³², so zr·zr reaches 2⁶⁶ — and a double
+     represents every integer only to 2⁵³. The product is rounded before it is divided, and the
+     truncation meant to discard that error sometimes carries it across an integer boundary instead.
+     Measured against exact BigInt: about 1 iteration in 600,000 disagreed.
+
+     Bitcoin Script computes this exactly, so a disagreement means the PAGE draws a pixel the chain did
+     not compute — which quietly falsifies the one claim this page rests on, that the picture is
+     recomputable from the tip. (In the transaction builder the same bug is worse: the covenant rejects
+     an output it disagrees with, so the tick is refused outright.)
+
+     Split at 2¹⁶ and accumulate the partials; every intermediate then stays under 2⁵³ and is exact:
+         a·b = xh·yh·2³² + (xh·yl + xl·yh)·2¹⁶ + xl·yl
+     Mirrors mulShift() in mint/src/battery.ts — the two must not drift. */
+  function mulShift(a, b){
+    var neg=(a<0)!==(b<0), x=Math.abs(a), y=Math.abs(b);
+    var xh=Math.floor(x/65536), xl=x-xh*65536;
+    var yh=Math.floor(y/65536), yl=y-yh*65536;
+    var mid=xh*yl+xl*yh, midHi=Math.floor(mid/65536), midLo=mid-midHi*65536;
+    var q=xh*yh+midHi+Math.floor((midLo*65536+xl*yl)/4294967296);
+    return neg ? -q : q;
+  }
+  window.mulShift=mulShift;
+
   /* ── THE CANONICAL RENDERING ──────────────────────────────────────────────────────────────────────
      How a chain state becomes a picture. The state is the covenant's; everything here is presentation
      — but it has to be written down in ONE place, because "the picture is recomputable from the tip"
@@ -638,9 +664,9 @@
       var cr=cr0+x*step, ci=ci0+y*step;
       var zr=0, zi=0, i=0, emag=0;
       while(i<mx){
-        var zr2=Math.trunc(zr*zr/CS), zi2=Math.trunc(zi*zi/CS);
+        var zr2=mulShift(zr,zr), zi2=mulShift(zi,zi);
         if(zr2+zi2>CESC){ emag=zr2+zi2; break }   // keep |z|² — smooth shading needs it
-        var nzi=Math.trunc(2*zr*zi/CS)+ci;     // multiply first, divide last
+        var nzi=mulShift(2*zr,zi)+ci;          // trunc(2·zr·zi/S), as the script computes it
         zr=zr2-zi2+cr; zi=nzi; i++;
       }
       /* one tick = one iteration, so the escape count IS this pixel's price */
@@ -852,9 +878,9 @@
             var x=p%W, y=(p-x)/W, cr=cr0+x*s0, ci=ci0+y*s0;
             var zr=0, zi=0, i=0, emag=0;
             while(i<mx){
-              var zr2=Math.trunc(zr*zr/CS), zi2=Math.trunc(zi*zi/CS);
+              var zr2=mulShift(zr,zr), zi2=mulShift(zi,zi);
               if(zr2+zi2>CESC){ emag=zr2+zi2; break }
-              var nzi=Math.trunc(2*zr*zi/CS)+ci; zr=zr2-zi2+cr; zi=nzi; i++;
+              var nzi=mulShift(2*zr,zi)+ci; zr=zr2-zi2+cr; zi=nzi; i++;
             }
             var inside=(i>=mx), ink=batteryInk(i, mx, emag);
             var r=ink[0], g=ink[1], bl=ink[2];
@@ -1441,9 +1467,9 @@
     for(var y=0;y<ny;y+=stride) for(var x=0;x<nx;x+=stride){
       var cr=g.cr0+x*step, ci=g.ci0+y*step, zr=0, zi=0, i=0;
       for(;i<mx;i++){
-        var zr2=Math.trunc(zr*zr/S), zi2=Math.trunc(zi*zi/S);
+        var zr2=mulShift(zr,zr), zi2=mulShift(zi,zi);
         if(zr2+zi2>ESCAPE) break;
-        var nzi=Math.trunc(2*zr*zi/S)+ci; zr=zr2-zi2+cr; zi=nzi;
+        var nzi=mulShift(2*zr,zi)+ci; zr=zr2-zi2+cr; zi=nzi;
       }
       t+=i+1; n++;
     }
@@ -1478,7 +1504,7 @@
     return { cr0:cr0, ci0:ci0, crMax:cr0+(cfg.W-1)*step, ciMax:ci0+(cfg.H-1)*step };
   }
   function tick(s){
-    var zr2=Math.trunc(s.zr*s.zr/S), zi2=Math.trunc(s.zi*s.zi/S), mag=zr2+zi2;
+    var zr2=mulShift(s.zr,s.zr), zi2=mulShift(s.zi,s.zi), mag=zr2+zi2;
     if(mag>ESCAPE || s.i>s.mx-1){
       var g=origin(s.step, s.cx, s.cy), cr=s.cr+s.step, ci=s.ci, step=s.step, mx=s.mx, cx=s.cx, cy=s.cy, passEnd=false;
       if(cr>g.crMax){
@@ -1510,7 +1536,7 @@
       return { cr:cr, ci:ci, zr:0, zi:0, i:0, step:step, mx:mx, cx:cx, cy:cy, done:true, escapedAt:s.i,
                escMag:mag, passEnd:passEnd };
     }
-    return { cr:s.cr, ci:s.ci, zr:zr2-zi2+s.cr, zi:Math.trunc(2*s.zr*s.zi/S)+s.ci, i:s.i+1, step:s.step, mx:s.mx, cx:s.cx, cy:s.cy, done:false };
+    return { cr:s.cr, ci:s.ci, zr:zr2-zi2+s.cr, zi:mulShift(2*s.zr,s.zi)+s.ci, i:s.i+1, step:s.step, mx:s.mx, cx:s.cx, cy:s.cy, done:false };
   }
   /* HOW A PIXEL IS INKED — a display choice, and nothing else. The iteration counts are the
      covenant's and are untouched by everything here.
@@ -1684,7 +1710,15 @@
       $('W').value=b.getAttribute('data-w'); $('vW').textContent=b.getAttribute('data-w');
       $('H').value=b.getAttribute('data-h'); $('vH').textContent=b.getAttribute('data-h');
       stop(); frameStop(); reset();
-      var px=(+b.getAttribute('data-w'))*(+b.getAttribute('data-h'));
+      var pw=+b.getAttribute('data-w'), ph=+b.getAttribute('data-h'), px=pw*ph;
+      /* 16:9 is not a different kind of thing to the covenant — W and H are just two constants, and
+         nothing in the script requires 4:3. What changes is the FRAMING: the vertical span is
+         SPAN0·H/W, so 3.0 at 4:3 and 2.25 at 16:9. The set is framed wider and shorter, and every
+         level of the descent inherits that. */
+      if(Math.abs(ph/pw - 0.75) > 0.001) $('status').textContent=
+        pw+'x'+ph+' is 16:9, not the 4:3 of the other presets. The maths is unchanged — W and H are '+
+        'just constants — but the framing is: the vertical span becomes '+(4.0*ph/pw).toFixed(2)+
+        ' instead of 3.00, so the set is framed wider and shorter at every level.';
       if(px>CAPTURE_MAX) $('status').textContent=
         'Frame capture is off above 1024x768 — a 21-frame loop at '+b.textContent+' would be hundreds of '+
         'megabytes of PNG held in memory. Single frames still render and download; the loop preview and '+

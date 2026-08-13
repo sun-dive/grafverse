@@ -14,6 +14,23 @@
 // and leave the existing card exactly where it is. A stale card is a small problem; a broken or blank
 // one is on every share of the page until someone notices.
 
+/**
+ * Exact trunc(a * b / 2^32). PHP floats are IEEE doubles, exact only to 2^53, and zr*zr reaches 2^66 —
+ * so `(int) ($zr * $zr / $FP)` silently rounds before it truncates. Bitcoin Script computes this
+ * exactly, so an inexact card would show a pixel the chain never computed.
+ * Mirrors mulShift() in battery.html and mint/src/battery.ts; the three must not drift.
+ */
+function battery_mulshift($a, $b) {
+  $neg = ($a < 0) !== ($b < 0);
+  $x = abs($a); $y = abs($b);
+  $xh = floor($x / 65536); $xl = $x - $xh * 65536;
+  $yh = floor($y / 65536); $yl = $y - $yh * 65536;
+  $mid = $xh * $yl + $xl * $yh;
+  $midHi = floor($mid / 65536); $midLo = $mid - $midHi * 65536;
+  $q = $xh * $yh + $midHi + floor(($midLo * 65536 + $xl * $yl) / 4294967296);
+  return $neg ? -$q : $q;
+}
+
 /** Locate an ImageMagick binary, or null. Cached for the request. */
 function battery_magick() {
   static $bin = false;
@@ -72,10 +89,10 @@ function battery_panel($state, $path) {
       $cr = $cr0 + $x * $step; $ci = $ci0 + $y * $step;
       $zr = 0.0; $zi = 0.0; $i = 0; $emag = 0.0;
       while ($i < $mx) {
-        $zr2 = (float) (int) ($zr * $zr / $FP);
-        $zi2 = (float) (int) ($zi * $zi / $FP);
+        $zr2 = battery_mulshift($zr, $zr);
+        $zi2 = battery_mulshift($zi, $zi);
         if ($zr2 + $zi2 > $ESC) { $emag = $zr2 + $zi2; break; }   // keep |z|² for smooth shading
-        $nzi = (float) (int) (2 * $zr * $zi / $FP) + $ci;
+        $nzi = battery_mulshift(2 * $zr, $zi) + $ci;
         $zr = $zr2 - $zi2 + $cr; $zi = $nzi; $i++;
       }
       $inside = ($i >= $mx);

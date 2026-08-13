@@ -25,13 +25,24 @@ const OUT = join(ROOT, 'battery-og.png')
 const PANEL = join(ROOT, '.battery-panel.png')
 
 // ── the battery's own arithmetic ───────────────────────────────────────────────────────────────────
+/** Exact trunc(a·b / 2³²) — see mulShift() in ../src/battery.ts. A double is exact only to 2^53 and
+ *  zr·zr reaches 2^66, so Math.trunc(a*b/S) is not reliable here. */
+function mulShift(a, b) {
+  const neg = (a < 0) !== (b < 0), x = Math.abs(a), y = Math.abs(b)
+  const xh = Math.floor(x / 65536), xl = x - xh * 65536
+  const yh = Math.floor(y / 65536), yl = y - yh * 65536
+  const mid = xh * yl + xl * yh, midHi = Math.floor(mid / 65536), midLo = mid - midHi * 65536
+  const q = xh * yh + midHi + Math.floor((midLo * 65536 + xl * yl) / 4294967296)
+  return neg ? -q : q
+}
+
 /** Escape count AND |z|² at escape — the magnitude is what smooth shading needs. */
 function escapeCount(cr, ci, mx) {
   let zr = 0, zi = 0, i = 0, emag = 0
   while (i < mx) {
-    const zr2 = Math.trunc(zr * zr / S), zi2 = Math.trunc(zi * zi / S)
+    const zr2 = mulShift(zr, zr), zi2 = mulShift(zi, zi)
     if (zr2 + zi2 > ESC) { emag = zr2 + zi2; break }
-    const nzi = Math.trunc(2 * zr * zi / S) + ci   // multiply first, divide last
+    const nzi = mulShift(2 * zr, zi) + ci          // trunc(2·zr·zi/S), as Script computes it
     zr = zr2 - zi2 + cr; zi = nzi; i++
   }
   return { i, emag }
