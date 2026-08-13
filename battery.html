@@ -476,12 +476,12 @@
         <button class="res ghost" data-w="2048" data-h="1536" style="flex:1;padding:6px 4px;font-size:11.5px">2K</button>
         <button class="res ghost" data-w="4096" data-h="3072" style="flex:1;padding:6px 4px;font-size:11.5px">4K</button>
       </div>
-      <label>width <span class="val" id="vW">256</span></label>
-      <input type="range" id="W" min="32" max="4096" step="32" value="256">
-      <label>height <span class="val" id="vH">192</span></label>
-      <input type="range" id="H" min="24" max="3072" step="24" value="192">
-      <label>max iterations <span class="val" id="vI">6</span></label>
-      <input type="range" id="I" min="1" max="512" step="1" value="6">
+      <label>width <span class="val" id="vW">3840</span></label>
+      <input type="range" id="W" min="32" max="4096" step="32" value="3840">
+      <label>height <span class="val" id="vH">2160</span></label>
+      <input type="range" id="H" min="24" max="3072" step="24" value="2160">
+      <label>MX0 · opening max iterations <span class="val" id="vI">128</span></label>
+      <input type="range" id="I" min="1" max="512" step="1" value="128">
       <label>centre x <span class="val" id="vX">0.00</span></label>
       <input type="range" id="X" min="-2.2" max="1.0" step="0.01" value="0">
       <label>centre y <span class="val" id="vY">0.00</span></label>
@@ -505,8 +505,8 @@
         <button id="mZoom" style="flex:1;padding:8px 10px;font-size:12.5px">zoom</button>
       </div>
       <div id="zoomBox">
-        <label>+iterations per level <span class="val" id="vK">4</span></label>
-        <input type="range" id="K" min="0" max="400" step="4" value="4">
+        <label>K · +iterations per level <span class="val" id="vK">128</span></label>
+        <input type="range" id="K" min="0" max="400" step="4" value="128">
         <label>zoom into x <span class="val" id="vZX">-1.423289</span></label>
         <input type="range" id="ZX" min="-2" max="0.6" step="0.0001" value="-1.4233">
         <label>zoom into y <span class="val" id="vZY">0.127279</span></label>
@@ -1473,23 +1473,34 @@
      real thing — visible by the last levels, and exactly the kind of quiet mismatch this page exists
      to rule out. These are the constants from BATTERY_GEOMETRY in mint/src/battery.ts; the toy opens
      showing what the chain is actually computing, and the dials move away from it, not toward it. */
+  /* THE PARAMETERS TO BE MINTED. Every one is permanent once genesis is broadcast — there is no key
+     to amend any of them — so the toy opens on exactly this, and the LIVE button restores exactly
+     this. If what you see here is wrong, it is wrong forever. */
   var GENESIS_TOY={ live:true, p:11, zx:-1.423288564770, zy:0.127278891029,
-                    span:4.0, levels:21, K:4, maxIter:6, W:256, H:192, cx:0, cy:0 };
+                    span:4.0, levels:21, K:128, maxIter:128, W:3840, H:2160, cx:0, cy:0 };
   var exact=GENESIS_TOY;
 
   function readCfg(){
     var W=+$('W').value, H=+$('H').value, span=+$('Sp').value;
     var cx=+$('X').value, cy=+$('Y').value;
     var step=Math.round(span/W*S);
-    var cr0=Math.round((cx-span/2)*S);
+    /* ORIGIN FROM THE ROUNDED STEP, exactly as genesisState() does: cr = cx - floor(W/2)·step.
+       This used to derive it from the SPAN — round((cx - span/2)·S) — which agrees only when step0
+       is exact. At a power-of-two width it always is (4/1024·2^32 = 2^24), so the two were
+       indistinguishable and it never surfaced. At 3840, step0 is 4,473,924.2667 and rounds down,
+       putting the origins 512 apart (448 at 1920): the toy would have been previewing a picture the
+       covenant does not draw, in the very session it is being used to approve one. */
+    var HW=Math.floor(W/2), HH=Math.floor(H/2);
+    var cr0=Math.round(cx*S)-HW*step;
+    var ci0=Math.round(cy*S)-HH*step;
     /* crMax is the LAST pixel of a row, not the edge past it: the covenant wraps when cr > crMax, so
        crMax = cr0 + (W-1)*step gives exactly W pixels. Setting it to the far edge yields W+1 — an
        off-by-one that is baked into the script at genesis and can never be corrected. */
     return { W:W, H:H, maxIter:+$('I').value, step:step, mode:mode,
              zx:(exact?exact.zx:+$('ZX').value), zy:(exact?exact.zy:+$('ZY').value), K:+$('K').value,
-             cr0:cr0, ci0:Math.round((cy-span*(H/W)/2)*S),
+             cr0:cr0, ci0:ci0,
              crMax:cr0+(W-1)*step,
-             crMaxFixed:cr0+(W-1)*step, ciMaxFixed:Math.round((cy-span*(H/W)/2)*S)+(H-1)*step,
+             crMaxFixed:cr0+(W-1)*step, ciMaxFixed:ci0+(H-1)*step,
              levels:+$('L').value };
   }
   function reset(){
@@ -1583,7 +1594,7 @@
           /* maxIter must RISE with depth or the frame saturates to solid black — measured: fixed at
              24 the picture is 100% "in set" by level 9. HARD CAP at 255: the field is one byte, and
              without the cap a long run wraps and silently resets the picture to nothing. */
-          mx = Math.min(65535, s.mx + cfg.K);            // 2-byte field, hard cap
+          mx = Math.min(32767, s.mx + cfg.K);            // MXCAP — 2-byte SIGN-MAGNITUDE, so 2^15-1
           /* PAN halfway toward the target each level. A purely centred zoom cannot loop: the minibrot
              sits at -1.7549 while the main set is near -0.5, so frame 1 would be off-centre while the
              last frame is centred. Halving the distance each level lands them together. */
