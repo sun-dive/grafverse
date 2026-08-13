@@ -174,17 +174,23 @@
              background:repeating-linear-gradient(135deg,rgba(120,170,255,.05) 0 6px,transparent 6px 12px)}
   .batt-burn span{font-size:9.5px;color:var(--faint);letter-spacing:.04em;padding-top:3px;text-align:center;
                   line-height:1.25}
-  /* one band per funder — they are the charge */
-  .fund{flex:none;min-height:0;position:relative;display:flex;flex-direction:column;justify-content:center;
-        padding:2px 5px;overflow:hidden;border-top:1px solid rgba(4,8,16,.55)}
-  /* NO background or colour here on purpose: both are computed per render from the charge level, and a
-     hardcoded green would be a second source of truth that silently disagrees with the one that matters. */
+  /* THE CHARGE — one solid body, the way a real battery reads. Colour is set per render from the
+     level; nothing here hardcodes it, so there is no second source of truth to drift. The glass
+     highlight down the left is what makes it read as a moulded cell rather than a filled rectangle. */
+  .batt-fill{flex:none;min-height:0;display:flex;flex-direction:column;position:relative;overflow:hidden}
+  .batt-fill::after{content:'';position:absolute;inset:0;pointer-events:none;
+        background:linear-gradient(90deg,rgba(255,255,255,.30),rgba(255,255,255,.05) 22%,
+                   rgba(0,0,0,.03) 68%,rgba(0,0,0,.13))}
+  /* a funder is TEXT INSIDE the charge — never a colour of its own, or the battery becomes a bar chart */
+  .fund{flex:none;min-height:0;position:relative;z-index:1;display:flex;flex-direction:column;
+        justify-content:center;padding:2px 5px;overflow:hidden;background:none}
+  .fund+.fund{border-top:1px solid rgba(4,8,16,.20)}   /* a hairline, not a seam */
   .fund b{font:800 11px/1.1 system-ui;font-variant-numeric:tabular-nums;display:block}
   .fund i{font:600 9.5px/1.15 system-ui;font-style:normal;opacity:.78;display:block;
           overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .fund.tiny b{font-size:9.5px} .fund.tiny i{display:none}
   /* the seed keeps the charge colour so the fill reads as ONE level; a dashed edge marks it instead */
-  .batt-seed{flex:none;border-top:2px dashed rgba(8,19,10,.45)}
+  .batt-seed{flex:none} .fund+.batt-seed{border-top:1px dashed rgba(4,8,16,.38)}
   .batt-seed i{font-style:italic;opacity:.9}
   .batt-empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--faint);
               font-size:11px;text-align:center;padding:8px}
@@ -1057,23 +1063,32 @@
     if(tot>0) parts.forEach(function(p){ p.pc=p.pc/tot*avail });
 
     var lvl=cap>0 ? Math.min(1, fuel/cap) : 0;
-    var rgb=chargeRGB(lvl), top=rgbCss(rgb,1.06), bot=rgbCss(rgb,0.82), alt=rgbCss(rgb,0.92);
-    var ink = lvl>0.62 ? '#08130a' : '#1a0d06';        // dark text stays legible across the whole band
+    var rgb=chargeRGB(lvl), ink = lvl>0.62 ? '#08130a' : '#1a0d06';
 
     var html='';
     if(burnPct>0.6) html+='<div class="batt-burn" style="height:'+burnPct.toFixed(2)+'%">'+
       '<span>'+fmt(burned)+' sat burned<br>into the picture</span></div>';
     else if(burned>0) html+='<div class="batt-burn" style="height:'+Math.max(2,burnPct).toFixed(2)+'%"></div>';
 
-    html+=parts.map(function(p,ix){
-      var tiny=p.pc<6.5;
-      var bg = (ix%2) ? 'linear-gradient(180deg,'+alt+','+bot+')'
-                      : 'linear-gradient(180deg,'+top+','+bot+')';
-      return '<div class="fund'+(p.seed?' batt-seed':'')+(tiny?' tiny':'')+'" '+
-             'style="height:'+p.pc.toFixed(2)+'%;background:'+bg+';color:'+ink+'" '+
-             'title="'+esc(p.mark||'(no mark)')+' — '+fmt(p.sats)+' sat">'+
-             '<b>'+fmt(p.sats)+'</b>'+(tiny?'':'<i>'+esc(p.mark||'(no mark)')+'</i>')+'</div>';
-    }).join('');
+    /* ONE BODY OF CHARGE, not a stack of coloured bands.
+       A battery everyone recognises has a single solid fill — the moment it is striped per funder it
+       stops reading as a battery and starts reading as a bar chart, which is the opposite of the point.
+       So the colour lives HERE, on the fill as a whole, with one gradient spanning the entire charge.
+       The funders sit inside it as text separated by hairlines: still legible, still individually
+       hoverable, but they no longer cut the charge into pieces. */
+    var fillPc=parts.reduce(function(a,p){return a+p.pc},0);
+    html+='<div class="batt-fill" style="height:'+fillPc.toFixed(2)+'%;'+
+          'background:linear-gradient(180deg,'+rgbCss(rgb,1.10)+' 0%,'+rgbCss(rgb,1.0)+' 46%,'+
+          rgbCss(rgb,0.80)+' 100%);color:'+ink+'">'+
+      parts.map(function(p){
+        var tiny=p.pc<6.5;
+        var sh=fillPc;                              // bands are now a share of the FILL, not of the casing
+        return '<div class="fund'+(p.seed?' batt-seed':'')+(tiny?' tiny':'')+'" '+
+               'style="height:'+(sh>0?(p.pc/sh*100):0).toFixed(2)+'%" '+
+               'title="'+esc(p.mark||'(no mark)')+' — '+fmt(p.sats)+' sat">'+
+               '<b>'+fmt(p.sats)+'</b>'+(tiny?'':'<i>'+esc(p.mark||'(no mark)')+'</i>')+'</div>';
+      }).join('')+
+    '</div>';
     box.innerHTML=html;
 
     var pct=cap>0 ? Math.min(100, fuel/cap*100) : 0;
