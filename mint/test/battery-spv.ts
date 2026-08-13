@@ -19,9 +19,26 @@ import {
   type MerkleProofEntry, type BlockHeader,
 } from '../src/tokenProtocol.ts'
 import { WalletProvider } from '../src/walletProvider.ts'
-import { buildBatteryLock, genesisState, refState } from '../src/battery.ts'
+import {
+  buildBatteryLock, genesisState, refState, S,
+  type BatteryGeometry,
+} from '../src/battery.ts'
 
 const GENESIS = 'd9a55ddb6c52bc51425f3c9e1416033179899e76abd634deda4510eed3790146'
+
+/* THE GEOMETRY OF THE BATTERY ON CHAIN, stated explicitly rather than taken from BATTERY_GEOMETRY.
+ * This test walks the LIVE chain, and the live battery is the 256x192 one that is being replaced.
+ * Replaying it with the current default (3840x2160, MX0 128, K 128) computes a different picture, so
+ * every hop's script "differs" — which it should, because they are different covenants.
+ *
+ * ⚠ When the replacement genesis is minted, GENESIS and this object move together. They describe one
+ * artefact and must never be edited apart. */
+const LIVE_GEOMETRY: BatteryGeometry = {
+  W: 256, H: 192, SPAN0: 4.0,
+  TX: Math.round(-1.423288564770 * S), TY: Math.round(0.127278891029 * S),
+  MX0: 6, K: 4, MXCAP: 32767,
+}
+const LIVE_MAX_FEE = 312
 const WOC = 'https://api.whatsonchain.com/v1/bsv/main'
 
 let pass = 0, fail = 0
@@ -115,13 +132,13 @@ check('a missing block header is REJECTED', verifyProofChain(chain, new Map()).v
 // state is computable at all — without fetching any of the intervening transactions — is the property
 // the whole artefact rests on.
 const firstTick = Math.max(0, (tipInfo.ticks as number) - (hops.length - 1))
-let ref = genesisState()
-for (let k = 0; k < firstTick; k++) ref = refState(ref)
+let ref = genesisState(LIVE_GEOMETRY)
+for (let k = 0; k < firstTick; k++) ref = refState(ref, LIVE_GEOMETRY)
 let stateOk = true
 for (let i = 0; i < hops.length; i++) {
-  const want = buildBatteryLock({ state: ref }).toBinary()
+  const want = buildBatteryLock({ state: ref, geometry: LIVE_GEOMETRY, maxFee: LIVE_MAX_FEE }).toBinary()
   if (!arrEq(hops[i].tx.outputs[0].lockingScript.toBinary(), want)) { stateOk = false; console.log(`   ↳ hop ${i} script differs`) }
-  ref = refState(ref)
+  ref = refState(ref, LIVE_GEOMETRY)
 }
 check('every hop carries the state the covenant computes', stateOk)
 

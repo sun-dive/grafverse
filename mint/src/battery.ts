@@ -63,7 +63,7 @@ export const RECORD_BATTERY = 0x07
  * ~1% headroom (100.971 sat/KB) for a node that counts a byte differently or a modest future drift in
  * the relay floor. Below the floor, keyless ticking would be rejected forever.
  */
-export const BATTERY_MAX_FEE = 312
+export const BATTERY_MAX_FEE = 314
 
 /** Official BSV fee rate (100 sat/KB). Never inflated — see the project fee-rate policy. */
 export const BATTERY_FEE_PER_KB = 100
@@ -144,13 +144,13 @@ export interface BatteryGeometry {
  * Centre it anywhere else and the loop CANNOT close, whatever else is tuned.
  */
 export const BATTERY_GEOMETRY: BatteryGeometry = {
-  W: 256,
-  H: 192,
+  W: 3840,
+  H: 2160,
   SPAN0: 4.0,
   TX: Math.round(-1.423288564770 * S),
   TY: Math.round(0.127278891029 * S),
-  MX0: 6,
-  K: 4,
+  MX0: 128,
+  K: 128,
   MXCAP: 32767,
 }
 
@@ -533,9 +533,14 @@ export function tickUnlockingOps(p: { spenderOutputs: number[]; newValue: number
  * from the chain by anyone, WITHOUT this page. If the descent takes years, the artefact must not quietly
  * depend on a website staying up. Owned, not hosted.
  */
+/* 196 bytes, against an OP_RETURN limit of 220. Everything here is something a rebuilder CANNOT
+   derive from a tip: the field layout to parse the state at all, the grid, the ramp constants that
+   govern levels not yet reached, and the ink recipe. `span` is omitted deliberately — it is
+   W·step/2^32, recoverable from the state. Written compactly because the full prose ran to 276. */
 export const BATTERY_STATE_LAYOUT =
-  'BRC-226 BATTERY v1 | fields cr,ci,zr,zi,i,step,cx,cy,mx | widths 5,5,5,5,2,5,5,5,2 | ' +
-  'fixed-width sign-magnitude LE | 1.0=2^32 | multiply first, divide last | grid 256x192 | maxfee 312'
+  'BRC-226 BATTERY v1|fields cr,ci,zr,zi,i,step,cx,cy,mx|widths 5,5,5,5,2,5,5,5,2|' +
+  'sign-mag LE|1=2^32|mul first div last|grid 3840x2160|mx0 128 k 128 cap 32767|' +
+  'maxfee 314|ink esc+1-log2(log|z|) mod 32'
 
 /** OP_FALSE OP_RETURN <data> — an unspendable output carrying bytes. */
 export function opReturnScript(data: number[]): LockingScript {

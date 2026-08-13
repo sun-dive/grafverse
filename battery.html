@@ -588,7 +588,10 @@
 
      MULTIPLY FIRST, DIVIDE LAST. (2*zr*zi)/S and (zr*zi/S)*2 differ by one ulp, and the chain's order is
      the only correct one — reorder these and the picture slowly drifts away from what was actually paid for. */
-  var CW=256, CH=192, CS=Math.pow(2,32), CESC=4*CS;
+  /* THE COVENANT'S GRID. Not carried in the state — W and H are script constants, so a reader has to
+     know them. They are published in the genesis OP_RETURN alongside the field layout, which is what
+     makes the picture rebuildable without this page. */
+  var CW=3840, CH=2160, CS=Math.pow(2,32), CESC=4*CS;
 
   /* ── EXACT trunc(a·b / 2³²) ────────────────────────────────────────────────────────────────────────
      `Math.trunc(a*b/CS)` is NOT exact here. |zr| reaches ~2·2³², so zr·zr reaches 2⁶⁶ — and a double

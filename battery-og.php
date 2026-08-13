@@ -73,20 +73,28 @@ function battery_run(array $argv, $timeout = 20) {
  * The arithmetic is the covenant's: truncating fixed point at 2^32, multiply first and divide last.
  */
 function battery_panel($state, $path) {
-  $W = 256; $H = 192; $S = 2; $FP = 4294967296.0; $ESC = 4 * $FP;
+  /* The covenant's grid is 3840x2160; the CARD panel is a downsample of it. Rendering 8.3M pixels in
+     pure PHP would take minutes and time out, and the panel is 640 wide on the card regardless. */
+  $W = 3840; $H = 2160; $PANEL_SCALE = 6; $FP = 4294967296.0; $ESC = 4 * $FP;
+  $PW = intdiv($W, $PANEL_SCALE); $PH = intdiv($H, $PANEL_SCALE);
   $step = $state['step'] ?? 0; if (!($step > 0)) return false;
   $cr0 = $state['cx'] - ($W / 2) * $step;
   $ci0 = $state['cy'] - ($H / 2) * $step;
   $mx  = (int) $state['mx'];
   $done = ((int) round(($state['ci'] - $ci0) / $step)) * $W + (int) round(($state['cr'] - $cr0) / $step);
 
-  // one row of source pixels becomes $S identical output rows
+  /* SAMPLED, exactly as renderChain() does in battery.html: one panel pixel per PANEL_SCALE covenant
+     pixels. `$done` counts COVENANT pixels, so the lit test uses the TRUE index, never the panel one —
+     get that wrong and the card shows the wrong part of the frame as paid for. */
   $rows = [];
-  for ($y = 0; $y < $H; $y++) {
+  $fx = intdiv($done % $W, $PANEL_SCALE); $fy = intdiv(intdiv($done, $W), $PANEL_SCALE);
+  for ($py = 0; $py < $PH; $py++) {
+    $y = min($H - 1, $py * $PANEL_SCALE);
+    $ciY = $ci0 + $y * $step;
     $row = '';
-    for ($x = 0; $x < $W; $x++) {
-      $p = $y * $W + $x;
-      $cr = $cr0 + $x * $step; $ci = $ci0 + $y * $step;
+    for ($px = 0; $px < $PW; $px++) {
+      $x = min($W - 1, $px * $PANEL_SCALE);
+      $cr = $cr0 + $x * $step; $ci = $ciY;
       $zr = 0.0; $zi = 0.0; $i = 0; $emag = 0.0;
       while ($i < $mx) {
         $zr2 = battery_mulshift($zr, $zr);
@@ -95,11 +103,10 @@ function battery_panel($state, $path) {
         $nzi = battery_mulshift(2 * $zr, $zi) + $ci;
         $zr = $zr2 - $zi2 + $cr; $zi = $nzi; $i++;
       }
+      $p = $y * $W + $x;                             // TRUE index — what $done is measured in
       $inside = ($i >= $mx);
       /* MUST MATCH batteryInk() in battery.html — the card and the page have to be the same picture,
-         or a share preview shows something the page does not draw. Smooth escape time, then a CYCLIC
-         ramp with no reference to mx: escape ÷ mx tied the palette to the iteration budget and faded
-         the filaments to flat ground as mx rose, even though the counts were unchanged. */
+         or a share preview shows something the page does not draw. */
       if ($inside) { $r = 6; $g = 9; $b = 16; }
       else {
         $v = (float) $i;
@@ -122,13 +129,13 @@ function battery_panel($state, $path) {
         if ($inside) { $r = 16; $g = 22; $b = 40; }
       }
       // the frontier — a short cursor where the chain's work stops
-      $fx = $done % $W; $fy = intdiv($done, $W);
-      if ($done > 0 && $x === $fx && abs($y - $fy) <= 3) { $r = 56; $g = 225; $b = 255; }
-      $row .= str_repeat(chr((int) $r) . chr((int) $g) . chr((int) $b), $S);
+      if ($done > 0 && $px === $fx && abs($py - $fy) <= 2) { $r = 56; $g = 225; $b = 255; }
+      $row .= chr((int) $r) . chr((int) $g) . chr((int) $b);
     }
-    for ($k = 0; $k < $S; $k++) $rows[] = $row;
+    $rows[] = $row;
   }
-  $ppm = "P6\n" . ($W * $S) . " " . ($H * $S) . "\n255\n" . implode('', $rows);
+
+  $ppm = "P6\n" . $PW . " " . $PH . "\n255\n" . implode('', $rows);
   return @file_put_contents($path, $ppm) !== false;
 }
 
@@ -144,7 +151,7 @@ function battery_render_card($c) {
   $state = $c['tip']['state'] ?? null;
   if (!$state || !battery_panel($state, $panel)) return false;
 
-  $PW = 512; $PH = 384; $CW = 1200; $CH = 630;
+  $PW = 640; $PH = 360; $CW = 1200; $CH = 630;   // panel is now 16:9, matching the covenant's grid
   $PX = 44; $PY = 104; $RX = $PX + $PW + 46;
   $INK = '#f3f7ff'; $DIM = '#aebfe0'; $FAINT = '#7d92b8'; $CYAN = '#38e1ff'; $LIME = '#b4ff3a';
   $SANS = 'DejaVu-Sans'; $SANS_B = 'DejaVu-Sans-Bold'; $MONO = 'DejaVu-Sans-Mono-Bold';

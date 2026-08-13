@@ -134,16 +134,24 @@ function does_spend($tx, $tipTxid, $vout) {
 }
 
 // ── derived, for the page ────────────────────────────────────────────────────
-/** Zoom level from `step`: step = step0 / 2^(level-1), step0 = 4/256 * 2^32. */
+/* THE COVENANT'S GRID — script constants, not carried in the state, so a reader must know them.
+   Published in the genesis OP_RETURN next to the field layout. Defined ONCE here: they were
+   previously written out twice in this file, and a grid that disagrees with itself computes both
+   the zoom level and the scan progress wrongly, silently. */
+define('BAT_W', 3840);
+define('BAT_H', 2160);
+define('BAT_SPAN0', 4.0);
+
+/** Zoom level from `step`: step = step0 / 2^(level-1), step0 = SPAN0/W * 2^32. */
 function level_of($state) {
-  $step0 = 4.0 / 256 * 4294967296.0;
+  $step0 = round(BAT_SPAN0 / BAT_W * 4294967296.0);   // ROUNDED, as step0() is — 3840 is not a power of two
   $s = $state['step'] ?? 0;
   if ($s <= 0) return 1;
   return (int) round(log($step0 / $s, 2)) + 1;
 }
 /** How far the scan has crossed the current frame, 0..1 — the picture's real progress. */
 function frame_progress($state) {
-  $W = 256; $H = 192;
+  $W = BAT_W; $H = BAT_H;
   $step = $state['step'] ?? 0; if ($step <= 0) return 0.0;
   $cr0 = $state['cx'] - intdiv($W, 2) * $step;
   $ci0 = $state['cy'] - intdiv($H, 2) * $step;

@@ -14,6 +14,7 @@
 // re-validates the covenant through the real @bsv/sdk `Spend` interpreter at the GENESIS parameters.
 import { Spend, TransactionSignature, UnlockingScript, LockingScript, OP } from '@bsv/sdk'
 import {
+  S,
   buildBatteryLock, tickUnlockingOps, refState, genesisState, u64le,
   BATTERY_SCOPE, BATTERY_GEOMETRY, BATTERY_MAX_FEE, type BatteryState, type BatteryGeometry,
 } from '../src/battery.ts'
@@ -26,7 +27,16 @@ const check = (name: string, got: boolean, want = true): void => {
   ok ? pass++ : fail++
 }
 
-const TEST_GEOMETRY: BatteryGeometry = { ...BATTERY_GEOMETRY, W: 16, H: 12 }
+/* THE HARNESS'S OWN PARAMETERS, written out rather than spread from BATTERY_GEOMETRY. This section
+   compares the port against a fixed historical artefact — the .mjs harness — so it must not move when
+   the genesis parameters move. It used to spread them, and the moment the genesis changed to
+   3840x2160/128/128 this quietly started measuring a different thing and five checks failed. A test
+   pinned to an artefact has to be pinned to that artefact's numbers. */
+const TEST_GEOMETRY: BatteryGeometry = {
+  W: 16, H: 12, SPAN0: 4.0,
+  TX: Math.round(-1.423288564770 * S), TY: Math.round(0.127278891029 * S),
+  MX0: 6, K: 4, MXCAP: 32767,
+}
 
 /** Run one tick through the interpreter: in0 = the covenant, out0 = the next covenant (+ any extras). */
 function tick(
@@ -66,13 +76,18 @@ const withStaleCap = buildBatteryLock({ state: genesisState(staleCap), geometry:
 check('MXCAP 65,535 accounts for 1 byte', withStaleCap === t.lock + 1)
 check('the remaining byte is the stray OP_NOP', 1423 - withStaleCap === 1)
 
-// ── 2 · sizes at the GENESIS parameters (256×192, MAX_FEE 312) ──────────────────
+// ── 2 · sizes at the GENESIS parameters (3840×2160, MAX_FEE 314) ────────────────
 const s0 = genesisState()
 const g = tick(s0, 1_000_000, 1_000_000 - BATTERY_MAX_FEE)
-console.log(`\n  genesis params (256×192, fee ${BATTERY_MAX_FEE}) : lock ${g.lock} · unlock ${g.unlock}`)
-check('genesis lock is 1,425 B', g.lock === 1425)
-check('genesis unlock is 1,597 B', g.unlock === 1597)
-check('the 256×192 grid costs exactly 4 B over 16×12', g.lock - t.lock === 4)
+console.log(`\n  genesis params (${BATTERY_GEOMETRY.W}×${BATTERY_GEOMETRY.H}, fee ${BATTERY_MAX_FEE}) : ` +
+  `lock ${g.lock} · unlock ${g.unlock}`)
+check('genesis lock is 1,428 B', g.lock === 1428)
+check('genesis unlock is 1,600 B', g.unlock === 1600)
+/* 7 bytes over the 16×12 harness: 3840/2160 and their halves need 2-byte pushes where 16/12/8/6 fit
+   in one, MX0 128 and K 128 cross the single-signed-byte boundary, and MAX_FEE 314 is wider than 308.
+   Asserted because it must never move by accident — a byte here changes the tick size, and the tick
+   size is what sets the permanent fee. */
+check('the 3840×2160 grid costs exactly 7 B over 16×12', g.lock - t.lock === 7)
 check('genesis-parameter tick validates', g.ok)
 
 // the fee floor this whole parameter choice turns on
