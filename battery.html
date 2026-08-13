@@ -148,15 +148,47 @@
   .noskim .lic{margin-top:11px;padding-top:10px;border-top:1px solid rgba(120,170,255,.08);
                font-size:12.5px;color:var(--faint)}
 
-  /* the picture and the people who paid for it, side by side — the board is not a footnote */
-  .stage{display:grid;grid-template-columns:minmax(0,1fr) 336px;gap:18px;align-items:start;margin-bottom:14px}
-  @media(max-width:880px){.stage{grid-template-columns:1fr}}
-  .stage .shot{margin:0}
-  .stage .board{margin:0;border-top:0;padding-top:0;background:rgba(4,8,16,.5);
-                border:1px solid var(--line);border-radius:12px;padding:13px 14px}
-  .stage .board ol{max-height:330px;overflow:auto}
-  .stage .board li{grid-template-columns:20px 1fr auto;font-size:12.5px;padding:5px 0}
-  .stage .board .amt{font-size:12.5px}
+  /* ── THE BATTERY IS THE SUBJECT ───────────────────────────────────────────────────────────────────
+     The page argues that the battery is the product and the fractal is only one of two loads it could
+     drive — then buried the battery as a 44px bar four items below the picture. So: the load on the
+     left, the battery beside it at the same height, and the funders INSIDE the casing, because the
+     funders ARE the charge. The gap at the top is what has been burned, which is the same quantity as
+     the picture drawn — the two graphics are one fact seen from opposite ends.
+
+     Never stacks. A battery that drops below the thing it powers stops looking like a battery, so the
+     columns shrink instead — the same way a phone shows one. */
+  .stage{display:grid;grid-template-columns:minmax(0,1fr) clamp(104px,20vw,188px);
+         gap:clamp(10px,2.4vw,20px);align-items:stretch;margin-bottom:14px}
+  .stage .shot{margin:0;display:flex;flex-direction:column}
+  .stage .shot canvas{flex:1;min-height:0;object-fit:contain}
+
+  /* the casing */
+  .cell-stack{display:flex;flex-direction:column;align-items:center;min-width:0}
+  .batt-nub-top{width:34%;height:clamp(7px,1.4vw,11px);border-radius:4px 4px 0 0;
+                background:rgba(120,170,255,.5);flex:none}
+  .batt-case{flex:1;width:100%;min-height:0;position:relative;overflow:hidden;
+             border:2px solid rgba(120,170,255,.45);border-radius:9px;background:rgba(4,8,16,.72);
+             display:flex;flex-direction:column;justify-content:flex-end}
+  /* burned headroom — this gap is the picture that has been drawn */
+  .batt-burn{flex:none;display:flex;align-items:flex-start;justify-content:center;
+             background:repeating-linear-gradient(135deg,rgba(120,170,255,.05) 0 6px,transparent 6px 12px)}
+  .batt-burn span{font-size:9.5px;color:var(--faint);letter-spacing:.04em;padding-top:3px;text-align:center;
+                  line-height:1.25}
+  /* one band per funder — they are the charge */
+  .fund{flex:none;min-height:0;position:relative;display:flex;flex-direction:column;justify-content:center;
+        padding:2px 5px;overflow:hidden;border-top:1px solid rgba(4,8,16,.55);
+        background:linear-gradient(180deg,var(--lime),#8fd42a);color:#08130a}
+  .fund:nth-child(even){background:linear-gradient(180deg,#a9f234,#7fc521)}
+  .fund b{font:800 11px/1.1 system-ui;font-variant-numeric:tabular-nums;display:block}
+  .fund i{font:600 9.5px/1.15 system-ui;font-style:normal;opacity:.78;display:block;
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fund.tiny b{font-size:9.5px} .fund.tiny i{display:none}
+  .batt-seed{flex:none;background:linear-gradient(180deg,#4a7fb5,#31577d);color:#eaf4ff}
+  .batt-seed b{color:#eaf4ff}
+  .batt-empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--faint);
+              font-size:11px;text-align:center;padding:8px}
+  .batt-cap{font-size:10.5px;color:var(--faint);text-align:center;margin-top:5px;line-height:1.35}
+  .batt-cap b{color:var(--dim);font-variant-numeric:tabular-nums}
 
   /* ── the board: top 21 contributions, ranked by amount ── */
   .board{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
@@ -248,14 +280,14 @@
         <span id="lv-scan" style="margin-left:auto"></span>
       </div>
     </div>
-    <div class="board" id="lv-board">
-      <div class="stat" style="padding-bottom:6px">
-        <span>top 21 funders</span>
-        <b id="lv-count"></b>
+    <!-- THE BATTERY. The funders are the charge, so they live inside the casing; the gap above them is
+         what has been burned, which is the same quantity as the picture drawn on the left. -->
+    <div class="cell-stack" id="lv-batt-stack">
+      <div class="batt-nub-top"></div>
+      <div class="batt-case" id="lv-case">
+        <div class="batt-empty" id="lv-case-empty">reading the chain…</div>
       </div>
-      <ol id="lv-list"><li class="empty">reading the chain…</li></ol>
-      <p class="note" style="font-size:11.5px;margin-top:9px">Ranked by amount, not by time — visibility has an ongoing price, so the list needs no moderator. Marks are plain text and are <b>never linked</b>.</p>
-
+      <div class="batt-cap" id="lv-cap"></div>
     </div>
     </div>
 
@@ -267,16 +299,6 @@
       <div class="cell"><span>frame</span><b id="lv-level">—</b></div>
     </div>
 
-    <!-- the fuel meter. Fill = how much of the REMAINING work in this frame the pot can actually pay
-         for, totalled exactly while the picture is drawn. An empty battery is honest, not a failure. -->
-    <div class="batt">
-      <div class="batt-body" id="lv-batt">
-        <i class="batt-fill" id="lv-bar"></i>
-        <div class="batt-cells"></div>
-        <div class="batt-txt"><span id="lv-battn">—</span><small id="lv-batts"></small></div>
-      </div>
-      <div class="batt-nub"></div>
-    </div>
     <div class="stat"><span id="lv-prog">—</span><b id="lv-raised"></b></div>
     <!-- The page checks the chain ITSELF rather than believing battery.php — including ours. -->
     <div class="stat"><span id="lv-spv" style="color:var(--faint)">checking the chain…</span></div>
@@ -587,15 +609,14 @@
        pot has no notion of "full" (anyone may top it up without limit). A nearly-flat battery next to a
        barely-started picture is exactly the true state of things, and it is the whole point of the demo:
        a program you can watch run out of power is more legible as a machine than one that never stops. */
+    /* The old horizontal meter measured fuel against the work LEFT IN THIS FRAME. The casing now shows
+       fuel against what has been PUT IN, which is what lets the funders be the bands — so the frame
+       reading survives as a sentence rather than a second battery competing with the first. */
     var need=frameLeft||1;
     var frac=Math.min(1, (d.ticksLeft||0)/need);
-    $('lv-bar').style.width=(frac*100).toFixed(2)+'%';
-    $('lv-battn').textContent=fmt(d.ticksLeft)+' ticks';
-    $('lv-batts').textContent=frac>=1 ? 'this frame is fully funded'
-      : (frac*100).toFixed(frac<0.01?2:1)+'% of what frame '+(d.level||1)+' still needs';
-    $('lv-batt').className='batt-body'+(frac<0.25?' low':'');
-    $('lv-prog').textContent='frame '+(d.level||1)+' is '+((d.progress||0)*100).toFixed(4)+'% drawn · '+
-      fmt(frameCost)+' ticks for the whole frame';
+    $('lv-prog').innerHTML='frame '+(d.level||1)+' is '+((d.progress||0)*100).toFixed(4)+'% drawn · '+
+      fmt(frameCost)+' ticks for the whole frame · the fuel covers <b>'+
+      (frac>=1 ? 'all of what is left' : (frac*100).toFixed(frac<0.01?2:1)+'%')+'</b> of it';
     $('lv-raised').textContent=d.raised?('+'+fmt(d.raised)+' sat contributed'):'';
     $('lv-leftcell').className='cell'+(d.ticksLeft<50?' flat':'');
     $('lv-when').textContent=d.ticksLeft>0
@@ -607,18 +628,7 @@
       var at=$('lv-anytick'); if(at) at.href=u;      // "open any tick" → the tip as it stands right now
     }
 
-    var ol=$('lv-list');
-    if(!d.board||!d.board.length){
-      ol.innerHTML='<li class="empty">No contributions yet. The first mark on this board is still unwritten.</li>';
-      $('lv-count').textContent='';
-      return;
-    }
-    $('lv-count').textContent=d.board.length+' of 21';
-    ol.innerHTML=d.board.map(function(b){
-      /* marks are user bytes on a public chain: escaped, shown as TEXT, never turned into a link */
-      return '<li><span class="mk">'+(esc(b.mark)||'<i style="color:var(--faint)">(no mark)</i>')+'</span>'+
-             '<span class="amt">'+fmt(b.sats)+' sat</span></li>';
-    }).join('');
+    paintBattery(d);
   }
 
   /* ── export ───────────────────────────────────────────────────────────────────────────────────────
@@ -914,6 +924,63 @@
       el.style.color='var(--faint)';
       el.textContent='could not verify right now'+(err&&err.message?' ('+err.message+')':'');
     }).then(function(){ verifying=false });
+  }
+
+  /* ── FILL THE BATTERY WITH ITS FUNDERS ────────────────────────────────────────────────────────────
+     CAPACITY is the sum of the TOP 21 CONTRIBUTIONS, and the level is unspent fuel against that. So the
+     casing is exactly the funders shown inside it: the bands add up to the whole battery, and the gap
+     above them is what has been burned into the picture.
+
+     The genesis fuel is deliberately NOT counted. It is the seed, not a contribution, and nobody
+     charged the battery with it — which means fuel can briefly exceed capacity while little has been
+     spent. That reads as 100% rather than 103%, and the caption gives the real numbers regardless. */
+  function batteryCapacity(d){
+    return (d.board || []).reduce(function(a, b){ return a + (b.sats || 0) }, 0);
+  }
+
+  function paintBattery(d){
+    var box=$('lv-case'); if(!box) return;
+    var cap=batteryCapacity(d), fuel=d.fuel||0;
+    var board=(d.board||[]).slice();                    // already sorted by amount, capped at 21
+    var raised=d.raised||0;
+    var burned=Math.max(0, cap-fuel);                   // 0 while the seed still covers what was spent
+
+    if(!board.length && !raised){
+      box.innerHTML='<div class="batt-empty">Nobody has charged it yet.<br>'+
+        '<span style="color:var(--dim)">The first band in this battery is unclaimed.</span></div>';
+      $('lv-cap').innerHTML='';
+      return;
+    }
+
+    /* Bands are proportional to contribution, but a floor keeps a small funder VISIBLE rather than a
+       hairline — a board nobody can read is not a board. Where the floor applies the band is no longer
+       strictly to scale, and the caption says so instead of pretending. */
+    var burnPct=Math.max(0, Math.min(60, burned/cap*100));
+    var avail=100-burnPct, MINPC=4.2;
+    var parts=board.map(function(b){ return { sats:b.sats, mark:b.mark, pc:(b.sats/cap)*100 } });
+    var scaled=false;
+    parts.forEach(function(p){ if(p.pc<MINPC){ p.pc=MINPC; scaled=true } });
+    var tot=parts.reduce(function(a,p){return a+p.pc},0);
+    if(tot>0) parts.forEach(function(p){ p.pc=p.pc/tot*avail });
+
+    var html='';
+    if(burnPct>0.6) html+='<div class="batt-burn" style="height:'+burnPct.toFixed(2)+'%">'+
+      '<span>'+fmt(burned)+' sat burned<br>into the picture</span></div>';
+    else if(burned>0) html+='<div class="batt-burn" style="height:'+Math.max(2,burnPct).toFixed(2)+'%"></div>';
+
+    html+=parts.map(function(p){
+      var tiny=p.pc<6.5;
+      return '<div class="fund'+(p.seed?' batt-seed':'')+(tiny?' tiny':'')+'" style="height:'+p.pc.toFixed(2)+'%" '+
+             'title="'+esc(p.mark||'(no mark)')+' — '+fmt(p.sats)+' sat">'+
+             '<b>'+fmt(p.sats)+'</b>'+(tiny?'':'<i>'+esc(p.mark||'(no mark)')+'</i>')+'</div>';
+    }).join('');
+    box.innerHTML=html;
+
+    var pct=cap>0 ? Math.min(100, fuel/cap*100) : 0;
+    $('lv-cap').innerHTML='<b>'+pct.toFixed(pct>99.5?1:0)+'%</b> charged<br>'+
+      '<b>'+fmt(fuel)+'</b> unspent of <b>'+fmt(cap)+'</b> given<br>'+
+      fmt(d.ticksLeft)+' ticks left · '+board.length+' funder'+(board.length===1?'':'s')+
+      (scaled?'<br><span style="opacity:.75">small bands enlarged to stay readable</span>':'');
   }
 
   function load(sync){
