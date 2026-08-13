@@ -479,6 +479,15 @@
       <label>span <span class="val" id="vS">4.00</span></label>
       <input type="range" id="Sp" min="0.2" max="6.0" step="0.02" value="4.0">
 
+      <label>colour ramp <span class="val" style="color:var(--faint);font-weight:400">display only — not on chain</span></label>
+      <select id="RAMP" style="width:100%;background:#0e1626;color:var(--ink);border:1px solid var(--line);
+              border-radius:7px;padding:7px 9px;font:inherit;font-size:12.5px">
+        <option value="cyc16">cyclic · 16 band — shows filaments</option>
+        <option value="cyc8">cyclic · 8 band</option>
+        <option value="log">log-normalised</option>
+        <option value="lin" selected>escape ÷ mx — what the chain page draws today</option>
+      </select>
+
       <label style="margin-top:16px">what happens at the end of a pass</label>
       <div class="row" style="margin-top:4px">
         <button id="mRef" class="ghost" style="flex:1;padding:8px 10px;font-size:12.5px">refine</button>
@@ -1448,13 +1457,37 @@
           var n=origin(step, cx, cy); cr=n.cr0; ci=n.ci0; passEnd=true;
         }
       }
-      return { cr:cr, ci:ci, zr:0, zi:0, i:0, step:step, mx:mx, cx:cx, cy:cy, done:true, escapedAt:s.i, passEnd:passEnd };
+      return { cr:cr, ci:ci, zr:0, zi:0, i:0, step:step, mx:mx, cx:cx, cy:cy, done:true, escapedAt:s.i,
+               escMag:mag, passEnd:passEnd };
     }
     return { cr:s.cr, ci:s.ci, zr:zr2-zi2+s.cr, zi:Math.trunc(2*s.zr*s.zi/S)+s.ci, i:s.i+1, step:s.step, mx:s.mx, cx:s.cx, cy:s.cy, done:false };
   }
-  function colour(n){                              // escape count → ink
-    if(n>=(st?st.mx:cfg.maxIter)) return [6,9,16];
-    var t=n/(st?st.mx:cfg.maxIter), r=Math.round(255*Math.min(1,t*2.1)), g=Math.round(190*Math.pow(t,1.5)), b=Math.round(90+165*Math.pow(1-t,1.7));
+  /* HOW A PIXEL IS INKED — a display choice, and nothing else. The iteration counts are the
+     covenant's and are untouched by everything here.
+
+     Two things were being confused. SMOOTH shading uses |z| at the moment of escape to place a pixel
+     continuously between one integer count and the next, so a small mx stops posterising. The RAMP is
+     how a value becomes a colour, and the default one divides by mx — which ties the palette to the
+     iteration budget, so raising mx washes the picture out and the filaments fade to flat ground even
+     though not one iteration count has changed. A cyclic ramp does not reference mx at all, so the
+     same data looks the same however big the budget is. */
+  var RAMPS={
+    lin:  function(v,mx){ return v/mx },
+    log:  function(v,mx){ return Math.log(1+v)/Math.log(1+mx) },
+    cyc16:function(v){ return (v%16)/16 },
+    cyc8: function(v){ return (v%8)/8 }
+  };
+  function colour(n, magScaled){                   // escape count (+ |z|² at escape) → ink
+    var mx=(st?st.mx:cfg.maxIter);
+    if(n>=mx) return [6,9,16];
+    var v=n;
+    if(magScaled){
+      var m=Math.sqrt(magScaled/S);
+      if(m>1.0000001){ var q=n-Math.log(Math.log(m))/Math.LN2; if(isFinite(q)) v=q }
+    }
+    var f=RAMPS[$('RAMP').value]||RAMPS.lin;
+    var t=Math.max(0,Math.min(1,f(v,mx)));
+    var r=Math.round(255*Math.min(1,t*2.1)), g=Math.round(190*Math.pow(t,1.5)), b=Math.round(90+165*Math.pow(1-t,1.7));
     return [r,g,b];
   }
   /* stopAtFrame: return the instant a full frame's worth of pixels is on screen. The boundary has to
@@ -1471,11 +1504,21 @@
            A renderer reading the chain has only the state to go on, so read the state here too. */
         var g=origin(st.step, st.cx, st.cy);
         var x=Math.round((st.cr-g.cr0)/st.step), y=Math.round((st.ci-g.ci0)/st.step);
-        if(x>=0 && x<cfg.W && y>=0 && y<cfg.H){ var c=colour(nx.escapedAt+1), o=(y*cfg.W+x)*4;
+        if(x>=0 && x<cfg.W && y>=0 && y<cfg.H){ var c=colour(nx.escapedAt+1, nx.escMag), o=(y*cfg.W+x)*4;
           img.data[o]=c[0]; img.data[o+1]=c[1]; img.data[o+2]=c[2]; img.data[o+3]=255; }
         pixels++;
         if(nx.passEnd){                                  // a level finished
-          level++; if(cfg.mode==='zoom'){ frames.push(cv.toDataURL('image/png')); clearFrame(); }
+          level++;
+          if(cfg.mode==='zoom'){
+            /* FLUSH BEFORE CAPTURING. toDataURL reads the CANVAS, but the pixels drawn during this
+               pass are still in the `img` buffer — the canvas only receives them via putImageData
+               after the loop. Capture without flushing and you save whatever was on the canvas when
+               the last chunk ended: with small chunks a nearly-complete frame, with large ones a
+               blank one. That made captured frames quietly depend on the speed dial. */
+            ctx.putImageData(img,0,0);
+            frames.push(cv.toDataURL('image/png'));
+            clearFrame();
+          }
           pixels=0; $('play').disabled = frames.length<2; paintStats();
         }
       }
@@ -1548,7 +1591,19 @@
     $('frame').textContent='❚❚ stop';
     (function chunk(){
       advance(250000, true);                   // returns early the moment the frame closes
-      if(level>from || fuel<FEE || !st){ frameStop(); return }
+      if(level>from || fuel<FEE || !st){
+        frameStop();
+        /* Show the frame that was just finished. A pass end captures the frame and then CLEARS the
+           buffer for the next level, so stopping here would leave a blank canvas — the one thing this
+           button exists to prevent. Blit the captured frame back so it can be looked at, compared and
+           downloaded. */
+        if(level>from && frames.length){
+          var im=new Image();
+          im.onload=function(){ ctx.clearRect(0,0,cv.width,cv.height); ctx.drawImage(im,0,0,cv.width,cv.height) };
+          im.src=frames[frames.length-1];
+        }
+        return;
+      }
       $('frame').textContent='❚❚ stop · '+Math.round(pixels/(cfg.W*cfg.H)*100)+'%';
       frTimer=requestAnimationFrame(chunk);
     })();
@@ -1562,6 +1617,9 @@
   $('Fps').addEventListener('input',function(){ $('vFps').textContent=this.value;
     if(pl){ playStop(); $('play').click(); } });
   $('L').addEventListener('input',function(){ $('vL').textContent=this.value; stop(); reset(); });
+  /* The ramp only inks pixels as they are drawn, so switching it has to restart the frame — otherwise
+     you get half the picture in one palette and half in the other, which is worse than either. */
+  $('RAMP').addEventListener('change',function(){ stop(); frameStop(); reset(); });
   ['ZX','ZY','K'].forEach(function(id){ $(id).addEventListener('input',function(){ if(id!=='K') exact=null;
     $('v'+id).textContent=(id==='K'?$(id).value:(+$(id).value).toFixed(4)); stop(); reset(); }); });
   /* THE LOOP. The period-3 island at -1.7548776 is the largest minibrot and the shallowest to reach:
