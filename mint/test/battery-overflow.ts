@@ -19,7 +19,7 @@
 //      the low bits of a product that is not exactly representable, so it is checked here against exact
 //      BigInt arithmetic rather than assumed.
 import {
-  genesisState, refState, fixedField, buildBatteryLock, mulShift,
+  genesisState, refState, fixedField, buildBatteryLock, mulShift, BATTERY_GEOMETRY,
   FIELDS, FIELD_WIDTHS, S, ESCAPE, step0,
   type BatteryState, type BatteryGeometry,
 } from '../src/battery.ts'
@@ -59,10 +59,14 @@ const BASE = {
 // 4:3 and 16:9 both — nothing in the script requires an aspect, so both are candidates, and a result
 // proved at 4:3 says nothing about 16:9 on its own.
 const GRIDS: Array<[number, number]> = [
+  [BATTERY_GEOMETRY.W, BATTERY_GEOMETRY.H],                 // ← THE ONE BEING MINTED, first
   [256, 192], [1024, 768], [2048, 1536], [4096, 3072],      // 4:3
-  [1280, 720], [1920, 1080], [2560, 1440], [3840, 2160],    // 16:9
+  [1280, 720], [1920, 1080], [2560, 1440],                  // 16:9
 ]
-const MX0 = 128, K = 16, LEVELS = 21
+/* THE ACTUAL GENESIS PARAMETERS. This ran at K = 16 while the genesis moved to K = 128, so level 21
+   reached maxIter 448 here and 2,688 in reality — the test was proving the wrong covenant safe. Taken
+   from BATTERY_GEOMETRY now, so it cannot drift from what is being minted. */
+const MX0 = BATTERY_GEOMETRY.MX0, K = BATTERY_GEOMETRY.K, LEVELS = 21
 
 /** Geometry of level L: step halves, the centre quarters its residual toward the target. */
 function levelGeom(g: BatteryGeometry, L: number): { step: number; cx: number; cy: number; mx: number } {

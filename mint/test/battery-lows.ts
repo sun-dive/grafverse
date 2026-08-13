@@ -43,17 +43,24 @@ const genesis = await buildBatteryGenesisTx({
 })
 let raw: BatteryUtxo = { sourceTransaction: genesis, outputIndex: 0, state: genesisState(), value: FUEL }
 let high = 0, low = 0, defaultFees: number[] = []
+const versions: number[] = [genesis.version]
 for (let n = 0; n < 24; n++) {
   const t = await buildBatteryTickTx({ battery: raw })        // no lowS → Chronicle as intended
   derivedSigIsLowS(preimageOf(t)) ? low++ : high++
   defaultFees.push(raw.value - (t.outputs[0].satoshis ?? 0))
-  check_version(t.version)
+  versions.push(t.version)
   raw = nextBatteryUtxo(t, raw)
 }
-function check_version(v: number): void { if (v <= 1) throw new Error('tick must be version > 1 to opt into Chronicle') }
 console.log(`  default build: ${low} low-S · ${high} high-S out of 24  (ARC would refuse ${high}; the chain does not)`)
 check('the default does NOT grind — high-S ticks are emitted', high > 0)
-check('every tick is version > 1 (the Chronicle opt-in)', true)
+/* THE CHRONICLE OPT-IN, asserted rather than thrown. Chronicle withdrew LOW_S, minimal-encoding,
+   NULLFAIL, MINIMALIF and clean-stack for transactions with version > 1, so a high-S covenant spend
+   is protocol-correct at version 2 — proven on mainnet: tick 1 of the rehearsal was high-S, ARC
+   refused it, and a miner put it in block 961,975 regardless.
+   This used to call a helper that THREW on a bad version, which aborts the run instead of reporting
+   a failure, and it never looked at the genesis at all. Both are covered now. */
+check('genesis and every tick are version 2 — the Chronicle opt-in', versions.every(v => v === 2))
+check('...and none fell back to version 1', versions.includes(1), false)
 check('the default never overpays to satisfy ARC', defaultFees.every(f => f === defaultFees[0]))
 console.log(`  every default tick pays the same ${defaultFees[0]} sat — no grind premium`)
 
@@ -69,7 +76,9 @@ for (let n = 0; n < 24; n++) {
 }
 check('every ground tick is LOW_S — ARC will relay all of them', allLow)
 check('every fee stays within MAX_FEE', fees.every(f => f <= BATTERY_MAX_FEE))
-check('the grind never overpays beyond the band', fees.every(f => f >= 309 && f <= BATTERY_MAX_FEE))
+/* 310 is what the 3,092-byte tick needs at the official 100 sat/KB. 309 was the old grid's figure and
+   would no longer catch a tick that underpaid the floor. */
+check('the grind never overpays beyond the band', fees.every(f => f >= 310 && f <= BATTERY_MAX_FEE))
 console.log(`  fees used     : ${[...new Set(fees)].sort((a, b) => a - b).join(', ')} sat (cap ${BATTERY_MAX_FEE})`)
 console.log(`  lockTimes used: ${[...new Set(locks)].sort((a, b) => a - b).join(', ')}`)
 const extra = fees.reduce((n, f) => n + f - 309, 0)
