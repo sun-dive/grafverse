@@ -187,15 +187,29 @@ async function genesis(): Promise<void> {
   if (!pick) { console.error(`No UTXO ≥ ${fuel + 1000} sat at ${addr} — send a little BSV there first.`); process.exit(1) }
   console.log('funding utxo     :', `${pick.tx_hash}:${pick.tx_pos} (${pick.value} sat)`)
 
+  /* The opening mark. The genesis OP_RETURN is LAYOUT|MARK — the spec a rebuilder needs, then the
+     first thing the battery says. Without --mark it carries the layout alone, which is correct but
+     silent; there is exactly one genesis and no way to add a word to it afterwards. */
+  const mark = arg('--mark')
+  const opReturn = mark ? `${BATTERY_STATE_LAYOUT}|${mark}` : BATTERY_STATE_LAYOUT
+  const marklen = Buffer.byteLength(opReturn, 'utf8')
+  if (marklen > 220) {
+    console.error(`the OP_RETURN would be ${marklen} bytes; the limit is 220. Shorten the mark.`)
+    process.exit(1)
+  }
+
   const src = Transaction.fromHex(await getText(`/tx/${pick.tx_hash}/hex`))
-  const tx = await buildBatteryGenesisTx({ key, funder: { sourceTransaction: src, outputIndex: pick.tx_pos }, fuelSats: fuel })
+  const tx = await buildBatteryGenesisTx({
+    key, funder: { sourceTransaction: src, outputIndex: pick.tx_pos }, fuelSats: fuel, mark: opReturn,
+  })
   const raw = tx.toHex(), txid = tx.id('hex')
 
   console.log('\n── GENESIS · built + signed LOCALLY ──')
   console.log('grid     :', `${BATTERY_GEOMETRY.W}×${BATTERY_GEOMETRY.H}`, '· MAX_FEE', BATTERY_MAX_FEE, '· fixed point 2^32')
   console.log('txid     :', txid)
   console.log('fuel     :', tx.outputs[0].satoshis, `sat  (≈ ${ticksRemaining(fuel)} ticks)`)
-  console.log('layout   :', BATTERY_STATE_LAYOUT.slice(0, 60) + '…')
+  console.log('op_return:', marklen, 'bytes of 220')
+  console.log('           ', opReturn)
   console.log('change   :', tx.outputs[tx.outputs.length - 1].satoshis, 'sat →', addr)
   console.log('size     :', raw.length / 2, 'bytes\n')
 
@@ -378,7 +392,7 @@ async function main(): Promise<void> {
   if (has('--status')) return await status()
   console.log('usage:')
   console.log('  --selftest                                       no key, no network')
-  console.log('  --genesis --fuel <sat> [--broadcast]             BATTERY_WIF · once, permanent')
+  console.log('  --genesis --fuel <sat> [--mark "…"] [--broadcast] BATTERY_WIF · once, permanent')
   console.log('  --topup <sat> [--mark "…"] [--broadcast]         BATTERY_WIF · signed, adds fuel + a board mark')
   console.log('  --resync --tip <txid>                            re-derive the record from the chain')
   console.log('  --tick <n> [--broadcast]                         NO KEY — the autonomous half')
