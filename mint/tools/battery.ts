@@ -222,7 +222,8 @@ async function genesis(): Promise<void> {
   saveState({ genesisTxid: txid, tipTxid: txid, ticks: 0, fuel,
               geometry: BATTERY_GEOMETRY, maxFee: BATTERY_MAX_FEE })
   console.log(`\n🔋 The battery is on-chain. State recorded in ${STATE_FILE}`)
-  console.log(`   Advance it with:  node tools/battery.mjs --tick 20 --broadcast   (no key needed)`)
+  console.log(`   Advance it with:  node --experimental-strip-types tools/battery.ts --tick 20 --broadcast`)
+    console.log('   (no key needed — that is the point)')
 }
 
 /**

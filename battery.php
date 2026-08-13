@@ -31,7 +31,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') { http_response_code(20
 
 // ── config ─────────────────────────────────────────────────────────────────
 // The canonical battery. A second genesis with identical parameters is a different, irrelevant chain.
-$GENESIS_TXID = 'd9a55ddb6c52bc51425f3c9e1416033179899e76abd634deda4510eed3790146';
+/* THE BITCOIN BATTERY v1, minted 2026-08-13. Replaces d9a55ddb6c52bc51…,
+   which was built at 256x192 with MX0 6 and drew a blob rather than a Mandelbrot. That number is in
+   the covenant and there is no key to amend it, so it was rebuilt rather than patched. The old one
+   still runs — nothing can stop it — and is being drained to flat.
+   ⚠ BAT_W / BAT_H BELOW BELONG TO THIS TXID. They move together, or the page misreads the chain:
+   the grid is a script constant, not part of the state, so nothing on chain will correct a wrong one. */
+$GENESIS_TXID = '18e3193687078c40ee9a069a419d00f7b2a9c4374fe66e8d2b8a59d424711edd';
 $BATTERY_VOUT = 0;                  // the covenant is always output 0
 $BOARD        = 21;                 // top 21 CONTRIBUTIONS (not contributors) — visibility has a price
 $HOPS         = 12;                 // recent hops handed to the page to verify for itself (BRC-113)
@@ -336,6 +342,12 @@ function backfill_hops(&$c) {
 if (php_sapi_name() === 'cli' && empty($GLOBALS['BATTERY_RUN'])) return;   // CLI include → expose parsers for tests
 
 $c = load_cache();
+/* A CACHE BELONGS TO ONE BATTERY. The file records the genesis it was built from, and nothing else
+   checks it — so deploying a new $GENESIS_TXID over a warm cache would serve the OLD battery's tip,
+   board and picture indefinitely, with no error anywhere. The only remedy would be deleting a file on
+   the server by hand, which is exactly the kind of step that gets forgotten and produces a page that
+   is confidently wrong. Discard and rebuild instead. */
+if ($c && ($c['genesis'] ?? '') !== $GENESIS_TXID) $c = null;
 if (!$c) { $c = init_cache(); if ($c) save_cache($c); }
 if (!$c) { echo json_encode(['error' => 'battery not reachable', 'genesis' => $GENESIS_TXID]); exit; }
 
