@@ -100,7 +100,7 @@ function battery_panel($state, $path) {
          or a share preview shows something the page does not draw. Smooth escape time, then a CYCLIC
          ramp with no reference to mx: escape ÷ mx tied the palette to the iteration budget and faded
          the filaments to flat ground as mx rose, even though the counts were unchanged. */
-      if ($inside) { $r = 8; $g = 12; $b = 22; }
+      if ($inside) { $r = 6; $g = 9; $b = 16; }
       else {
         $v = (float) $i;
         if ($emag > 0) {
@@ -110,10 +110,11 @@ function battery_panel($state, $path) {
             if (is_finite($q)) $v = $q;
           }
         }
-        $t = fmod($v, 16.0) / 16.0;                  // BAND = 16, as in battery.html
+        $t = fmod($v, 32.0) / 32.0;                  // BAND = 32, as in battery.html
         $t = max(0.0, min(1.0, $t));
-        if ($t < 0.5) { $u = $t / 0.5; $r = 180 + 75 * $u; $g = 255 - 93 * $u; $b = 58 - 12 * $u; }
-        else          { $w = ($t - 0.5) / 0.5; $r = 255; $g = 162 - 85 * $w; $b = 46 + 111 * $w; }
+        $r = 255 * min(1.0, $t * 2.1);
+        $g = 190 * pow($t, 1.5);
+        $b = 90 + 165 * pow(1 - $t, 1.7);
       }
       if ($p >= $done) {                             // not yet paid for
         $a = 0.42;

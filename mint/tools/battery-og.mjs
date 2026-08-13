@@ -70,16 +70,17 @@ export function renderPanel(state) {
     const inside = i >= mx
     let r, g, b
     // MUST MATCH batteryInk() in battery.html and battery_panel() in battery-og.php.
-    if (inside) { r = 8; g = 12; b = 22 }
+    if (inside) { r = 6; g = 9; b = 16 }
     else {
       let v = i
       if (emag > 0) {
         const m = Math.sqrt(emag / S)
         if (m > 1.0000001) { const q = i + 1 - Math.log(Math.log(m)) / Math.LN2; if (isFinite(q)) v = q }
       }
-      const t = Math.max(0, Math.min(1, (v % 16) / 16))    // BAND = 16, as in battery.html
-      if (t < 0.5) { const u = t / 0.5; r = 180 + 75 * u; g = 255 - 93 * u; b = 58 - 12 * u }
-      else { const w = (t - 0.5) / 0.5; r = 255; g = 162 - 85 * w; b = 46 + 111 * w }
+      const t = Math.max(0, Math.min(1, (v % 32) / 32))    // BAND = 32, clamped as in battery.html
+      r = 255 * Math.min(1, t * 2.1)
+      g = 190 * Math.pow(t, 1.5)
+      b = 90 + 165 * Math.pow(1 - t, 1.7)
     }
     if (p >= done) {                              // the ghost: what the chain has not yet paid for
       const a = 0.42

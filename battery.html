@@ -492,8 +492,8 @@
       <label>colour ramp <span class="val" style="color:var(--faint);font-weight:400">display only — not on chain</span></label>
       <select id="RAMP" style="width:100%;background:#0e1626;color:var(--ink);border:1px solid var(--line);
               border-radius:7px;padding:7px 9px;font:inherit;font-size:12.5px">
-        <option value="cyc16" selected>cyclic · 16 band — the canonical rendering</option>
-        <option value="cyc32">cyclic · 32 band — wider bands</option>
+        <option value="cyc32" selected>cyclic · 32 band — the canonical rendering</option>
+        <option value="cyc16">cyclic · 16 band — tighter cycles</option>
         <option value="cyc8">cyclic · 8 band — tighter bands</option>
         <option value="log">log-normalised</option>
         <option value="lin">escape ÷ mx — the old ramp, tied to the budget</option>
@@ -635,17 +635,27 @@
      budget. That is the property that matters here: it decouples how the picture LOOKS from a
      constant that is welded into the covenant forever. Raising MX0 can now only add detail; it can
      no longer wash the picture out. */
-  var BAND = 16;                                         // escape counts per colour cycle
+  /* BAND 32 and the blue→pink→orange ramp: the settings the parameters were actually chosen under,
+     rather than the site's lime/magenta. Both are pure display — nothing about colour exists anywhere
+     in the covenant, so this can change forever, by anyone, at no cost. What must NOT differ is the
+     four copies of it, or "the picture is recomputable from the tip" stops being true. */
+  var BAND = 32;                                         // escape counts per colour cycle
   function batteryInk(i, mx, escMagScaled){
-    if(i>=mx) return [8,12,22];                          // interior
+    if(i>=mx) return [6,9,16];                           // interior
     var v=i;
     if(escMagScaled>0){
       var m=Math.sqrt(escMagScaled/CS);
       if(m>1.0000001){ var q=i+1-Math.log(Math.log(m))/Math.LN2; if(isFinite(q)) v=q }
     }
-    var t=(v%BAND)/BAND;                                 // no mx anywhere in this line, on purpose
-    if(t<0.5){ var u=t/0.5; return [180+75*u, 255-93*u, 58-12*u] }
-    var w=(t-0.5)/0.5; return [255, 162-85*w, 46+111*w];
+    /* CLAMPED. v is i+1-log2(log|z|), which goes NEGATIVE if |z| at escape ever exceeds e^(2^(i+1)).
+       In practice it cannot — an unescaped |z| ≤ 2 gives at most |z|² + |c| ≈ 6.3 on the next step —
+       but a negative t here yields a negative red and Math.pow(negative, 1.5) = NaN for green, and
+       "it cannot happen" is exactly the reasoning that hid the precision bug. It also makes the four
+       renderers provably identical: the PHP copy already clamped and these did not. */
+    var t=Math.max(0, Math.min(1, (v%BAND)/BAND));       // no mx in this line, on purpose
+    return [ 255*Math.min(1, t*2.1),
+             190*Math.pow(t, 1.5),
+             90 + 165*Math.pow(1-t, 1.7) ];
   }
   window.batteryInk=batteryInk;
   var frameCost=0, frameLeft=0;                // iteration totals, accumulated while drawing
@@ -1616,7 +1626,7 @@
       if(m>1.0000001){ var q=n-Math.log(Math.log(m))/Math.LN2; if(isFinite(q)) v=q }
     }
     var f=RAMPS[$('RAMP').value]||RAMPS.lin;
-    var t=Math.max(0,Math.min(1,f(v,mx)));
+    var t=Math.max(0,Math.min(1,f(v,mx)));               // clamped, as batteryInk is
     var r=Math.round(255*Math.min(1,t*2.1)), g=Math.round(190*Math.pow(t,1.5)), b=Math.round(90+165*Math.pow(1-t,1.7));
     return [r,g,b];
   }
