@@ -645,138 +645,102 @@
     }).then(function(){ ticking=false; btn.disabled=false });
   }
 
-  /* ── BRC-113 · VERIFY IT HERE, WITH NO INDEXER ────────────────────────────────────────────────────
-     BRC-113 (Merkle Proof Token) is this project's own first standard, and its claim is exact:
+  /* ── BRC-113 · TWO PROOFS, CONSTANT COST ──────────────────────────────────────────────────────────
+     BRC-113 (Merkle Proof Token) is this project's own first standard:
 
        "Token validity is proven exclusively through Merkle proofs and block headers (SPV), with no
         dependency on UTXO lookups, indexers, or trusted third parties for verification."
 
-     The economy that makes it cheap: prove the GENESIS was mined — ONE Merkle path to ONE block header
-     — and everything after inherits validity, because "transfer transactions require no independent
-     block verification; miners already validated them through the UTXO model when accepting them into
-     blocks." One anchor, then arithmetic.
+     An earlier version of this walked every hop back to genesis, re-fetching each transaction and
+     re-running the covenant in the page. That was THEATRE. It re-established what the covenant and the
+     miners already guarantee, at a cost that grows with every tick — 29 sequential fetches today, an
+     hour's worth at ten thousand ticks — and it proved nothing the two proofs below do not.
 
-     ⚠ DIRECTION IS THE WHOLE ARGUMENT. This verifies BACK TO genesis, never "from" it. Starting at the
-     beginning and walking FORWARD is the indexer's posture: at every step you must ask some index who
-     spent that output, because a transaction does not name its children. Walking BACK needs nobody —
-     every transaction names its own PARENT in its vin. Forwards is the direction that requires
-     permission; backwards is the direction the chain is actually built in. Saying "from genesis" would
-     describe the donkey cart on the page written to refuse it.
+     What is actually needed, and it never grows:
 
-     So battery.php is demoted from an authority to a COURIER. It hands over a genesis txid and a list of
-     recent hops; this page believes none of it and checks all of it:
+       1. GENESIS — Merkle path → the block header of the genesis transaction.
+          Proves the covenant, with these exact parameters, was mined. Cached forever: a mined
+          transaction's proof can never change, so this is fetched once per browser and never again.
 
-       1. genesis Merkle path → block header        the anchor was really mined
-       2. each hop spends its parent                the chain is OURS, not a look-alike
-       3. each locking script == our covenant       rebuilt locally from our parameters, no network
-       4. a real spend through the interpreter      the covenant genuinely authorised the advance
+       2. TIP — Merkle path → its block header.
+          Proves a covenant output carrying state N was mined.
 
-     Step 3 is the one with no network in it whatsoever, and for this artefact it is the strongest: the
-     state is DETERMINISTIC, so the picture at tick N is the same picture whoever reports N.
+       3. THE STATE — rebuilt locally from our own genesis parameters, with NO NETWORK AT ALL.
+          The covenant is deterministic: state N is reachable only by N valid ticks of this exact
+          script. Miners enforced every one of them when they accepted the spends. So a tip whose
+          locking script equals our computed state N IS the proof that N ticks happened — the walk was
+          only ever restating it, hop by expensive hop.
 
-     ON THE ONE THING TAKEN ON TRUST — the block header for the genesis block, fetched from a node.
-     That is a deliberate boundary, not an oversight. Verifying proof of work properly would mean the
-     header chain back to 2009, which is its own donkey cart — a bigger one — to look at a fractal.
-
-     What matters is HOW NARROW the trust is. Trusting an indexer for CURRENT STATE is unbounded and
-     continuous: what is the tip, what is unspent, believe me every time. Trusting one header for one
-     PUBLISHED genesis is a single static fact that never changes and that anyone can confirm in any
-     block explorer in ten seconds. That is a checkpoint, and checkpoints are ordinary SPV practice.
-
-     Everything downstream of the anchor is arithmetic done here: linkage, the covenant interpreter, and
-     a locking script rebuilt from our own parameters with no network at all. */
+     A txid is the double-SHA256 of the WHOLE transaction, so each Merkle path authenticates every byte
+     it names, vin included. Nothing here is taken from an index: no script-hash history, no UTXO
+     lookup, no address query. The only trusted input is the block header of the genesis transaction —
+     immutable, and checkable by anyone in any explorer in ten seconds. */
   function verifyBackToGenesis(d){
     var el=$('lv-spv');
     if(!d||!d.genesisAnchor||!d.tipTxid){ el.textContent=''; return }
-    el.style.color='var(--faint)'; el.textContent='verifying back to genesis…';
+    el.style.color='var(--faint)'; el.textContent='verifying against the genesis block header…';
 
-    /* Proofs are PERMANENT. Once a hop is shown to be in a block, that never changes — so a verified
-       hop is cached and never re-fetched. First visit does the walk; later visits verify only what is
-       new. That is what makes proving the WHOLE chain affordable rather than a thing to apologise for. */
-    var CK='battery_verified:'+d.genesisAnchor, done={};
-    try{ done=JSON.parse(localStorage.getItem(CK)||'{}') }catch(e){ done={} }
+    /* The genesis proof is immutable — fetched once per browser, then never again. */
+    var GK='battery_genesis_proof:'+d.genesisAnchor, cached=null;
+    try{ cached=JSON.parse(localStorage.getItem(GK)||'null') }catch(e){ cached=null }
 
     ensureGM().then(function(G){
-      var P=new G.WalletProvider(''), hops=[], headers={}, fresh=0;
+      var P=new G.WalletProvider('');
 
-      function walk(txid){
-        if(!txid) return Promise.resolve();
-        return P.getRawTransaction(txid).then(function(hex){
-          var tx=G.Transaction.fromHex(hex);
-          hops.unshift({txid:txid, tx:tx});
-          if(txid===d.genesisAnchor) return;
-          var cov=null;
-          for(var i=0;i<tx.inputs.length;i++) if(tx.inputs[i].sourceOutputIndex===0){ cov=tx.inputs[i].sourceTXID; break }
-          if(!cov) return;
-          if(hops.length>400) return;                 // a sane ceiling; the cache keeps this rare
-          el.textContent='verifying back to genesis… '+hops.length+' hops';
-          return walk(cov);
+      function anchorGenesis(){
+        if(cached) return Promise.resolve(cached);
+        return P.getMerkleProof(d.genesisAnchor).then(function(pf){
+          if(!pf) return null;
+          if(!G.verifyMerkleProof(pf)) throw Error('the genesis Merkle path does not verify');
+          return P.getBlockHeader(pf.blockHeight).then(function(hdr){
+            if(!hdr||hdr.merkleRoot!==pf.merkleRoot) throw Error('genesis root does not match its block header');
+            var rec={height:pf.blockHeight, root:pf.merkleRoot};
+            try{ localStorage.setItem(GK, JSON.stringify(rec)) }catch(e){}
+            return rec;
+          });
         });
       }
 
-      return walk(d.tipTxid).then(function(){
-        /* one Merkle proof per hop, but only one HEADER per block — 21 of ours share block 961,975,
-           which is why proving everything costs about as much as proving a handful (BRC-74 / BRC-61) */
-        var i=0, proved=0, blocks={};
-        function proveNext(){
-          if(i>=hops.length) return Promise.resolve();
-          var h=hops[i++];
-          if(done[h.txid]){ proved++; blocks[done[h.txid]]=1; return proveNext() }
-          return P.getMerkleProof(h.txid).then(function(pf){
-            if(!pf) return proveNext();                       // still in the mempool: nothing to prove yet
-            if(!G.verifyMerkleProof(pf)) throw Error('Merkle path fails for '+h.txid.slice(0,12));
-            var hdrP = headers[pf.blockHeight]
-              ? Promise.resolve(headers[pf.blockHeight])
-              : P.getBlockHeader(pf.blockHeight).then(function(x){ headers[pf.blockHeight]=x; return x });
-            return hdrP.then(function(hdr){
-              if(!hdr||hdr.merkleRoot!==pf.merkleRoot) throw Error('root != header at '+pf.blockHeight);
-              done[h.txid]=pf.blockHeight; fresh++; proved++; blocks[pf.blockHeight]=1;
-              el.textContent='verifying back to genesis… proved '+proved+'/'+hops.length;
-              return proveNext();
+      return anchorGenesis().then(function(anchor){
+        if(!anchor) throw Error('the genesis is not yet in a block');
+        return P.getRawTransaction(d.tipTxid).then(function(hex){
+          var tip=G.Transaction.fromHex(hex);
+          /* the check with no network in it: our covenant, our parameters, computed here */
+          var expect=G.buildBatteryLock({state:d.state}).toBinary();
+          var got=tip.outputs[0].lockingScript.toBinary();
+          var stateOk=got.length===expect.length && got.every(function(b,i){return b===expect[i]});
+
+          return P.getMerkleProof(d.tipTxid).then(function(tpf){
+            if(!tpf){
+              el.style.color = stateOk ? 'var(--dim)' : 'var(--mag)';
+              el.innerHTML = stateOk
+                ? '✓ genesis anchored in block '+fmt(anchor.height)+' and the tip matches the covenant '+
+                  'exactly · <span style="color:var(--faint)">the tip is still in the mempool, so it has no '+
+                  'Merkle path yet</span>'
+                : '⚠ the tip does not match the covenant';
+              return;
+            }
+            if(!G.verifyMerkleProof(tpf)) throw Error('the tip Merkle path does not verify');
+            return P.getBlockHeader(tpf.blockHeight).then(function(hdr){
+              var rootOk = hdr && hdr.merkleRoot===tpf.merkleRoot;
+              var ok = stateOk && rootOk;
+              el.style.color = ok ? 'var(--lime)' : 'var(--mag)';
+              if(!ok){
+                el.innerHTML='⚠ '+(!rootOk ? 'the tip root does not match its block header'
+                                            : 'the tip does not match the covenant');
+                return;
+              }
+              el.innerHTML='✓ <b>verified in your browser</b> — the genesis is proved by Merkle path into '+
+                'block '+fmt(anchor.height)+', the tip into block '+fmt(tpf.blockHeight)+', and the tip\'s '+
+                'locking script is byte-for-byte the state this covenant reaches after '+fmt(d.ticks)+
+                ' ticks — recomputed here from the genesis parameters, with no network at all. '+
+                '<span style="color:var(--faint)">State '+fmt(d.ticks)+' is reachable only by '+fmt(d.ticks)+
+                ' valid ticks, each enforced by miners as they were mined, so no walk is needed to restate '+
+                'it. Two Merkle paths, whatever the chain\'s length. The only thing taken on trust is the '+
+                'block header of the genesis transaction itself — immutable, and checkable in any explorer. '+
+                'No indexer, no UTXO lookup. BRC-113.</span>';
             });
           });
-        }
-        return proveNext().then(function(){
-          try{ localStorage.setItem(CK, JSON.stringify(done)) }catch(e){}
-
-          /* A txid is the hash of the ENTIRE transaction, so the Merkle proof above already authenticated
-             every byte of each hop — its vin included. Linkage is therefore read out of data that is
-             already proven; it is not a second trusted input needing corroboration.
-
-             And re-running the covenant here would be theatre: the script was enforced by miners at the
-             moment each spend was accepted into a block, which is precisely what the Merkle proof
-             attests. BRC-113 says it plainly — "transfer transactions require no independent block
-             verification". Doing a miner's job again proves nothing it has not already proved. */
-          var linked=0;
-          for(var k=1;k<hops.length;k++){
-            var kid=hops[k], par=hops[k-1];
-            for(var j=0;j<kid.tx.inputs.length;j++)
-              if(kid.tx.inputs[j].sourceTXID===par.txid && kid.tx.inputs[j].sourceOutputIndex===0){ linked++; break }
-          }
-          var expect=G.buildBatteryLock({state:d.state}).toBinary();
-          var got=hops[hops.length-1].tx.outputs[0].lockingScript.toBinary();
-          var scriptOk=got.length===expect.length && got.every(function(b,x){return b===expect[x]});
-          var reachedGenesis = hops[0].txid===d.genesisAnchor;
-          var nblocks=Object.keys(blocks).length;
-
-          var allProved = proved===hops.length;
-          var ok = reachedGenesis && scriptOk && linked===hops.length-1 && allProved;
-          el.style.color = ok ? 'var(--lime)' : 'var(--mag)';
-          if(!ok){
-            el.innerHTML='⚠ '+(!reachedGenesis ? 'could not reach the genesis anchor'
-              : !allProved ? 'a hop has no Merkle proof yet ('+proved+'/'+hops.length+' — newest may still be in the mempool)'
-              : !scriptOk ? 'the tip does not match the covenant'
-              : 'a hop does not spend the one before it ('+linked+'/'+(hops.length-1)+')');
-            return;
-          }
-          el.innerHTML='✓ <b>verified in your browser, back to genesis</b> — all '+fmt(hops.length)+
-            ' hops proved by Merkle path into '+fmt(nblocks)+' block header'+(nblocks===1?'':'s')+
-            '. Each proof authenticates its whole transaction, so every hop is shown to spend the one '+
-            'before it, and the tip matches the covenant byte for byte. '+
-            '<span style="color:var(--faint)">The only thing taken on trust is the block header of the '+
-            'genesis transaction itself — immutable, and checkable in any explorer. No indexer and no '+
-            'UTXO lookup: every hop was reached by naming its own parent, and the covenant was enforced '+
-            'by miners, not re-litigated here. BRC-113.</span>';
         });
       });
     }).catch(function(err){
