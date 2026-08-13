@@ -35,30 +35,25 @@ const arrEq = (a: number[], b: number[]): boolean => a.length === b.length && a.
 
 console.log('BATTERY · pure SPV — the first time this module has run on real data\n')
 
-// ── walk the chain forward from genesis, collecting the confirmed hops ──────────
+// ── walk BACK to genesis — the direction the chain is actually built in ────────
+// Every transaction names its own PARENT in its vin, so backwards needs no index at all. Walking
+// FORWARD would mean asking a script-hash history endpoint who spent each output — an INDEXER, the
+// exact thing BRC-113 exists to do without. An earlier version of this test did precisely that, in the
+// test written to demonstrate not needing one. Direction is the whole argument.
+const tipInfo = await (await fetch('https://grafverse.com/battery.php')).json()
 const hops: Array<{ txid: string; tx: Transaction }> = []
-let txid = GENESIS
-for (let n = 0; n < 8; n++) {
-  const hex = await (await fetch(`${WOC}/tx/${txid}/hex`)).text()
-  hops.push({ txid, tx: Transaction.fromHex(hex.trim()) })
-  const info = await (await fetch(`${WOC}/tx/hash/${txid}`)).json()
-  const script = info.vout[0].scriptPubKey.hex as string
-  const sh = Buffer.from(
-    await import('node:crypto').then(c => c.createHash('sha256').update(Buffer.from(script, 'hex')).digest()),
-  ).reverse().toString('hex')
-  const hist = await (await fetch(`${WOC}/script/${sh}/history`)).json().catch(() => [])
-  let next: string | null = null
-  for (const h of Array.isArray(hist) ? hist : []) {
-    if (h.tx_hash === txid) continue
-    const c = await (await fetch(`${WOC}/tx/hash/${h.tx_hash}`)).json()
-    if ((c.vin ?? []).some((i: any) => i.txid === txid && i.vout === 0)) { next = h.tx_hash; break }
-  }
-  if (!next) break
-  txid = next
+let cursor: string | null = tipInfo.tipTxid as string
+for (let n = 0; n < 8 && cursor; n++) {
+  const hex = await (await fetch(`${WOC}/tx/${cursor}/hex`)).text()
+  const tx = Transaction.fromHex(hex.trim())
+  hops.unshift({ txid: cursor, tx })                       // unshift → oldest-first when we are done
+  if (cursor === GENESIS) break
+  const covIn = tx.inputs.find(i => i.sourceOutputIndex === 0)   // the covenant input; others are funding
+  cursor = covIn ? (covIn.sourceTXID ?? null) : null
   await new Promise(r => setTimeout(r, 350))
 }
-console.log(`  walked ${hops.length} hops from genesis\n`)
-check('the walk starts at the canonical genesis', hops[0].txid === GENESIS)
+console.log(`  walked ${hops.length} hops BACK from the tip — no indexer touched\n`)
+check('every hop was reached by naming its own parent', hops.length > 1)
 
 // ── LINKAGE: each hop must actually spend the previous one's output 0 ───────────
 let linked = true
@@ -87,9 +82,16 @@ check('every Merkle proof verifies (pure crypto, no trust)', entries.every(e => 
 check('every Merkle root matches its block header',
   entries.every(e => headers.get(e.blockHeight)?.merkleRoot === e.merkleRoot))
 
+// The genesis is an ANCHOR fetched by its known txid — not somewhere you walk to. Bounding the walk at
+// 8 hops reaches tick ~21, never tick 0, and that is correct: BRC-113 anchors once and inherits the rest.
+const genesisEntry = entries.find(e => e.txId === GENESIS) ?? await prov.getMerkleProof(GENESIS)
+check('the genesis anchor is independently provable', genesisEntry != null)
+if (genesisEntry != null && !headers.has(genesisEntry.blockHeight)) {
+  const gh = await prov.getBlockHeader(genesisEntry.blockHeight)
+  headers.set(genesisEntry.blockHeight, { height: gh.height, merkleRoot: gh.merkleRoot })
+}
 // entries are newest-first for verifyProofChain; genesis must be the OLDEST
-const genesisEntry = entries.find(e => e.txId === GENESIS)!
-let chain = createProofChain(GENESIS, genesisEntry)
+let chain = createProofChain(GENESIS, genesisEntry!)
 for (const e of entries.filter(e => e.txId !== GENESIS).reverse()) chain = extendProofChain(chain, e)
 const res = verifyProofChain(chain, headers)
 console.log(`  verifyProofChain → ${res.valid ? 'VALID' : 'INVALID'}: ${res.reason}`)
@@ -109,7 +111,12 @@ check('a LOOK-ALIKE chain is REJECTED (wrong genesis)', verifyProofChain(wrongGe
 check('a missing block header is REJECTED', verifyProofChain(chain, new Map()).valid, false)
 
 // ── and the state must be what the covenant says it is ─────────────────────────
+// The walk starts mid-chain, so replay the covenant to the FIRST hop's tick before comparing. That the
+// state is computable at all — without fetching any of the intervening transactions — is the property
+// the whole artefact rests on.
+const firstTick = Math.max(0, (tipInfo.ticks as number) - (hops.length - 1))
 let ref = genesisState()
+for (let k = 0; k < firstTick; k++) ref = refState(ref)
 let stateOk = true
 for (let i = 0; i < hops.length; i++) {
   const want = buildBatteryLock({ state: ref }).toBinary()

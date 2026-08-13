@@ -522,7 +522,7 @@
     live=d;
     if(!d||d.error){ $('lv-when').textContent='the battery is not reachable right now'; return }
     drawChain(d);
-    verifyFromGenesis(d);
+    verifyBackToGenesis(d);
     $('lv-fuel').textContent=fmt(d.fuel)+' sat';
     $('lv-left').textContent=fmt(d.ticksLeft);
     $('lv-ticks').textContent=fmt(d.ticks);
@@ -656,12 +656,19 @@
      block verification; miners already validated them through the UTXO model when accepting them into
      blocks." One anchor, then arithmetic.
 
+     ⚠ DIRECTION IS THE WHOLE ARGUMENT. This verifies BACK TO genesis, never "from" it. Starting at the
+     beginning and walking FORWARD is the indexer's posture: at every step you must ask some index who
+     spent that output, because a transaction does not name its children. Walking BACK needs nobody —
+     every transaction names its own PARENT in its vin. Forwards is the direction that requires
+     permission; backwards is the direction the chain is actually built in. Saying "from genesis" would
+     describe the donkey cart on the page written to refuse it.
+
      So battery.php is demoted from an authority to a COURIER. It hands over a genesis txid and a list of
      recent hops; this page believes none of it and checks all of it:
 
        1. genesis Merkle path → block header        the anchor was really mined
        2. each hop spends its parent                the chain is OURS, not a look-alike
-       3. each locking script == our covenant       computed locally from genesis, no network at all
+       3. each locking script == our covenant       rebuilt locally from our parameters, no network
        4. a real spend through the interpreter      the covenant genuinely authorised the advance
 
      Step 3 is the one with no network in it whatsoever, and for this artefact it is the strongest: the
@@ -678,10 +685,10 @@
 
      Everything downstream of the anchor is arithmetic done here: linkage, the covenant interpreter, and
      a locking script rebuilt from our own parameters with no network at all. */
-  function verifyFromGenesis(d){
+  function verifyBackToGenesis(d){
     var el=$('lv-spv');
     if(!d||!d.genesisAnchor){ el.textContent=''; return }
-    el.style.color='var(--faint)'; el.textContent='verifying from genesis…';
+    el.style.color='var(--faint)'; el.textContent='verifying back to genesis…';
 
     ensureGM().then(function(G){
       var P=new G.WalletProvider('');
