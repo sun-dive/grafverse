@@ -113,8 +113,16 @@
 
   /* the on-chain picture — NOT the simulator. Every solid pixel was paid for. */
   .shot{margin:0 0 14px;position:relative}
-  .shot .wm,.toy .panel .wm{position:absolute;right:9px;bottom:9px;font:600 11px system-ui;
-       color:rgba(56,225,255,.72);text-shadow:0 1px 4px rgba(0,0,0,.85);pointer-events:none;letter-spacing:.02em}
+  /* The mark belongs to the PICTURE, not to the block that happens to contain the picture. It was
+     absolutely positioned against .shot — which also holds the legend — so "bottom of .shot" meant the
+     bottom of the LEGEND ROW, and the mark sat over "scan at pixel …" instead of on the image.
+     Stacking the canvas and the mark in a one-cell grid pins it to the canvas itself, so it cannot
+     drift onto whatever is rendered below, however that reflows. */
+  .wmwrap{display:grid;min-width:0;min-height:0}
+  .wmwrap>canvas{grid-area:1/1;min-width:0;min-height:0}
+  .wmwrap>.wm{grid-area:1/1;align-self:end;justify-self:end;margin:0 9px 9px;
+        font:600 11px system-ui;color:rgba(56,225,255,.72);
+        text-shadow:0 1px 4px rgba(0,0,0,.85);pointer-events:none;letter-spacing:.02em}
   .toy .panel{position:relative}
   .shot canvas{width:100%;height:auto;display:block;border-radius:11px;image-rendering:pixelated;
                background:#04060b;border:1px solid var(--line)}
@@ -150,7 +158,8 @@
   .stage{display:grid;grid-template-columns:minmax(0,1fr) clamp(104px,20vw,188px);
          gap:clamp(10px,2.4vw,20px);align-items:stretch;margin-bottom:14px}
   .stage .shot{margin:0;display:flex;flex-direction:column}
-  .stage .shot canvas{flex:1;min-height:0;object-fit:contain}
+  .stage .shot .wmwrap{flex:1;min-height:0}
+  .stage .shot canvas{object-fit:contain;height:100%}
 
   /* the casing */
   .cell-stack{display:flex;flex-direction:column;align-items:center;min-width:0}
@@ -269,8 +278,10 @@
          bit-identical to what the script computed. Solid = done on chain. Ghost = not yet. -->
     <div class="stage">
     <div class="shot">
-      <canvas id="lv-cv" width="256" height="192"></canvas>
-      <span class="wm">grafverse.com</span>
+      <div class="wmwrap">
+        <canvas id="lv-cv" width="256" height="192"></canvas>
+        <span class="wm">grafverse.com</span>
+      </div>
       <div class="shot-legend">
         <span><i class="sw solid"></i>computed on chain</span>
         <span><i class="sw ghost"></i>not yet — needs fuel</span>
@@ -416,8 +427,10 @@
     <p class="sub">The same integer arithmetic the covenant runs, with the knobs still attached. This is how the genesis parameters were chosen; they are permanent now, so nothing here touches the real battery. Turn the dials and watch what a grid or an iteration budget actually costs.</p>
   <div class="grid">
     <div class="panel">
-      <canvas id="cv" width="240" height="180"></canvas>
-      <span class="wm">grafverse.com</span>
+      <div class="wmwrap">
+        <canvas id="cv" width="240" height="180"></canvas>
+        <span class="wm">grafverse.com</span>
+      </div>
       <div class="row">
         <button id="run">▶ Run</button>
         <button id="step" class="ghost">Step ×100</button>
@@ -447,14 +460,14 @@
       <input type="range" id="W" min="32" max="256" step="32" value="256">
       <label>height <span class="val" id="vH">192</span></label>
       <input type="range" id="H" min="24" max="256" step="24" value="192">
-      <label>max iterations <span class="val" id="vI">24</span></label>
-      <input type="range" id="I" min="4" max="512" step="4" value="24">
-      <label>centre x <span class="val" id="vX">-0.70</span></label>
-      <input type="range" id="X" min="-2.2" max="1.0" step="0.01" value="-0.70">
+      <label>max iterations <span class="val" id="vI">6</span></label>
+      <input type="range" id="I" min="1" max="512" step="1" value="6">
+      <label>centre x <span class="val" id="vX">0.00</span></label>
+      <input type="range" id="X" min="-2.2" max="1.0" step="0.01" value="0">
       <label>centre y <span class="val" id="vY">0.00</span></label>
       <input type="range" id="Y" min="-1.4" max="1.4" step="0.01" value="0">
-      <label>span <span class="val" id="vS">5.38</span></label>
-      <input type="range" id="Sp" min="0.2" max="6.0" step="0.02" value="5.38">
+      <label>span <span class="val" id="vS">4.00</span></label>
+      <input type="range" id="Sp" min="0.2" max="6.0" step="0.02" value="4.0">
 
       <label style="margin-top:16px">what happens at the end of a pass</label>
       <div class="row" style="margin-top:4px">
@@ -462,16 +475,16 @@
         <button id="mZoom" style="flex:1;padding:8px 10px;font-size:12.5px">zoom</button>
       </div>
       <div id="zoomBox">
-        <label>+iterations per level <span class="val" id="vK">120</span></label>
-        <input type="range" id="K" min="0" max="400" step="4" value="120">
-        <label>zoom into x <span class="val" id="vZX">-0.7436</span></label>
-        <input type="range" id="ZX" min="-2" max="0.6" step="0.0001" value="-0.7436">
-        <label>zoom into y <span class="val" id="vZY">0.1318</span></label>
+        <label>+iterations per level <span class="val" id="vK">4</span></label>
+        <input type="range" id="K" min="0" max="400" step="4" value="4">
+        <label>zoom into x <span class="val" id="vZX">-1.423289</span></label>
+        <input type="range" id="ZX" min="-2" max="0.6" step="0.0001" value="-1.4233">
+        <label>zoom into y <span class="val" id="vZY">0.127279</span></label>
         <input type="range" id="ZY" min="-1.2" max="1.2" step="0.0001" value="0.1273">
       </div>
 
-      <label>levels to fund <span class="val" id="vL">8</span></label>
-      <input type="range" id="L" min="1" max="26" step="1" value="8">
+      <label>levels to fund <span class="val" id="vL">21</span></label>
+      <input type="range" id="L" min="1" max="26" step="1" value="21">
       <div class="stat" style="margin-top:12px"><span>level</span><b id="lvl">1</b></div>
       <div class="stat"><span>magnification</span><b id="mag">1×</b></div>
       <div class="stat"><span>next level costs</span><b id="nextc">—</b></div>
@@ -754,8 +767,15 @@
           return { cap:cap, fuel:fuel, pc:cap>0?Math.min(1,fuel/cap):0 };
         }
 
-        var cv=document.createElement('canvas'); cv.width=CW; cv.height=CH;
+        /* Render at 2x and draw through a scaled context. The fractal comes through drawImage with
+           smoothing OFF so its pixels double CRISPLY, while the labels and the mark are drawn as real
+           type at 2x rather than an upscaled bitmap of small type. Doubling a finished 320px frame
+           would have blurred or blocked every glyph on it. */
+        var SC=2;
+        var cv=document.createElement('canvas'); cv.width=CW*SC; cv.height=CH*SC;
         var ctx=cv.getContext('2d'), frames=[];
+        var off=document.createElement('canvas'); off.width=W; off.height=H;
+        var offx=off.getContext('2d');
         var step=Math.max(1, Math.ceil(ticks/MAXF));
 
         for(var n=0; n<=ticks; n+=step){
@@ -765,8 +785,10 @@
           var s0=st.step, cr0=st.cx-(W/2)*s0, ci0=st.cy-(H/2)*s0, mx=st.mx;
           var doneP=Math.round((st.ci-ci0)/s0)*W+Math.round((st.cr-cr0)/s0);
 
-          ctx.fillStyle='#05070d'; ctx.fillRect(0,0,CW,CH);
-          var img=ctx.createImageData(W,H), px=img.data;
+          ctx.setTransform(1,0,0,1,0,0);
+          ctx.fillStyle='#05070d'; ctx.fillRect(0,0,CW*SC,CH*SC);
+          ctx.scale(SC,SC);                    // everything below is written in 320x192 coordinates
+          var img=offx.createImageData(W,H), px=img.data;
           for(var p=0;p<W*H;p++){
             var x=p%W, y=(p-x)/W, cr=cr0+x*s0, ci=ci0+y*s0;
             var zr=0, zi=0, i=0;
@@ -782,7 +804,9 @@
             if(p>=doneP){ var a=0.42; r=5+(r-5)*a; g=7+(g-7)*a; bl=13+(bl-13)*a; if(inside){r=16;g=22;bl=40} }
             var o=p*4; px[o]=r|0; px[o+1]=g|0; px[o+2]=bl|0; px[o+3]=255;
           }
-          ctx.putImageData(img,0,0);
+          offx.putImageData(img,0,0);          // putImageData ignores the transform, so stage it offscreen
+          ctx.imageSmoothingEnabled=false;
+          ctx.drawImage(off,0,0);
 
           /* the battery beside it, at the same instant */
           var c=charge(n), bx=W+GAP, nubW=18, nubH=5, top=nubH+2, bh=CH-top-14;
@@ -803,11 +827,15 @@
           ctx.fillText(Math.round(c.pc*100)+'%', bx+BW/2, top+bh+11);
           ctx.fillStyle='rgba(174,191,224,.85)'; ctx.font='9px system-ui';
           ctx.fillText('tick '+n, bx+BW/2, top+bh-6+16-16);
+          /* the mark, baked into the pixels — a loop that gets shared should carry its way home */
+          ctx.textAlign='right'; ctx.font='600 9px system-ui,-apple-system,sans-serif';
+          ctx.fillStyle='rgba(0,0,0,.55)'; ctx.fillText('grafverse.com', W-5, H-5.5);
+          ctx.fillStyle='rgba(56,225,255,.92)'; ctx.fillText('grafverse.com', W-6, H-6);
           ctx.textAlign='left';
 
           frames.push(cv.toDataURL('image/webp', 0.92));
         }
-        var blob=window.webpAnimation(frames, CW, CH, 140);
+        var blob=window.webpAnimation(frames, CW*SC, CH*SC, 140);
         if(blob) window.downloadBlob(blob, 'bitcoin-battery-story-tick-'+ticks+'.webp');
         else alert('this browser cannot encode WebP');
         b.disabled=false; b.textContent=was;
@@ -1273,7 +1301,12 @@
   var level=1, frames=[], baseTicks=0, mode='zoom';
   /* Nuclei computed by Newton on F_p(c)=0; sizes by the standard island estimate. The sliders step at
      1e-4, which is WIDER than a deep loop's final frame — so the target must be exact, never dragged. */
-  var exact=null;
+  /* Seeded with the GENESIS target, not left null. The sliders step at 1e-4 while the covenant's
+     nucleus is specified to 12 decimals, so a null default would start the toy ~3e-5 away from the
+     real thing — visible by the last levels, and exactly the kind of quiet mismatch this page exists
+     to rule out. These are the constants from BATTERY_GEOMETRY in mint/src/battery.ts; the toy opens
+     showing what the chain is actually computing, and the dials move away from it, not toward it. */
+  var exact={ p:11, zx:-1.423288564770, zy:0.127278891029, span:4.0, levels:21, K:4 };
 
   function readCfg(){
     var W=+$('W').value, H=+$('H').value, span=+$('Sp').value;
