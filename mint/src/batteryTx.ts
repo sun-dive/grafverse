@@ -256,6 +256,20 @@ export interface BatteryTopUpParams extends BatteryOptions {
   /** The sponsor's key and funding UTXO — this half is deliberate and signed. */
   key: PrivateKey
   funder: { sourceTransaction: Transaction; outputIndex: number }
+  /**
+   * Build it but DO NOT sign the funder's input, so it can be signed elsewhere.
+   *
+   * This is what lets a web page assemble a top-up without ever holding a key. The covenant input
+   * needs none — OP_PUSH_TX is the authorisation — so the sponsor's is the only signature in the
+   * transaction, and leaving it out lets the page hand the whole thing to a real wallet. Nothing is
+   * broadcast and nothing is held; the signer reads every output before committing — the fuel, the
+   * mark, and their own change.
+   *
+   * `key` is still required and used ONLY to size the input for the fee. A P2PKH unlocking script is
+   * the same length whoever signs it, so the fee and change are exactly what the real signature will
+   * satisfy. Pass any key; a random one is correct.
+   */
+  unsignedFunder?: boolean
   /** The contribution's mark for the board (≤220 bytes). Displayed as TEXT — never auto-linked. */
   mark?: string | number[] | null
   changeAddress?: string
@@ -297,6 +311,13 @@ export async function buildBatteryTopUpTx(p: BatteryTopUpParams): Promise<Transa
     tx.addOutput({ lockingScript: new P2PKH().lock(p.changeAddress ?? p.key.toAddress()), change: true })
     await tx.fee(new SatoshisPerKilobyte(p.feePerKb ?? BATTERY_FEE_PER_KB))
     await tx.sign()
+    if (p.unsignedFunder) {
+      /* Signed for sizing, then stripped. The fee and change above come from the real script length,
+         so they are the ones the eventual signature will satisfy. What is handed on is a transaction
+         with the covenant input COMPLETE and the sponsor's input blank, waiting for its owner. */
+      tx.inputs[1].unlockingScript = new UnlockingScript([])
+      tx.inputs[1].unlockingScriptTemplate = undefined
+    }
     return tx
   }
 
