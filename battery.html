@@ -269,7 +269,7 @@
 
     <div class="row">
       <button id="lv-dl" class="ghost" style="flex:0 1 auto">⬇ Save this state</button>
-      <a id="lv-tip" class="ghost" href="#" target="_blank" rel="noopener"
+      <a id="lv-tip" class="ghost" href="#" target="_blank" rel="nofollow noopener"
          style="flex:1;min-width:140px;text-align:center;padding:11px 18px;border-radius:24px;border:1px solid var(--line);color:var(--dim);text-decoration:none;font:600 14px system-ui">the tip on chain ↗</a>
     </div>
 
@@ -299,8 +299,10 @@
           <i>→&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;309 sat</i><span>the miner — the whole difference, every time</span>
         </div>
 
-        Don't take that on trust either: open any tick on chain. <b>One input, one output.</b> If a
-        satoshi were being taken, there would have to be an output to take it with.
+        Don't take that on trust either:
+        <a id="lv-anytick" href="https://whatsonchain.com/tx/" target="_blank" rel="nofollow noopener">open
+        any tick on chain ↗</a>. <b>One input, one output.</b> If a satoshi were being taken, there would
+        have to be an output to take it with.
 
         <div class="lic">
           The covenant, its transaction builders and this page are published under the
@@ -583,7 +585,11 @@
     $('lv-when').textContent=d.ticksLeft>0
       ? 'press Tick it below — no key, no wallet, no permission'
       : 'the fuel has run out — it is waiting for someone to top it up';
-    if(d.tipTxid){ $('lv-tip').href='https://whatsonchain.com/tx/'+d.tipTxid; }
+    if(d.tipTxid){
+      var u='https://whatsonchain.com/tx/'+d.tipTxid;
+      $('lv-tip').href=u;
+      var at=$('lv-anytick'); if(at) at.href=u;      // "open any tick" → the tip as it stands right now
+    }
 
     var ol=$('lv-list');
     if(!d.board||!d.board.length){
