@@ -185,7 +185,7 @@ function init_cache() {
  */
 function advance(&$c, $hint = null) {
   global $BATTERY_VOUT, $MAX_ADVANCE, $BOARD, $HOPS;
-  $moved = 0;
+  $moved = 0; $boardChanged = false;
   $deadline = microtime(true) + 10.0;
   for ($i = 0; $i < $MAX_ADVANCE; $i++) {
     if (microtime(true) > $deadline) break;      // resume on the next request; the cache keeps the ground gained
@@ -203,6 +203,7 @@ function advance(&$c, $hint = null) {
 
     // a CONTRIBUTION is simply a hop where the fuel went up
     if ($newFuel > $oldFuel) {
+      $boardChanged = true;
       $added = $newFuel - $oldFuel;
       $c['board'][] = [
         'sats' => $added,
@@ -228,6 +229,12 @@ function advance(&$c, $hint = null) {
     if (count($c['board']) > $BOARD) $c['board'] = array_slice($c['board'], 0, $BOARD);
     $c['updated'] = time();
     save_cache($c);
+    /* The card lists the funders, so the one event that changes it is the one event that triggers it —
+       no cron, no polling, no staleness. Fail-safe: if it cannot be built the old card simply stays. */
+    if ($boardChanged) {
+      @require_once __DIR__ . '/battery-og.php';
+      if (function_exists('battery_render_card')) @battery_render_card($c);
+    }
   } elseif ($GLOBALS['WOC_BLOCKED']) {
     // rate-limited: push the next reconcile well out rather than retrying into a longer block
     $c['updated'] = time() + 60;
