@@ -176,15 +176,16 @@
                   line-height:1.25}
   /* one band per funder — they are the charge */
   .fund{flex:none;min-height:0;position:relative;display:flex;flex-direction:column;justify-content:center;
-        padding:2px 5px;overflow:hidden;border-top:1px solid rgba(4,8,16,.55);
-        background:linear-gradient(180deg,var(--lime),#8fd42a);color:#08130a}
-  .fund:nth-child(even){background:linear-gradient(180deg,#a9f234,#7fc521)}
+        padding:2px 5px;overflow:hidden;border-top:1px solid rgba(4,8,16,.55)}
+  /* NO background or colour here on purpose: both are computed per render from the charge level, and a
+     hardcoded green would be a second source of truth that silently disagrees with the one that matters. */
   .fund b{font:800 11px/1.1 system-ui;font-variant-numeric:tabular-nums;display:block}
   .fund i{font:600 9.5px/1.15 system-ui;font-style:normal;opacity:.78;display:block;
           overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .fund.tiny b{font-size:9.5px} .fund.tiny i{display:none}
-  .batt-seed{flex:none;background:linear-gradient(180deg,#4a7fb5,#31577d);color:#eaf4ff}
-  .batt-seed b{color:#eaf4ff}
+  /* the seed keeps the charge colour so the fill reads as ONE level; a dashed edge marks it instead */
+  .batt-seed{flex:none;border-top:2px dashed rgba(8,19,10,.45)}
+  .batt-seed i{font-style:italic;opacity:.9}
   .batt-empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--faint);
               font-size:11px;text-align:center;padding:8px}
   .batt-cap{font-size:10.5px;color:var(--faint);text-align:center;margin-top:5px;line-height:1.35}
@@ -795,9 +796,11 @@
           ctx.strokeRect(bx+1, top, BW-2, bh);
           var fh=Math.round((bh-4)*c.pc);
           if(fh>0){
+            var rgb=window.chargeRGB(c.pc);                 // the same seven-stop band as the page
             var grad=ctx.createLinearGradient(0, top+bh-2-fh, 0, top+bh-2);
-            grad.addColorStop(0,'#b4ff3a'); grad.addColorStop(1,'#7fc521');
-            ctx.fillStyle = c.pc<0.25 ? '#ff4d9d' : grad;
+            grad.addColorStop(0, window.rgbCss(rgb,1.06));
+            grad.addColorStop(1, window.rgbCss(rgb,0.82));
+            ctx.fillStyle=grad;
             ctx.fillRect(bx+3, top+bh-2-fh, BW-6, fh);
           }
           ctx.fillStyle='#eaf4ff'; ctx.font='bold 11px system-ui'; ctx.textAlign='center';
@@ -983,6 +986,38 @@
     }).then(function(){ verifying=false });
   }
 
+  /* ── CHARGE COLOUR ────────────────────────────────────────────────────────────────────────────────
+     A real battery reads at a glance because colour carries the level before any number does. Seven
+     stops from full to flat — green, green-yellow, yellow, yellow-orange, orange, red-orange, red —
+     interpolated so the change is continuous rather than a step at some arbitrary threshold.
+
+     Every band takes the CHARGE colour, not a per-funder one: the fill has to read as one level. The
+     seed is told apart by its label and a dashed edge instead of by hue, so it does not break the
+     reading of the whole. */
+  var CHARGE_STOPS = [
+    [1.00, [ 61, 220,  74]],   // green
+    [0.85, [158, 232,  58]],   // green-yellow
+    [0.70, [255, 226,  58]],   // yellow
+    [0.55, [255, 194,  58]],   // yellow-orange
+    [0.40, [255, 154,  46]],   // orange
+    [0.25, [255, 106,  46]],   // red-orange
+    [0.00, [255,  59,  48]],   // red
+  ];
+  function chargeRGB(pc){
+    pc=Math.max(0,Math.min(1,pc));
+    for(var i=0;i<CHARGE_STOPS.length-1;i++){
+      var a=CHARGE_STOPS[i], b=CHARGE_STOPS[i+1];
+      if(pc<=a[0] && pc>=b[0]){
+        var t=(a[0]-b[0])===0 ? 0 : (a[0]-pc)/(a[0]-b[0]);
+        return [0,1,2].map(function(k){ return Math.round(a[1][k]+(b[1][k]-a[1][k])*t) });
+      }
+    }
+    return CHARGE_STOPS[CHARGE_STOPS.length-1][1];
+  }
+  function rgbCss(c,mul){ mul=mul||1;
+    return 'rgb('+c.map(function(v){return Math.max(0,Math.min(255,Math.round(v*mul)))}).join(',')+')' }
+  window.chargeRGB=chargeRGB; window.rgbCss=rgbCss;
+
   /* ── FILL THE BATTERY WITH ITS FUNDERS ────────────────────────────────────────────────────────────
      CAPACITY is the sum of the TOP 21 CONTRIBUTIONS, and the level is unspent fuel against that. So the
      casing is exactly the funders shown inside it: the bands add up to the whole battery, and the gap
@@ -1021,14 +1056,21 @@
     var tot=parts.reduce(function(a,p){return a+p.pc},0);
     if(tot>0) parts.forEach(function(p){ p.pc=p.pc/tot*avail });
 
+    var lvl=cap>0 ? Math.min(1, fuel/cap) : 0;
+    var rgb=chargeRGB(lvl), top=rgbCss(rgb,1.06), bot=rgbCss(rgb,0.82), alt=rgbCss(rgb,0.92);
+    var ink = lvl>0.62 ? '#08130a' : '#1a0d06';        // dark text stays legible across the whole band
+
     var html='';
     if(burnPct>0.6) html+='<div class="batt-burn" style="height:'+burnPct.toFixed(2)+'%">'+
       '<span>'+fmt(burned)+' sat burned<br>into the picture</span></div>';
     else if(burned>0) html+='<div class="batt-burn" style="height:'+Math.max(2,burnPct).toFixed(2)+'%"></div>';
 
-    html+=parts.map(function(p){
+    html+=parts.map(function(p,ix){
       var tiny=p.pc<6.5;
-      return '<div class="fund'+(p.seed?' batt-seed':'')+(tiny?' tiny':'')+'" style="height:'+p.pc.toFixed(2)+'%" '+
+      var bg = (ix%2) ? 'linear-gradient(180deg,'+alt+','+bot+')'
+                      : 'linear-gradient(180deg,'+top+','+bot+')';
+      return '<div class="fund'+(p.seed?' batt-seed':'')+(tiny?' tiny':'')+'" '+
+             'style="height:'+p.pc.toFixed(2)+'%;background:'+bg+';color:'+ink+'" '+
              'title="'+esc(p.mark||'(no mark)')+' — '+fmt(p.sats)+' sat">'+
              '<b>'+fmt(p.sats)+'</b>'+(tiny?'':'<i>'+esc(p.mark||'(no mark)')+'</i>')+'</div>';
     }).join('');
