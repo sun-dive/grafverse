@@ -158,18 +158,29 @@ function frame_progress($state) {
 function load_cache() { global $CACHE; $j = @file_get_contents($CACHE); $c = $j ? json_decode($j, true) : null; return is_array($c) ? $c : null; }
 function save_cache($c) { global $CACHE; @file_put_contents($CACHE, json_encode($c), LOCK_EX); }
 
+/** The genesis, as a board entry. Its OP_RETURN is the published state layout, not a personal message,
+ *  so it carries a plain label and a seed flag the page can style differently. */
+function genesis_entry($sats, $txid, $tx) {
+  return ['sats' => $sats, 'mark' => 'the genesis — first fuel', 'txid' => $txid,
+          'tick' => 0, 'at' => (int) ($tx['time'] ?? time()), 'seed' => true];
+}
+
 function init_cache() {
   global $GENESIS_TXID;
   if ($GENESIS_TXID === '') return null;
   $tx = get_tx($GENESIS_TXID); if (!$tx) return null;
   $st = battery_state(battery_vout($tx) ?? ''); if (!$st) return null;
+  $seed = battery_value($tx);
   return [
     'genesis' => $GENESIS_TXID,
-    'tip' => ['txid' => $GENESIS_TXID, 'fuel' => battery_value($tx), 'state' => $st],
+    'tip' => ['txid' => $GENESIS_TXID, 'fuel' => $seed, 'state' => $st],
     'ticks' => 0,
     'hops' => [],                  // recent hop txids — the page verifies these, it does not trust them
-    'board' => [],                 // contributions: every hop where the fuel ROSE
-    'raised' => 0,                 // total ever contributed, beyond the genesis fuel
+    // The GENESIS IS THE FIRST CHARGE. Leaving it out made the battery inconsistent with itself: the
+    // casing measured only later contributions, so unspent fuel exceeded capacity and had to be clamped.
+    // It competes on the board by amount like any other, because it is one.
+    'board' => [genesis_entry($seed, $GENESIS_TXID, $tx)],
+    'raised' => $seed,
     'updated' => time(),
   ];
 }
@@ -310,6 +321,24 @@ if ($method === 'POST') {
   advance($c, $txid);
 } elseif (isset($_GET['sync'])) {
   if (time() - ($c['updated'] ?? 0) >= $THROTTLE) advance($c);
+}
+
+/* Heal a cache written before the genesis counted as a contribution: without this the battery would
+   stay inconsistent on every deployment that already has a warm cache, which is all of them. */
+if (!empty($c['genesis'])) {
+  $hasSeed = false;
+  foreach ($c['board'] ?? [] as $b) if (($b['txid'] ?? '') === $c['genesis']) { $hasSeed = true; break; }
+  if (!$hasSeed) {
+    $gtx = get_tx($c['genesis']);
+    $gsats = $gtx ? battery_value($gtx) : null;
+    if ($gsats !== null) {
+      $c['board'][] = genesis_entry($gsats, $c['genesis'], $gtx);
+      usort($c['board'], function ($a, $b) { return $b['sats'] <=> $a['sats'] ?: $a['tick'] <=> $b['tick']; });
+      if (count($c['board']) > $BOARD) $c['board'] = array_slice($c['board'], 0, $BOARD);
+      $c['raised'] = (int) ($c['raised'] ?? 0) + $gsats;
+      save_cache($c);
+    }
+  }
 }
 
 backfill_hops($c);        // a caught-up cache would otherwise never populate the hop list

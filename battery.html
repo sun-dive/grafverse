@@ -16,11 +16,11 @@
 <meta property="og:title" content="The Bitcoin Battery — a program that pays for its own execution">
 <meta property="og:description" content="Don't give an AI agent a wallet. Give it a battery. OP_PUSH_TX needs no signature, so the agent holds no key at all — there is nothing to steal, and the worst a compromised agent can do is spend fuel doing exactly what the covenant was built to do.">
 <meta property="og:url" content="https://grafverse.com/battery.html">
-<meta property="og:image" content="https://grafverse.com/battery-og.png?v=30">
+<meta property="og:image" content="https://grafverse.com/battery-og.png?v=31">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="The Bitcoin Battery — a program that pays for its own execution">
 <meta name="twitter:description" content="A Bitcoin battery can power a Mandelbrot generator, or an AI agent. One iteration per transaction, computed in Script, paid for out of its own carried value.">
-<meta name="twitter:image" content="https://grafverse.com/battery-og.png?v=30">
+<meta name="twitter:image" content="https://grafverse.com/battery-og.png?v=31">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -31,7 +31,7 @@
   "publisher": { "@type": "Organization", "name": "grafverse", "url": "https://grafverse.com" },
   "mainEntityOfPage": { "@type": "WebPage", "@id": "https://grafverse.com/battery.html" },
   "url": "https://grafverse.com/battery.html",
-  "image": "https://grafverse.com/battery-og.png?v=30",
+  "image": "https://grafverse.com/battery-og.png?v=31",
   "inLanguage": "en",
   "about": [
     { "@type": "Thing", "name": "Bitcoin battery" },
@@ -957,7 +957,8 @@
        strictly to scale, and the caption says so instead of pretending. */
     var burnPct=Math.max(0, Math.min(60, burned/cap*100));
     var avail=100-burnPct, MINPC=4.2;
-    var parts=board.map(function(b){ return { sats:b.sats, mark:b.mark, pc:(b.sats/cap)*100 } });
+    /* the genesis rides the board like any other charge — flagged only so it reads as the origin */
+    var parts=board.map(function(b){ return { sats:b.sats, mark:b.mark, seed:!!b.seed, pc:(b.sats/cap)*100 } });
     var scaled=false;
     parts.forEach(function(p){ if(p.pc<MINPC){ p.pc=MINPC; scaled=true } });
     var tot=parts.reduce(function(a,p){return a+p.pc},0);
