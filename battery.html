@@ -490,7 +490,7 @@
       <div class="stat"><span>next level costs</span><b id="nextc">—</b></div>
       <div class="stat"><span>levels left (precision)</span><b id="lvlleft">—</b></div>
 
-      <div class="row"><button id="loop" style="width:100%">🔁 clean loop · period 11 · 21 levels</button></div>
+      <div class="row"><button id="loop" style="width:100%">⛓ LIVE on-chain simulation — restore the covenant's settings</button></div>
       <div class="row"><button id="loop7" class="ghost" style="width:100%">↔ on-axis · period 4 · 10 levels</button></div>
       <div class="row">
         <button id="save" class="ghost" style="flex:1">⬇ frame (png)</button>
@@ -1306,7 +1306,9 @@
      real thing — visible by the last levels, and exactly the kind of quiet mismatch this page exists
      to rule out. These are the constants from BATTERY_GEOMETRY in mint/src/battery.ts; the toy opens
      showing what the chain is actually computing, and the dials move away from it, not toward it. */
-  var exact={ p:11, zx:-1.423288564770, zy:0.127278891029, span:4.0, levels:21, K:4 };
+  var GENESIS_TOY={ live:true, p:11, zx:-1.423288564770, zy:0.127278891029,
+                    span:4.0, levels:21, K:4, maxIter:6, W:256, H:192, cx:0, cy:0 };
+  var exact=GENESIS_TOY;
 
   function readCfg(){
     var W=+$('W').value, H=+$('H').value, span=+$('Sp').value;
@@ -1518,11 +1520,23 @@
     $('ZY').value=o.zy.toFixed(4);  $('vZY').textContent=o.zy.toFixed(6);
     $('K').value=o.K;              $('vK').textContent=String(o.K);
     $('Sp').value=Math.min(6,o.span); $('vS').textContent=o.span.toFixed(4);
-    $('I').value=24;               $('vI').textContent='24';
+    var mi=(o.maxIter!=null?o.maxIter:24);
+    $('I').value=mi;               $('vI').textContent=String(mi);
     $('L').value=o.levels;         $('vL').textContent=String(o.levels);
+    /* A preset that claims to restore the covenant's settings has to restore ALL of them. Leaving the
+       grid or the frame-1 centre wherever they were last dragged would put "live on-chain simulation"
+       over a picture the chain is not drawing — which is the one thing this button must never do. */
+    if(o.W!=null){ $('W').value=o.W;  $('vW').textContent=String(o.W) }
+    if(o.H!=null){ $('H').value=o.H;  $('vH').textContent=String(o.H) }
+    if(o.cx!=null){ $('X').value=o.cx; $('vX').textContent=(+o.cx).toFixed(2) }
+    if(o.cy!=null){ $('Y').value=o.cy; $('vY').textContent=(+o.cy).toFixed(2) }
     stop(); reset();
-    $('status').textContent='Loop · period '+o.p+' nucleus '+o.zx+' · '+o.levels+
-      ' levels · the final frame frames the island exactly as frame 1 frames the whole set.';
+    $('status').textContent = o.live
+      ? 'Restored the covenant\'s own parameters — '+o.W+'x'+o.H+', span '+o.span.toFixed(1)+
+        ', maxIter '+mi+' rising by '+o.K+' each level, '+o.levels+' levels, centred on c = 0 and '+
+        'descending to the period-'+o.p+' nucleus. This is what the chain is computing, drawn locally.'
+      : 'Loop · period '+o.p+' nucleus '+o.zx+' · '+o.levels+
+        ' levels · the final frame frames the island exactly as frame 1 frames the whole set.';
   }
   $('loop7').addEventListener('click',function(){
     preset({ p:4, zx:-1.940799806529485, zy:0, span:4.0, levels:10, K:16 });
@@ -1537,7 +1551,10 @@
        Off-axis islands are generally ROTATED relative to the main set, which jumps at the loop even
        when the scale is right. This one is within a degree — and being off the antenna, every frame
        of the descent passes through filaments instead of bare needle. */
-    preset({ p:11, zx:-1.423288564770, zy:0.127278891029, span:4.0, levels:21, K:16 });
+    /* Restores from GENESIS_TOY — the SAME object the toy opens with, so the button and the opening
+       state cannot drift apart. K is 4 and maxIter 6 here, the covenant's own ramp; this used to pass
+       K:16 with maxIter pinned at 24, which drew a prettier descent than the chain actually draws. */
+    preset(GENESIS_TOY);
   });
   $('save').addEventListener('click',function(){
     var list = frames.length ? frames : [cv.toDataURL('image/png')];
