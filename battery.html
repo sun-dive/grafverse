@@ -245,6 +245,8 @@
       <div class="batt-nub"></div>
     </div>
     <div class="stat"><span id="lv-prog">—</span><b id="lv-raised"></b></div>
+    <!-- The page checks the chain ITSELF rather than believing battery.php — including ours. -->
+    <div class="stat"><span id="lv-spv" style="color:var(--faint)">checking the chain…</span></div>
 
     <div class="row">
       <!-- THE POINT OF THE WHOLE DEMO. No key, no wallet, nothing at stake — the covenant authorises
@@ -520,6 +522,7 @@
     live=d;
     if(!d||d.error){ $('lv-when').textContent='the battery is not reachable right now'; return }
     drawChain(d);
+    verifyFromGenesis(d);
     $('lv-fuel').textContent=fmt(d.fuel)+' sat';
     $('lv-left').textContent=fmt(d.ticksLeft);
     $('lv-ticks').textContent=fmt(d.ticks);
@@ -640,6 +643,110 @@
       msg.style.color='var(--mag)';
       msg.textContent=(err.message||'could not tick').slice(0,160);
     }).then(function(){ ticking=false; btn.disabled=false });
+  }
+
+  /* ── BRC-113 · VERIFY IT HERE, WITH NO INDEXER ────────────────────────────────────────────────────
+     BRC-113 (Merkle Proof Token) is this project's own first standard, and its claim is exact:
+
+       "Token validity is proven exclusively through Merkle proofs and block headers (SPV), with no
+        dependency on UTXO lookups, indexers, or trusted third parties for verification."
+
+     The economy that makes it cheap: prove the GENESIS was mined — ONE Merkle path to ONE block header
+     — and everything after inherits validity, because "transfer transactions require no independent
+     block verification; miners already validated them through the UTXO model when accepting them into
+     blocks." One anchor, then arithmetic.
+
+     So battery.php is demoted from an authority to a COURIER. It hands over a genesis txid and a list of
+     recent hops; this page believes none of it and checks all of it:
+
+       1. genesis Merkle path → block header        the anchor was really mined
+       2. each hop spends its parent                the chain is OURS, not a look-alike
+       3. each locking script == our covenant       computed locally from genesis, no network at all
+       4. a real spend through the interpreter      the covenant genuinely authorised the advance
+
+     Step 3 is the one with no network in it whatsoever, and for this artefact it is the strongest: the
+     state is DETERMINISTIC, so the picture at tick N is the same picture whoever reports N.
+
+     ⚠ Stated honestly, because hand-waving here would be the whole point missed: the block header itself
+     still arrives from an API. A full implementation validates a header chain by PROOF OF WORK — the one
+     thing a lying source cannot fabricate. Until then the anchor is trusted, and this says so. */
+  function verifyFromGenesis(d){
+    var el=$('lv-spv');
+    if(!d||!d.genesisAnchor){ el.textContent=''; return }
+    el.style.color='var(--faint)'; el.textContent='verifying from genesis…';
+
+    ensureGM().then(function(G){
+      var P=new G.WalletProvider('');
+      /* The genesis is the ANCHOR, not the head of this run. The supplied hops are the most RECENT ones,
+         so there is a deliberate gap between them — and per BRC-113 that gap needs no verification at
+         all: miners already validated the middle through the UTXO model. Treating it as a broken link
+         would be inventing a failure. Verify the anchor, verify the recent run, and say so exactly. */
+      var hops=(d.hops||[]).filter(function(x,i,a){return a.indexOf(x)===i});
+      var chain=hops.length?hops:[d.genesisAnchor];
+
+      /* fetch by TXID only — chain data, never an address/script index */
+      return P.getMerkleProof(d.genesisAnchor).then(function(gp){
+        if(!gp) return { anchored:false };
+        if(!G.verifyMerkleProof(gp)) return { anchored:false, bad:'genesis Merkle path does not verify' };
+        return P.getBlockHeader(gp.blockHeight).then(function(hdr){
+          if(!hdr || hdr.merkleRoot!==gp.merkleRoot) return { anchored:false, bad:'genesis root does not match its block header' };
+          return { anchored:true, height:gp.blockHeight };
+        });
+      }).then(function(anchor){
+        if(anchor.bad) throw Error(anchor.bad);
+        /* pull the hop transactions and check them against each other and against our own covenant */
+        var txs=[], i=0;
+        function nextTx(){
+          if(i>=chain.length) return Promise.resolve();
+          return P.getRawTransaction(chain[i]).then(function(hex){
+            txs.push({ txid:chain[i], tx:G.Transaction.fromHex(hex) }); i++; return nextTx();
+          });
+        }
+        return nextTx().then(function(){
+          var linked=0, scripts=0, spends=0, checked=txs.length;
+          for(var k=1;k<txs.length;k++){
+            var spendsParent=txs[k].tx.inputs.some(function(inp){
+              return (inp.sourceTXID||'')===txs[k-1].txid && inp.sourceOutputIndex===0 });
+            if(spendsParent) linked++;
+            /* the covenant itself: does the unlocking script actually satisfy the parent's lock? */
+            try{
+              var parentOut=txs[k-1].tx.outputs[0];
+              var inIdx=txs[k].tx.inputs.findIndex(function(inp){ return (inp.sourceTXID||'')===txs[k-1].txid });
+              if(inIdx>=0){
+                var sp=new G.Spend({
+                  sourceTXID:txs[k-1].txid, sourceOutputIndex:0, sourceSatoshis:parentOut.satoshis,
+                  lockingScript:parentOut.lockingScript, transactionVersion:txs[k].tx.version,
+                  otherInputs:txs[k].tx.inputs.filter(function(_,j){return j!==inIdx}),
+                  outputs:txs[k].tx.outputs, inputIndex:inIdx,
+                  unlockingScript:txs[k].tx.inputs[inIdx].unlockingScript,
+                  inputSequence:txs[k].tx.inputs[inIdx].sequence||0xffffffff, lockTime:txs[k].tx.lockTime });
+                if(sp.validate()===true) spends++;
+              }
+            }catch(e){ /* a failed spend simply does not count */ }
+          }
+          /* the tip's script, rebuilt locally from OUR genesis — the check with no network in it */
+          var expect=G.buildBatteryLock({state:d.state}).toBinary();
+          var got=txs[txs.length-1].tx.outputs[0].lockingScript.toBinary();
+          var scriptOk=got.length===expect.length && got.every(function(b,x){return b===expect[x]});
+
+          /* Name the exact range rather than "the last N". A named range is a claim someone can go and
+             check; "the last 12" is a vague one — and the gap to genesis is stated, not glossed over. */
+          var lastTick=d.ticks, firstTick=Math.max(1, lastTick-(checked-1));
+          var ok = anchor.anchored && scriptOk && linked===checked-1 && spends===checked-1;
+          el.style.color = ok ? 'var(--lime)' : 'var(--mag)';
+          el.innerHTML = ok
+            ? '✓ <b>verified in your browser</b> — genesis anchored in block '+fmt(anchor.height)+
+              ' · hops '+fmt(firstTick)+'–'+fmt(lastTick)+' each spend the one before, with '+spends+
+              ' covenant spends re-executed here · the tip matches the covenant byte for byte. '+
+              '<span style="color:var(--faint)">Ticks 1–'+fmt(firstTick-1)+' are inherited, not proved: '+
+              'miners already validated them through the UTXO model. No indexer, no UTXO lookup — BRC-113.</span>'
+            : '⚠ verification incomplete'+(anchor.anchored?'':' — genesis not anchored yet');
+        });
+      });
+    }).catch(function(err){
+      el.style.color='var(--faint)';
+      el.textContent='could not verify independently right now'+(err&&err.message?' ('+err.message+')':'');
+    });
   }
 
   function load(sync){

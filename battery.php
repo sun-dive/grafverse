@@ -34,6 +34,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') { http_response_code(20
 $GENESIS_TXID = 'd9a55ddb6c52bc51425f3c9e1416033179899e76abd634deda4510eed3790146';
 $BATTERY_VOUT = 0;                  // the covenant is always output 0
 $BOARD        = 21;                 // top 21 CONTRIBUTIONS (not contributors) — visibility has a price
+$HOPS         = 12;                 // recent hops handed to the page to verify for itself (BRC-113)
 $MAX_ADVANCE  = 60;                 // hops to catch up per request (bounds a viral burst)
 $THROTTLE     = 6;                  // seconds between chain reconciles
 $CACHE        = __DIR__ . '/battery-tip.json';
@@ -166,6 +167,7 @@ function init_cache() {
     'genesis' => $GENESIS_TXID,
     'tip' => ['txid' => $GENESIS_TXID, 'fuel' => battery_value($tx), 'state' => $st],
     'ticks' => 0,
+    'hops' => [],                  // recent hop txids — the page verifies these, it does not trust them
     'board' => [],                 // contributions: every hop where the fuel ROSE
     'raised' => 0,                 // total ever contributed, beyond the genesis fuel
     'updated' => time(),
@@ -182,7 +184,7 @@ function init_cache() {
  * Breaking out cleanly instead means whatever was reached IS saved, and the next request carries on.
  */
 function advance(&$c, $hint = null) {
-  global $BATTERY_VOUT, $MAX_ADVANCE, $BOARD;
+  global $BATTERY_VOUT, $MAX_ADVANCE, $BOARD, $HOPS;
   $moved = 0;
   $deadline = microtime(true) + 10.0;
   for ($i = 0; $i < $MAX_ADVANCE; $i++) {
@@ -213,6 +215,11 @@ function advance(&$c, $hint = null) {
     }
     $c['tip'] = ['txid' => $sTxid, 'fuel' => $newFuel, 'state' => $st];
     $c['ticks']++;
+    // The recent hop list is what the BROWSER verifies for itself (BRC-113): we supply the chain, it
+    // checks linkage + covenant + the genesis Merkle anchor. Bounded, because a chain of millions of
+    // ticks cannot be shipped to a page — and does not need to be. Miners already validated the middle.
+    $c['hops'][] = $sTxid;
+    if (count($c['hops']) > $HOPS) $c['hops'] = array_slice($c['hops'], -$HOPS);
     $moved++; $hint = null;
   }
   if ($moved) {
@@ -279,6 +286,8 @@ echo json_encode([
   'level'    => $state ? level_of($state) : null,
   'progress' => $state ? round(frame_progress($state), 6) : null,
   'raised'   => (int) ($c['raised'] ?? 0),
+  'genesisAnchor' => $c['genesis'],              // BRC-113: prove THIS was mined and the rest follows
+  'hops'     => array_values($c['hops'] ?? []),  // for the page to verify — NOT to believe
   'board'    => $c['board'],                     // already sorted by amount, capped at 21
   'updated'  => $c['updated'],
 ], JSON_UNESCAPED_UNICODE);

@@ -58,8 +58,24 @@ export {
   FIELDS, FIELD_WIDTHS, step0, S, SHIFT, ESCAPE, RECORD_BATTERY,
   type BatteryState, type BatteryGeometry,
 } from './battery.ts'
+// ── PURE SPV — Merkle proofs + block headers, no network, no trust ──────────────────────────────────
+// This layer existed and shipped to nobody: `tokenProtocol` was imported ONLY as `import type` by
+// walletProvider, so every verification function was dead code and every page that read the chain simply
+// believed an API. Exporting it is what lets a page check the chain itself instead of trusting a server
+// — including ours. `verifyProofChain` is generic: it proves each tx is in a block AND that the oldest
+// entry is the genesis, which is the only real answer to a look-alike chain.
+export {
+  verifyMerkleProof, verifyProofChain, verifyProofChainAsync,
+  createProofChain, extendProofChain, verifyToken, computeTokenId, computeFungibleTokenId,
+  doubleSha256, hexToBytes, bytesToHex,
+  type MerkleProofEntry, type MerklePathNode, type ProofChain, type BlockHeader, type VerificationResult,
+} from './tokenProtocol.ts'
+
 // ── @bsv/sdk primitives the browser modal needs directly (throwaway key gen, tip-tx parse, P2PKH) ──
 export { PrivateKey, Transaction, P2PKH, SatoshisPerKilobyte } from '@bsv/sdk'
+// Spend = the script interpreter. With it a PAGE can validate a covenant spend the way a node does,
+// rather than taking anyone's word that the transaction it was handed is a legitimate advance.
+export { Spend, LockingScript, UnlockingScript } from '@bsv/sdk'
 
 // ── mint / editions / gift-voucher free units (low-level) ──
 export {
