@@ -315,7 +315,8 @@
       <!-- THE POINT OF THE WHOLE DEMO. No key, no wallet, nothing at stake — the covenant authorises
            with a proof about the transaction, so a stranger with an empty browser can advance it. -->
       <button id="lv-tick" style="flex:1;min-width:200px">▶ Tick it — one iteration, no key</button>
-      <button id="lv-fuelit" class="ghost" style="flex:1;min-width:190px">⚡ Fuel it — and sign the board</button>
+      <button id="lv-fuelit" class="ghost" style="flex:1;min-width:190px" disabled
+              title="Funding is paused while the covenant's parameters are corrected">⚡ Funding paused</button>
     </div>
     <div class="stat" id="lv-tickmsg" style="min-height:20px;color:var(--faint)"></div>
 
@@ -377,7 +378,15 @@
 
           <div class="err" id="c-err"></div>
           <button id="c-go" style="width:100%;margin-top:6px">Continue →</button>
-          <p class="note">A throwaway key is made <b>in this browser</b> — your own wallet is never touched. You send it the fuel, it builds the top-up, and the change returns to your address. One transaction adds the fuel, advances the picture and writes your mark, atomically.</p>
+          <p class="note" style="border:1px solid rgba(255,154,46,.45);background:rgba(255,154,46,.07);
+       border-radius:9px;padding:10px 12px;color:#ffc98a">
+      <b>Funding is paused.</b> This battery's opening iteration budget was set too low, so its first
+      frame is drawn with the wrong shape — about 10% of the image is painted as solid interior that
+      is not. That number is fixed in the covenant at genesis and there is no key to amend it, so it
+      is being rebuilt with corrected parameters. <b>Please don't add fuel to this one.</b> It will
+      keep running on what it has; the replacement will be linked here when it is live.
+    </p>
+    <p class="note">A throwaway key is made <b>in this browser</b> — your own wallet is never touched. You send it the fuel, it builds the top-up, and the change returns to your address. One transaction adds the fuel, advances the picture and writes your mark, atomically.</p>
         </div>
 
         <div id="st-fund" style="display:none">
@@ -1139,7 +1148,25 @@
   var ov=$('ov');
   function show(step){ ['st-compose','st-fund','st-done'].forEach(function(id){
     $(id).style.display = id===step?'':'none' }) }
-  function open(){ ov.classList.add('on'); var p=pending(); if(p){ show('st-fund'); resume(p) } else show('st-compose') }
+  /* FUNDING PAUSED. The opening iteration budget is wrong and this genesis is being replaced, so no
+     NEW money should go into this battery. A PENDING session is a different matter: someone may have
+     already sent sats to a throwaway key, and refusing to open the modal would strand those coins with
+     no way back. So resume stays available, and the button re-enables itself for exactly that case. */
+  var FUNDING_PAUSED=true;
+  function open(){
+    var p=pending();
+    if(FUNDING_PAUSED && !p){
+      alert('Funding is paused.\n\nThis battery\'s opening iteration budget was set too low, and it '+
+            'cannot be amended — there is no key. A corrected one is being built, and will be linked '+
+            'here. Please don\'t add fuel to this battery.');
+      return;
+    }
+    ov.classList.add('on'); if(p){ show('st-fund'); resume(p) } else show('st-compose');
+  }
+  /* Anyone mid-payment must still be able to finish or sweep. */
+  (function(){ try{ if(pending()){ var b=$('lv-fuelit');
+    b.disabled=false; b.textContent='⚡ Resume your pending top-up';
+    b.title='You have an unfinished top-up — open it to complete or sweep it'; } }catch(e){} })();
   function close(){ ov.classList.remove('on'); if(poll){clearInterval(poll);poll=null} }
   $('lv-fuelit').onclick=open; $('md-x').onclick=close; $('d-close').onclick=function(){close();load(true)};
   ov.addEventListener('click',function(e){ if(e.target===ov) close() });
