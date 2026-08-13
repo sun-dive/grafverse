@@ -169,7 +169,11 @@
              border:2px solid rgba(120,170,255,.45);border-radius:9px;background:rgba(4,8,16,.72);
              display:flex;flex-direction:column;justify-content:flex-end}
   /* burned headroom — this gap is the picture that has been drawn */
-  .batt-burn{flex:none;display:flex;align-items:flex-start;justify-content:center;
+  /* the SPENT portion — absolutely positioned so it lies over the funder bands instead of displacing
+     them. The bands are the capacity and must always be readable; this is how much of it is gone. */
+  .batt-burn{position:absolute;left:0;right:0;top:0;z-index:2;pointer-events:none;
+             display:flex;align-items:flex-start;justify-content:center;
+             backdrop-filter:saturate(.15) brightness(.45);
              background:repeating-linear-gradient(135deg,rgba(120,170,255,.05) 0 6px,transparent 6px 12px)}
   .batt-burn span{font-size:9.5px;color:var(--faint);letter-spacing:.04em;padding-top:3px;text-align:center;
                   line-height:1.25}
@@ -315,8 +319,7 @@
       <!-- THE POINT OF THE WHOLE DEMO. No key, no wallet, nothing at stake — the covenant authorises
            with a proof about the transaction, so a stranger with an empty browser can advance it. -->
       <button id="lv-tick" style="flex:1;min-width:200px">▶ Tick it — one iteration, no key</button>
-      <button id="lv-fuelit" class="ghost" style="flex:1;min-width:190px" disabled
-              title="Funding is paused while the covenant's parameters are corrected">⚡ Funding paused</button>
+      <button id="lv-fuelit" class="ghost" style="flex:1;min-width:190px">⚡ Fuel it — and sign the board</button>
     </div>
     <div class="stat" id="lv-tickmsg" style="min-height:20px;color:var(--faint)"></div>
 
@@ -378,28 +381,35 @@
 
           <div class="err" id="c-err"></div>
           <button id="c-go" style="width:100%;margin-top:6px">Continue →</button>
-          <p class="note" style="border:1px solid rgba(255,154,46,.45);background:rgba(255,154,46,.07);
-       border-radius:9px;padding:10px 12px;color:#ffc98a">
-      <b>Funding is paused.</b> This battery's opening iteration budget was set too low, so its first
-      frame is drawn with the wrong shape — about 10% of the image is painted as solid interior that
-      is not. That number is fixed in the covenant at genesis and there is no key to amend it, so it
-      is being rebuilt with corrected parameters. <b>Please don't add fuel to this one.</b> It will
-      keep running on what it has; the replacement will be linked here when it is live.
-    </p>
-    <p class="note">A throwaway key is made <b>in this browser</b> — your own wallet is never touched. You send it the fuel, it builds the top-up, and the change returns to your address. One transaction adds the fuel, advances the picture and writes your mark, atomically.</p>
+          <p class="note"><b>One transaction, signed by your own key.</b> Your grafverse wallet signs it here — the same self-custody key you mint with, restorable from your seed phrase. The transaction adds the fuel, advances the picture, writes your mark and returns your change, all at once. If anything fails it is never broadcast, so nothing moves.</p>
         </div>
 
-        <div id="st-fund" style="display:none">
-          <p class="note" style="margin-top:0">Send about this, from any BSV wallet — a round number is fine. Whatever arrives becomes the fuel, minus the fee, and the remainder returns to your address:</p>
-          <div class="amt-big" id="f-amt">—</div>
-          <div class="qr" id="f-qr"></div>
-          <div class="addr" id="f-addr">…</div>
-          <div class="stat" style="margin-top:10px"><span id="f-watch">📡 watching for your send…</span></div>
-          <div class="spin"></div>
-          <div class="err" id="f-err"></div>
-          <button id="f-cancel" class="ghost" style="width:100%;margin-top:8px">Cancel &amp; sweep my sats back</button>
-          <p class="note">⚠ The throwaway key lives <b>in this browser only</b>. Don't clear your browsing data until this completes — if you do, whatever you have sent here cannot be recovered.</p>
-        </div>
+          <div id="st-fund" style="display:none">
+            <p class="note" style="margin-top:0"><b>Here is the transaction. Sign it in your wallet.</b>
+               This page never holds a key — it only builds. Check the three lines below before you sign:
+               they are the whole of it.</p>
+            <div class="stat"><span>fuel into the battery</span><b id="b-add">—</b></div>
+            <div class="stat"><span>your mark</span><b id="b-mark" style="font-weight:400;text-align:right;max-width:60%"></b></div>
+            <div class="stat"><span>change back to you</span><b id="b-change">—</b></div>
+            <div class="stat"><span>fee to miners</span><b id="b-fee">—</b></div>
+            <div class="stat"><span>built on tip</span><b id="b-tip" style="font-weight:400;font-size:11px">—</b></div>
+
+            <label style="display:block;font-size:11.5px;color:var(--dim);margin:12px 0 3px">
+              unsigned transaction <span id="b-fmt" style="color:var(--faint)">(BEEF — carries the inputs your wallet needs)</span>
+            </label>
+            <textarea id="b-hex" readonly rows="4" style="width:100%;background:#0b1220;color:var(--dim);
+              border:1px solid var(--line);border-radius:8px;padding:8px;font:11px/1.4 ui-monospace,monospace;
+              resize:vertical;word-break:break-all"></textarea>
+            <div class="row" style="margin-top:8px">
+              <button id="b-copy" style="flex:1">⧉ Copy</button>
+              <button id="b-raw" class="ghost" style="flex:1">raw hex instead</button>
+            </div>
+            <div class="err" id="f-err"></div>
+            <button id="f-cancel" class="ghost" style="width:100%;margin-top:8px">← Back</button>
+            <p class="note">Sign and broadcast it wherever you like — <b>nothing here needs to know</b>. The
+               board reads the chain, so your mark appears when the transaction confirms. If it fails with
+               <i>missing inputs</i>, the battery advanced while you were signing: come back and rebuild.</p>
+          </div>
 
         <div id="st-done" style="display:none">
           <p class="note ok" style="margin-top:0;font-size:14px"><b>Done — your fuel is in the battery.</b></p>
@@ -546,7 +556,6 @@
   "use strict";
   var $=function(i){return document.getElementById(i)};
   var FEEPAD=700;                 // covers the top-up's own fee (~350 sat); the remainder returns as change
-  var LSK='battery_pending';      // a throwaway key mid-flight, browser-only
   var GM=null, live=null;
 
   var fmt=function(n){return (n||0).toLocaleString()};
@@ -1220,8 +1229,14 @@
     /* Bands are proportional to contribution, but a floor keeps a small funder VISIBLE rather than a
        hairline — a board nobody can read is not a board. Where the floor applies the band is no longer
        strictly to scale, and the caption says so instead of pretending. */
-    var burnPct=Math.max(0, Math.min(60, burned/cap*100));
-    var avail=100-burnPct, MINPC=4.2;
+    /* THE BANDS ARE THE CAPACITY; THE FILL LINE IS THE CHARGE.
+       burnPct used to be clamped to 60 and SUBTRACTED from the bands' room, so a flat battery drew at
+       40% and read as part-charged. At 170 sat of 32,100 the true burn is 99.5% — the colour said red
+       and the height said nearly half, and the height is what people believe.
+       Now the bands always fill the casing, sized by what each funder gave, and the spent portion is
+       drawn OVER them. Both facts survive: who charged it, and how little is left. */
+    var burnPct=Math.max(0, Math.min(100, burned/cap*100));
+    var avail=100, MINPC=4.2;
     /* the genesis rides the board like any other charge — flagged only so it reads as the origin */
     var parts=board.map(function(b){ return { sats:b.sats, mark:b.mark, seed:!!b.seed, pc:(b.sats/cap)*100 } });
     var scaled=false;
@@ -1233,9 +1248,6 @@
     var rgb=chargeRGB(lvl), ink = lvl>0.62 ? '#08130a' : '#1a0d06';
 
     var html='';
-    if(burnPct>0.6) html+='<div class="batt-burn" style="height:'+burnPct.toFixed(2)+'%">'+
-      '<span>'+fmt(burned)+' sat burned<br>into the picture</span></div>';
-    else if(burned>0) html+='<div class="batt-burn" style="height:'+Math.max(2,burnPct).toFixed(2)+'%"></div>';
 
     /* ONE BODY OF CHARGE, not a stack of coloured bands.
        A battery everyone recognises has a single solid fill — the moment it is striped per funder it
@@ -1244,6 +1256,10 @@
        The funders sit inside it as text separated by hairlines: still legible, still individually
        hoverable, but they no longer cut the charge into pieces. */
     var fillPc=parts.reduce(function(a,p){return a+p.pc},0);
+    /* the spent portion, laid over the bands rather than pushing them down */
+    if(burned>0) html+='<div class="batt-burn" style="height:'+burnPct.toFixed(2)+'%">'+
+      (burnPct>12 ? '<span>'+fmt(burned)+' sat burned<br>into the picture</span>' : '')+'</div>';
+
     html+='<div class="batt-fill" style="height:'+fillPc.toFixed(2)+'%;'+
           'background:linear-gradient(180deg,'+rgbCss(rgb,1.10)+' 0%,'+rgbCss(rgb,1.0)+' 46%,'+
           rgbCss(rgb,0.80)+' 100%);color:'+ink+'">'+
@@ -1288,31 +1304,17 @@
   var ov=$('ov');
   function show(step){ ['st-compose','st-fund','st-done'].forEach(function(id){
     $(id).style.display = id===step?'':'none' }) }
-  /* FUNDING PAUSED. The opening iteration budget is wrong and this genesis is being replaced, so no
-     NEW money should go into this battery. A PENDING session is a different matter: someone may have
-     already sent sats to a throwaway key, and refusing to open the modal would strand those coins with
-     no way back. So resume stays available, and the button re-enables itself for exactly that case. */
-  var FUNDING_PAUSED=true;
+  /* FUNDING IS OPEN. It was paused while the covenant was replaced; this now funds the battery minted
+     at 3840x2160. There is no pending-session concept left to resume — a top-up is ONE signed
+     transaction, so it either happened or it did not. Nothing can be left half-done. */
   function open(){
-    var p=pending();
-    if(FUNDING_PAUSED && !p){
-      alert('Funding is paused.\n\nThis battery\'s opening iteration budget was set too low, and it '+
-            'cannot be amended — there is no key. A corrected one is being built, and will be linked '+
-            'here. Please don\'t add fuel to this battery.');
-      return;
-    }
-    ov.classList.add('on'); if(p){ show('st-fund'); resume(p) } else show('st-compose');
+    ov.classList.add('on');
+    show('st-compose');
   }
-  /* Anyone mid-payment must still be able to finish or sweep. */
-  (function(){ try{ if(pending()){ var b=$('lv-fuelit');
-    b.disabled=false; b.textContent='⚡ Resume your pending top-up';
-    b.title='You have an unfinished top-up — open it to complete or sweep it'; } }catch(e){} })();
   function close(){ ov.classList.remove('on'); if(poll){clearInterval(poll);poll=null} }
   $('lv-fuelit').onclick=open; $('md-x').onclick=close; $('d-close').onclick=function(){close();load(true)};
   ov.addEventListener('click',function(e){ if(e.target===ov) close() });
 
-  function pending(){ try{ return JSON.parse(localStorage.getItem(LSK)||'null') }catch(e){ return null } }
-  function setPending(p){ try{ p?localStorage.setItem(LSK,JSON.stringify(p)):localStorage.removeItem(LSK) }catch(e){} }
 
   $('c-mark').addEventListener('input',function(){
     var n=bytesOf(this.value); $('c-bytes').textContent=n+'/220';
@@ -1325,33 +1327,34 @@
   $('c-amt').dispatchEvent(new Event('input'));
 
   var poll=null;
+  /* ── ONE TRANSACTION, SIGNED BY A KEY YOU OWN ────────────────────────────────────────────────────
+     This used to mint a THROWAWAY key, ask you to send it the fuel, then spend that key into the
+     covenant. Two transactions — and between them your coins sat on a key that existed only in this
+     browser's localStorage. Clear your history, lose the tab to a crash, start on a phone and finish
+     on a laptop: unreachable. The page warned about it, which put the entire risk on a visitor
+     remembering a sentence AFTER they had already sent money.
+
+     Now it signs with YOUR wallet — the same self-custody key grafverse mints with, restorable from a
+     seed phrase. Build fails, nothing broadcast. Broadcast fails, nothing moved. There is no state in
+     between where coins can be stranded, because the only key involved is one you can restore. */
   $('c-go').onclick=function(){
     var amt=Math.floor(+$('c-amt').value||0), mark=$('c-mark').value.trim(), recv=$('c-recv').value.trim();
     var e=$('c-err'); e.textContent='';
-    if(!(amt>=1000)) return e.textContent='Send at least 1,000 sat — a top-up costs ~350 sat in fees whatever its size.';
+    if(!(amt>=1000)) return e.textContent='Add at least 1,000 sat — a top-up costs ~350 sat in fees whatever its size.';
     if(bytesOf(mark)>220) return e.textContent='That mark is over 220 bytes.';
     if(!/^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(recv)) return e.textContent='That does not look like a BSV address.';
     ensureGM().then(function(G){
-      var k=G.PrivateKey.fromRandom();
-      var p={wif:k.toWif(),addr:k.toAddress(),amt:amt,mark:mark,recv:recv,need:amt+FEEPAD};
-      setPending(p); show('st-fund'); resume(p);
+      var w=G.loadOrCreateWallet();
+      if(w.watchOnly || !w.key){
+        return e.textContent='This browser holds a WATCH-ONLY wallet, which cannot sign. Import a key first.';
+      }
+      var p={ addr:w.address, amt:amt, mark:mark, recv:recv, need:amt+FEEPAD };
+      show('st-fund'); resume(p);
     }).catch(function(err){ e.textContent=err.message });
   };
 
-  function resume(p){
-    $('f-amt').textContent=fmt(p.need)+' sat';
-    $('f-addr').textContent=p.addr;
-    $('f-err').textContent='';
-    ensureQR().then(function(){
-      try{ var q=window.qrcode(0,'M'); q.addData('bitcoin:'+p.addr+'?sv&amount='+(p.need/1e8).toFixed(8));
-           q.make(); $('f-qr').innerHTML=q.createSvgTag({cellSize:4,margin:1,scalable:true}) }catch(e){}
-    });
-    if(poll)clearInterval(poll);
-    poll=setInterval(function(){watch(p)},4000); watch(p);
-  }
-
-  /* Mempool-aware AND queued: the provider merges confirmed + unconfirmed and rate-limits itself.
-     Returned in this page's shape ({tx_hash, tx_pos, value}) so the rest of the flow is unchanged. */
+  /* The funder's coins, read from the chain — the page needs to name ONE input in the
+     transaction it builds, and this is the only thing it needs from the funder besides an address. */
   function utxos(addr){
     return ensureGM().then(function(G){ return new G.WalletProvider(addr).getUtxos() })
       .then(function(us){
@@ -1362,88 +1365,80 @@
       }).catch(function(){ return [] });
   }
 
-  var busy=false;
-  function watch(p){
-    if(busy)return;
-    utxos(p.addr).then(function(us){
-      /* Take the LARGEST utxo and contribute whatever actually arrived, rather than demanding an exact
-         amount. Asking for `amount + fee` and then refusing anything smaller means a round-number send
-         scans forever while the sats sit right there — and topping up afterwards cannot rescue it,
-         because a covenant spend needs ONE funding input, not a combined balance. */
-      var u=us.sort(function(a,b){return b.value-a.value})[0];
-      if(!u) return;
-      if(u.value < 1000+FEEPAD){
-        $('f-watch').textContent='received '+fmt(u.value)+' sat — that is below the '+fmt(1000+FEEPAD)+' sat minimum; send a little more';
-        return;
-      }
-      busy=true; if(poll){clearInterval(poll);poll=null}
-      var add=Math.min(p.amt, u.value-FEEPAD);          // never more than asked; never more than arrived
-      $('f-watch').textContent='✓ received '+fmt(u.value)+' sat — fuelling with '+fmt(add)+'…';
-      return contribute(p,u,add);
-    }).catch(function(){}).then(function(){busy=false});
-  }
 
-  /* Build the top-up from the CURRENT tip. One tx: adds the fuel, advances one iteration, writes the mark.
-     `add` is what actually goes in — derived from the utxo that arrived, not from what was typed. */
-  function contribute(p,u,add){
-    var G,tipTx,fundTx,d;
-    return ensureGM().then(function(g){G=g; return load(true)}).then(function(){
-      d=live; if(!d||!d.tipTxid) throw Error('could not read the battery tip');
-      return chain().then(function(P){
-        return P.getSourceTransaction(d.tipTxid).then(function(a){    // queued, one at a time
-          return P.getSourceTransaction(u.tx_hash).then(function(b){ return [a,b] });
+    /* ── BUILD IT, HAND IT OVER ────────────────────────────────────────────────────────────────────
+       The page assembles the whole transaction and stops. It holds no key, signs nothing, broadcasts
+       nothing, and needs no callback: once the signed transaction is on chain, the board finds it by
+       walking, because a contribution is simply a hop where the fuel went UP.
+
+       The covenant input is already complete — OP_PUSH_TX authorises it with a proof about the
+       transaction, so no key exists for it anywhere. The only blank is yours. */
+    var built=null;
+    function resume(p){
+      $('f-err').textContent='';
+      $('b-hex').value='building…';
+      var G, d, tipTx, fundTx, u;
+      ensureGM().then(function(g){ G=g; return load(true) }).then(function(){
+        d=live; if(!d||!d.tipTxid) throw Error('could not read the battery tip');
+        return utxos(p.recv);
+      }).then(function(us){
+        u=(us||[]).filter(function(x){ return x.value >= p.amt+FEEPAD })
+                  .sort(function(a,b){ return a.value-b.value })[0];
+        if(!u) throw Error('no single coin at '+p.recv+' holds '+fmt(p.amt+FEEPAD)+
+                           ' sat — one input must cover the fuel and the fee');
+        return chain().then(function(P){
+          return P.getSourceTransaction(d.tipTxid).then(function(a){
+            return P.getSourceTransaction(u.tx_hash).then(function(b){ return [a,b] });
+          });
         });
+      }).then(function(txs){
+        tipTx=txs[0]; fundTx=txs[1];
+        return G.buildBatteryTopUpTx({
+          battery:{ sourceTransaction:tipTx, outputIndex:0, state:d.state, value:d.fuel },
+          addSats:p.amt,
+          key:G.PrivateKey.fromRandom(),      // sizing only — the signature it makes is thrown away
+          funder:{ sourceTransaction:fundTx, outputIndex:u.tx_pos },
+          mark:p.mark||null,
+          changeAddress:p.recv,
+          unsignedFunder:true
+        });
+      }).then(function(tx){
+        built=tx;
+        var outs=tx.outputs.map(function(o){ return o.satoshis||0 });
+        var change=outs[outs.length-1];
+        var fee=(d.fuel+u.value)-outs.reduce(function(a,b){return a+b},0);
+        $('b-add').textContent=fmt(p.amt)+' sat';
+        $('b-mark').textContent=p.mark||'(no mark)';
+        $('b-change').textContent=fmt(change)+' sat → '+p.recv;
+        $('b-fee').textContent=fmt(fee)+' sat';
+        $('b-tip').textContent=d.tipTxid;
+        showHex(false);
+      }).catch(function(err){
+        $('b-hex').value='';
+        $('f-err').textContent=err.message;
       });
-    }).then(function(txs){
-      tipTx=txs[0]; fundTx=txs[1];
-      return G.buildBatteryTopUpTx({
-        battery:{ sourceTransaction:tipTx, outputIndex:0, state:d.state, value:d.fuel },
-        addSats:add,
-        key:G.PrivateKey.fromWif(p.wif),
-        funder:{ sourceTransaction:fundTx, outputIndex:u.tx_pos },
-        mark:p.mark||null,
-        changeAddress:p.recv
-      });
-    }).then(function(tx){
-      var raw=tx.toHex();
-      $('f-watch').textContent='broadcasting '+fmt(raw.length/2)+' bytes…';
-      return chain().then(function(P){ return P.broadcast(raw) })
-        .then(function(txid){ return {txid:txid,tx:tx} });
-    }).then(function(r){
-      setPending(null);
-      /* tell the board straight away — it verifies on chain before recording, so this is a hint, not a claim */
-      fetch('/battery.php',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({txid:r.txid})}).catch(function(){});
-      $('d-added').textContent=fmt(add)+' sat';
-      $('d-fuel').textContent=fmt((r.tx.outputs[0].satoshis)||0)+' sat';
-      $('d-mark').textContent=p.mark||'(no mark)';
-      $('d-txid').textContent=r.txid;
-      $('d-link').href='https://whatsonchain.com/tx/'+r.txid;
-      show('st-done'); load(true);
-    }).catch(function(err){
-      $('f-err').textContent=err.message+' — your sats are still on the throwaway key; retry or sweep.';
-      $('f-watch').textContent='📡 watching…';
-      if(!poll) poll=setInterval(function(){watch(p)},4000);
-    });
-  }
+    }
+    function showHex(raw){
+      if(!built) return;
+      $('b-hex').value = raw ? built.toHex()
+                             : built.toBEEF().map(function(b){return ('0'+b.toString(16)).slice(-2)}).join('');
+      $('b-fmt').textContent = raw ? '(raw — your signer must already know the inputs)'
+                                   : '(BEEF — carries the inputs your wallet needs)';
+      $('b-raw').textContent = raw ? 'BEEF instead' : 'raw hex instead';
+      $('b-raw').onclick=function(){ showHex(!raw) };
+    }
+    $('b-copy').onclick=function(){
+      var t=$('b-hex'); t.select();
+      try{ navigator.clipboard.writeText(t.value) }catch(e){ try{ document.execCommand('copy') }catch(e2){} }
+      var b=$('b-copy'), was=b.textContent; b.textContent='✓ copied';
+      setTimeout(function(){ b.textContent=was },1400);
+    };
 
-  /* Escape hatch: send whatever is on the throwaway key back, and forget it. */
-  $('f-cancel').onclick=function(){
-    var p=pending(); if(!p){ close(); return }
-    var e=$('f-err'); e.textContent='sweeping…';
-    if(poll){clearInterval(poll);poll=null}
-    ensureGM().then(function(G){
-      return utxos(p.addr).then(function(us){
-        if(!us.length){ setPending(null); show('st-compose'); e.textContent=''; return }
-        /* sendMax sweeps the whole balance back — the throwaway key is meant to end at zero */
-        return G.sendPayment(new G.WalletProvider(p.addr), G.PrivateKey.fromWif(p.wif),
-                             { toAddress:p.recv, amountSats:0, sendMax:true })
-          .then(function(){ setPending(null); show('st-compose'); e.textContent='' });
-      });
-    }).catch(function(err){
-      e.textContent='sweep failed: '+err.message+' — your key is still saved, try again.';
-    });
-  };
+    $('f-cancel').onclick=function(){
+      if(poll){clearInterval(poll);poll=null}
+      show('st-compose');
+      $('f-err').textContent='';
+    };
 })();
 </script>
 

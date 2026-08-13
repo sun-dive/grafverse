@@ -365,9 +365,14 @@ if ($method === 'POST') {
 if (!empty($c['genesis'])) {
   $hasSeed = false;
   foreach ($c['board'] ?? [] as $b) if (($b['txid'] ?? '') === $c['genesis']) { $hasSeed = true; break; }
-  foreach ($c['board'] ?? [] as $i => $b) {                 // correct an earlier label in place
-    if (($b['txid'] ?? '') === $c['genesis'] && ($b['mark'] ?? '') !== 'genesis seed funding') {
-      $c['board'][$i]['mark'] = 'genesis seed funding';
+  /* The genesis band must be FLAGGED as the seed, but its text is whatever the genesis actually says.
+     This block used to overwrite the mark with 'genesis seed funding' unconditionally — written when
+     the genesis OP_RETURN was pure spec and had nothing personal in it. That is no longer true: this
+     genesis ends with "Follow the white 🐇", and the heal was erasing it on every single request.
+     Caught by running the site locally, which is the first time anyone had looked at the board since
+     the mint. Only the FLAG is healed now; the words come from the chain. */
+  foreach ($c['board'] ?? [] as $i => $b) {
+    if (($b['txid'] ?? '') === $c['genesis'] && empty($b['seed'])) {
       $c['board'][$i]['seed'] = true;
       save_cache($c);
     }
