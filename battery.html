@@ -482,10 +482,11 @@
       <label>colour ramp <span class="val" style="color:var(--faint);font-weight:400">display only — not on chain</span></label>
       <select id="RAMP" style="width:100%;background:#0e1626;color:var(--ink);border:1px solid var(--line);
               border-radius:7px;padding:7px 9px;font:inherit;font-size:12.5px">
-        <option value="cyc16">cyclic · 16 band — shows filaments</option>
-        <option value="cyc8">cyclic · 8 band</option>
+        <option value="cyc16" selected>cyclic · 16 band — the canonical rendering</option>
+        <option value="cyc32">cyclic · 32 band — wider bands</option>
+        <option value="cyc8">cyclic · 8 band — tighter bands</option>
         <option value="log">log-normalised</option>
-        <option value="lin" selected>escape ÷ mx — what the chain page draws today</option>
+        <option value="lin">escape ÷ mx — the old ramp, tied to the budget</option>
       </select>
 
       <label style="margin-top:16px">what happens at the end of a pass</label>
@@ -578,6 +579,41 @@
      MULTIPLY FIRST, DIVIDE LAST. (2*zr*zi)/S and (zr*zi/S)*2 differ by one ulp, and the chain's order is
      the only correct one — reorder these and the picture slowly drifts away from what was actually paid for. */
   var CW=256, CH=192, CS=Math.pow(2,32), CESC=4*CS;
+
+  /* ── THE CANONICAL RENDERING ──────────────────────────────────────────────────────────────────────
+     How a chain state becomes a picture. The state is the covenant's; everything here is presentation
+     — but it has to be written down in ONE place, because "the picture is recomputable from the tip"
+     is only true if two people rendering the same state get the same image. It was previously copied
+     out four times: here, in the animation, in battery-og.php and in battery-og.mjs.
+
+     SMOOTH. An integer escape count gives only `mx` possible values, so a low iteration budget
+     posterises — six colours for a whole frame at the current genesis. |z| at the moment of escape
+     says how far past the boundary the point flew, placing it continuously between one count and the
+     next. Same counts, same covenant; the information was already there and was being discarded.
+
+     CYCLIC, AND NOTE WHAT IS ABSENT: mx. The old ramp was escape ÷ mx, which tied the palette to the
+     iteration budget — a bigger mx crushed every real escape value into the bottom of the ramp, so
+     filaments faded to flat ground even when not one iteration count had changed. Verified: at level
+     12 an mx of 128 and 448 give bit-identical counts, 0 pixels differ out of 49,152, yet under
+     escape ÷ mx the filaments are visible at one and gone at the other.
+
+     A cyclic ramp never references mx, so the same state always renders the same way whatever the
+     budget. That is the property that matters here: it decouples how the picture LOOKS from a
+     constant that is welded into the covenant forever. Raising MX0 can now only add detail; it can
+     no longer wash the picture out. */
+  var BAND = 16;                                         // escape counts per colour cycle
+  function batteryInk(i, mx, escMagScaled){
+    if(i>=mx) return [8,12,22];                          // interior
+    var v=i;
+    if(escMagScaled>0){
+      var m=Math.sqrt(escMagScaled/CS);
+      if(m>1.0000001){ var q=i+1-Math.log(Math.log(m))/Math.LN2; if(isFinite(q)) v=q }
+    }
+    var t=(v%BAND)/BAND;                                 // no mx anywhere in this line, on purpose
+    if(t<0.5){ var u=t/0.5; return [180+75*u, 255-93*u, 58-12*u] }
+    var w=(t-0.5)/0.5; return [255, 162-85*w, 46+111*w];
+  }
+  window.batteryInk=batteryInk;
   var frameCost=0, frameLeft=0;                // exact iteration totals, accumulated while drawing
   function drawChain(d){
     var cv=$('lv-cv'), ctx=cv.getContext('2d');
@@ -592,22 +628,18 @@
     for(var p=0;p<CW*CH;p++){
       var x=p%CW, y=(p-x)/CW;
       var cr=cr0+x*step, ci=ci0+y*step;
-      var zr=0, zi=0, i=0;
+      var zr=0, zi=0, i=0, emag=0;
       while(i<mx){
         var zr2=Math.trunc(zr*zr/CS), zi2=Math.trunc(zi*zi/CS);
-        if(zr2+zi2>CESC) break;
+        if(zr2+zi2>CESC){ emag=zr2+zi2; break }   // keep |z|² — smooth shading needs it
         var nzi=Math.trunc(2*zr*zi/CS)+ci;     // multiply first, divide last
         zr=zr2-zi2+cr; zi=nzi; i++;
       }
       /* one tick = one iteration, so the escape count IS this pixel's price */
       frameCost+=i; if(p>=done) frameLeft+=i;
       var inside=(i>=mx);
-      /* escape count → the page's own ramp: lime → tangerine → magenta, interior stays near-black */
-      var t=inside?0:(i/mx);
-      var r,g,b;
-      if(inside){ r=8;g=12;b=22 }
-      else if(t<0.5){ var u=t/0.5; r=180+(255-180)*u; g=255+(162-255)*u; b=58+(46-58)*u }
-      else { var v=(t-0.5)/0.5; r=255; g=162+(77-162)*v; b=46+(157-46)*v }
+      var ink=batteryInk(i, mx, emag);
+      var r=ink[0], g=ink[1], b=ink[2];
       var lit=(p<done);                        // paid for on chain, or still to come
       var a=lit?255:36;
       if(!lit && inside){ r=10;g=14;b=26 }
@@ -810,16 +842,14 @@
           var img=offx.createImageData(W,H), px=img.data;
           for(var p=0;p<W*H;p++){
             var x=p%W, y=(p-x)/W, cr=cr0+x*s0, ci=ci0+y*s0;
-            var zr=0, zi=0, i=0;
+            var zr=0, zi=0, i=0, emag=0;
             while(i<mx){
               var zr2=Math.trunc(zr*zr/CS), zi2=Math.trunc(zi*zi/CS);
-              if(zr2+zi2>CESC) break;
+              if(zr2+zi2>CESC){ emag=zr2+zi2; break }
               var nzi=Math.trunc(2*zr*zi/CS)+ci; zr=zr2-zi2+cr; zi=nzi; i++;
             }
-            var inside=(i>=mx), t=inside?0:(i/mx), r,g,bl;
-            if(inside){ r=8;g=12;bl=22 }
-            else if(t<0.5){ var u=t/0.5; r=180+75*u; g=255-93*u; bl=58-12*u }
-            else { var v=(t-0.5)/0.5; r=255; g=162-85*v; bl=46+111*v }
+            var inside=(i>=mx), ink=batteryInk(i, mx, emag);
+            var r=ink[0], g=ink[1], bl=ink[2];
             if(p>=doneP){ var a=0.42; r=5+(r-5)*a; g=7+(g-7)*a; bl=13+(bl-13)*a; if(inside){r=16;g=22;bl=40} }
             var o=p*4; px[o]=r|0; px[o+1]=g|0; px[o+2]=bl|0; px[o+3]=255;
           }
@@ -1475,6 +1505,7 @@
     lin:  function(v,mx){ return v/mx },
     log:  function(v,mx){ return Math.log(1+v)/Math.log(1+mx) },
     cyc16:function(v){ return (v%16)/16 },
+    cyc32:function(v){ return (v%32)/32 },
     cyc8: function(v){ return (v%8)/8 }
   };
   function colour(n, magScaled){                   // escape count (+ |z|² at escape) → ink

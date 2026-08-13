@@ -25,15 +25,16 @@ const OUT = join(ROOT, 'battery-og.png')
 const PANEL = join(ROOT, '.battery-panel.png')
 
 // ── the battery's own arithmetic ───────────────────────────────────────────────────────────────────
+/** Escape count AND |z|² at escape — the magnitude is what smooth shading needs. */
 function escapeCount(cr, ci, mx) {
-  let zr = 0, zi = 0, i = 0
+  let zr = 0, zi = 0, i = 0, emag = 0
   while (i < mx) {
     const zr2 = Math.trunc(zr * zr / S), zi2 = Math.trunc(zi * zi / S)
-    if (zr2 + zi2 > ESC) break
+    if (zr2 + zi2 > ESC) { emag = zr2 + zi2; break }
     const nzi = Math.trunc(2 * zr * zi / S) + ci   // multiply first, divide last
     zr = zr2 - zi2 + cr; zi = nzi; i++
   }
-  return i
+  return { i, emag }
 }
 
 // ── the fractal panel ───────────────────────────────────────────────────────────────────────────────
@@ -54,14 +55,20 @@ export function renderPanel(state) {
 
   for (let p = 0; p < W * H; p++) {
     const x = p % W, y = (p - x) / W
-    const i = escapeCount(cr0 + x * step, ci0 + y * step, mx)
+    const { i, emag } = escapeCount(cr0 + x * step, ci0 + y * step, mx)
     const inside = i >= mx
     let r, g, b
+    // MUST MATCH batteryInk() in battery.html and battery_panel() in battery-og.php.
     if (inside) { r = 8; g = 12; b = 22 }
     else {
-      const t = i / mx
+      let v = i
+      if (emag > 0) {
+        const m = Math.sqrt(emag / S)
+        if (m > 1.0000001) { const q = i + 1 - Math.log(Math.log(m)) / Math.LN2; if (isFinite(q)) v = q }
+      }
+      const t = Math.max(0, Math.min(1, (v % 16) / 16))    // BAND = 16, as in battery.html
       if (t < 0.5) { const u = t / 0.5; r = 180 + 75 * u; g = 255 - 93 * u; b = 58 - 12 * u }
-      else { const v = (t - 0.5) / 0.5; r = 255; g = 162 - 85 * v; b = 46 + 111 * v }
+      else { const w = (t - 0.5) / 0.5; r = 255; g = 162 - 85 * w; b = 46 + 111 * w }
     }
     if (p >= done) {                              // the ghost: what the chain has not yet paid for
       const a = 0.42

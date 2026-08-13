@@ -70,20 +70,33 @@ function battery_panel($state, $path) {
     for ($x = 0; $x < $W; $x++) {
       $p = $y * $W + $x;
       $cr = $cr0 + $x * $step; $ci = $ci0 + $y * $step;
-      $zr = 0.0; $zi = 0.0; $i = 0;
+      $zr = 0.0; $zi = 0.0; $i = 0; $emag = 0.0;
       while ($i < $mx) {
         $zr2 = (float) (int) ($zr * $zr / $FP);
         $zi2 = (float) (int) ($zi * $zi / $FP);
-        if ($zr2 + $zi2 > $ESC) break;
+        if ($zr2 + $zi2 > $ESC) { $emag = $zr2 + $zi2; break; }   // keep |z|² for smooth shading
         $nzi = (float) (int) (2 * $zr * $zi / $FP) + $ci;
         $zr = $zr2 - $zi2 + $cr; $zi = $nzi; $i++;
       }
       $inside = ($i >= $mx);
+      /* MUST MATCH batteryInk() in battery.html — the card and the page have to be the same picture,
+         or a share preview shows something the page does not draw. Smooth escape time, then a CYCLIC
+         ramp with no reference to mx: escape ÷ mx tied the palette to the iteration budget and faded
+         the filaments to flat ground as mx rose, even though the counts were unchanged. */
       if ($inside) { $r = 8; $g = 12; $b = 22; }
       else {
-        $t = $i / max(1, $mx);
+        $v = (float) $i;
+        if ($emag > 0) {
+          $m = sqrt($emag / $FP);
+          if ($m > 1.0000001) {
+            $q = $i + 1 - log(log($m)) / log(2.0);
+            if (is_finite($q)) $v = $q;
+          }
+        }
+        $t = fmod($v, 16.0) / 16.0;                  // BAND = 16, as in battery.html
+        $t = max(0.0, min(1.0, $t));
         if ($t < 0.5) { $u = $t / 0.5; $r = 180 + 75 * $u; $g = 255 - 93 * $u; $b = 58 - 12 * $u; }
-        else          { $v = ($t - 0.5) / 0.5; $r = 255; $g = 162 - 85 * $v; $b = 46 + 111 * $v; }
+        else          { $w = ($t - 0.5) / 0.5; $r = 255; $g = 162 - 85 * $w; $b = 46 + 111 * $w; }
       }
       if ($p >= $done) {                             // not yet paid for
         $a = 0.42;
