@@ -182,6 +182,14 @@ export async function buildBatteryTickTx(p: BatteryTickParams): Promise<Transact
   const feePerKb = p.feePerKb ?? BATTERY_FEE_PER_KB
   const { state, value } = p.battery
 
+  /* FLAT CHECK FIRST. There is a friendly guard further down, but it was unreachable: `assemble()`
+     runs before it and hands a negative value to addOutput, so @bsv/sdk throws "satoshis must be a
+     positive integer or zero" — which tells a visitor pressing Tick it nothing at all. A battery is
+     MEANT to go flat and wait; that is the whole design, so it has to say so in those words. */
+  if (value < maxFee) {
+    throw new Error(`the battery is flat — ${value} sat left, a tick needs up to ${maxFee}. Top it up.`)
+  }
+
   const prevLock = buildBatteryLock({ state, geometry, maxFee })
   const nextLock = buildBatteryLock({ state: refState(state, geometry), geometry, maxFee })
 
