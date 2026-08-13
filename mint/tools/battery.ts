@@ -1,17 +1,27 @@
 // © BSV Association — Open BSV License v6.
 // THE BATTERY — build, sign and broadcast the genesis LOCALLY, then advance it with KEYLESS ticks.
 //
-//   bundle:     node -e "import('esbuild').then(e=>e.build({entryPoints:['tools/battery.ts'],bundle:true,format:'esm',platform:'node',target:'esnext',outfile:'tools/battery.mjs'}))"
-//   self-test:  node tools/battery.mjs --selftest                        (no key, no network)
-//   status:     node tools/battery.mjs --status
-//   tick:       node tools/battery.mjs --tick 20 --broadcast             (NO KEY — this is the point)
-//   top up:     BATTERY_WIF=<wif> node tools/battery.mjs --topup 1000000 --mark "…" --broadcast
-//   genesis:    BATTERY_WIF=<wif> node tools/battery.mjs --genesis --fuel 8000 --broadcast
+// ⚠ RUN THE SOURCE, NOT A BUNDLE. There used to be a tools/battery.mjs built by esbuild, and on
+// 2026-08-13 it was a day stale: it still carried grid 256x192, MX0 6, MAX_FEE 312 — the covenant this
+// one replaces. Running it to mint would have permanently created the wrong battery, silently, because
+// a bundle looks identical to its source from the command line. It has been DELETED. Node runs
+// TypeScript directly, so there is nothing to keep in sync and no way for the two to disagree.
 //
-// ★ THE CANONICAL BATTERY IS ALREADY LIVE — genesis d9a55ddb6c52bc51425f3c9e1416033179899e76abd634-
-// deda4510eed3790146, first ticked 2026-08-12, confirmed in block 961,975. `--genesis` exists to build
-// a battery, not to re-launch this one; a second genesis with identical parameters is simply a
-// different and irrelevant chain.
+//   self-test:  node --experimental-strip-types tools/battery.ts --selftest        (no key, no network)
+//   status:     node --experimental-strip-types tools/battery.ts --status
+//   tick:       node --experimental-strip-types tools/battery.ts --tick 20 --broadcast   (NO KEY)
+//   top up:     BATTERY_WIF=<wif> node --experimental-strip-types tools/battery.ts --topup 1000000 --mark "…" --broadcast
+//   genesis:    BATTERY_WIF=<wif> node --experimental-strip-types tools/battery.ts --genesis --fuel 2100 --broadcast
+//
+// ★ A NEW GENESIS IS BEING MINTED (2026-08-13). The battery live until now — genesis d9a55ddb6c52bc-
+// 51425f3c9e1416033179899e76abd634deda4510eed3790146, block 961,975 — was built at 256x192 with MX0 6,
+// which draws the first frame with about 10% of the image painted as solid interior that is not: a
+// blob rather than a Mandelbrot. That number is fixed in the covenant and there is no key to amend it,
+// so it is being replaced at 3840x2160, MX0 128, K 128, MAX_FEE 314.
+//
+// ⚠ USE A SEPARATE STATE FILE. --genesis refuses to run if one is already recorded, which is the right
+// guard; point BATTERY_STATE at a new path rather than deleting the old record, which is the only
+// local trace of the first battery.
 //
 // The deployer key funds the genesis and receives the change. It has NO authority over the battery
 // afterwards — there is no key that can amend, stop or drain it. Ticking needs no key at all: the

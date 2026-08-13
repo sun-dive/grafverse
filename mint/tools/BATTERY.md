@@ -20,8 +20,8 @@ the moment anyone adds more — on the exact iteration it stopped at, because `z
 
 ```sh
 cd mint
-node tools/battery.mjs --status                       # where it is now
-node tools/battery.mjs --tick 20 --broadcast          # advance it — NO KEY
+node --experimental-strip-types tools/battery.ts --status                       # where it is now
+node --experimental-strip-types tools/battery.ts --tick 20 --broadcast          # advance it — NO KEY
 ```
 
 Each tick waits for the node to acknowledge the previous one, so a tick can never race its own parent.
@@ -29,8 +29,8 @@ Each tick waits for the node to acknowledge the previous one, so a tick can neve
 ## Topping it up
 
 ```sh
- BATTERY_WIF=<wif> node tools/battery.mjs --topup 1000000 --mark "your line here"
- BATTERY_WIF=<wif> node tools/battery.mjs --topup 1000000 --mark "your line here" --broadcast
+ BATTERY_WIF=<wif> node --experimental-strip-types tools/battery.ts --topup 1000000 --mark "your line here"
+ BATTERY_WIF=<wif> node --experimental-strip-types tools/battery.ts --topup 1000000 --mark "your line here" --broadcast
 ```
 
 *(leading space keeps the WIF out of shell history; without `--broadcast` it only prints the signed hex)*
