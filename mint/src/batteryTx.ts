@@ -320,7 +320,17 @@ export async function buildBatteryTopUpTx(p: BatteryTopUpParams): Promise<Transa
   return tx
 }
 
-/** Read the state + value a tick produced, so the next tick can be built from a broadcast transaction. */
+/**
+ * Read the state + value a tick produced, so the next tick can be built from a broadcast transaction.
+ *
+ * ⚠ PASS THE GEOMETRY. The default is a convenience for the common case and a trap for every other
+ * one. On 2026-08-13 a drain of the 256x192 battery built its ticks with the right geometry and
+ * chained its state with this default — which had become 3840x2160. 647 ticks were fine, because
+ * z² + c does not depend on the grid. The 648th was a ROW WRAP, which depends on nothing else: the
+ * chained state advanced where the covenant wrapped, and the next tick was rejected with
+ * mandatory-script-verify-flag-failed. A wrong grid is invisible until the scan reaches the edge of
+ * it.
+ */
 export function nextBatteryUtxo(tx: Transaction, prev: BatteryUtxo, geometry: BatteryGeometry = BATTERY_GEOMETRY): BatteryUtxo {
   return {
     sourceTransaction: tx, outputIndex: 0,

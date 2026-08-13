@@ -300,7 +300,7 @@ async function tick(): Promise<void> {
     if (!has('--broadcast')) {
       console.log('   (dry — re-run with --broadcast to send)')
       if (count === 1) console.log('raw hex :\n' + raw)
-      utxo = nextBatteryUtxo(tx, utxo)
+      utxo = nextBatteryUtxo(tx, utxo, geometry)
       st.ticks += 1; st.fuel = utxo.value
       continue
     }
@@ -309,7 +309,7 @@ async function tick(): Promise<void> {
       console.error('   ↳ the node has not acknowledged this tick; stopping so the next one cannot race it.')
       break
     }
-    utxo = nextBatteryUtxo(tx, utxo)
+    utxo = nextBatteryUtxo(tx, utxo, geometry)
     st.tipTxid = txid; st.ticks += 1; st.fuel = utxo.value
     saveState(st)
     console.log(`   ✓ accepted · ${st.fuel} sat left (≈ ${ticksRemaining(st.fuel)} ticks)`)

@@ -13,7 +13,7 @@
 // node runs. Each case also checks the reference implementation agrees about the resulting state —
 // a branch that validates but computes something different is just as fatal, and quieter.
 import { Transaction, P2PKH, PrivateKey, Spend, LockingScript } from '@bsv/sdk'
-import { buildBatteryTickTx, type BatteryUtxo } from '../src/batteryTx.ts'
+import { buildBatteryTickTx, nextBatteryUtxo, type BatteryUtxo } from '../src/batteryTx.ts'
 import {
   buildBatteryLock, genesisState, refState, step0,
   BATTERY_GEOMETRY, BATTERY_MAX_FEE, type BatteryState,
@@ -153,6 +153,42 @@ console.log(`  grid ${G.W}x${G.H} · MX0 ${G.MX0} · K ${G.K} · MXCAP ${G.MXCAP
   check('ARM 7 · a corner pixel escapes before mx is spent', escaped)
   const r = await spendOnce(cur)
   check('ARM 7 · escape: the escaping step validates', r.ok)
+}
+
+// ── ARM 8 · CHAINING A NON-DEFAULT GEOMETRY ───────────────────────────────────────────────────────
+// The bug this catches cost 647 good ticks and one rejected one on 2026-08-13. A drain of a battery
+// with a DIFFERENT grid built every tick correctly and chained the state with nextBatteryUtxo's
+// DEFAULT geometry. z² + c does not depend on the grid, so it ran perfectly until the scan reached the
+// end of a row — where W is the only thing that matters. The chained state advanced, the covenant
+// wrapped, and the next tick was rejected with mandatory-script-verify-flag-failed.
+{
+  const OTHER: BatteryGeometry = { ...G, W: 64, H: 48 }        // deliberately not BATTERY_GEOMETRY
+  const OHW = Math.floor(OTHER.W / 2), OHH = Math.floor(OTHER.H / 2)
+  const ost0 = step0(OTHER)
+  const cr0 = -OHW * ost0, ci0 = -OHH * ost0
+  // parked on the LAST pixel of row 0, budget spent — the next tick must wrap
+  const s: BatteryState = {
+    cr: cr0 + (OTHER.W - 1) * ost0, ci: ci0, zr: 0, zi: 0, i: OTHER.MX0,
+    step: ost0, cx: 0, cy: 0, mx: OTHER.MX0,
+  }
+  const prev = buildBatteryLock({ state: s, geometry: OTHER })
+  const source = new Transaction()
+  source.addOutput({ lockingScript: prev, satoshis: FUEL })
+  const utxo: BatteryUtxo = { sourceTransaction: source, outputIndex: 0, state: s, value: FUEL }
+  const tx = await buildBatteryTickTx({ battery: utxo, geometry: OTHER })
+
+  check('ARM 8 · the wrap tick validates at a non-default grid', validate(tx, prev, FUEL))
+
+  const right = nextBatteryUtxo(tx, utxo, OTHER).state       // told which battery it is
+  const wrong = nextBatteryUtxo(tx, utxo).state              // left to assume
+  check('ARM 8 · chaining WITH the geometry matches the reference', eq(right, refState(s, OTHER)))
+  check('ARM 8 · chaining WITHOUT it silently produces a different state', eq(wrong, right), false)
+  console.log(`        with: cr ${right.cr} ci ${right.ci}   without: cr ${wrong.cr} ci ${wrong.ci}`)
+  // and the covenant would reject a tick built from the wrong one — the failure seen on mainnet
+  const bad = buildBatteryLock({ state: wrong, geometry: OTHER }).toBinary()
+  const good = buildBatteryLock({ state: right, geometry: OTHER }).toBinary()
+  check('ARM 8 · the two produce different locks — hence the rejected spend',
+    bad.length === good.length && bad.every((v, i) => v === good[i]), false)
 }
 
 console.log(`\n${pass}/${pass + fail} checks passed`)
