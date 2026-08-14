@@ -490,3 +490,130 @@ export const SHELL_STATE_LAYOUT =
   'BITCOIN RACER SHELL v1|' + FIELDS.join(',') + '|w' + FIELDS.map(k => FIELD_WIDTHS[k]).join(',') + '|' +
   'sm LE|1=2^32|slip/1e3|m=M0+eng*WE+tyr*WT+fuel*WF|g=(tyr*G0+v*GV)*slip|' +
   'F=min(eng*FE*t/TM,g)|v+=F/m-v*DRAG|s+=v'
+
+// ═══ THE SCRIPT ══════════════════════════════════════════════════════════════════════════════════════
+// Everything above is the reference implementation. Everything below is the covenant that must agree
+// with it, opcode for opcode, and is validated against it through the real interpreter.
+import { OP, LockingScript, UnlockingScript, type ScriptChunk } from '@bsv/sdk'
+import { extractHashOutputsOps, extractScriptCodeFieldOps } from './covenant.ts'
+import { pushTxVerifyOps, pushData, pushTxConstants, type PushTxConstants } from './pushtx.ts'
+import { op, PN, fixedField } from './covenantAsm.ts'
+
+/** Record type, in the same family as the battery's 0x07. */
+export const RECORD_SHELL = 0x08
+
+/** `driver` is a 20-byte HASH. Everything else is a number. That distinction runs through the script. */
+const isNum = (k: (typeof FIELDS)[number]): boolean => k !== 'driver'
+
+/**
+ * The state, as pushes: a three-byte header then the twelve fixed-width fields.
+ *
+ * The header is what makes the field offset a CONSTANT the script can split at — and the fixed widths
+ * are what let it split the rest at constant offsets after that. Nothing here is decorative.
+ */
+function fieldChunks(s: ShellState): ScriptChunk[] {
+  return [
+    pushData([0x50]),            // protocol prefix "P"
+    pushData([0x01]),            // format version
+    pushData([RECORD_SHELL]),    // record type
+    ...FIELDS.map(k => pushData(isNum(k) ? fixedField(s[k] as number, FIELD_WIDTHS[k]) : s.driver)),
+  ]
+}
+
+export interface ShellLockParams {
+  state: ShellState
+  /** Offset of the first field's DATA within the scriptCode FIELD. `buildShellLock` computes it. */
+  fieldOffset: number
+  regs?: RacerRegs
+  maxFee?: number
+  c?: PushTxConstants
+}
+
+/**
+ * ★ THE SKELETON — the frame every phase and every equation will hang on.
+ *
+ *   <15 data pushes> cleared        the state, carried in the script itself
+ *   <verify preimage>               OP_PUSH_TX — authorisation with no signature
+ *   <stash hashOutputs and value>   read out of the preimage
+ *   <split scriptCode>              PRE ‖ the twelve fields ‖ SUF
+ *   <THE STATE MACHINE>             ← nothing yet. Identity.
+ *   <rebuild and compare>           assert the output is this script with the new state
+ *
+ * Built and proved as a frame FIRST, deliberately. If a script cannot read its own twelve fields and
+ * write them back unchanged, nothing built on top of that is worth debugging — and the battery's
+ * hardest bugs were all in this layer rather than in its arithmetic.
+ */
+export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
+  const maxFee = p.maxFee ?? 0
+  const c = p.c ?? pushTxConstants(SHELL_SCOPE)
+  const ops: ScriptChunk[] = [
+    ...fieldChunks(p.state),
+    // 3 header + 12 fields = 15 pushes: seven pairs and a single
+    op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP),
+    op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_DROP),
+    ...pushTxVerifyOps(c),                                   // [SO, newV, preimage]
+    op(OP.OP_DUP), op(OP.OP_DUP),
+    ...extractHashOutputsOps(), op(OP.OP_TOALTSTACK),        // alt:[hashOutputs]
+    // the spent output's value sits 52 bytes from the end of the preimage
+    op(OP.OP_SIZE), pushData([52]), op(OP.OP_SUB), op(OP.OP_SPLIT), op(OP.OP_NIP),
+    pushData([8]), op(OP.OP_SPLIT), op(OP.OP_DROP), op(OP.OP_BIN2NUM), op(OP.OP_TOALTSTACK), // alt:[HO, V]
+    ...extractScriptCodeFieldOps(),                          // [SO, newV, field]
+    PN(p.fieldOffset), op(OP.OP_SPLIT),                      // [.., PRE, rest]
+  ]
+  // peel the twelve fields off `rest`
+  FIELDS.forEach((k, idx) => {
+    if (idx > 0) ops.push(op(OP.OP_1), op(OP.OP_SPLIT), op(OP.OP_NIP))   // drop the push opcode
+    ops.push(PN(FIELD_WIDTHS[k]), op(OP.OP_SPLIT))
+  })
+  ops.push(op(OP.OP_TOALTSTACK))                             // alt:[HO, V, SUF]
+
+  // fields → values, in FIELDS order. `driver` stays BYTES: BIN2NUM on a 20-byte hash is nonsense.
+  for (let i = FIELDS.length - 1; i > 0; i--) {
+    if (isNum(FIELDS[i])) ops.push(op(OP.OP_BIN2NUM))
+    ops.push(op(OP.OP_TOALTSTACK))
+  }
+  if (isNum(FIELDS[0])) ops.push(op(OP.OP_BIN2NUM))
+  for (let i = 1; i < FIELDS.length; i++) ops.push(op(OP.OP_FROMALTSTACK))
+
+  // ── THE STATE MACHINE GOES HERE. Identity, for now. ──
+
+  // values → fixed-width fields, and rebuild the script
+  for (let i = FIELDS.length - 1; i > 0; i--) {
+    if (isNum(FIELDS[i])) ops.push(PN(FIELD_WIDTHS[FIELDS[i]]), op(OP.OP_NUM2BIN))
+    ops.push(op(OP.OP_TOALTSTACK))
+  }
+  if (isNum(FIELDS[0])) ops.push(PN(FIELD_WIDTHS[FIELDS[0]]), op(OP.OP_NUM2BIN))
+  ops.push(op(OP.OP_CAT))                                    // PRE ‖ phase
+  for (let i = 1; i < FIELDS.length; i++) {
+    ops.push(pushData([FIELD_WIDTHS[FIELDS[i]]]), op(OP.OP_CAT), op(OP.OP_FROMALTSTACK), op(OP.OP_CAT))
+  }
+  ops.push(op(OP.OP_FROMALTSTACK), op(OP.OP_CAT))            // ‖ SUF
+
+  // the value floor, then out0, then the comparison
+  ops.push(
+    op(OP.OP_SWAP), op(OP.OP_DUP), op(OP.OP_BIN2NUM),
+    op(OP.OP_FROMALTSTACK), PN(maxFee), op(OP.OP_SUB), op(OP.OP_GREATERTHANOREQUAL), op(OP.OP_VERIFY),
+    op(OP.OP_SWAP), op(OP.OP_CAT), op(OP.OP_SWAP), op(OP.OP_CAT),
+    op(OP.OP_HASH256), op(OP.OP_FROMALTSTACK), op(OP.OP_EQUAL),
+  )
+  return ops
+}
+
+/**
+ * Two-pass, like the battery: the offset push is the same byte-width whether probing or final, so the
+ * length used to size the scriptCode varint is stable.
+ * Before the first field: three 2-byte header pushes = 6, then phase's 1-byte push opcode → O = 7.
+ */
+export function buildShellLock(p: Omit<ShellLockParams, 'fieldOffset'>): LockingScript {
+  const O = 2 + 2 + 2 + 1
+  const probeLen = new LockingScript(shellLockOps({ ...p, fieldOffset: 1 })).toBinary().length
+  const varIntSize = probeLen < 253 ? 1 : probeLen < 65536 ? 3 : 5
+  return new LockingScript(shellLockOps({ ...p, fieldOffset: varIntSize + O }))
+}
+
+/** The unlocking half: the trailing outputs, the new value, and the preimage. No signature. */
+export function shellUnlockingOps(
+  p: { spenderOutputs: number[]; newValue: number[]; preimage: number[] },
+): ScriptChunk[] {
+  return [pushData(p.spenderOutputs), pushData(p.newValue), pushData(p.preimage)]
+}

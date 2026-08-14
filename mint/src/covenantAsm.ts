@@ -101,3 +101,21 @@ export class Asm {
   }
   toAlt(n: number): this { for (let i = 0; i < n; i++) this.o(OP.OP_TOALTSTACK, 1, []); return this }
 }
+
+/**
+ * A signed value in EXACTLY `n` bytes, sign-magnitude little-endian — the encoding every covenant in
+ * this repo carries its state in, because a fixed width is what lets a script split its own scriptCode
+ * at constant offsets.
+ *
+ * ⚠ IT TRUNCATES SILENTLY. A value too large for its field produces a perfectly well-formed script
+ * carrying the wrong number, and the covenant then rejects a spend nobody can account for. Check the
+ * value fits BEFORE calling this — see `stateFits` in shell.ts.
+ */
+export function fixedField(v: number, n: number): number[] {
+  const neg = v < 0
+  let x = Math.abs(v)
+  const b: number[] = []
+  for (let k = 0; k < n; k++) { b.push(x % 256); x = Math.floor(x / 256) }
+  if (neg) b[n - 1] |= 0x80
+  return b
+}

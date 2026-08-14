@@ -45,7 +45,8 @@
 import { OP, LockingScript, type ScriptChunk } from '@bsv/sdk'
 import { extractHashOutputsOps, extractScriptCodeFieldOps } from './covenant.ts'
 import { pushTxVerifyOps, pushData, pushTxConstants, type PushTxConstants } from './pushtx.ts'
-import { Asm, op, PN, snum } from './covenantAsm.ts'
+import { Asm, op, PN, snum, fixedField } from './covenantAsm.ts'
+export { fixedField }
 
 
 /** SIGHASH scope for the battery's introspection: ANYONECANPAY|ALL|FORKID (a sponsor may add inputs). */
@@ -230,14 +231,6 @@ export function refState(s: BatteryState, g: BatteryGeometry = BATTERY_GEOMETRY)
 
 // ── script-number helpers ────────────────────────────────────────────────────────────────────────────
 /** Push a number as a minimal script number. */
-export function fixedField(v: number, n: number): number[] {
-  const neg = v < 0
-  let x = Math.abs(v)
-  const b: number[] = []
-  for (let k = 0; k < n; k++) { b.push(x % 256); x = Math.floor(x / 256) }
-  if (neg) b[n - 1] |= 0x80
-  return b
-}
 
 // The depth-tracking assembler now lives in covenantAsm.ts — shared with the Bitcoin Racers shell.
 
