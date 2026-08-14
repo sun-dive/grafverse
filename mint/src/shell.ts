@@ -720,10 +720,28 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
      chain stops, and its final state stands as the record. Everything from EMPTY to RACING advances by
      one, and RACING stays where it is — a race continues until the physics end it, which is the only
      transition the sequence alone cannot decide. */
-  ops.push(
-    op(OP.OP_DUP), PN(PHASE.DONE), op(OP.OP_LESSTHAN), op(OP.OP_VERIFY),   // phase < DONE, or nothing
-    op(OP.OP_1ADD), PN(PHASE.RACING), op(OP.OP_MIN),                        // min(phase + 1, RACING)
-  )
+  ops.push(op(OP.OP_DUP), PN(PHASE.DONE), op(OP.OP_LESSTHAN), op(OP.OP_VERIFY))   // terminal stays terminal
+
+  /* ★ RETIRING IS A PHASE DECISION, and deciding it here makes everything downstream fall into place
+     for free: the loads key on the NEW phase, so an OUT shell loads nothing and cannot trip the track
+     bounds; the timing rule keys on RACING, so `last` is left alone; and the physics key on RACING too,
+     so the car stops exactly where it stood. One branch instead of ten gates.
+
+     Why it has to exist at all: a car whose fuel has fallen below BURN0 cannot afford another move, so
+     without a way to stop it would sit in RACING FOREVER with its tank locked in an output nothing can
+     spend. That is the COMMONEST way to strand satoshis — commoner than wrecking, commoner than
+     winning. The value rule below then drops the floor to one satoshi, and the driver takes the rest. */
+  {
+    const dRetire = loadables(regs).length + 5 + CARRIED.length + 2
+    ops.push(
+      PN(dRetire), op(OP.OP_PICK),
+      op(OP.OP_IF),
+        op(OP.OP_DROP), PN(PHASE.OUT),                                      // the run ends here
+      op(OP.OP_ELSE),
+        op(OP.OP_1ADD), PN(PHASE.RACING), op(OP.OP_MIN),                    // min(phase + 1, RACING)
+      op(OP.OP_ENDIF),
+    )
+  }
 
   for (let i = 1; i < FIELDS.length; i++) {
     ops.push(op(OP.OP_FROMALTSTACK))
@@ -844,6 +862,11 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
  */
 function shellPhysicsOps(regs: RacerRegs): ScriptChunk[] {
   const a = new Asm([
+    /* ⚠ THE WHOLE STACK, LOADABLES INCLUDED. Leaving them out cost an evening: everything ABOVE them
+       still computed correctly, because model and reality shifted by the same eight, so the model
+       looked right and the physics passed. Only `retire`, which sits BELOW them, came out eight too
+       shallow — and picked a loadable instead. A partial model is worse than none: it is confident. */
+    'retire', ...loadables(regs).map(l => 'ld_' + l.k),
     'throttle', 'sig', 'pubkey', 'SO', 'newV', ...CARRIED.filter(k => k !== 'nLockTime'), 'PRE',
     'phase', 'driver', 'pool', 'eng', 'tyr', 'finish', 'slip', 'green', 'gap', 'last', 's', 'v', 'n',
   ])
@@ -881,6 +904,8 @@ function shellPhysicsOps(regs: RacerRegs): ScriptChunk[] {
      leave the two silently out of step — and it would surface a hundred opcodes later as a rebuild that
      hashes to nothing recognisable. Mass is computed unconditionally; it is a few multiplies and it
      costs less than the risk. */
+  /* Racing is enough: a retirement already set the phase to OUT above, so this is false and the car
+     stands where it stopped. */
   a.pick('phase'); a.num(PHASE.RACING); a.bin(OP.OP_NUMEQUAL, 'racing')
   a.ifBegin()
 
@@ -958,7 +983,7 @@ function shellPhysicsOps(regs: RacerRegs): ScriptChunk[] {
   a.armReturn(['ns', 'nv', 'nn', 'np'])
 
   a.elseArm()
-  // not racing: the car is being built, and stands exactly where it was
+  // being built, or stopped: the car stands exactly where it is, and carries the phase already decided
   a.pick('s', 'ns'); a.pick('v', 'nv'); a.pick('n', 'nn'); a.pick('phase', 'np')
   a.armReturn(['ns', 'nv', 'nn', 'np'])
   a.endIf()
@@ -995,6 +1020,7 @@ function shellPhysicsOps(regs: RacerRegs): ScriptChunk[] {
      eleven fields away. A stack cannot push something DOWNWARD, so instead every field above it is
      rolled UP over it, in FIELDS order. Eleven rolls, and the order comes out exactly right. */
   for (const k of ['driver', 'pool', 'eng', 'tyr', 'finish', 'slip', 'green', 'gap', 'last', 'ns', 'nv', 'nn']) a.roll(k)
+  if (process.env.SHELL_DEBUG) console.log('  leaves:', a.st.join(','))
   a.st[a.st.length - (FIELDS.length)] = 'phase'
   a.st[a.st.length - 3] = 's'; a.st[a.st.length - 2] = 'v'; a.st[a.st.length - 1] = 'n'
   return a.ops
@@ -1026,6 +1052,12 @@ export function shellUnlockingOps(
 ): ScriptChunk[] {
   const all = loadables(p.regs ?? RACER_REGS)
   return [
+    /* ★ RETIRE — the driver's decision to stop, and the reason a tank is never lost.
+       A car below BURN0 cannot afford another move, so without this it sits in RACING FOREVER with its
+       remaining fuel locked in an output nothing can spend. That is the commonest way to strand
+       satoshis, not the rarest — commoner than wrecking and commoner than winning.
+       Deepest of all, so every depth measured from the top stayed where it was. */
+    PN(p.retire ? 1 : 0),
     /* ★ THE LOADABLES GO DEEPEST OF ALL, in `loadables` order. Every one is pushed on every spend even
        though at most five are wanted, because the covenant counts POSITIONS, not arguments — a missing
        push would shift every depth above it. Empty is the honest value for one that is not being used. */

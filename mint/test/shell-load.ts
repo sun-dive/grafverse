@@ -33,6 +33,7 @@ const POOL = [...Utils.toArray(POT.id('hex'), 'hex').slice().reverse(), 0, 0, 0,
 async function move(state: ShellState, next: ShellState, o: {
   fuel: number; out: number; at: number; throttle?: number; pot?: boolean
   load?: Record<string, number | number[]>; signer?: PrivateKey | null
+  retire?: boolean; payout?: number
 }): Promise<{ ok: boolean; why?: string; bytes: number }> {
   const prev = buildShellLock({ state, maxFee: MAXFEE })
   const src = new Transaction(); src.addOutput({ lockingScript: prev, satoshis: o.fuel })
@@ -41,6 +42,8 @@ async function move(state: ShellState, next: ShellState, o: {
   if (o.pot) tx.addInput({ sourceTransaction: POT, sourceOutputIndex: 0, sequence: 0xfffffffe,
                            unlockingScript: new UnlockingScript([]) })
   tx.addOutput({ lockingScript: buildShellLock({ state: next, maxFee: MAXFEE }), satoshis: o.out })
+  if (o.payout != null && o.payout > 0)
+    tx.addOutput({ lockingScript: new P2PKH().lock(KEY.toAddress()), satoshis: o.payout })
   tx.lockTime = o.at
   const pre = TransactionSignature.format({
     sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: o.fuel, transactionVersion: 2,
@@ -52,7 +55,8 @@ async function move(state: ShellState, next: ShellState, o: {
                         sig = c[0].data ?? []; pubKey = c[1].data ?? [] }
   tx.inputs[0].unlockingScript = new UnlockingScript(shellUnlockingOps({
     spenderOutputs: tx.outputs.slice(1).flatMap(x => serializeOutput(x.satoshis ?? 0, x.lockingScript.toBinary())),
-    newValue: u64(o.out), preimage: pre, sig, pubKey, throttle: o.throttle ?? 0, load: o.load }))
+    newValue: u64(o.out), preimage: pre, sig, pubKey, throttle: o.throttle ?? 0, load: o.load,
+    retire: o.retire }))
   const bytes = tx.toHex().length / 2
   try {
     return { ok: new Spend({
@@ -141,6 +145,44 @@ let st = emptyShell()
   console.log(`        ${st.n} moves = ${(st.n * 0.1).toFixed(2)} s · ${txs} transactions · ` +
     `${(bytes / 1024).toFixed(1)} KB · ${(TANK - fuel).toLocaleString()} sat`)
   console.log(`        the covenant is ${buildShellLock({ state: st, maxFee: MAXFEE }).toBinary().length} bytes`)
+}
+
+// ── ★ RETIREMENT — why a tank is never lost ──────────────────────────────────────────────────────────
+// The commonest way to strand satoshis is not wrecking and not winning: it is running LOW. A car whose
+// fuel has fallen below BURN0 cannot afford another move, so without a way to stop it would sit in
+// RACING forever with its remaining fuel locked in an output nothing can spend.
+{
+  const racing = { ...arm(loadTrack(loadCar(emptyShell(), CAR, RACER_REGS), TRACK)),
+    phase: PHASE.RACING, last: GREEN, s: Math.round(120 * S), v: Math.round(3 * S), n: 30 } as ShellState
+  // ⚠ `last` is untouched: the timing rule keys on RACING, and a retirement is already OUT by then
+  const stopped = { ...racing, phase: PHASE.OUT } as ShellState
+  const at = GREEN + GAP, LEFT = 9_000
+
+  const rr = await move(racing, stopped, { fuel: LEFT, out: 1, at, retire: true, payout: LEFT - 1 - 500 })
+  check('★ a driver may RETIRE, and take the tank in the same transaction', rr.ok)
+  if (!rr.ok) console.log('   ↳', rr.why)
+  const keepAll = await move(racing, stopped, { fuel: LEFT, out: LEFT, at, retire: true })
+  console.log(`        retire keeping the whole tank in out0: ${keepAll.ok ? 'accepted' : 'REFUSED — ' + keepAll.why}`)
+  // ⚠ is the retire flag being SEEN at all? Offer what the covenant would compute if it were ignored.
+  const asIfIgnored = refTick(racing, { throttle: 0, lockTime: at, fuel: LEFT }, RACER_REGS).state
+  const ignored = await move(racing, asIfIgnored, { fuel: LEFT, out: LEFT, at, retire: true, throttle: 0 })
+  console.log(`        offering the NON-retired successor while retiring: ${ignored.ok ? 'ACCEPTED — the flag is being ignored' : 'refused (good)'}`)
+  check('  …the car stops exactly where it stood', stopped.s === racing.s && stopped.v === racing.v)
+
+  check('★ a STRANGER cannot retire someone else\'s car',
+    (await move(racing, stopped, { fuel: LEFT, out: 1, at, retire: true,
+      payout: LEFT - 1 - 500, signer: PrivateKey.fromRandom() })).ok, false)
+
+  // ⚠ and retiring must be DECLARED — a normal move may not quietly keep the money
+  const rolling = refTick(racing, { throttle: 4, lockTime: at, fuel: LEFT }, RACER_REGS)
+  check('★ an ordinary move cannot strip the tank without retiring',
+    (await move(racing, rolling.state, { fuel: LEFT, out: 1, at, throttle: 4, payout: LEFT - 1 - 500 })).ok, false)
+
+  check('a shell being BUILT can be abandoned too — half a car is still your satoshis',
+    (await move(loadCar(emptyShell(), CAR, RACER_REGS),
+      { ...loadCar(emptyShell(), CAR, RACER_REGS), phase: PHASE.OUT } as ShellState,
+      { fuel: LEFT, out: 1, at: 0, retire: true, payout: LEFT - 1 - 500 })).ok)
+  console.log('        ⇒ a run always has a way to end, so a tank is never stranded')
 }
 
 console.log(`\n${pass}/${pass + fail} checks passed`)
