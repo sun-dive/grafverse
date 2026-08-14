@@ -223,9 +223,9 @@
     return best;
   }
 
-  var trace=[], FIN=0;
+  var trace=[], FIN=0, OUTCOME=null;   // OUTCOME: null while running, then home | off | blown | retired
   function run(){
-    $('run').disabled=true; $('log').innerHTML=''; trace=[]; $('verdict').textContent='…';
+    $('run').disabled=true; $('log').innerHTML=''; trace=[]; OUTCOME=null; $('verdict').textContent='…';
     var eng=+$('eng').value, tyr=+$('tyr').value, tank=+$('tank').value;
     var finM=+$('fin').value, slip=+$('slip').value, gap=+$('gap').value;
     FIN=finM;
@@ -283,7 +283,7 @@
           txs++; bytes+=r.bytes; sat+=R.BURN0;
           if(!r.ok){ log('<span class="no">✗</span> tx '+String(txs).padStart(3)+'  retire — '+r.why,'no');
                      throw Error('rejected') }
-          st={...st,phase:GM.PHASE.OUT}; fuel=1; took=payout; retired=true;
+          st={...st,phase:GM.PHASE.OUT}; fuel=1; took=payout; retired=true; OUTCOME='retired';
           log('<span class="ok">✓</span> tx '+String(txs).padStart(3)+'  '+String(r.bytes).padStart(5)+' B   '+
               '<span class="hi">RETIRED</span> — too low to run and still afford to stop; '+
               payout.toLocaleString()+' sat recovered','hi');
@@ -307,13 +307,20 @@
       /* On the last move the floor drops to one satoshi and the rest — plus the pot, if the line was
          crossed — goes to the driver's own key. */
       var payout = ending ? (fuel-want.burn-1)+(crossing?potSats:0) : 0;
-      return move(st,want.state,{fuel:fuel,out:ending?1:fuel-want.burn,at:at,throttle:th,
-                                 payout:payout, pot:crossing?{tx:pot}:null}).then(function(r){
+      /* ★ RUN AT THE RACE'S OWN CLOCK. Building and validating a move takes about 20 ms, but a move IS
+         a tenth of a second of race time — so left alone the car crosses the line nearly five times
+         too fast and appears to teleport to the flag. Waiting out the difference makes the strip agree
+         with the seconds counter beside it. The chain does not care; the eye does. */
+      return Promise.all([
+        move(st,want.state,{fuel:fuel,out:ending?1:fuel-want.burn,at:at,throttle:th,
+                            payout:payout, pot:crossing?{tx:pot}:null}),
+        new Promise(function(res){ setTimeout(res, SEC*1000) })
+      ]).then(function(both){ var r=both[0];
         txs++; bytes+=r.bytes; sat+=want.burn;
         if(!r.ok){ log('<span class="no">✗</span> tx '+String(txs).padStart(3)+'  move '+st.n+' — '+r.why,'no');
                    throw Error('rejected') }
         st=want.state; fuel-=want.burn;
-        if(ending) took=payout;
+        if(ending){ took=payout; OUTCOME=want.ended||'home' }
         trace.push({s:st.s,v:st.v,spun:want.spun});
         if(st.n<=3 || st.n%10===0 || crossing || want.ended){
           log('<span class="ok">✓</span> tx '+String(txs).padStart(3)+'  '+String(r.bytes).padStart(5)+' B   '+
@@ -376,8 +383,20 @@
       x.fillStyle='rgba(190,205,225,.13)'; x.beginPath(); x.arc(sx-4,y+(i%3)-1,4,0,6.284); x.fill();
     });
     var px=pad+Math.min(1,last.s/(FIN*S))*(W-2*pad-8);
-    x.strokeStyle='#b4ff3a44'; x.lineWidth=3; x.beginPath(); x.moveTo(pad,y); x.lineTo(px,y); x.stroke();
-    x.fillStyle='#b4ff3a'; x.fillRect(px-9,y-7,18,14);
+    /* ★ A STOPPED CAR MUST NOT READ AS A HUNG PAGE. Once the run is over the car simply stops moving,
+       which looks identical to nothing happening — so the finished car is coloured by CAUSE and
+       labelled. Green got home, red broke, amber walked away with the tank. */
+    var END={ home:['#b4ff3a','HOME'], off:['#ff5470','OFF THE TRACK'],
+              blown:['#ff5470','ENGINE LET GO'], retired:['#ffb547','RETIRED'] }[OUTCOME];
+    x.strokeStyle=(END?END[0]:'#b4ff3a')+'44'; x.lineWidth=3;
+    x.beginPath(); x.moveTo(pad,y); x.lineTo(px,y); x.stroke();
+    x.fillStyle=END?END[0]:'#b4ff3a'; x.fillRect(px-9,y-7,18,14);
+    if(END){
+      x.fillStyle=END[0]; x.font='11px ui-monospace,monospace'; x.textAlign=px>W*0.7?'right':'left';
+      x.fillText(END[1]+(OUTCOME==='home'?'  '+(trace.length*SEC).toFixed(2)+' s':''),
+                 px>W*0.7?px-14:px+14, y+4);
+      x.textAlign='left';
+    }
   }
 
   ensureGM().then(function(){

@@ -76,12 +76,19 @@ function bootPage (html) {
   }
   document.bootErrors = boot
   // exactly what a browser offers, and nothing node adds on top
+  /* The page paces itself to the race clock — a tenth of a second per tick, so the strip agrees with
+     the seconds counter. That is right for a viewer and wrong for a test, which would then sit through
+     several minutes of real waiting. So the sandbox's setTimeout FIRES IMMEDIATELY but RECORDS what was
+     asked for, and the pacing is asserted from those numbers rather than by enduring it. */
+  const paced = []
   const sandbox = vm.createContext({
     document, location: { href: '', protocol: 'https:' }, navigator: { userAgent: 'test' },
-    console, setTimeout, clearTimeout, setInterval, clearInterval, queueMicrotask,
+    console, clearTimeout, setInterval, clearInterval, queueMicrotask,
+    setTimeout: (f, ms) => { if (ms) paced.push(ms); return setTimeout(f, 0) },
     TextEncoder, TextDecoder, crypto, fetch, URL, atob, btoa,
     requestAnimationFrame: (f) => setTimeout(f, 0), addEventListener: noop,
   })
+  document.pacedDelays = paced
   sandbox.window = sandbox; sandbox.self = sandbox; sandbox.globalThis = sandbox
 
   for (const g of BROWSER_ONLY) {
@@ -115,7 +122,9 @@ async function runPage (html) {
       verdict: strip(doc.getElementById('verdict').innerHTML),
       txs: num(cell('transactions')), kb: cell('total size'),
       burned: num(cell('fuel burned')), took: num(cell('recovered')),
+      paced: doc.pacedDelays.slice(),
     })
+    doc.pacedDelays.length = 0
   }
   return out
 }
@@ -154,6 +163,12 @@ for (const r of results) {
   check(`  every satoshi accounted for`, r.cfg.tank + pot === r.burned + r.took + 1,
     `${(r.cfg.tank + pot).toLocaleString()} in · ${r.burned.toLocaleString()} burned + ` +
     `${r.took.toLocaleString()} out + 1 left`)
+
+  /* ★ and it runs at the speed it CLAIMS to. Without this the race is over in a fifth of the time the
+     result table reports, and the car appears to teleport to the flag — which reads as a hung page. */
+  const ticks = r.paced.filter((ms) => ms === 100).length
+  check(`  paced to the race clock`, ticks > 0 && Math.abs(ticks - r.txs) <= 4,
+    `${ticks} waits of 100 ms across ${r.txs} transactions`)
 }
 
 // ── THE NEGATIVE CONTROL ──────────────────────────────────────────────────────────────────────────
