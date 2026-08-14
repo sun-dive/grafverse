@@ -18,8 +18,7 @@
 import { Transaction, UnlockingScript, LockingScript, TransactionSignature, PrivateKey, P2PKH, Hash, Utils } from '@bsv/sdk'
 import {
   emptyShell, loadCar, loadTrack, arm, refTick, buildShellLock, shellUnlockingOps, SHELL_SCOPE,
-  RACER_REGS, S, PHASE, SHELL_FEE_PER_KB, SHELL_FEE_SLACK, SHELL_MAX_FEE, shellMaxFee, type ShellState,
-} from '../src/shell.ts'
+  RACER_REGS, S, PHASE, SHELL_FEE_PER_KB, SHELL_FEE_SLACK, SHELL_MAX_FEE, shellMaxFee, type ShellState, SHELL_WORST_MOVE_BYTES } from '../src/shell.ts'
 import { serializeOutput } from '../src/covenant.ts'
 
 let pass = 0, fail = 0
@@ -81,6 +80,14 @@ let worst = 0, biggest = 0, smallest = Infinity
   }
   const trueFee = Math.ceil(worst * SHELL_FEE_PER_KB / 1000)
   console.log(`        worst move serializes to ${worst} bytes → ${trueFee} sat at ${SHELL_FEE_PER_KB} sat/KB`)
+
+  /* ★ AND THE SOURCE MUST AGREE WITH THE SCALES. BURN0 is derived from SHELL_WORST_MOVE_BYTES, so that
+     figure is not documentation — it sets what every move pays. If the script grows and the constant
+     stays behind, every race quietly underpays and the moves stop being mined, exactly as they did at
+     BURN0 = 40. Measuring it here and not comparing it would be measuring for the sake of the log. */
+  check('★ the measured worst move matches what BURN0 is derived from', worst === SHELL_WORST_MOVE_BYTES)
+  console.log(`        measured ${worst} B · source says ${SHELL_WORST_MOVE_BYTES} B` +
+    (worst === SHELL_WORST_MOVE_BYTES ? '' : `  ⇒ SET SHELL_WORST_MOVE_BYTES = ${worst}`))
   console.log(`        burns range ${smallest} … ${biggest} sat`)
 
   // ★ RULE ONE: the smallest burn must clear the relay floor, or those moves never get mined.

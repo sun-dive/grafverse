@@ -68,6 +68,20 @@ export const SHELL_FEE_PER_KB = 100
 export const SHELL_FEE_SLACK = 64
 
 /**
+ * ★ THE WORST MOVE, MEASURED. Re-measured whenever the script changes; `shell-fee` asserts it, so a
+ * script that grows past this figure fails the suite rather than quietly underpaying on chain.
+ */
+export const SHELL_WORST_MOVE_BYTES = 3679
+
+/**
+ * ★ THE RATE THE BURN IS DERIVED AT — a tenth of a satoshi above SHELL_FEE_PER_KB, and no more.
+ * We never inflate the official rate, not for ARC and not for comfort. That tenth is not margin, it
+ * is ROUNDING INSURANCE: it guarantees the derived burn lands strictly ABOVE the floor rather than a
+ * hair under it once `ceil` has had its say.
+ */
+export const SHELL_BURN_RATE_PER_KB = SHELL_FEE_PER_KB + 0.1
+
+/**
  * ★ MAX_FEE — DERIVED FROM THE REGULATIONS, NOT WRITTEN DOWN.
  *
  * The value rule is a floor: `out ≥ V − MAX_FEE`. So it must be at least the largest burn any legal
@@ -78,21 +92,23 @@ export const SHELL_FEE_SLACK = 64
  * takes, so the SMALLEST burn must clear the relay floor or those moves are simply never mined.
  * MEASURED by serializing a real spend, 2026-08-14:
  *
- *   worst transaction   3,620 bytes  →  362 sat at the official 100 sat/KB
- *   burn at BURN0 = 40   40 sat  =  11 sat/KB   ← a third of the floor. Unmineable.
- *   burn at BURN0 = 400 400 sat  = 110 sat/KB   ← clears it
+ *   worst transaction   3,679 bytes  →  369 sat at the rate we pay
+ *   burn at BURN0 = 40   40 sat  =  10.9 sat/KB   ← a tenth of the floor. Unmineable.
+ *   burn at BURN0 = 400 400 sat  = 108.7 sat/KB   ← clears it, and overpays by 8.7%
+ *   burn at BURN0 = 369 369 sat  = 100.3 sat/KB   ← what the network actually asks for
  *
- * That is why BURN0 is 400 and not a number anybody chose. The battery's first MAX_FEE was HAND
- * COUNTED, undercounted the output script-length varint, and landed under the floor with no key to
- * amend it. Measure, or do not mint.
+ * ⇒ BURN0 is not written down at all. It is `ceil(WORST_MOVE_BYTES × FEE_PER_KB / 1000)`, so the two
+ * things that decide it are both named and both checked, and a script that grows re-derives its own
+ * fee instead of silently drifting under the floor. The battery's first MAX_FEE was HAND COUNTED,
+ * undercounted the output script-length varint, and landed under the floor with no key to amend it.
+ * Measure, or do not mint.
  *
  * ⚠ The 64 sat of slack is not decoration either: pinning nLockTime for the Christmas tree took away
  * the lever the battery grinds for LOW_S, so the fee is the only one left.
  */
 export const shellMaxFee = (regs: RacerRegs = RACER_REGS): number =>
   regs.BURN0 + regs.ENG_MAX * regs.BURN_E + SHELL_FEE_SLACK
-/** The settled value at RACER_REGS. Kept as a constant so tests and pages agree on one number. */
-export const SHELL_MAX_FEE = 400 + 24 * 35 + 64
+/** The settled value at RACER_REGS — see SHELL_MAX_FEE below, which is the same formula applied once. */
 
 // ── fixed point ──────────────────────────────────────────────────────────────────────────────────────
 /** 1.0 = 2^32, as the battery. One convention across covenants is worth more than a tuned one. */
@@ -207,10 +223,11 @@ export interface RacerRegs {
  *                         shifted down about two engine sizes (402 m wants eng 18 rather than 20).
  *   BURN_E     6 → 35     big engines are genuinely thirsty now, so they can run dry — the tank
  *                         stopped being free and became a real part of the build.
- *   BURN0    40 → 400    ⚠ NOT a tuning choice — FORCED by measurement. The burn IS the mining fee,
- *                         and a move serializes to ~3,620 bytes, which costs 362 sat at the official
- *                         100 sat/KB. At 40 a small engine paid 11 sat/KB and its moves would never
- *                         have been mined. See the note on MAX_FEE below.
+ *   BURN0    40 → 369    ⚠ NOT a tuning choice and no longer a NUMBER — it is DERIVED from the worst
+ *                         move's measured size and the rate we are willing to pay. The burn IS the
+ *                         mining fee, and at 40 a small engine paid 11 sat/KB, so its moves would
+ *                         never have been mined. It sat at 400 briefly, which cleared the floor by
+ *                         8.7% — real money for nothing, 32 sat on every move of every race.
  *   FE      0.20 → 0.32   closes the gap to a real Top Fuel car, and gives the top of the engine
  *                         range somewhere to go instead of plateauing.
  *   G0      0.15 → 0.36   more grip to spend, which is what makes the extra force usable at all.
@@ -236,7 +253,7 @@ export const RACER_REGS: RacerRegs = {
   SPIN_KEEP: Math.round(0.5 * S),
   LOOSE_V: Math.round(0.35 * S),        // ⚠ untuned — no slider existed
   BLOW_T: 14,                           // ⚠ untuned — no slider existed
-  BURN0: 400,
+  BURN0: Math.ceil(SHELL_WORST_MOVE_BYTES * SHELL_BURN_RATE_PER_KB / 1000),   // 369 — see the MAX_FEE note
   BURN_E: 35,
   THROTTLE_MAX: 15,
   ENG_MAX: 24,
@@ -245,6 +262,11 @@ export const RACER_REGS: RacerRegs = {
 
 /** Kept so the bench can offer "back to provisional", and so the diff above stays checkable. */
 export const PROVISIONAL_REGS: RacerRegs = RACER_REGS
+
+/* ⚠ This USED to read `400 + 24 * 35 + 64` — the formula above, copied out by hand because RACER_REGS
+   is declared further down the file. Two places to change and one of them silent is exactly how a fee
+   drifts under the floor, so it is now the function applied to the regulations, declared after them. */
+export const SHELL_MAX_FEE = shellMaxFee(RACER_REGS)
 
 // ── phases ───────────────────────────────────────────────────────────────────────────────────────────
 /**
