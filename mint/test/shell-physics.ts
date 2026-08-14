@@ -9,7 +9,7 @@
 import { Transaction, Spend, UnlockingScript, TransactionSignature, PrivateKey, P2PKH, Hash } from '@bsv/sdk'
 import {
   emptyShell, loadCar, loadTrack, arm, refTick, buildShellLock, shellUnlockingOps, SHELL_SCOPE,
-  RACER_REGS, S, PHASE, type ShellState,
+  RACER_REGS, S, PHASE, stateFits, type ShellState,
 } from '../src/shell.ts'
 import { serializeOutput } from '../src/covenant.ts'
 
@@ -57,11 +57,21 @@ async function offer(state: ShellState, next: ShellState, throttle: number, at: 
 
 const racing = (eng: number, tyr: number, slip: number, v: number, s: number, n: number): ShellState => ({
   ...arm(loadTrack(loadCar(emptyShell(), { driver: DRIVER, eng, tyr }, RACER_REGS),
-    { finish: 100_000 * S, slip, green: GREEN, gap: GAP })),
+    { finish: 5_000 * S, slip, green: GREEN, gap: GAP })),
   phase: PHASE.RACING, last: GREEN, s, v, n,
 })
 
 console.log('THE PHYSICS IN SCRIPT — measured against the reference, not against itself\n')
+
+/* ⚠ THE FIXTURE MUST FIT ITS FIELDS, and this test learned that the hard way. It first used a finish
+   of 100,000 units against a six-byte field that holds 32,768 — so fixedField truncated it SILENTLY,
+   every one of the 374 cases failed, and the script looked wrong when the test was. stateFits exists
+   for exactly this and was written this morning; not using it here was the whole bug. */
+{
+  const bad = stateFits(racing(20, 10, 1800, Math.round(3 * S), Math.round(50 * S), 12))
+  check('the fixture fits its fields', bad === null)
+  if (bad !== null) console.log(`        '${bad}' does not fit — every case below is meaningless`)
+}
 
 // ── the covenant agrees with refTick, across the space ───────────────────────────────────────────────
 {
@@ -77,7 +87,7 @@ console.log('THE PHYSICS IN SCRIPT — measured against the reference, not again
             tried++
             const r = await offer(st, want.state, th, GREEN + GAP)
             if (r.ok) agreed++
-            else if (firstBad === '') firstBad = `eng ${eng} tyr ${tyr} slip ${slip} th ${th} v ${(v/S).toFixed(2)} — ${r.why}`
+            else if (firstBad === '') firstBad = `eng ${eng} tyr ${tyr} slip ${slip} th ${th} v ${(v/S).toFixed(2)} — ${r.why}\n        want phase ${want.state.phase} s ${(want.state.s/S).toFixed(3)} v ${(want.state.v/S).toFixed(4)} n ${want.state.n} · spun ${want.spun}`
           }
         }
       }
@@ -86,6 +96,52 @@ console.log('THE PHYSICS IN SCRIPT — measured against the reference, not again
   check(`★ the script agrees with the reference on all ${tried} cases`, agreed === tried)
   if (agreed !== tried) console.log(`        ${agreed}/${tried} · first disagreement: ${firstBad}`)
 }
+// ── THE TERMINAL BRANCHES ────────────────────────────────────────────────────────────────────────────
+// The 374 above deliberately SKIP every case that ends a run, because those are the ones where the
+// script and the reference could most easily agree on a number while disagreeing on an outcome.
+{
+  let off = 0, blown = 0, home = 0, agreed = 0, tried = 0, firstBad = ''
+  for (const eng of [4, 12, 20]) {
+    for (const tyr of [2, 6, 10]) {
+      for (const th of [0, 6, 13, RACER_REGS.BLOW_T, RACER_REGS.THROTTLE_MAX]) {
+        for (const v of [0, Math.round(0.5 * S), Math.round(4 * S)]) {
+          // a strip short enough that a good run crosses it, so DONE is reachable too
+          const st = { ...racing(eng, tyr, 1000, v, Math.round(30 * S), 7), finish: Math.round(34 * S) }
+          const want = refTick(st, { throttle: th, lockTime: GREEN + GAP, fuel: FUEL }, RACER_REGS)
+          if (want.ended == null && want.state.phase !== PHASE.DONE) continue
+          tried++
+          if (want.ended === 'off') off++
+          else if (want.ended === 'blown') blown++
+          else home++
+          const r = await offer(st, want.state, th, GREEN + GAP)
+          if (r.ok) agreed++
+          else if (firstBad === '') firstBad = `eng ${eng} tyr ${tyr} th ${th} v ${(v/S).toFixed(2)} → ${want.ended ?? 'DONE'} · ${r.why}`
+        }
+      }
+    }
+  }
+  check(`★ every run-ending case agrees — ${tried} of them`, agreed === tried)
+  if (agreed !== tried) console.log(`        ${agreed}/${tried} · ${firstBad}`)
+  console.log(`        ${off} off the track · ${blown} engines let go · ${home} crossed the line`)
+
+  // ★ And the branches must be REACHED, not merely present. A test that exercised none of them would
+  // pass silently while the script did nothing at all.
+  check('the wall is reachable', off > 0)
+  check('the engine failure is reachable', blown > 0)
+  check('the finish line is reachable', home > 0)
+}
+
+// ── and a run that ends cannot be argued with ────────────────────────────────────────────────────────
+{
+  const st = { ...racing(20, 2, 1000, Math.round(4 * S), Math.round(30 * S), 7), finish: Math.round(34 * S) }
+  const want = refTick(st, { throttle: RACER_REGS.THROTTLE_MAX, lockTime: GREEN + GAP, fuel: FUEL }, RACER_REGS)
+  check('this fixture really does end the run', want.ended != null)
+  // offering RACING instead of OUT is the obvious cheat: pretend nothing happened and drive on
+  const pretend = { ...want.state, phase: PHASE.RACING as ShellState['phase'] }
+  check('★ a car that went out cannot pretend it is still racing',
+    (await offer(st, pretend, RACER_REGS.THROTTLE_MAX, GREEN + GAP)).ok, false)
+}
+
 console.log(`\n${pass}/${pass + fail} checks passed`)
 if (fail > 0) { console.error('SHELL PHYSICS: FAIL'); process.exit(1) }
 console.log('SHELL PHYSICS OK — the covenant computes what the reference computes.')

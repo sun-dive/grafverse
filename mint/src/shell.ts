@@ -762,32 +762,70 @@ function shellPhysicsOps(regs: RacerRegs): ScriptChunk[] {
   // v' = v + force/mass − fmul(v, DRAG), collapsed by SPIN_KEEP if the wheels went, floored at zero
   a.pick('force'); a.num(S); a.bin(OP.OP_MUL, 'forceS')
   a.pick('mass'); a.bin(OP.OP_DIV, 'accel')
-  a.pick('v'); a.bin(OP.OP_ADD, 'nv')
+  a.pick('v'); a.bin(OP.OP_ADD, 'cv')
   a.pick('v'); a.num(regs.DRAG); fmul(); a.rename('drag')
-  a.bin(OP.OP_SUB, 'nv')
+  a.bin(OP.OP_SUB, 'cv')
   a.pick('spun'); a.ifBegin()
-  a.num(regs.SPIN_KEEP); fmul(); a.rename('nv')
-  a.armReturn(['nv'])
+  a.num(regs.SPIN_KEEP); fmul(); a.rename('cv')
+  a.armReturn(['cv'])
   a.elseArm()
-  a.armReturn(['nv'])
+  a.armReturn(['cv'])
   a.endIf()
-  a.num(0); a.bin(OP.OP_MAX, 'nv')
+  a.num(0); a.bin(OP.OP_MAX, 'cv')
 
-  // s' = s + v'   ·   n' = n + 1
-  a.pick('s'); a.pick('nv'); a.bin(OP.OP_ADD, 'ns')
+  /* ── WHEN GRIP GOES ─────────────────────────────────────────────────────────────────────────────
+     Two terminal failures with different causes, and one recoverable one.
+
+       spun AND v ≥ LOOSE_V   a MOVING car steps sideways — off the track
+       spun AND t ≥ BLOW_T    a STATIONARY one has no load, and the revs run away
+       spun otherwise         smoke: force capped at grip, momentum lost, still in the race
+
+     The reference checks speed first so it can NAME which happened, but both write the identical
+     state — OUT, velocity zero, position unchanged, tick counted — so the script needs only their
+     OR. What it must not do is get the recoverable case wrong, and that is what the 374-case
+     agreement test is for. */
+  a.pick('v'); a.num(regs.LOOSE_V); a.bin(OP.OP_GREATERTHANOREQUAL, 'fast')
+  a.pick('throttle'); a.num(regs.BLOW_T); a.bin(OP.OP_GREATERTHANOREQUAL, 'wide')
+  a.bin(OP.OP_BOOLOR, 'bad')
+  a.pick('spun'); a.bin(OP.OP_BOOLAND, 'out')
+
+  a.pick('out'); a.ifBegin()
+  // the run is over where it stands: no further ground, no speed, but the tick still counted
+  a.pick('s', 'ns'); a.num(0, 'nv'); a.pick('n'); a.o(OP.OP_1ADD, 1, ['nn'])
+  a.num(PHASE.OUT, 'np')
+  a.armReturn(['ns', 'nv', 'nn', 'np'])
+  a.elseArm()
+  a.pick('s'); a.pick('cv'); a.bin(OP.OP_ADD, 'ns')
   a.pick('n'); a.o(OP.OP_1ADD, 1, ['nn'])
-  a.armReturn(['ns', 'nv', 'nn'])
+  a.pick('cv', 'nv')
+  // crossing the line is just arithmetic — s' ≥ finish, and the chain stops
+  a.pick('ns'); a.pick('finish'); a.bin(OP.OP_GREATERTHANOREQUAL, 'home')
+  a.ifBegin(); a.num(PHASE.DONE, 'np'); a.armReturn(['np'])
+  a.elseArm(); a.num(PHASE.RACING, 'np'); a.armReturn(['np']); a.endIf()
+  a.armReturn(['ns', 'nv', 'nn', 'np'])
+  a.endIf()
+  // …and the racing arm must return to ITS OWN baseline too, not the inner branch's. The assembler
+  // caught this as 30 against 23: every intermediate of the physics was still sitting there.
+  a.armReturn(['ns', 'nv', 'nn', 'np'])
 
   a.elseArm()
   // not racing: the car is being built, and stands exactly where it was
-  a.pick('s', 'ns'); a.pick('v', 'nv'); a.pick('n', 'nn')
-  a.armReturn(['ns', 'nv', 'nn'])
+  a.pick('s', 'ns'); a.pick('v', 'nv'); a.pick('n', 'nn'); a.pick('phase', 'np')
+  a.armReturn(['ns', 'nv', 'nn', 'np'])
   a.endIf()
 
-  /* Three old fields and one working value are now buried under the new ones, and all four must go —
-     `mass` included, which was computed before the branch and therefore survived both arms. Rolled out
-     by NAME rather than by depth, so the model does the arithmetic and the order cannot matter. */
-  for (const dead of ['mass', 's', 'v', 'n']) { a.roll(dead, '_dead'); a.drop(1) }
+  /* Four dead values are now buried under the new ones — the three old fields, plus `mass`, which was
+     computed before the branch and therefore survived both arms. Rolled out by NAME, so the model does
+     the arithmetic and the order cannot matter. */
+  for (const dead of ['mass', 'phase', 's', 'v', 'n']) { a.roll(dead, '_dead'); a.drop(1) }
+
+  /* ★ AND THE NEW PHASE HAS TO GET BACK TO THE FRONT.
+     It was written early — the sequence needs deciding before the fields are even extracted — but only
+     the physics know whether this move ended the run, so the physics must be able to overrule it from
+     eleven fields away. A stack cannot push something DOWNWARD, so instead every field above it is
+     rolled UP over it, in FIELDS order. Eleven rolls, and the order comes out exactly right. */
+  for (const k of ['driver', 'eng', 'tyr', 'finish', 'slip', 'green', 'gap', 'last', 'ns', 'nv', 'nn']) a.roll(k)
+  a.st[a.st.length - 11] = 'phase'
   a.st[a.st.length - 3] = 's'; a.st[a.st.length - 2] = 'v'; a.st[a.st.length - 1] = 'n'
   return a.ops
 }
