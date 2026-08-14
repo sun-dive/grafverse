@@ -45,8 +45,8 @@
 import { OP, LockingScript, type ScriptChunk } from '@bsv/sdk'
 import { extractHashOutputsOps, extractScriptCodeFieldOps } from './covenant.ts'
 import { pushTxVerifyOps, pushData, pushTxConstants, type PushTxConstants } from './pushtx.ts'
+import { Asm, op, PN, snum } from './covenantAsm.ts'
 
-const op = (code: number): ScriptChunk => ({ op: code })
 
 /** SIGHASH scope for the battery's introspection: ANYONECANPAY|ALL|FORKID (a sponsor may add inputs). */
 export const BATTERY_SCOPE = 0xc1
@@ -229,20 +229,7 @@ export function refState(s: BatteryState, g: BatteryGeometry = BATTERY_GEOMETRY)
 }
 
 // ── script-number helpers ────────────────────────────────────────────────────────────────────────────
-/** Minimal script-number encoding (sign-magnitude little-endian). */
-function snum(n: number): number[] {
-  if (n === 0) return []
-  const neg = n < 0
-  let v = Math.abs(n)
-  const b: number[] = []
-  while (v > 0) { b.push(v % 256); v = Math.floor(v / 256) }
-  if (b[b.length - 1] & 0x80) b.push(neg ? 0x80 : 0x00)
-  else if (neg) b[b.length - 1] |= 0x80
-  return b
-}
 /** Push a number as a minimal script number. */
-const PN = (n: number): ScriptChunk => { const d = snum(n); return d.length === 0 ? op(OP.OP_0) : { op: d.length, data: d } }
-/** Encode a value into a FIXED-WIDTH sign-magnitude field of `n` bytes. */
 export function fixedField(v: number, n: number): number[] {
   const neg = v < 0
   let x = Math.abs(v)
@@ -252,80 +239,7 @@ export function fixedField(v: number, n: number): number[] {
   return b
 }
 
-// ── the depth-tracking assembler ─────────────────────────────────────────────────────────────────────
-/**
- * Every value is referenced by NAME and the OP_PICK offset is computed from a live stack model.
- * Hand-counting stack depths caused three bugs in one sitting; this makes that class of bug impossible.
- *
- * Branches are the subtle part: BOTH arms start from the same real stack, so the model is snapshotted at
- * OP_IF, restored at OP_ELSE, and the two arms must agree at OP_ENDIF. Without that, every depth in the
- * else-path is computed against the if-path's pushes.
- */
-class Asm {
-  ops: ScriptChunk[] = []
-  st: string[]
-  private snap: string[][] = []
-  private ifEnd: string[][] = []
-  constructor(names: string[]) { this.st = names.slice() }
-  raw(o: ScriptChunk, pop = 0, push: string[] = []): this {
-    this.ops.push(o)
-    for (let i = 0; i < pop; i++) this.st.pop()
-    push.forEach(n => this.st.push(n))
-    return this
-  }
-  o(code: number, pop = 0, push: string[] = []): this { return this.raw(op(code), pop, push) }
-  num(n: number, as?: string): this { return this.raw(PN(n), 0, [as ?? ('#' + n)]) }
-  depth(name: string): number {
-    const i = this.st.lastIndexOf(name)
-    if (i < 0) throw new Error('unknown: ' + name + ' | ' + this.st.join(','))
-    return this.st.length - 1 - i
-  }
-  pick(name: string, as?: string): this {
-    const d = this.depth(name)
-    this.raw(PN(d), 0, ['_d'])
-    return this.raw(op(OP.OP_PICK), 1, [as ?? name + "'"])
-  }
-  bin(code: number, as: string): this { return this.o(code, 2, [as]) }
-  drop(n: number): this { for (let i = 0; i < n; i++) this.o(OP.OP_DROP, 1, []); return this }
-  /** Rename the top of the model without emitting an opcode (after a pick that is really an alias). */
-  rename(as: string): this { this.st.pop(); this.st.push(as); return this }
-  ifBegin(): this { this.o(OP.OP_IF, 1, []); this.snap.push(this.st.slice()); return this }
-  elseArm(): this {
-    this.raw(op(OP.OP_ELSE), 0, [])
-    this.ifEnd.push(this.st.slice())
-    this.st = this.snap[this.snap.length - 1].slice()
-    return this
-  }
-  endIf(): this {
-    this.raw(op(OP.OP_ENDIF), 0, [])
-    const a = this.ifEnd.pop()!, b = this.st
-    this.snap.pop()
-    if (a.length !== b.length) {
-      throw new Error('branch mismatch: if=' + a.length + ' else=' + b.length +
-        '\n  if  : ' + a.join(',') + '\n  else: ' + b.join(','))
-    }
-    return this
-  }
-  /**
-   * Leave EXACTLY these values above the branch's entry baseline, dropping every intermediate — so both
-   * arms agree by construction instead of by careful bookkeeping.
-   */
-  armReturn(names: string[]): this {
-    names.slice().reverse().forEach(n => { this.pick(n, '_r'); this.raw(op(OP.OP_TOALTSTACK), 1, []) })
-    const base = this.snap[this.snap.length - 1].length
-    this.drop(this.st.length - base)
-    names.forEach(n => this.raw(op(OP.OP_FROMALTSTACK), 0, [n]))
-    return this
-  }
-  /** As `armReturn`, but clears the whole stack — used once at the end to discard the nine originals. */
-  armReturnFinal(names: string[]): this {
-    names.slice().reverse().forEach(n => { this.pick(n, '_r'); this.raw(op(OP.OP_TOALTSTACK), 1, []) })
-    this.drop(this.st.length)
-    names.forEach(n => this.raw(op(OP.OP_FROMALTSTACK), 0, [n]))
-    return this
-  }
-  toAlt(n: number): this { for (let i = 0; i < n; i++) this.o(OP.OP_TOALTSTACK, 1, []); return this }
-}
+// The depth-tracking assembler now lives in covenantAsm.ts — shared with the Bitcoin Racers shell.
 
 /**
  * The state machine: consumes the nine fields as numbers and leaves the nine advanced fields.
