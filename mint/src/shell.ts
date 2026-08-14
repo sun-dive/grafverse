@@ -157,25 +157,59 @@ export interface RacerRegs {
   TYR_MAX: number
 }
 
-/** ⚠ PROVISIONAL — see RacerRegs. Placeholders, chosen to be self-consistent, not to be right. */
-export const PROVISIONAL_REGS: RacerRegs = {
-  M0: 1 * S,
+/**
+ * ★ SETTLED ON THE BENCH, 2026-08-14 — no longer guesses.
+ *
+ * Tuned until the meta stopped having a single answer, and the property the user stopped on is the one
+ * worth having:
+ *
+ *   > "Bigger engine doesn't always win but it might once it's gained enough momentum."
+ *
+ * ⇒ **THE TRACK DECIDES THE BUILD.** A short strip rewards the light car that gets going quickly; a
+ * long one gives a big engine room to use what it has. No car is right for everything, so the entry
+ * decision is real every time — and it is how drag racing actually behaves, since big power needs
+ * distance to be worth carrying. It also vindicates loading the track PER RACE rather than baking it
+ * into the shell: one covenant hosts a meta whose answer changes with the strip.
+ *
+ * What moved, and why it produced that:
+ *   DRAG    0.02 → 0.05   the engine of the whole effect. More drag means speed must be EARNED and
+ *                         held, so a big motor needs distance before its advantage shows.
+ *   BURN_E     6 → 35     big engines are genuinely thirsty now, so they can run dry — the tank
+ *                         stopped being free and became a real part of the build.
+ *   FE      0.20 → 0.32   closes the gap to a real Top Fuel car, and gives the top of the engine
+ *                         range somewhere to go instead of plateauing.
+ *   G0      0.15 → 0.36   more grip to spend, which is what makes the extra force usable at all.
+ *   WF    1.0e-4 → 1.3e-4 fuel weighs a little more, so range is paid for.
+ *   ENG_MAX   20 → 24     room above the old plateau.
+ *
+ * The decimals are written plainly here; the values exported from the bench carried slider
+ * round-tripping noise (0.05000000004656613 and so on) that rounds to the identical integer — verified
+ * field by field before cleaning, because "it looked the same" is not a reason to touch a constant.
+ *
+ * ⚠ STILL PROVISIONAL: LOOSE_V and BLOW_T. The bench had no sliders for them when these were settled,
+ * so the two failure modes were never actually felt out. They want the same treatment before minting.
+ */
+export const RACER_REGS: RacerRegs = {
+  M0: Math.round(1 * S),
   WE: Math.round(0.05 * S),
   WT: Math.round(0.03 * S),
-  WF: Math.round(0.0001 * S),
-  FE: Math.round(0.20 * S),
-  G0: Math.round(0.15 * S),
+  WF: Math.round(0.00013 * S),
+  FE: Math.round(0.32 * S),
+  G0: Math.round(0.36 * S),
   GV: Math.round(0.30 * S),
-  DRAG: Math.round(0.02 * S),
-  BURN0: 40,
-  BURN_E: 6,
+  DRAG: Math.round(0.05 * S),
   SPIN_KEEP: Math.round(0.5 * S),
-  LOOSE_V: Math.round(0.35 * S),
-  BLOW_T: 14,
+  LOOSE_V: Math.round(0.35 * S),        // ⚠ untuned — no slider existed
+  BLOW_T: 14,                           // ⚠ untuned — no slider existed
+  BURN0: 40,
+  BURN_E: 35,
   THROTTLE_MAX: 15,
-  ENG_MAX: 20,
+  ENG_MAX: 24,
   TYR_MAX: 10,
 }
+
+/** Kept so the bench can offer "back to provisional", and so the diff above stays checkable. */
+export const PROVISIONAL_REGS: RacerRegs = RACER_REGS
 
 // ── phases ───────────────────────────────────────────────────────────────────────────────────────────
 /**

@@ -9,7 +9,7 @@
 // constants turn out to be — and never a specific velocity, which would only pin down a guess.
 import {
   PHASE, PHASE_NAMES, emptyShell, loadCar, loadTrack, arm, refTick, ShellRefused,
-  FIELDS, FIELD_WIDTHS, STATE_BYTES, PROVISIONAL_REGS, SHELL_STATE_LAYOUT, S, fmul, fdiv, SLIP_UNIT,
+  FIELDS, FIELD_WIDTHS, STATE_BYTES, RACER_REGS, SHELL_STATE_LAYOUT, S, fmul, fdiv, SLIP_UNIT,
   type ShellState, type RacerRegs,
 } from '../src/shell.ts'
 
@@ -24,7 +24,7 @@ const refuses = (name: string, fn: () => unknown): void => {
   catch (e) { check(name, e instanceof ShellRefused) }
 }
 
-const REGS = PROVISIONAL_REGS
+const REGS = RACER_REGS
 const DRIVER = new Array(20).fill(7)
 const GREEN = 1_700_000_000
 
@@ -301,4 +301,4 @@ console.log('THE SHELL — reference implementation\n')
 
 console.log(`\n${pass}/${pass + fail} checks passed`)
 if (fail > 0) { console.error('SHELL REF: FAIL'); process.exit(1) }
-console.log('SHELL REF OK — the machine runs. The constants are still guesses.')
+console.log('SHELL REF OK — the machine runs, at the settled regulations.')
