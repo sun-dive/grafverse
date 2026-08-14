@@ -577,12 +577,22 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
     op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP),
     op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_DROP),
     ...pushTxVerifyOps(c),                                   // [SO, newV, preimage]
-    op(OP.OP_DUP), op(OP.OP_DUP),
+    op(OP.OP_DUP), op(OP.OP_DUP), op(OP.OP_DUP),
     ...extractHashOutputsOps(), op(OP.OP_TOALTSTACK),        // alt:[hashOutputs]
     // the spent output's value sits 52 bytes from the end of the preimage
     op(OP.OP_SIZE), pushData([52]), op(OP.OP_SUB), op(OP.OP_SPLIT), op(OP.OP_NIP),
     pushData([8]), op(OP.OP_SPLIT), op(OP.OP_DROP), op(OP.OP_BIN2NUM), op(OP.OP_TOALTSTACK), // alt:[HO, V]
-    ...extractScriptCodeFieldOps(),                          // [SO, newV, field]
+
+    /* ── THE CLOCK ──────────────────────────────────────────────────────────────────────────────────
+       nLockTime sits 8 bytes from the end of the preimage: sighash type (4), then nLocktime (4). It
+       stays on the MAIN stack, beneath PRE, because the timing rule needs it at the same moment `last`
+       is reachable — and by then the altstack is holding the other eleven fields.
+       ⚠ It only BINDS if an input's sequence is below 0xffffffff. A transaction whose inputs are all
+       final ignores nLockTime entirely, and a tree that can be ignored is not a tree. */
+    op(OP.OP_SIZE), pushData([8]), op(OP.OP_SUB), op(OP.OP_SPLIT), op(OP.OP_NIP),
+    pushData([4]), op(OP.OP_SPLIT), op(OP.OP_DROP), op(OP.OP_BIN2NUM),   // [.., preimage, nLockTime]
+    op(OP.OP_SWAP),                                          // preimage back on top
+    ...extractScriptCodeFieldOps(),                          // [SO, newV, nLockTime, field]
     PN(p.fieldOffset), op(OP.OP_SPLIT),                      // [.., PRE, rest]
   ]
   // peel the twelve fields off `rest`
@@ -613,7 +623,45 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
     op(OP.OP_1ADD), PN(PHASE.RACING), op(OP.OP_MIN),                        // min(phase + 1, RACING)
   )
 
-  for (let i = 1; i < FIELDS.length; i++) ops.push(op(OP.OP_FROMALTSTACK))
+  for (let i = 1; i < FIELDS.length; i++) {
+    ops.push(op(OP.OP_FROMALTSTACK))
+
+    /* ── THE CHRISTMAS TREE ────────────────────────────────────────────────────────────────────────
+       Applied at the one instant `last` is on top of the stack, with `gap` and `green` directly under
+       it — the same trick the phase machine uses, and for the same reason: reaching a field otherwise
+       means rolling it up from nine deep and putting it back.
+
+       ★ ONE RULE COVERS BOTH THE LAUNCH AND EVERY MOVE AFTER IT:
+
+           nLockTime ≥ max(green, last + gap)
+
+       On a launch `last` is zero, so `last + gap` is a handful of seconds and `green` — a Unix
+       timestamp — wins outright. On every move after, `last` is a recent timestamp so `last + gap`
+       wins. No branch, no separate launch case, and nothing to get out of step.
+
+       ★ AND IT MAKES A FALSE START IMPOSSIBLE RATHER THAN PUNISHED. A transaction whose nLockTime has
+       not arrived is not merely against the rules — it is non-final, so no node will mine it. Stronger
+       than a real tree, which only catches the foul after you have committed it.
+
+       `last` then becomes this move's nLockTime, so the next one is measured from here. */
+    if (FIELDS[i] === 'last') {
+      ops.push(
+        PN(8), op(OP.OP_PICK), PN(PHASE.RACING), op(OP.OP_NUMEQUAL),   // only while racing
+        op(OP.OP_IF),
+          op(OP.OP_OVER), op(OP.OP_ADD),                    // last + gap
+          PN(2), op(OP.OP_PICK), op(OP.OP_MAX),             // max(green, last + gap)
+          PN(10), op(OP.OP_PICK),                           // nLockTime
+          op(OP.OP_LESSTHANOREQUAL), op(OP.OP_VERIFY),      // the gate
+          PN(9), op(OP.OP_PICK),                            // `last` := this move's nLockTime
+        op(OP.OP_ENDIF),
+      )
+    }
+  }
+
+  /* nLockTime has done its work — the tree is passed and `last` is stamped. It sits under PRE and the
+     twelve fields, and the rebuild below assumes it is not there, so it is rolled out now rather than
+     worked around. Thirteen deep: PRE plus twelve. */
+  ops.push(PN(13), op(OP.OP_ROLL), op(OP.OP_DROP))
 
   // ── THE REST OF THE STATE MACHINE GOES HERE. ──
 
