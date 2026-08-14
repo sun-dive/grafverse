@@ -189,8 +189,13 @@
         justify-content:center;padding:2px 5px;overflow:hidden;background:none}
   .fund+.fund{border-top:1px solid rgba(4,8,16,.20)}   /* a hairline, not a seam */
   .fund b{font:800 11px/1.1 system-ui;font-variant-numeric:tabular-nums;display:block}
-  .fund i{font:600 9.5px/1.15 system-ui;font-style:normal;opacity:.78;display:block;
-          overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* A mark WRAPS. It used to be nowrap+ellipsis, which spent one line whatever the band's height —
+     so the largest contribution, occupying nearly half the cell, showed the same clipped fragment as
+     the smallest. How many lines actually fit depends on a height computed at render, so the clamp is
+     set in JS from the laid-out band; this rule only says a mark may use more than one line. */
+  .fund i{font:600 9.5px/1.25 system-ui;font-style:normal;opacity:.78;
+          display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;
+          white-space:normal;overflow-wrap:anywhere}
   .fund.tiny b{font-size:9.5px} .fund.tiny i{display:none}
   /* the seed keeps the charge colour so the fill reads as ONE level; a dashed edge marks it instead */
   .batt-seed{flex:none} .fund+.batt-seed{border-top:1px dashed rgba(4,8,16,.38)}
@@ -1338,6 +1343,23 @@
       }).join('')+
     '</div>';
     box.innerHTML=html;
+
+    /* HOW MUCH OF A MARK FITS IS ONLY KNOWABLE ONCE IT IS LAID OUT.
+       A band's height is a share of the charge, so it is a percentage until the browser resolves it.
+       Measure the real band, subtract the amount line and the padding, and allow whole lines only —
+       a mark sliced through the middle of a line reads as a rendering fault rather than as a limit.
+       Everything here is read from computed style, so changing the font in CSS cannot desynchronise it. */
+    Array.prototype.forEach.call(box.querySelectorAll('.fund'), function(el){
+      var mk=el.querySelector('i'); if(!mk) return;
+      var amt=el.querySelector('b');
+      var cs=getComputedStyle(el);
+      var lh=parseFloat(getComputedStyle(mk).lineHeight)||12;
+      var room=el.clientHeight - (amt?amt.offsetHeight:0)
+               - parseFloat(cs.paddingTop||0) - parseFloat(cs.paddingBottom||0);
+      var lines=Math.max(1, Math.floor(room/lh));
+      mk.style.webkitLineClamp=String(lines);
+      mk.style.setProperty('line-clamp', String(lines));
+    });
 
     var pct=cap>0 ? Math.min(100, fuel/cap*100) : 0;
     $('lv-cap').innerHTML='<b>'+pct.toFixed(pct>99.5?1:0)+'%</b> charged<br>'+
