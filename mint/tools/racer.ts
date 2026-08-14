@@ -48,13 +48,16 @@ const sec = (n: number): string => (n * 0.1).toFixed(2)
 const mph = (v: number): number => (v / S) / 0.1 * 2.23694
 
 /** THE CAR, THE TRACK, THE PURSE. The settled regulations, and a build that gets home on 60,000 sat. */
+const env = (k: string, d: number): number => (process.env[k] ? Number(process.env[k]) : d)
 const SPEC = {
-  tank: 60_000,          // the car's fuel — every satoshi of it is a mining fee or comes back
-  pot: 30_000,           // the purse, claimable only by crossing the line
-  eng: 14, tyr: 10,      // a build the bench says finishes a quarter mile
-  finishM: 402,          // a quarter mile, to the metre
-  slip: 1000, gap: 1,    // dry strip; one second of race clock between ticks
-  greenBack: 3 * 3600,   // green light this far in the PAST — see the note on MTP above
+  tank: env('RACER_TANK', 60_000),   // the car's fuel — every satoshi is a mining fee or comes back
+  pot: env('RACER_POT', 30_000),     // the purse, claimable only by crossing the line
+  eng: env('RACER_ENG', 14),         // a build the bench says finishes a quarter mile
+  tyr: env('RACER_TYR', 10),
+  finishM: env('RACER_FINISH', 402), // a quarter mile, to the metre
+  slip: env('RACER_SLIP', 1000),     // dry strip
+  gap: 1,                            // one second of race clock between ticks
+  greenBack: 3 * 3600,               // green light this far in the PAST — see the note on MTP above
 }
 const RESERVE = R.BURN0 + 1   // hold back enough to get the car home on the trailer
 const FEE_PER_KB = 100        // official BSV fee rate; the covenant's own burn is measured against it
