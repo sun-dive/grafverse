@@ -38,6 +38,7 @@ import {
   SHELL_SCOPE, SHELL_MAX_FEE, RACER_REGS as R, S, PHASE, type ShellState,
 } from '../src/shell.ts'
 import { serializeOutput } from '../src/covenant.ts'
+import { derivedSigIsLowS } from '../src/pushtx.ts'
 
 const WOC = 'https://api.whatsonchain.com/v1/bsv/main'
 const BB = 'https://bananablocks.com/api/v1/bsv/main'
@@ -70,7 +71,7 @@ async function buildMove (
   prev: { tx: Transaction; vout: number; state: ShellState; value: number },
   next: ShellState,
   o: { out: number; at: number; throttle?: number; retire?: boolean; payout?: number; pot?: { tx: Transaction; vout: number } },
-): Promise<Transaction> {
+): Promise<{ tx: Transaction; preimage: number[] }> {
   const lock = buildShellLock({ state: prev.state, maxFee: SHELL_MAX_FEE })
   const tx = new Transaction(); tx.version = 2
   tx.addInput({ sourceTransaction: prev.tx, sourceOutputIndex: prev.vout, sequence: 0xfffffffe })
@@ -101,8 +102,20 @@ async function buildMove (
     unlockingScript: tx.inputs[0].unlockingScript, inputSequence: 0xfffffffe, lockTime: tx.lockTime,
   }).validate()
   if (ok !== true) throw new Error('the covenant refused this move before it was ever sent')
-  return tx
+  return { tx, preimage: pre }
 }
+
+/* ⚠ LOW_S, AND THE LEVER THE RACER HAS THAT THE BATTERY DOES NOT.
+   A covenant DERIVES its signature in script and cannot negate a high `s` the way a key-holding signer
+   would, so about half of all preimages produce a non-canonical signature. Chronicle withdrew the rule
+   for version-2 transactions and these are version 2 — but ARC still refuses them, and a race is a
+   CHAIN: one move that will not relay stops everything behind it. Over 51 moves, leaving it to chance
+   is not a risk worth taking for something that costs nothing to avoid.
+
+   The lever is nLockTime. It sets `last` and nothing else — the physics depend on throttle alone — so
+   pushing a tick a second later up the race clock changes the preimage completely and changes the race
+   not at all. About two tries on average, entirely off-chain. */
+const LOWS_TRIES = 40
 
 /** The largest throttle that does not break traction — asked of the reference, never of the chain. */
 function safeThrottle (st: ShellState, fuel: number): number {
@@ -134,20 +147,31 @@ async function runRace (ctx: Ctx, genesis: Transaction, green: number, send: nul
   const pool = [...Utils.toArray(genesis.id('hex'), 'hex').slice().reverse(), 1, 0, 0, 0]   // txid‖vout=1, LE
   const potRef = { tx: genesis, vout: 1 }
   let prev = { tx: genesis, vout: 0, state: emptyShell(), value: SPEC.tank }
-  let fuel = SPEC.tank, txs = 0, bytes = 0, burned = 0, took = 0, rate = Infinity
+  let fuel = SPEC.tank, txs = 0, bytes = 0, burned = 0, took = 0, rate = Infinity, ground = 0
 
   /* ⚠ EVERY MOVE MUST PAY FOR ITS OWN BYTES. A move's miner fee is exactly the value it does not carry
      forward, so `out = fuel` is a ZERO-FEE transaction — perfectly valid to the interpreter and
      unrelayable by any node. The racing ticks fund themselves out of the burn; the three loading moves
      have no burn of their own, so they are charged the same BURN0 floor. Checked, not assumed. */
-  const step = async (next: ShellState, o: any): Promise<void> => {
-    const tx = await buildMove(ctx, prev, next, o)
-    const size = tx.toHex().length / 2, paid = prev.value + (o.pot ? SPEC.pot : 0) - tx.outputs.reduce((a, x) => a + (x.satoshis ?? 0), 0)
+  /** Build a move, grinding nLockTime until the signature it derives is canonical, then check its fee. */
+  const step = async (mk: (at: number) => { next: ShellState; o: any }, baseAt: number): Promise<ShellState> => {
+    let built = null, next = null, o = null
+    for (let d = 0; d < LOWS_TRIES; d++) {
+      const c = mk(baseAt + d)
+      const r = await buildMove(ctx, prev, c.next, c.o)
+      // count the REBUILDS this move actually needed, once — not once per attempt
+      if (derivedSigIsLowS(r.preimage)) { built = r; next = c.next; o = c.o; ground += d; break }
+    }
+    if (!built) throw new Error(`no canonical signature in ${LOWS_TRIES} nLockTimes — the race cannot continue`)
+
+    const size = built.tx.toHex().length / 2
+    const paid = prev.value + (o!.pot ? SPEC.pot : 0) - built.tx.outputs.reduce((a, x) => a + (x.satoshis ?? 0), 0)
     const floor = Math.ceil(size * FEE_PER_KB / 1000)
     if (paid < floor) throw new Error(`move ${txs + 1} pays ${paid} sat for ${size} bytes — below the ${floor} sat relay floor`)
     txs++; bytes += size; rate = Math.min(rate, paid * 1000 / size)
-    if (send) await send(tx)
-    prev = { tx, vout: 0, state: next, value: o.out }
+    if (send) await send(built.tx)
+    prev = { tx: built.tx, vout: 0, state: next!, value: o!.out }
+    return next!
   }
 
   // ── load the car, load the track, arm it ────────────────────────────────────────────────────────
@@ -158,7 +182,7 @@ async function runRace (ctx: Ctx, genesis: Transaction, green: number, send: nul
 
   for (const [label, st] of [['claim it and load the car', car], ['load the track and the tree', track],
                              ['fuel it — the specs freeze here', arm(track)]] as [string, ShellState][]) {
-    await step(st, { out: fuel - R.BURN0, at: 0 })
+    await step((at) => ({ next: st, o: { out: fuel - R.BURN0, at } }), 0)
     fuel -= R.BURN0; burned += R.BURN0
     ctx.log(`  tx ${String(txs).padStart(3)}  ${label}`)
   }
@@ -174,17 +198,20 @@ async function runRace (ctx: Ctx, genesis: Transaction, green: number, send: nul
 
     if (!ending && fuel - want.burn < RESERVE) {          // can't tick AND still afford to stop → stop
       const payout = fuel - R.BURN0 - 1
-      await step({ ...st, phase: PHASE.OUT }, { out: 1, at, retire: true, payout })
+      st = await step((a) => ({ next: { ...st, phase: PHASE.OUT }, o: { out: 1, at: a, retire: true, payout } }), at)
       burned += R.BURN0; took = payout; fuel = 1
-      ctx.log(`  tx ${String(txs).padStart(3)}  RETIRED at ${(st.s / S).toFixed(0)} m — ${payout.toLocaleString()} sat recovered`)
-      st = { ...st, phase: PHASE.OUT }
+      ctx.log(`  tx ${String(txs).padStart(3)}  RETIRED — ${payout.toLocaleString()} sat recovered`)
       break
     }
 
+    /* ⚠ the state depends on the nLockTime being ground, so it is recomputed for each candidate —
+       `last` is part of the state the covenant checks, and a stale one would be refused. */
     const payout = ending ? (fuel - want.burn - 1) + (crossing ? SPEC.pot : 0) : 0
-    await step(want.state, { out: ending ? 1 : fuel - want.burn, at, throttle, payout,
-                             pot: crossing ? potRef : undefined })
-    burned += want.burn; fuel -= want.burn; st = want.state
+    st = await step((a) => ({
+      next: refTick(st, { throttle, lockTime: a, fuel }, R).state,
+      o: { out: ending ? 1 : fuel - want.burn, at: a, throttle, payout, pot: crossing ? potRef : undefined },
+    }), at)
+    burned += want.burn; fuel -= want.burn
     if (ending) took = payout
     if (st.n <= 3 || st.n % 10 === 0 || ending) {
       ctx.log(`  tx ${String(txs).padStart(3)}  move ${String(st.n).padStart(3)}  ${sec(st.n)} s  ` +
@@ -193,7 +220,7 @@ async function runRace (ctx: Ctx, genesis: Transaction, green: number, send: nul
           : crossing ? '   ◀ CROSSED THE LINE, with the purse' : want.spun ? '   smoke' : ''))
     }
   }
-  return { st, txs, bytes, burned, took, rate }
+  return { st, txs, bytes, burned, took, rate, ground }
 }
 
 // ── SELF-TEST — the whole race, locally, with a throwaway key and no network ───────────────────────
@@ -224,6 +251,8 @@ async function selftest (): Promise<never> {
   console.log(`\nself-test · ${won ? 'HOME in ' + sec(r.st.n) + ' s' : 'did not finish'} · ${r.txs} txs · ${(r.bytes / 1024).toFixed(1)} KB`)
   console.log(`self-test · burned ${r.burned.toLocaleString()} + recovered ${r.took.toLocaleString()} + 1 left = ${inSats.toLocaleString()} in`)
   console.log(`self-test · thinnest fee paid  : ${r.rate.toFixed(0)} sat/KB  (relay floor is ${FEE_PER_KB})`)
+  console.log(`self-test · LOW_S grind        : ${r.ground} extra builds for ${r.txs} moves ` +
+    `(${(r.ground / r.txs).toFixed(2)} per move; a coin flip costs ~1.00)`)
 
   /* ★ WHAT A RACE ACTUALLY COSTS. The tank is not the cost — most of it comes home. The cost is the
      part that stays with miners, and it divides cleanly into building the car and running it. */
@@ -236,9 +265,13 @@ async function selftest (): Promise<never> {
   console.log(`  ────────────────────────────────────────`)
   console.log(`  TOTAL CONSUMED            : ${(build + run + 1).toLocaleString().padStart(7)} sat`)
   console.log(`  put in ${SPEC.tank.toLocaleString()} tank + ${SPEC.pot.toLocaleString()} purse → ${r.took.toLocaleString()} sat came back`)
-  const ok = fundOk && won && balanced
+  /* ★ every move must actually BE canonical now — grinding that quietly gave up would look identical
+     to grinding that worked, and the race would stall on the first move a node refused to relay. */
+  const ground = r.ground > 0
+  console.log(`self-test · every move canonical: ${ground ? 'yes — ground until it was' : '⚠ NOTHING WAS GROUND'}`)
+  const ok = fundOk && won && balanced && ground
   console.log(ok ? '\nSELFTEST OK — the whole race is interpreter-valid. Safe to use with your real key.'
-                 : `\nSELFTEST FAIL — funding ${fundOk}, finished ${won}, balanced ${balanced}`)
+                 : `\nSELFTEST FAIL — funding ${fundOk}, finished ${won}, balanced ${balanced}, ground ${ground}`)
   process.exit(ok ? 0 : 1)
 }
 
