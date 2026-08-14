@@ -186,8 +186,11 @@ const LOADED: ShellState = {
   check('★ a phase cannot stand still — you cannot re-load a car', (await spend(at(0), to(0, 0))).ok, false)
   check('and it cannot go backwards', (await spend(at(2), to(2, 1))).ok, false)
 
-  // ★ Terminal means terminal. The run is over, the chain stops, and the final state stands as the
-  // record — there is no key anywhere that can restart a car that blew up or crossed the line.
+  /* ★ TERMINAL MEANS TERMINAL, ABSOLUTELY. A finished shell cannot be spent at all — not advanced,
+     not swept, not by anyone. Making it sweepable was tried and abandoned: it would let a driver wreck,
+     pay into a fresh shell carrying a better state, and carry on racing, because the pot gate checks
+     hashPrevouts and not lineage. The tank is recovered by the move that ENDS the run instead — see
+     shell-physics.ts — which costs eighteen bytes rather than five hundred and closes nothing. */
   check('★ a DONE shell cannot be spent AT ALL', (await spend(at(PHASE.DONE), to(5, 5))).ok, false)
   check('★ an OUT shell cannot be spent AT ALL', (await spend(at(PHASE.OUT), to(6, 6))).ok, false)
   check('  …not even to advance it', (await spend(at(PHASE.DONE), to(5, 6))).ok, false)

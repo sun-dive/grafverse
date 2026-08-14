@@ -816,7 +816,12 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
   // the value floor, then out0, then the comparison
   ops.push(
     op(OP.OP_SWAP), op(OP.OP_DUP), op(OP.OP_BIN2NUM),
-    op(OP.OP_FROMALTSTACK), PN(maxFee), op(OP.OP_SUB), op(OP.OP_GREATERTHANOREQUAL), op(OP.OP_VERIFY),
+    op(OP.OP_FROMALTSTACK), PN(maxFee), op(OP.OP_SUB),        // the ordinary floor: V − MAX_FEE
+    /* …unless this move ended the run, when it drops to ONE SATOSHI so the driver can recover the
+       tank in the same transaction. The record stays: one sat, holding the final state, unspendable
+       forever — and the chain of moves that led to it was always the real record anyway. */
+    op(OP.OP_FROMALTSTACK), op(OP.OP_IF), op(OP.OP_DROP), op(OP.OP_1), op(OP.OP_ENDIF),
+    op(OP.OP_GREATERTHANOREQUAL), op(OP.OP_VERIFY),
     op(OP.OP_SWAP), op(OP.OP_CAT), op(OP.OP_SWAP), op(OP.OP_CAT),
     op(OP.OP_HASH256), op(OP.OP_FROMALTSTACK), op(OP.OP_EQUAL),
   )
@@ -961,6 +966,27 @@ function shellPhysicsOps(regs: RacerRegs): ScriptChunk[] {
   /* Four dead values are now buried under the new ones — the three old fields, plus `mass`, which was
      computed before the branch and therefore survived both arms. Rolled out by NAME, so the model does
      the arithmetic and the order cannot matter. */
+  /* ── ★ THE MOVE THAT ENDS THE RUN IS THE MOVE THAT PAYS THE DRIVER ──────────────────────────────
+     Without this, every race strands its own tank: a car that goes off at move five leaves its whole
+     remaining fuel in an output nobody can ever spend. Satoshis destroyed for no reason.
+
+     The fix is not to make a finished shell spendable — that would let a driver wreck, sweep into a
+     fresh shell carrying a better state, and carry on racing, since the pot gate checks hashPrevouts
+     and not lineage. TERMINAL STAYS TERMINAL, absolutely.
+
+     Instead the FINAL move relaxes the value floor to a single satoshi, so the driver takes the rest
+     as a trailing output of that same transaction — which the covenant already permits, and which only
+     they can build, because only they can sign the move. One satoshi stays behind as the permanent
+     record. That is the bond, and it is the smallest a record can cost.
+
+     The flag rides the altstack UNDER the value, so it pops in the right order at the end. */
+  a.raw(op(OP.OP_FROMALTSTACK), 0, ['SUF'])
+  a.raw(op(OP.OP_FROMALTSTACK), 0, ['fuel'])
+  a.pick('np'); a.num(PHASE.DONE); a.bin(OP.OP_GREATERTHANOREQUAL, 'over')
+  a.raw(op(OP.OP_TOALTSTACK), 1, [])          // alt: [HO, over]
+  a.roll('fuel'); a.raw(op(OP.OP_TOALTSTACK), 1, [])   // alt: [HO, over, V]
+  a.roll('SUF'); a.raw(op(OP.OP_TOALTSTACK), 1, [])    // alt: [HO, over, V, SUF]
+
   for (const dead of ['mass', 'hashPrev', 'outpoint', 'phase', 's', 'v', 'n']) { a.roll(dead, '_dead'); a.drop(1) }
 
   /* ★ AND THE NEW PHASE HAS TO GET BACK TO THE FRONT.

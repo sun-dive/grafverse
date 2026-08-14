@@ -39,7 +39,9 @@ const GREEN = 1_700_000_000, GAP = 1, FUEL = 40_000
 
 /** Offer the covenant `next` as the result of applying `throttle` to `state`. */
 async function offer(state: ShellState, next: ShellState, throttle: number, at: number,
-                     fuel = FUEL, withPot = next.phase === PHASE.DONE): Promise<{ ok: boolean; why?: string }> {
+                     fuel = FUEL, withPot = next.phase === PHASE.DONE,
+                     out?: number): Promise<{ ok: boolean; why?: string }> {
+  const outValue = out ?? fuel
   const prev = buildShellLock({ state })
   const src = new Transaction(); src.addOutput({ lockingScript: prev, satoshis: fuel })
   const tx = new Transaction(); tx.version = 2
@@ -48,7 +50,9 @@ async function offer(state: ShellState, next: ShellState, throttle: number, at: 
      exactly these two outpoints and refuses anything else — so winning and being paid are one act. */
   if (withPot) tx.addInput({ sourceTransaction: POOL_TX, sourceOutputIndex: POOL_VOUT, sequence: 0xfffffffe,
                              unlockingScript: new UnlockingScript([]) })
-  tx.addOutput({ lockingScript: buildShellLock({ state: next }), satoshis: fuel })
+  tx.addOutput({ lockingScript: buildShellLock({ state: next }), satoshis: outValue })
+  // whatever the record does not keep goes to the driver, in this same transaction
+  if (outValue < fuel) tx.addOutput({ lockingScript: new P2PKH().lock(KEY.toAddress()), satoshis: fuel - outValue })
   tx.lockTime = at
   const preimage = TransactionSignature.format({
     sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: fuel,
@@ -58,7 +62,7 @@ async function offer(state: ShellState, next: ShellState, throttle: number, at: 
   const chunks = (await new P2PKH().unlock(KEY).sign(tx, 0)).chunks
   tx.inputs[0].unlockingScript = new UnlockingScript(shellUnlockingOps({
     spenderOutputs: tx.outputs.slice(1).flatMap(o => serializeOutput(o.satoshis ?? 0, o.lockingScript.toBinary())),
-    newValue: u64le(fuel), preimage, sig: chunks[0].data ?? [], pubKey: chunks[1].data ?? [], throttle,
+    newValue: u64le(outValue), preimage, sig: chunks[0].data ?? [], pubKey: chunks[1].data ?? [], throttle,
   }))
   try {
     return { ok: new Spend({
@@ -186,6 +190,28 @@ console.log('THE PHYSICS IN SCRIPT — measured against the reference, not again
   const wantM = refTick(mid, { throttle: 8, lockTime: GREEN + GAP, fuel: FUEL }, RACER_REGS)
   check('an ordinary move needs no pot at all',
     (await offer(mid, wantM.state, 8, GREEN + GAP, FUEL, false)).ok)
+}
+
+// ── ★ THE MOVE THAT ENDS THE RUN RECOVERS THE TANK ───────────────────────────────────────────────────
+// Otherwise every race strands its own fuel: a car that goes off at move five leaves the whole tank in
+// an output nobody can ever spend. The final move drops the value floor to ONE satoshi, so the driver
+// takes the rest in that same transaction — and one satoshi stays behind holding the final state,
+// unspendable forever. The chain of moves that led to it was always the real record.
+{
+  const st = { ...racing(20, 2, 1000, Math.round(4 * S), Math.round(30 * S), 7), finish: Math.round(300 * S) }
+  const want = refTick(st, { throttle: RACER_REGS.THROTTLE_MAX, lockTime: GREEN + GAP, fuel: FUEL }, RACER_REGS)
+  check('this fixture wrecks the car', want.ended != null)
+
+  check('★ the ending move may keep just ONE satoshi — the rest goes to the driver',
+    (await offer(st, want.state, RACER_REGS.THROTTLE_MAX, GREEN + GAP, FUEL, false, 1)).ok)
+  check('  …and the record output cannot be emptied entirely',
+    (await offer(st, want.state, RACER_REGS.THROTTLE_MAX, GREEN + GAP, FUEL, false, 0)).ok, false)
+
+  // ⚠ and an ORDINARY move may not do it — that would be quitting with the money mid-race
+  const mid = { ...racing(16, 9, 1000, Math.round(1 * S), Math.round(5 * S), 7), finish: Math.round(900 * S) }
+  const wantM = refTick(mid, { throttle: 8, lockTime: GREEN + GAP, fuel: FUEL }, RACER_REGS)
+  check('★ a car still RACING cannot strip its own tank', wantM.ended === null &&
+    !(await offer(mid, wantM.state, 8, GREEN + GAP, FUEL, false, 1)).ok)
 }
 
 console.log(`\n${pass}/${pass + fail} checks passed`)
