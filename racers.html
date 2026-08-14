@@ -79,8 +79,12 @@
 
   <div class="card">
     <h2>The strip</h2>
-    <label>finish line · fixed-point units <span class="val" id="v-finish"></span></label>
-    <input type="range" id="finish" min="5" max="400" step="5" value="60">
+    <label>finish line <span class="val" id="v-finish"></span></label>
+    <input type="range" id="finish" min="20" max="1200" step="1" value="402">
+    <p class="note" style="margin:4px 0 10px">Real references, for calibrating against something you can
+       recognise: <b>402 m</b> is the quarter mile — a Top Fuel car covers it in about <b>4.5 s</b> past
+       <b>330 mph</b>, a quick road car in <b>12–13 s</b>. NHRA shortened its fastest classes to 1,000 ft
+       (305 m) in 2008. <b>1 tick = 0.1 s · 1 unit = 1 m.</b></p>
     <canvas id="strip" width="1100" height="150"></canvas>
     <div class="row">
       <button id="run">▶ Run the race</button>
@@ -126,6 +130,19 @@
   "use strict";
   var $=function(i){return document.getElementById(i)};
   var GM=null, R=null, S=1;
+
+  /* ── REAL UNITS ────────────────────────────────────────────────────────────────────────────────────
+     A quarter mile is 402 m and a Top Fuel car covers it in about four and a half seconds past 330 mph;
+     a quick road car takes twelve or thirteen. Anchoring the bench to that turns abstract tuning into
+     something recognisable — you stop asking whether 8.15 is a good velocity and start asking whether
+     328 mph at the stripe looks right.
+       1 tick = 0.1 s of RACE time · 1 unit = 1 metre
+     ⚠ Simulated time is not wall time. A tick REPRESENTS a tenth of a second; playing it takes as long
+     as signing and broadcasting takes. It is a real-time event played one transaction at a time. */
+  var SEC_PER_TICK=0.1, M_PER_UNIT=1, QUARTER_MILE=402;
+  var secs=function(ticks){ return ticks*SEC_PER_TICK };
+  var mph =function(v){ return (v/S)*M_PER_UNIT/SEC_PER_TICK*2.23694 };
+  var kmh =function(v){ return (v/S)*M_PER_UNIT/SEC_PER_TICK*3.6 };
 
   /* ── THE ONE RULE OF THIS BENCH ────────────────────────────────────────────────────────────────────
      Every physics call goes through grafmint, which bundles mint/src/shell.ts — the same module the
@@ -375,8 +392,11 @@
     var how=function(r){ return r.ended==='blown' ? 'ENGINE LET GO' : r.ended==='off' ? 'OFF THE TRACK'
                        : r.finished ? 'crossed the line' : 'ran dry' };
     row('ended', how(lastRun.A), how(lastRun.B));
-    row('final v', (lastRun.A.st.v/S).toFixed(3), (lastRun.B.st.v/S).toFixed(3));
-    row('reached', (lastRun.A.st.s/S).toFixed(1), (lastRun.B.st.s/S).toFixed(1));
+    row('ET · seconds', lastRun.A.finished?secs(lastRun.A.et).toFixed(1)+' s':'—',
+                        lastRun.B.finished?secs(lastRun.B.et).toFixed(1)+' s':'—');
+    row('speed at the stripe', Math.round(mph(lastRun.A.st.v))+' mph', Math.round(mph(lastRun.B.st.v))+' mph');
+    row('  …in km/h', Math.round(kmh(lastRun.A.st.v)), Math.round(kmh(lastRun.B.st.v)));
+    row('reached · metres', (lastRun.A.st.s/S).toFixed(0), (lastRun.B.st.s/S).toFixed(0));
     $('result').innerHTML=rows;
 
     var vA=lastRun.A, vB=lastRun.B, v=$('verdict');
@@ -446,8 +466,12 @@
     S=GM.SHELL_S;
     R=Object.assign({},GM.PROVISIONAL_REGS);
     buildRegUI(); setRegUI(); buildCarUI(); paintMap(); showRegNote();
-    $('v-finish').textContent=$('finish').value+' units';
-    $('finish').addEventListener('input',function(){ $('v-finish').textContent=this.value+' units' });
+    var finLabel=function(){
+      var m=+$('finish').value;
+      var tag = m===QUARTER_MILE ? ' · the quarter mile' : m===305 ? ' · 1,000 ft' : '';
+      $('v-finish').textContent=m+' m · '+Math.round(m*3.28084)+' ft'+tag;
+    };
+    finLabel(); $('finish').addEventListener('input',finLabel);
     $('run').onclick=runRace;
     $('sweep').onclick=sweep;
     $('reset').onclick=function(){ R=Object.assign({},GM.PROVISIONAL_REGS); setRegUI(); buildCarUI(); paintMap(); showRegNote(); };
