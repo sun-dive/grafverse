@@ -273,6 +273,86 @@ async function resync(): Promise<void> {
   console.log(`\n   recorded in ${STATE_FILE}`)
 }
 
+/**
+ * Sign a top-up from a SIGNING REQUEST, and broadcast it.
+ *
+ * The other half of the page's funding flow, and shaped after PharLap's air-gap: what crosses the gap
+ * is not a transaction to rubber-stamp but a REQUEST describing the inputs. This side re-runs the same
+ * builder with its own key and signs what IT built. A page that is buggy or hostile cannot slip
+ * anything past that, because nothing it produced is used — only the outpoints it named, every one of
+ * which is checked against the chain below.
+ *
+ * WHAT IS VERIFIED BEFORE THE KEY IS TOUCHED:
+ *   · the battery's source transaction really is the tip the request claims
+ *   · the state is not taken on trust — buildBatteryLock(claimed state) is compared BYTE FOR BYTE with
+ *     the locking script actually on chain. If they differ, the request is lying about where the
+ *     picture has got to, and nothing is signed.
+ *   · the funding outpoint exists, and its value is what the request says
+ *   · the change pays an address this key controls
+ */
+async function signRequest(): Promise<void> {
+  const wif = process.env.BATTERY_WIF
+  if (!wif) { console.error('Set BATTERY_WIF=<the key that owns the funding input>.'); process.exit(1) }
+  const path = arg('--sign-request')
+  if (!path) { console.error('--sign-request <file.json>   (the request the page produced)'); process.exit(1) }
+
+  let req: any
+  try { req = JSON.parse(readFileSync(path, 'utf8')) }
+  catch (e) { console.error('could not read that request:', (e as Error).message); process.exit(1) }
+  if (req.action !== 'battery-topup') { console.error(`not a battery top-up request (action: ${req.action})`); process.exit(1) }
+
+  const key = importWif(wif), addr = key.toAddress()
+  const batTx = Transaction.fromHex(req.battery.sourceTxHex)
+  const fundTx = Transaction.fromHex(req.funding.sourceTxHex)
+
+  // the outpoints must be the ones named
+  if (batTx.id('hex') !== req.battery.txId) { console.error('the battery source tx does not hash to the txid claimed'); process.exit(1) }
+  if (fundTx.id('hex') !== req.funding.txId) { console.error('the funding source tx does not hash to the txid claimed'); process.exit(1) }
+
+  // THE STATE IS NOT TAKEN ON TRUST
+  const claimed = buildBatteryLock({ state: req.state, geometry: req.geometry, maxFee: req.maxFee }).toBinary()
+  const actual = batTx.outputs[req.battery.outputIndex].lockingScript.toBinary()
+  const same = claimed.length === actual.length && claimed.every((v, i) => v === actual[i])
+  console.log('\n── CHECKING THE REQUEST AGAINST THE CHAIN ──')
+  console.log('battery tip      :', req.battery.txId)
+  console.log('state it claims  :', same ? '✓ rebuilds the EXACT locking script on chain' : '✗ DOES NOT MATCH — refusing')
+  if (!same) process.exit(1)
+
+  const fundVal = fundTx.outputs[req.funding.outputIndex].satoshis ?? 0
+  console.log('funding input    :', `${fundVal.toLocaleString()} sat`,
+    fundVal === req.funding.satoshis ? '✓ as claimed' : `⚠ request said ${req.funding.satoshis}`)
+  console.log('fuel to add      :', Number(req.addSats).toLocaleString(), 'sat')
+  console.log('mark             :', JSON.stringify(req.mark ?? null))
+  console.log('change to        :', req.changeAddress,
+    req.changeAddress === addr ? '✓ YOURS' : '⚠ NOT THIS KEY’S ADDRESS')
+  if (req.changeAddress !== addr && !has('--force')) {
+    console.error('\nThe change does not pay this key. Refusing — use --force only if you meant that.')
+    process.exit(1)
+  }
+
+  // REBUILT HERE, not imported — the same deterministic builder, with our own key
+  const tx = await buildBatteryTopUpTx({
+    battery: { sourceTransaction: batTx, outputIndex: req.battery.outputIndex,
+               state: req.state, value: batTx.outputs[req.battery.outputIndex].satoshis ?? 0 },
+    addSats: Number(req.addSats),
+    key,
+    funder: { sourceTransaction: fundTx, outputIndex: req.funding.outputIndex },
+    mark: req.mark ?? null,
+    changeAddress: req.changeAddress,
+    geometry: req.geometry, maxFee: req.maxFee,
+  })
+  const raw = tx.toHex(), txid = tx.id('hex')
+  const outs = tx.outputs.map(o => o.satoshis ?? 0)
+  console.log('\n── REBUILT AND SIGNED HERE ──')
+  console.log('txid     :', txid)
+  console.log('outputs  :', outs.map(n => n.toLocaleString()).join(' · '), 'sat')
+  console.log('size     :', raw.length / 2, 'bytes\n')
+
+  if (!has('--broadcast')) { console.log('(dry — re-run with --broadcast to send.)'); return }
+  await broadcast(raw)
+  console.log('\n🔋 Sent. The board will find it by walking the chain — nothing needs telling.')
+}
+
 // ── keyless ticking ─────────────────────────────────────────────────────────────────────────────────
 async function tick(): Promise<void> {
   const st = loadState()
@@ -388,6 +468,7 @@ async function main(): Promise<void> {
   if (has('--selftest')) return void await selftest()
   if (has('--genesis')) return await genesis()
   if (has('--topup')) return await topup()
+  if (has('--sign-request')) return await signRequest()
   if (has('--resync')) return await resync()
   if (has('--tick')) return await tick()
   if (has('--status')) return await status()
@@ -395,6 +476,7 @@ async function main(): Promise<void> {
   console.log('  --selftest                                       no key, no network')
   console.log('  --genesis --fuel <sat> [--mark "…"] [--broadcast] BATTERY_WIF · once, permanent')
   console.log('  --topup <sat> [--mark "…"] [--broadcast]         BATTERY_WIF · signed, adds fuel + a board mark')
+  console.log('  --sign-request <file> [--broadcast]              sign a page-built top-up · BATTERY_WIF')
   console.log('  --resync --tip <txid>                            re-derive the record from the chain')
   console.log('  --tick <n> [--broadcast]                         NO KEY — the autonomous half')
   console.log('  --status                                         where the battery is now')

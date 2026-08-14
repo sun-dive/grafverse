@@ -385,9 +385,9 @@
         </div>
 
           <div id="st-fund" style="display:none">
-            <p class="note" style="margin-top:0"><b>Here is the transaction. Sign it in your wallet.</b>
-               This page never holds a key — it only builds. Check the three lines below before you sign:
-               they are the whole of it.</p>
+            <p class="note" style="margin-top:0"><b>Here is the signing request. Sign it in your own wallet.</b>
+               This page never holds a key. Your signer rebuilds the transaction from these inputs and signs
+               what it built — so nothing here has to be trusted, only checked. These four lines are all of it.</p>
             <div class="stat"><span>fuel into the battery</span><b id="b-add">—</b></div>
             <div class="stat"><span>your mark</span><b id="b-mark" style="font-weight:400;text-align:right;max-width:60%"></b></div>
             <div class="stat"><span>change back to you</span><b id="b-change">—</b></div>
@@ -395,14 +395,14 @@
             <div class="stat"><span>built on tip</span><b id="b-tip" style="font-weight:400;font-size:11px">—</b></div>
 
             <label style="display:block;font-size:11.5px;color:var(--dim);margin:12px 0 3px">
-              unsigned transaction <span id="b-fmt" style="color:var(--faint)">(BEEF — carries the inputs your wallet needs)</span>
+              signing request <span id="b-fmt" style="color:var(--faint)">(your signer rebuilds it and signs its own)</span>
             </label>
             <textarea id="b-hex" readonly rows="4" style="width:100%;background:#0b1220;color:var(--dim);
               border:1px solid var(--line);border-radius:8px;padding:8px;font:11px/1.4 ui-monospace,monospace;
               resize:vertical;word-break:break-all"></textarea>
             <div class="row" style="margin-top:8px">
               <button id="b-copy" style="flex:1">⧉ Copy</button>
-              <button id="b-raw" class="ghost" style="flex:1">raw hex instead</button>
+              <button id="b-raw" class="ghost" style="flex:1">assembled transaction instead</button>
             </div>
             <div class="err" id="f-err"></div>
             <button id="f-cancel" class="ghost" style="width:100%;margin-top:8px">← Back</button>
@@ -1373,7 +1373,7 @@
 
        The covenant input is already complete — OP_PUSH_TX authorises it with a proof about the
        transaction, so no key exists for it anywhere. The only blank is yours. */
-    var built=null;
+    var built=null, request=null;
     function resume(p){
       $('f-err').textContent='';
       $('b-hex').value='building…';
@@ -1404,6 +1404,18 @@
         });
       }).then(function(tx){
         built=tx;
+        /* THE REQUEST IS WHAT CROSSES THE GAP — not the transaction.
+           A signer that merely rubber-stamps a page's transaction has to trust the page. One that gets
+           a REQUEST re-runs the builder itself and signs what IT built, so nothing this page produced
+           is used — only the outpoints it names, every one checkable against the chain. The claimed
+           state is checkable too: rebuild the lock from it and compare with the script on chain.
+           Same shape as PharLap's air-gap, for the same reason. */
+        request={
+          v:1, action:'battery-topup',
+          battery:{ txId:d.tipTxid, outputIndex:0, satoshis:d.fuel, sourceTxHex:tipTx.toHex() },
+          funding:{ txId:u.tx_hash, outputIndex:u.tx_pos, satoshis:u.value, sourceTxHex:fundTx.toHex() },
+          state:d.state, addSats:p.amt, mark:p.mark||null, changeAddress:p.recv
+        };
         var outs=tx.outputs.map(function(o){ return o.satoshis||0 });
         var change=outs[outs.length-1];
         var fee=(d.fuel+u.value)-outs.reduce(function(a,b){return a+b},0);
@@ -1419,12 +1431,11 @@
       });
     }
     function showHex(raw){
-      if(!built) return;
-      $('b-hex').value = raw ? built.toHex()
-                             : built.toBEEF().map(function(b){return ('0'+b.toString(16)).slice(-2)}).join('');
-      $('b-fmt').textContent = raw ? '(raw — your signer must already know the inputs)'
-                                   : '(BEEF — carries the inputs your wallet needs)';
-      $('b-raw').textContent = raw ? 'BEEF instead' : 'raw hex instead';
+      if(!built||!request) return;
+      $('b-hex').value = raw ? built.toHex() : JSON.stringify(request,null,1);
+      $('b-fmt').textContent = raw ? '(the assembled transaction — for a signer that wants one)'
+                                   : '(signing request — your signer rebuilds it and signs its own)';
+      $('b-raw').textContent = raw ? 'signing request instead' : 'assembled transaction instead';
       $('b-raw').onclick=function(){ showHex(!raw) };
     }
     $('b-copy').onclick=function(){
