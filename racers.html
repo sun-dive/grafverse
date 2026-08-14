@@ -310,7 +310,7 @@
     var span=Math.max(lastRun.A.trace.length, lastRun.B.trace.length);
     var clock=Math.max(1,Math.floor(span*frac));
     x.fillStyle='#8ba3c4'; x.font='11px ui-monospace,monospace';
-    x.fillText('tick '+clock+' / '+span, W/2-32, 18);
+    x.fillText((clock*SEC_PER_TICK).toFixed(1)+' s   ·   tick '+clock+' / '+span, W/2-58, 18);
 
     ['A','B'].forEach(function(k,idx){
       var run=lastRun[k], y=lane[idx], col=idx?'#ff5d8f':'#b4ff3a';
@@ -343,7 +343,8 @@
       x.fillStyle='#04131c'; x.font='700 9px ui-monospace,monospace'; x.fillText(k,px-3,y+3);
       x.fillStyle=col; x.font='11px ui-monospace,monospace';
       x.fillText('eng '+CARS[k].eng+' · tyr '+CARS[k].tyr+
-                 (home ? ' · HOME in '+run.et : pt ? ' · tick '+upto : ''), pad, y-14);
+                 (home ? ' · HOME in '+(run.et*SEC_PER_TICK).toFixed(2)+' s'
+                       : pt ? ' · '+Math.round(mph(pt.v))+' mph' : ''), pad, y-14);
     });
   }
   function drawChart(){
@@ -430,10 +431,16 @@
     if(drama && (vA.finished||vB.finished)) v.innerHTML+=' &nbsp;·&nbsp; '+drama;
 
     drawChart();
-    // Long races need longer on screen, or the whole thing is over before the eye finds the cars —
-    // but a 4,000-tick run must not take four seconds of staring either.
+    /* ★ THE ANIMATION RUNS AT REAL TIME.
+       It used to be span*22 ms clamped to 1.2–4 s, which had nothing to do with the race and made a
+       5.8-second run play out in 1.2 — the strip and the seconds column were telling different
+       stories. A tick IS a tenth of a second, so the clock is simply span × SEC_PER_TICK. A drag race
+       is only a few seconds long; there is no reason to speed it up, and every reason not to.
+       Capped, because a badly tuned car can run thousands of ticks and nobody should watch that. */
     var span=Math.max(lastRun.A.trace.length, lastRun.B.trace.length);
-    var dur=Math.min(4000, Math.max(1200, span*22));
+    var real=span*SEC_PER_TICK*1000, dur=Math.min(20000, real);
+    if(dur<real) $('verdict').innerHTML+=' <span style="color:var(--tang)">(replayed at '+
+      (real/dur).toFixed(0)+'× — the real run is '+(real/1000).toFixed(0)+' s)</span>';
     var t0=performance.now();
     (function anim(){
       var f=Math.min(1,(performance.now()-t0)/dur);
