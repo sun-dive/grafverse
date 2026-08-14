@@ -73,6 +73,20 @@ export interface TickParams extends CounterAmounts {
   newFunderHash: number[]
   /** The signer's funding UTXO (covers DEPOSIT + MARKFEE + fee) and its key. */
   funder: { key: PrivateKey; sourceTransaction: Transaction; outputIndex: number }
+  /**
+   * Hand back the tick with the FUNDER'S INPUT BLANK, for its owner to sign elsewhere.
+   *
+   * The counter's own input is complete either way — OP_PUSH_TX authorises it with a proof about the
+   * transaction, so no key exists for it anywhere. Only the poster's input needs a signature, and this
+   * is what lets the page assemble the whole thing while holding no key at all: the poster signs it in
+   * a wallet the page never sees. A sighash preimage does not commit to any other input's unlocking
+   * script, so the covenant's authorisation stays valid while that blank is filled in later.
+   *
+   * `funder.key` is still required and used ONLY to size the input for the fee. A P2PKH unlocking
+   * script is the same length whoever signs it, so the fee and change computed here are exactly what
+   * the real signature will satisfy. Pass any key; a random one is correct.
+   */
+  unsignedFunder?: boolean
   /** The mark to leave (≤ 111 bytes). String or raw bytes. */
   mark: string | number[]
   /** Where change goes. Send-to-post routes it to the POSTER's address (so the throwaway key ends at zero);
@@ -109,6 +123,14 @@ export async function buildTickTx(p: TickParams): Promise<Transaction> {
 
   await tx.fee(new SatoshisPerKilobyte(p.feePerKb ?? LIVECOUNTER_FEE_PER_KB))
   await tx.sign()
+  if (p.unsignedFunder) {
+    /* Signed for sizing, then stripped. The fee and change above come from the real script length, so
+       they are the ones the eventual signature will satisfy. What is handed on is a transaction with
+       the counter's input COMPLETE and the poster's input blank, waiting for its owner.
+       An EMPTY script, not an absent one: an input with no unlockingScript cannot be serialized. */
+    tx.inputs[1].unlockingScript = new UnlockingScript([])
+    tx.inputs[1].unlockingScriptTemplate = undefined
+  }
   return tx
 }
 

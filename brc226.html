@@ -254,9 +254,6 @@
   .pm-mono{font-family:var(--mono);font-size:12px;color:var(--struct);word-break:break-all}
   .pm-nudge{font-size:12px;color:var(--muted);margin-top:14px;padding-top:12px;border-top:1px dashed var(--accent)}
   .pm-nudge a{color:var(--accent)}
-  .pm-resume{background:var(--accent-soft);border:1px solid var(--accent);border-radius:10px;padding:13px;margin-bottom:14px;font-size:13.5px;color:var(--ink)}
-  .pm-qr{background:#fff;border-radius:12px;padding:12px;margin:8px auto 12px;width:max-content;max-width:100%;box-shadow:var(--shadow)}
-  .pm-qr svg{display:block;width:206px;max-width:56vw;height:auto}
   .pm-alt{margin:2px 0 10px;border:1px solid var(--line);border-radius:10px}
   .pm-alt summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:13px;color:var(--struct);font-weight:600}
   .pm-alt summary::-webkit-details-marker{display:none}
@@ -310,8 +307,8 @@
       <div class="howbody">
         <ol>
           <li><b>Tap "Post to the wall"</b> → write your mark: up to <b>111 bytes</b>, any language, any emoji, carved into the chain forever — plus a BSV address <b>you hold the keys to</b>. Your deposit and change come back to it, so an exchange or custodial deposit address won&rsquo;t do — many are single-use, and most won&rsquo;t credit a payment they weren&rsquo;t expecting.</li>
-          <li><b>Scan &amp; send from <em>any</em> wallet.</b> A throwaway key is minted in your browser; just scan its QR and send ~<b>1,400 sats</b>. The <b>sending</b> side can be anything — RockWallet, HandCash, any wallet that can send. <b>Your own keys are never touched.</b></li>
-          <li><b>Done.</b> It builds + broadcasts your tick for you. Your <b>1,000-sat deposit and any extra come back to your address</b> — the deposit refunds the moment the next person posts. True cost ≈ a fee + one satoshi.</li>
+          <li><b>Take the transaction.</b> The page reads that address&rsquo;s coins from the chain and assembles the whole tick — the counter advanced, your mark written, the previous poster repaid, your change returned. It holds <b>no key</b> and it never broadcasts. The counter&rsquo;s own input needs no signature at all, so <b>the only blank in the document is yours</b>. You need one coin of about <b>1,400 sats</b> to cover the deposit, the crumb and the fee.</li>
+          <li><b>Sign it where your coins live</b>, and broadcast it from there. Nothing here needs telling — the wall reads the chain, so your mark appears when the transaction lands. Your <b>1,000-sat deposit comes back the moment the next person posts</b>, and the change returns immediately. True cost ≈ a fee + one satoshi.</li>
         </ol>
         <p class="howfoot"><b>No account · no owner · no off-switch.</b> Anyone can push the counter forward, no mark can ever be deleted, and because each post costs real (if tiny) sats, spam prices itself out — no moderators. Coins trapped in a walled garden? <a href="https://wallet.grafverse.com" target="_blank" rel="noopener">own your keys →</a> 🎱</p>
       </div>
@@ -592,67 +589,38 @@
   <div class="pm">
     <div class="pm-h"><b>Post to the wall 🐇</b><button class="pm-x" id="pm-x" aria-label="close">×</button></div>
     <div class="pm-b">
-      <div class="pm-resume" id="pm-resume" style="display:none">
-        A post is in progress — your sats are on a throwaway funding address.
-        <button class="pm-btn" id="pm-resume-go">Resume it</button>
-        <button class="pm-btn ghost" id="pm-sweep2">Sweep my sats back to me</button>
-      </div>
-
       <div id="pm-compose">
         <label for="pm-mark">your mark · up to 111 bytes · any language</label>
         <input id="pm-mark" maxlength="111" placeholder="gm from taipei 🐇" autocomplete="off" spellcheck="false">
         <div class="pm-bytes" id="pm-mbytes">0/111</div>
-        <label for="pm-recv">your BSV address — one you control; your 1,000-sat deposit refunds here</label>
+        <label for="pm-recv">your BSV address — the one you will sign with; your deposit refunds here</label>
         <input id="pm-recv" placeholder="1…" autocomplete="off" spellcheck="false">
         <div class="pm-status pm-err" id="pm-cerr"></div>
         <button class="pm-btn" id="pm-begin">Continue →</button>
-        <p class="pm-note">A throwaway key is made <b>in your browser</b> — your own wallet is never touched. You send it a few sats, it posts your tick, and the change + deposit route back to you.</p>
-        <p class="pm-nudge">Sats stuck in a wallet you don't control? <a href="https://wallet.grafverse.com" target="_blank" rel="noopener">Own your keys →</a></p>
+        <p class="pm-note"><b>This page holds no key and broadcasts nothing.</b> It reads that address\u2019s coins from the chain and assembles <b>one transaction</b> \u2014 the counter advanced, your mark written, the previous poster repaid, your change returned \u2014 then hands it to you to sign in whatever wallet holds the address.</p>
+        <p class="pm-nudge">Sats stuck in a wallet you don\u2019t control? <a href="https://wallet.grafverse.com" target="_blank" rel="noopener">Own your keys →</a></p>
       </div>
 
-      <div id="pm-fund" style="display:none">
-        <div class="pm-status" style="margin-top:0"><b style="color:var(--ink)">Scan &amp; send</b> — from any BSV wallet</div>
-        <div class="pm-amt" id="pm-famt">1,400 sat</div>
-        <div class="pm-qr" id="pm-qr"></div>
-        <div class="pm-status" id="pm-wbal">📡 watching for your send…</div>
-        <div class="pm-spin"></div>
-        <details class="pm-alt"><summary>can't scan? send manually ▾</summary><div class="in">
-          <div class="pm-addr" id="pm-faddr">…</div>
-          <a class="pm-btn" id="pm-furi" href="#">📲 Open in wallet</a>
-          <button class="pm-btn ghost" id="pm-copy">Copy address</button>
-        </div></details>
-        <p class="pm-note"><b>1,000 sat is a refundable deposit</b> — returned to you when the next person posts. Anything extra comes back as change.</p>
-        <p class="pm-note">⚠ The throwaway key that posts for you lives <b>in this browser only</b>. Don&rsquo;t clear your browsing data until your post confirms — if you do, whatever you&rsquo;ve sent here can&rsquo;t be recovered.</p>
-        <span class="pm-cancel" id="pm-sweep">cancel &amp; sweep my sats back</span>
-      </div>
-
-      <div id="pm-watch" style="display:none">
-        <div class="pm-spin"></div>
-        <div class="pm-status" id="pm-wtitle">Posting to the counter…</div>
-        <div class="pm-status pm-mono" id="pm-wsub"></div>
-      </div>
-
-      <div id="pm-done" style="display:none">
-        <div class="pm-amt pm-ok" id="pm-dn">#1</div>
-        <div class="pm-status pm-ok">You're on the wall 🐇</div>
-        <a class="pm-mono" id="pm-dtx" href="#" target="_blank" rel="noopener" style="display:block;text-align:center;margin:6px 0"></a>
-        <p class="pm-note" style="text-align:center">Your 1,000-sat deposit refunds to your address when the next person posts.</p>
-        <button class="pm-btn" id="pm-close2">Done</button>
-      </div>
-
-      <div id="pm-err" style="display:none">
-        <div class="pm-status pm-err" id="pm-emsg"></div>
-        <button class="pm-btn ghost" id="pm-sweep3">Sweep my sats back to me</button>
-        <!-- Escape hatch: the throwaway key exists ONLY in this browser's localStorage. If Sweep can't run — wrong
-             device, cleared history, a wallet the page can't reach — showing the key is the difference between a
-             two-minute recovery and sats that are visible forever and spendable never. -->
-        <details class="pm-alt" id="pm-recover" style="display:none"><summary>sweep not working? recover from any wallet ▾</summary><div class="in">
-          <p class="pm-note">Import this one-time key into any BSV wallet and move the sats wherever you like. It was made in your browser for this post alone and holds nothing else — but it exists <b>only here</b>, so copy it before you close this.</p>
-          <div class="pm-addr" id="pm-raddr">…</div>
-          <div class="pm-addr" id="pm-rkey">…</div>
-          <button class="pm-btn ghost" id="pm-rcopy">Copy key</button>
-        </div></details>
-        <button class="pm-btn" id="pm-close3">Close</button>
+      <div id="pm-hand" style="display:none">
+        <p class="pm-note" style="margin-top:0"><b>Here is the tick. Sign it in your own wallet.</b>
+           It has two inputs. The counter\u2019s needs no key and is <b>already complete</b> \u2014 the covenant
+           authorises itself with a proof about the transaction. Yours is the only blank in it.</p>
+        <div class="pm-status" id="pm-h1">—</div>
+        <div class="pm-status" id="pm-h2">—</div>
+        <div class="pm-status" id="pm-h3">—</div>
+        <label style="margin-top:10px">transaction to sign <span id="pm-hfmt" style="opacity:.7">(unsigned \u2014 sign input #2)</span></label>
+        <textarea id="pm-hex" readonly rows="4" style="width:100%;resize:vertical;word-break:break-all"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="pm-btn" id="pm-hcopy" style="flex:1">⧉ Copy</button>
+          <button class="pm-btn ghost" id="pm-hback" style="flex:1">← Back</button>
+        </div>
+        <div class="pm-status pm-err" id="pm-herr"></div>
+        <p class="pm-note"><b>Sign it exactly as it is.</b> The amounts are worked out already. If your wallet
+           offers to pick its own coins, say no \u2014 the change here is a fixed number, so a larger coin does not
+           come back to you as change, it goes to the miner.</p>
+        <p class="pm-note">Broadcast it wherever you like \u2014 <b>nothing here needs to know</b>. The wall reads the
+           chain, so your mark appears when the transaction lands. If it is rejected with <i>missing inputs</i>,
+           somebody posted while you were signing: come back and build a fresh one.</p>
       </div>
     </div>
   </div>
@@ -660,9 +628,15 @@
 
 <script>
 (function(){
-  var ASK=1400, MIN=1250, POLL=5000;
-  var WOC='https://api.whatsonchain.com/v1/bsv/main', BB='https://bananablocks.com/api/v1/bsv/main', LSK='brc226_pending';
-  var GM=null, S=null, timer=null;
+  /* ASK is what ONE of the poster's coins must cover: the 1,000-sat deposit, the author's crumb and the
+     fee, with headroom. The rest returns as change, and the deposit itself comes back when the next
+     person posts — so a tick really costs a fee and a satoshi.
+     Gone with the throwaway key: MIN and POLL (there is nothing to wait for), LSK (no pending state to
+     resume — a tick is ONE transaction, so it either happened or it did not), and BananaBlocks as a
+     second relay (the page no longer broadcasts anything). */
+  var ASK=1400;
+  var WOC='https://api.whatsonchain.com/v1/bsv/main';
+  var GM=null;
   function $(id){return document.getElementById(id)}
   function byteLen(s){try{return new Blob([s]).size}catch(e){return unescape(encodeURIComponent(s)).length}}
   function hexToBytes(h){var a=[];for(var i=0;i<h.length;i+=2)a.push(parseInt(h.substr(i,2),16));return a}
@@ -685,13 +659,23 @@
   function ensureGM(){ if(GM)return Promise.resolve(GM); if(window.GrafMint){GM=window.GrafMint;return Promise.resolve(GM);}
     return new Promise(function(res,rej){var s=document.createElement('script');s.src='/vendor/grafmint.js';s.onload=function(){GM=window.GrafMint;res(GM)};s.onerror=function(){rej(Error('could not load the signer'))};document.head.appendChild(s)}); }
   function addrHash(addr){ var s=new GM.P2PKH().lock(addr).toBinary(); if(s.length<25) throw Error('bad address'); return s.slice(3,23); }
-  function key(){ return GM.importWif(S.wif); }             // grafmint's proven WIF parser
-  function persist(){ try{localStorage.setItem(LSK,JSON.stringify(S))}catch(e){} }
-  function clearP(){ try{localStorage.removeItem(LSK)}catch(e){} S=null; }
-  function show(st){ ['compose','fund','watch','done','err'].forEach(function(s){var el=$('pm-'+s);if(el)el.style.display=(s===st)?'block':'none'}); }
-  function open(){ $('pm-ov').classList.add('on'); ensureGM().catch(function(){}); ensureQR(); if(S&&S.wif){$('pm-resume').style.display='block';show('fund');} else {show('compose');$('pm-resume').style.display='none';} }
-  function close(){ $('pm-ov').classList.remove('on'); if(timer){clearInterval(timer);timer=null;} }
+  function show(st){ ['compose','hand'].forEach(function(s){var el=$('pm-'+s);if(el)el.style.display=(s===st)?'block':'none'}); }
+  function open(){ $('pm-ov').classList.add('on'); ensureGM().catch(function(){}); show('compose'); }
+  function close(){ $('pm-ov').classList.remove('on'); }
 
+  /* ── BUILD IT, HAND IT OVER ────────────────────────────────────────────────────────────────────
+     What this replaced: a THROWAWAY KEY minted in the visitor's browser, a QR asking them to send it
+     ~1,400 sats, a poller waiting for the money to land, and then the page spending that key on their
+     behalf. Two transactions, and between them the visitor's coins sat on a key that existed nowhere
+     but one browser's localStorage. The page carried a sweep button, a resume button and an escape
+     hatch that printed the raw WIF on screen — three recovery paths for a problem it had created, and
+     a warning telling people not to clear their history until it was over.
+
+     None of that is needed. The counter's own input carries no signature at all (OP_PUSH_TX authorises
+     it with a proof about the transaction), so the ONLY blank in a tick is the poster's. The page can
+     assemble everything else and stop. Nothing is ever held on the visitor's behalf, because nothing
+     ever leaves their wallet until they sign it there. */
+  var built=null;
   function begin(){
     var mark=$('pm-mark').value, addr=$('pm-recv').value.trim();
     $('pm-cerr').textContent='';
@@ -700,70 +684,48 @@
     if(mb>111) return $('pm-cerr').textContent='Mark is too long ('+mb+'/111 bytes).';
     ensureGM().then(function(){
       var ph; try{ ph=addrHash(addr); }catch(e){ $('pm-cerr').textContent='That is not a valid BSV address.'; return; }
-      var k=GM.PrivateKey.fromRandom();
-      S={wif:k.toWif(),throwAddr:k.toAddress(),posterAddr:addr,posterHashHex:bytesToHex(ph),mark:mark,ts:Date.now()};
-      persist(); toFund();
-    }).catch(function(e){ $('pm-cerr').textContent=(e.message||'Could not load the signer.'); });
+      show('hand'); build({ mark:mark, addr:addr, hash:ph });
+    }).catch(function(e){ $('pm-cerr').textContent=(e.message||'Could not load the builder.'); });
   }
-  function toFund(){
-    show('fund'); $('pm-resume').style.display='none';
-    $('pm-faddr').textContent=S.throwAddr;
-    $('pm-famt').textContent=ASK.toLocaleString()+' sat';
-    var uri='bitcoin:'+S.throwAddr+'?amount='+(ASK/1e8).toFixed(8)+'&label=BRC-226';
-    $('pm-furi').href=uri;
-    ensureQR().then(function(){ makeQR(uri); });
-    $('pm-wbal').textContent='📡 watching for your send…';
-    if(timer)clearInterval(timer); poll(); timer=setInterval(poll,POLL);
-  }
-  function ensureQR(){ if(window.qrcode)return Promise.resolve(); return new Promise(function(res){var s=document.createElement('script');s.src='/vendor/qr.min.js';s.onload=res;s.onerror=res;document.head.appendChild(s)}); }
-  function makeQR(uri){ try{ if(!window.qrcode)return; var q=window.qrcode(0,'M'); q.addData(uri); q.make(); $('pm-qr').innerHTML=q.createSvgTag({cellSize:4,margin:1,scalable:true}); }catch(e){} }
-  function poll(){
-    if(!S)return;
-    utxos(S.throwAddr).then(function(u){
-      var bal=(u||[]).reduce(function(t,x){return t+x.value},0);
-      if(bal>0)$('pm-wbal').textContent=bal.toLocaleString()+' sat received';
-      if(bal>=MIN){ clearInterval(timer); timer=null; doTick(u,0); }
-    }).catch(function(){});
-  }
-  function doTick(utxos,attempt){
-    show('watch'); $('pm-wtitle').textContent='Posting to the counter…'; $('pm-wsub').textContent=attempt?'someone posted first — retrying on the new tip…':'building your tick…';
-    var tip;
+
+  function build(p){
+    built=null; $('pm-herr').textContent=''; $('pm-hex').value='building…';
+    $('pm-h1').textContent='—'; $('pm-h2').textContent='—'; $('pm-h3').textContent='—';
+    var tip, tipTx, u;
     fetch('/tip.php',{cache:'no-store'}).then(function(r){return r.json()}).then(function(t){
-      tip=t; if(!tip||tip.genesis==null) throw Error('counter not live yet');
+      tip=t; if(!tip||tip.genesis==null) throw Error('the counter is not live yet');
       return wt('/tx/'+tip.tipTxid+'/hex');
-    }).then(function(tipHex){
-      var tipTx=GM.Transaction.fromHex(tipHex);
+    }).then(function(hex){
+      tipTx=GM.Transaction.fromHex(hex);
+      return utxos(p.addr);
+    }).then(function(us){
+      /* ONE input must cover the deposit, the crumb and the fee — a covenant spend cannot be paid from a
+         combined balance. Smallest coin that qualifies, so a big one is not tied up for 1,400 sats. */
+      u=(us||[]).filter(function(x){ return x.value>=ASK }).sort(function(a,b){ return a.value-b.value })[0];
+      if(!u) throw Error('no single coin at that address holds '+ASK.toLocaleString()+' sat — one input has to cover the deposit, the crumb and the fee');
+      return wt('/tx/'+u.tx_hash+'/hex');
+    }).then(function(fh){
       var lastFunder=tipTx.outputs[0].lockingScript.toBinary().slice(12,32);
-      var u=(utxos||[]).slice().sort(function(a,b){return b.value-a.value})[0];
-      return wt('/tx/'+u.tx_hash+'/hex').then(function(fh){
-        return GM.buildTickTx({
-          covenant:{sourceTransaction:tipTx,outputIndex:0,n:tip.n,lastFunderHash:lastFunder},
-          authorHash:hexToBytes(tip.author), newFunderHash:hexToBytes(S.posterHashHex),
-          funder:{key:key(),sourceTransaction:GM.Transaction.fromHex(fh),outputIndex:u.tx_pos},
-          changeAddress:S.posterAddr, mark:S.mark,
-        });
+      return GM.buildTickTx({
+        covenant:{ sourceTransaction:tipTx, outputIndex:0, n:tip.n, lastFunderHash:lastFunder },
+        authorHash:hexToBytes(tip.author), newFunderHash:p.hash,
+        funder:{ key:GM.PrivateKey.fromRandom(),      // sizing only — the signature it makes is thrown away
+                 sourceTransaction:GM.Transaction.fromHex(fh), outputIndex:u.tx_pos },
+        changeAddress:p.addr, mark:p.mark, unsignedFunder:true,
       });
     }).then(function(tx){
-      var hex=tx.toHex(), txid=tx.id('hex');
-      return bcast(hex).then(function(b){
-        if(!b.ok){
-          if(attempt<3 && /missing|spent|conflict|mempool|already/i.test(b.body)){
-            return utxos(S.throwAddr).then(function(f){ doTick(f,attempt+1); });
-          }
-          throw Error(b.body||'broadcast rejected');
-        }
-        try{fetch(BB+'/tx/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rawtx:hex})})}catch(e){}
-        try{fetch('/tip.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({txid:txid})})}catch(e){}
-        clearP(); done(txid, tip.n+1);
-      });
+      built=tx;
+      var outs=tx.outputs.map(function(o){ return o.satoshis||0 });
+      var change=outs[outs.length-1];
+      var fee=(tipTx.outputs[0].satoshis + u.value) - outs.reduce(function(a,b){return a+b},0);
+      var cost=u.value-change;
+      $('pm-h1').textContent='#'+(tip.n+1)+' · your mark: '+p.mark;
+      $('pm-h2').textContent='costs you '+cost.toLocaleString()+' sat — of which '+outs[1].toLocaleString()+' is a deposit the NEXT poster refunds to you';
+      $('pm-h3').textContent='fee '+fee.toLocaleString()+' sat · change '+change.toLocaleString()+' sat back to you · built on #'+tip.n;
+      $('pm-hex').value=tx.toHex();
     }).catch(function(e){
-      fail('Post failed: '+(e.message||e)+' — your sats are safe on the funding address.');
+      $('pm-hex').value=''; $('pm-herr').textContent=(e.message||String(e));
     });
-  }
-  function done(txid,n){
-    show('done'); $('pm-dn').textContent='#'+n;
-    $('pm-dtx').textContent=txid.slice(0,12)+'…'+txid.slice(-6); $('pm-dtx').href='https://whatsonchain.com/tx/'+txid;
-    try{ if(window.__lcReload) setTimeout(window.__lcReload,1500); }catch(e){}
   }
   /* ── ⚡ TRY TO BREAK IT ────────────────────────────────────────────────────────────────────────────────────
      Build a REAL transaction that spends the live counter while breaking one of its rules, and hand it to a
@@ -813,51 +775,20 @@
     .catch(function(e){ brkOut('couldn’t run the attempt: '+(e.message||e),'pm-err'); });
   }
 
-  function fail(msg){ if(timer){clearInterval(timer);timer=null;} show('err'); $('pm-emsg').textContent=msg;
-    // Offer the raw key ONLY while one exists — after a successful tick or sweep the state is cleared and there is
-    // nothing left to recover, so the panel must not appear (and must never show a stale key).
-    var rec=$('pm-recover'); if(!rec) return;
-    if(S && S.wif){ $('pm-raddr').textContent=S.throwAddr; $('pm-rkey').textContent=S.wif; rec.style.display='block'; }
-    else { rec.style.display='none'; rec.removeAttribute('open'); $('pm-raddr').textContent=''; $('pm-rkey').textContent=''; } }
-  function sweep(){
-    if(!S){ fail('Nothing to sweep.'); return; }
-    show('watch'); $('pm-wtitle').textContent='Sweeping your sats back…'; $('pm-wsub').textContent='';
-    ensureGM().then(function(){
-      var k=key();
-      return utxos(S.throwAddr).then(function(utxos){
-        if(!utxos||!utxos.length) throw Error('the funding address is empty');
-        var tx=new GM.Transaction(); tx.version=2;
-        var chain=Promise.resolve();
-        utxos.forEach(function(u){ chain=chain.then(function(){ return wt('/tx/'+u.tx_hash+'/hex').then(function(h){
-          tx.addInput({sourceTransaction:GM.Transaction.fromHex(h),sourceOutputIndex:u.tx_pos,unlockingScriptTemplate:new GM.P2PKH().unlock(k)}); }); }); });
-        return chain.then(function(){
-          tx.addOutput({lockingScript:new GM.P2PKH().lock(S.posterAddr),change:true});
-          return tx.fee(new GM.SatoshisPerKilobyte(100)).then(function(){ return tx.sign(); }).then(function(){
-            return bcast(tx.toHex()).then(function(b){
-              if(!b.ok) throw Error(b.body);
-              clearP(); fail('Swept back to your address ✓  '+tx.id('hex').slice(0,12)+'…');
-            });
-          });
-        });
-      });
-    }).catch(function(e){ fail('Sweep failed: '+(e.message||e)); });
-  }
-
-  try{ var raw=localStorage.getItem(LSK); if(raw){ S=JSON.parse(raw); if(!S||!S.wif) S=null; } }catch(e){ S=null; }
+  function fail(msg){ $('pm-herr').textContent = msg; }
   var pb=$('lc-post'); if(pb) pb.addEventListener('click', open);
   $('pm-x').addEventListener('click', close);
   $('pm-ov').addEventListener('click', function(e){ if(e.target===$('pm-ov')) close(); });
   $('pm-mark').addEventListener('input', function(){ var b=byteLen(this.value); var el=$('pm-mbytes'); el.textContent=b+'/111'; el.classList.toggle('over',b>111); });
   $('pm-begin').addEventListener('click', begin);
-  $('pm-resume-go').addEventListener('click', function(){ ensureGM().then(toFund); });
-  $('pm-copy').addEventListener('click', function(){ try{navigator.clipboard.writeText(S.throwAddr);this.textContent='Copied ✓';}catch(e){} });
+  $('pm-hback').addEventListener('click', function(){ show('compose'); });
+  $('pm-hcopy').addEventListener('click', function(){
+    var t=$('pm-hex'); t.select();
+    try{ navigator.clipboard.writeText(t.value) }catch(e){ try{ document.execCommand('copy') }catch(e2){} }
+    var was=this.textContent; this.textContent='✓ copied'; var b=this;
+    setTimeout(function(){ b.textContent=was },1400);
+  });
   ['steal','jump','stiff'].forEach(function(k){ var b=$('brk-'+k); if(b) b.addEventListener('click', function(){ breakIt(k); }); });
-  $('pm-rcopy').addEventListener('click', function(){ var k=$('pm-rkey').textContent; if(!k) return; try{navigator.clipboard.writeText(k);this.textContent='Copied ✓';}catch(e){} });
-  $('pm-sweep').addEventListener('click', sweep);
-  $('pm-sweep2').addEventListener('click', sweep);
-  $('pm-sweep3').addEventListener('click', sweep);
-  $('pm-close2').addEventListener('click', close);
-  $('pm-close3').addEventListener('click', close);
 })();
 </script>
 </body>
