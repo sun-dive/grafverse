@@ -9,7 +9,7 @@
 // constants turn out to be — and never a specific velocity, which would only pin down a guess.
 import {
   PHASE, PHASE_NAMES, emptyShell, loadCar, loadTrack, arm, refTick, ShellRefused,
-  FIELDS, FIELD_WIDTHS, STATE_BYTES, PROVISIONAL_REGS, SHELL_STATE_LAYOUT, S, fmul, fdiv,
+  FIELDS, FIELD_WIDTHS, STATE_BYTES, PROVISIONAL_REGS, SHELL_STATE_LAYOUT, S, fmul, fdiv, SLIP_UNIT,
   type ShellState, type RacerRegs,
 } from '../src/shell.ts'
 
@@ -251,6 +251,32 @@ console.log('THE SHELL — reference implementation\n')
 
   refuses('a car that is OUT cannot be driven again', () =>
     refTick(wall.state, { throttle: 1, lockTime: t + 1, fuel: 30_000 }))
+}
+
+// ── THE SURFACE ──────────────────────────────────────────────────────────────────────────────────────
+// "Each track should have a slip coefficient. Some tracks suit different tyres." — the second half is
+// the hard half: without a weight penalty MORE TYRE IS ALWAYS BETTER, so a slippery track would just
+// mean everyone pins the slider. WT is what turns it into a choice that changes by track.
+{
+  const car = (tyr: number, slip: number): ShellState =>
+    arm(loadTrack(loadCar(emptyShell(), { driver: DRIVER, eng: 14, tyr }),
+      { finish: 402 * S, slip, green: GREEN, gap: 0 }))
+  const m = { throttle: 6, lockTime: GREEN, fuel: 20_000 }
+
+  check('a greasy surface grips less than a prepared one',
+    refTick(car(6, 500), m).spun && !refTick(car(6, 2000), m).spun)
+  check('a default track is a prepared strip',
+    loadTrack(loadCar(emptyShell(), { driver: DRIVER, eng: 1, tyr: 1 }),
+      { finish: S, green: GREEN, gap: 0 }).slip === SLIP_UNIT)
+  refuses('a surface with no grip at all is not a race track', () =>
+    loadTrack(loadCar(emptyShell(), { driver: DRIVER, eng: 1, tyr: 1 }),
+      { finish: S, slip: 0, green: GREEN, gap: 0 }))
+
+  // ★ The property asked for: tyre is not free, so it can be the WRONG choice on a grippy track.
+  check('★ tyres cost weight, so more is not automatically better',
+    refTick(car(10, 2000), { ...m, throttle: 2 }).state.v <
+    refTick(car(2, 2000), { ...m, throttle: 2 }).state.v)
+  console.log('        (on a glued surface, light tyres out-accelerate heavy ones)')
 }
 
 // ── arithmetic ───────────────────────────────────────────────────────────────────────────────────────

@@ -103,6 +103,15 @@ export interface RacerRegs {
   M0: number
   /** Mass added per unit of engine. */
   WE: number
+  /**
+   * Mass added per unit of tyre — and without this a slip coefficient does nothing.
+   *
+   * If tyre is free, more of it is always better and every driver pins the slider, so a slippery track
+   * simply means "everyone runs maximum". Charging weight for it makes the choice a real one and one
+   * that CHANGES BY TRACK: on a grippy surface the extra rubber is dead weight, on a greasy one it is
+   * the only thing keeping you on the island.
+   */
+  WT: number
   /** Mass added per satoshi of fuel — the tank is weight, and it burns off as you race. */
   WF: number
   /** Force per unit of engine at full throttle. */
@@ -152,6 +161,7 @@ export interface RacerRegs {
 export const PROVISIONAL_REGS: RacerRegs = {
   M0: 1 * S,
   WE: Math.round(0.05 * S),
+  WT: Math.round(0.03 * S),
   WF: Math.round(0.0001 * S),
   FE: Math.round(0.20 * S),
   G0: Math.round(0.15 * S),
@@ -203,6 +213,14 @@ export interface ShellState {
   eng: number      // engine size, 0..ENG_MAX
   tyr: number      // tyre grade, 0..TYR_MAX
   finish: number   // the line — for a drag race this IS the track
+  /**
+   * The surface, in thousandths: 1000 is a prepared strip, lower is greasy, higher is glued.
+   *
+   * Scales ALL grip, the speed-dependent part included, because a slippery surface does not care why
+   * you wanted the traction. Held as a small integer rather than fixed-point — two bytes buys three
+   * decimal places, which is more than any tyre wall can tell the difference between.
+   */
+  slip: number
   green: number    // nLockTime the launch may not precede. A false start cannot be MINED.
   gap: number      // K: the minimum nLockTime step between moves. The human-vs-machine dial.
   last: number     // the previous move's nLockTime
@@ -212,10 +230,10 @@ export interface ShellState {
 }
 
 /** Field order as laid out in the script. PUBLISHED — a rebuilder needs this exact order. */
-export const FIELDS = ['phase', 'driver', 'eng', 'tyr', 'finish', 'green', 'gap', 'last', 's', 'v', 'n'] as const
+export const FIELDS = ['phase', 'driver', 'eng', 'tyr', 'finish', 'slip', 'green', 'gap', 'last', 's', 'v', 'n'] as const
 /** Fixed byte-widths, by field. PUBLISHED alongside FIELDS. */
 export const FIELD_WIDTHS: Record<(typeof FIELDS)[number], number> = {
-  phase: 1, driver: 20, eng: 2, tyr: 2, finish: 6, green: 5, gap: 4, last: 5, s: 6, v: 5, n: 4,
+  phase: 1, driver: 20, eng: 2, tyr: 2, finish: 6, slip: 2, green: 5, gap: 4, last: 5, s: 6, v: 5, n: 4,
 }
 /**
  * ⚠ `green` and `last` are FIVE bytes, not four, and that is not tidiness.
@@ -228,6 +246,8 @@ export const FIELD_WIDTHS: Record<(typeof FIELDS)[number], number> = {
  * dead standard and every instance ever built.
  */
 export const FIXED_POINT_FIELDS = ['finish', 's', 'v'] as const
+/** `slip` is held in thousandths: SLIP_UNIT is a prepared strip. */
+export const SLIP_UNIT = 1000
 /** Total register file, in bytes. */
 export const STATE_BYTES = FIELDS.reduce((a, k) => a + FIELD_WIDTHS[k], 0)
 
@@ -241,7 +261,7 @@ export function emptyShell(): ShellState {
   return {
     phase: PHASE.EMPTY,
     driver: new Array(20).fill(0),
-    eng: 0, tyr: 0, finish: 0, green: 0, gap: 0, last: 0, s: 0, v: 0, n: 0,
+    eng: 0, tyr: 0, finish: 0, slip: 0, green: 0, gap: 0, last: 0, s: 0, v: 0, n: 0,
   }
 }
 
@@ -291,13 +311,15 @@ export function loadCar(
 
 /** PHASE 1 → 2 · load the track and the start. For a drag race the track is one number: the line. */
 export function loadTrack(
-  st: ShellState, p: { finish: number; green: number; gap: number },
+  st: ShellState, p: { finish: number; green: number; gap: number; slip?: number },
 ): ShellState {
   need(st.phase === PHASE.CAR, `a track can only be loaded onto a shell holding a car (this one is ${PHASE_NAMES[st.phase]})`)
   need(p.finish > 0, 'the finish line must be beyond the start')
   need(p.green > 0, 'a race needs a start time')
   need(p.gap >= 0, 'the minimum gap cannot be negative')
-  return { ...st, phase: PHASE.TRACK, finish: p.finish, green: p.green, gap: p.gap }
+  const slip = p.slip ?? SLIP_UNIT
+  need(slip > 0, 'a surface with no grip at all is not a race track')
+  return { ...st, phase: PHASE.TRACK, finish: p.finish, slip, green: p.green, gap: p.gap }
 }
 
 /**
@@ -355,11 +377,12 @@ export function refTick(st: ShellState, m: Move, regs: RacerRegs = PROVISIONAL_R
   else need(m.lockTime >= st.last + st.gap, `moves must be at least ${st.gap} apart`)
 
   // Mass includes the fuel, so the car gets lighter as it burns. Free, because the satoshis ARE the tank.
-  const mass = regs.M0 + st.eng * regs.WE + fmul(m.fuel * S, regs.WF)
+  const mass = regs.M0 + st.eng * regs.WE + st.tyr * regs.WT + fmul(m.fuel * S, regs.WF)
   need(mass > 0, 'a car cannot be massless')
 
   // Grip rises with speed, which is why a big engine wastes force off the line and rewards good tyres.
-  const grip = st.tyr * regs.G0 + fmul(st.v, regs.GV)
+  // The surface scales everything the tyres and the speed were going to give you.
+  const grip = Math.trunc(((st.tyr * regs.G0 + fmul(st.v, regs.GV)) * st.slip) / SLIP_UNIT)
   const demand = Math.trunc((st.eng * regs.FE * m.throttle) / regs.THROTTLE_MAX)
 
   const spun = demand > grip
@@ -412,7 +435,13 @@ export function canFinish(st: ShellState, fuel: number, regs: RacerRegs = PROVIS
  * chain by anyone WITHOUT this repo. A shell is a standard, and its reference implementation is a txid —
  * which cannot rot the way a GitHub link can.
  */
-/* 209 bytes of 220, leaving room for nothing — the genesis writes this ALONE, unlike the battery's
+/* The genesis writes this ALONE, unlike the battery's layout+mark, and it is close to the ceiling.
+   ⚠ The BURN formula was dropped to fit, and only because it is the one thing here a rebuilder can
+   MEASURE rather than be told: every tick's fuel consumption is the output's value delta, visible on
+   chain. Everything that remains is something that cannot be recovered by looking — the field order
+   and widths needed to parse the state at all, the encodings, and the equations governing moves that
+   have not happened yet.
+   Original note: 209 bytes of 220, leaving room for nothing — the battery's
    layout+mark. Written tersely because the full prose ran to 291: `w` for widths, single letters for
    the intermediates, and the phase names dropped because the numbers are self-evident once the field
    order is published. Everything that survives is something a rebuilder CANNOT derive from a tip —
@@ -420,6 +449,6 @@ export function canFinish(st: ShellState, fuel: number, regs: RacerRegs = PROVIS
    have not happened yet. The regulation VALUES are deliberately absent: they live in the script, which
    a rebuilder already has. */
 export const SHELL_STATE_LAYOUT =
-  'BITCOIN RACER SHELL v1|' + FIELDS.join(',') + '|w ' + FIELDS.map(k => FIELD_WIDTHS[k]).join(',') + '|' +
-  'sign-mag LE|1=2^32|m=M0+eng*WE+fuel*WF|g=tyr*G0+v*GV|F=min(eng*FE*t/TM,g)|' +
-  'v+=F/m-v*DRAG|s+=v|burn=B0+eng*BE*t/TM'
+  'BITCOIN RACER SHELL v1|' + FIELDS.join(',') + '|w' + FIELDS.map(k => FIELD_WIDTHS[k]).join(',') + '|' +
+  'sm LE|1=2^32|slip/1e3|m=M0+eng*WE+tyr*WT+fuel*WF|g=(tyr*G0+v*GV)*slip|' +
+  'F=min(eng*FE*t/TM,g)|v+=F/m-v*DRAG|s+=v'

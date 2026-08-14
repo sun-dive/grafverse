@@ -81,6 +81,8 @@
     <h2>The strip</h2>
     <label>finish line <span class="val" id="v-finish"></span></label>
     <input type="range" id="finish" min="20" max="1200" step="1" value="402">
+    <label>surface · slip coefficient <span class="val" id="v-slip"></span></label>
+    <input type="range" id="slip" min="200" max="2500" step="25" value="1000">
     <p class="note" style="margin:4px 0 10px">Real references, for calibrating against something you can
        recognise: <b>402 m</b> is the quarter mile — a Top Fuel car covers it in about <b>4.5 s</b> past
        <b>330 mph</b>, a quick road car in <b>12–13 s</b>. NHRA shortened its fastest classes to 1,000 ft
@@ -163,6 +165,7 @@
   var REGDEF=[
     ['M0','chassis mass',0.2,4,0.05,'fp'],
     ['WE','mass per unit of engine',0,0.4,0.005,'fp'],
+    ['WT','★ mass per unit of TYRE — without this, more tyre is always better',0,0.3,0.005,'fp'],
     ['WF','mass per satoshi of fuel',0,0.001,0.00001,'fp'],
     ['FE','force per unit of engine',0.01,1.5,0.01,'fp'],
     ['G0','grip per unit of tyre',0.01,1.5,0.01,'fp'],
@@ -263,7 +266,7 @@
 
   function race(c, finishUnits){
     var st=GM.arm(GM.loadTrack(GM.loadCar(GM.emptyShell(),{driver:new Array(20).fill(1),eng:c.eng,tyr:c.tyr},R),
-                  {finish:Math.round(finishUnits*S),green:1,gap:0}));
+                  {finish:Math.round(finishUnits*S),slip:+$('slip').value,green:1,gap:0}));
     var fuel=c.tank, trace=[], spins=0, t=1, CAP=4000, over=null, ended=null, top=0;
     while(st.phase!==GM.PHASE.DONE && st.phase!==GM.PHASE.OUT && fuel>R.BURN0 && st.n<CAP){
       var th=pickThrottle(st,fuel,c);
@@ -371,7 +374,7 @@
       out+=String(e).padStart(7)+' ';
       for(t=1;t<=R.TYR_MAX;t++){
         var st=GM.arm(GM.loadTrack(GM.loadCar(GM.emptyShell(),{driver:new Array(20).fill(1),eng:e,tyr:t},R),
-                      {finish:1000*S,green:1,gap:0}));
+                      {finish:1000*S,slip:+$('slip').value,green:1,gap:0}));
         var r=GM.refTick(st,{throttle:R.THROTTLE_MAX,lockTime:1,fuel:20000},R);
         out+=(r.spun?'  ×':'  ·');
       }
@@ -480,6 +483,13 @@
       $('v-finish').textContent=m+' m · '+Math.round(m*3.28084)+' ft'+tag;
     };
     finLabel(); $('finish').addEventListener('input',finLabel);
+    var slipLabel=function(){
+      var v=+$('slip').value;
+      $('v-slip').textContent=(v/1000).toFixed(2)+'× '+
+        (v<700?'· greasy — carry tyre':v<1300?'· a prepared strip':'· glued — tyre is dead weight');
+    };
+    slipLabel();
+    $('slip').addEventListener('input',function(){ slipLabel(); paintMap(); });
     $('run').onclick=runRace;
     $('sweep').onclick=sweep;
     $('reset').onclick=function(){ R=Object.assign({},GM.PROVISIONAL_REGS); setRegUI(); buildCarUI(); paintMap(); showRegNote(); };
