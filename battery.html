@@ -1019,19 +1019,86 @@
   var ticking=false;
   $('lv-tick').onclick=function(){ if(!ticking) doTick(true) };
 
+  /* ── FIND THE REAL TIP, IN A HANDFUL OF LOOKUPS ──────────────────────────────────────────────────
+     battery.php walks the chain hop by hop because it has to: a contribution is a hop where the fuel
+     went UP, and you cannot see that without visiting every one. So the board is sometimes behind —
+     yesterday it was 53 ticks behind, which meant Tick built on an output spent an hour earlier and
+     the node replied "Missing inputs", which explains nothing to anybody.
+
+     The page does not need to walk. THE COVENANT IS DETERMINISTIC: the state after n ticks is forced,
+     so the page can compute the locking script the battery WOULD have at any tick and ask the chain
+     whether that script exists. Every state already passed through EXISTS; only the tip's output is
+     UNSPENT. Existence brackets the search; unspentness confirms the answer.
+
+     Exponential probe outward, then binary search back: about 2·log2(k) lookups instead of k hops. A
+     53-tick gap costs a dozen calls rather than a hundred, and barely grows as the gap does. */
+  function findTip(G, d){
+    var base=d.state, baseTicks=d.ticks||0, cache={};
+    function stateAt(k){
+      if(cache[k]) return cache[k];
+      var s=base; for(var i=0;i<k;i++) s=G.refState(s);
+      return (cache[k]=s);
+    }
+    function hashOf(k){
+      var bytes=G.buildBatteryLock({state:stateAt(k)}).toBinary();
+      return crypto.subtle.digest('SHA-256', new Uint8Array(bytes)).then(function(buf){
+        var h=Array.from(new Uint8Array(buf)); h.reverse();
+        return h.map(function(b){ return ('0'+b.toString(16)).slice(-2) }).join('');
+      });
+    }
+    function exists(k){
+      return chain().then(function(P){
+        return hashOf(k).then(function(sh){ return P.scriptHasHistory(sh) });
+      });
+    }
+    var lo=0, hi=1;
+    function grow(){
+      return exists(hi).then(function(ok){
+        if(!ok) return;                          // hi is past the tip — bracketed
+        lo=hi; hi*=2;
+        if(hi>1048576) return;                   // a million ticks ahead is not a real case
+        return grow();
+      });
+    }
+    function narrow(){
+      if(hi-lo<=1) return Promise.resolve(lo);
+      var mid=Math.floor((lo+hi)/2);
+      return exists(mid).then(function(ok){ if(ok) lo=mid; else hi=mid; return narrow() });
+    }
+    return grow().then(narrow).then(function(k){
+      var s=stateAt(k);
+      return chain().then(function(P){
+        return hashOf(k).then(function(sh){ return P.getUnspentByScriptHash(sh) }).then(function(us){
+          var u=(us||[])[0];
+          if(!u) throw Error('found the tip state but no unspent output — mid-broadcast?');
+          return { txid:u.txId, outputIndex:u.outputIndex, state:s,
+                   fuel:u.satoshis, ticks:baseTicks+k, moved:k };
+        });
+      });
+    });
+  }
+
+
   function doTick(retry){
     var msg=$('lv-tickmsg'), btn=$('lv-tick');
     ticking=true; btn.disabled=true; msg.style.color='var(--faint)';
     msg.textContent='building the transaction…';
     var G;
     return ensureGM().then(function(g){ G=g; return load(true) }).then(function(){
-      var d=live;
-      if(!d||!d.tipTxid) throw Error('could not read the battery tip');
-      if((d.ticksLeft||0)<1) throw Error('the battery is flat — it needs fuel before it can tick again');
-      return chain().then(function(P){ return P.getSourceTransaction(d.tipTxid) }).then(function(src){
-        return G.buildBatteryTickTx({ battery:{
-          sourceTransaction:src, outputIndex:0, state:d.state, value:d.fuel } });
-      });
+        var d=live;
+        if(!d||!d.tipTxid) throw Error('could not read the battery tip');
+        /* Ask the CHAIN where the tip is, not the cache. The board walks hop by hop to catch
+           contributions and can be a long way behind; building on its idea of the tip is what
+           produced "Missing inputs" against an output spent an hour earlier. */
+        msg.textContent='finding the tip…';
+        return findTip(G, d).then(function(t){
+          if(t.moved>0) msg.textContent='the battery moved '+t.moved+' ticks — building on the real tip…';
+          if(t.fuel < 314) throw Error('the battery is flat — it needs fuel before it can tick again');
+          return chain().then(function(P){ return P.getSourceTransaction(t.txid) }).then(function(src){
+            return G.buildBatteryTickTx({ battery:{
+              sourceTransaction:src, outputIndex:t.outputIndex, state:t.state, value:t.fuel } });
+          });
+        });
     }).then(function(tx){
       var raw=tx.toHex();
       msg.textContent='broadcasting '+fmt(raw.length/2)+' bytes — no signature…';

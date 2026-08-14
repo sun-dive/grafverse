@@ -518,6 +518,24 @@ export class WalletProvider {
    * back to the confirmed-only `/unspent` if `/all` isn't available. `scriptHash` is SHA-256(scriptBytes)
    * byte-reversed (Electrum/WoC convention).
    */
+  /**
+   * Has this script EVER appeared on chain? (Any history at all, spent or not.)
+   *
+   * `getUnspentByScriptHash` cannot answer this: it returns empty both for a script that was spent and
+   * for one that never existed, and those are opposite answers when you are searching. A deterministic
+   * covenant makes that distinction useful — every state it has passed through has a script that
+   * EXISTS, and only the tip's is UNSPENT. So existence brackets the search and unspentness confirms
+   * the answer, turning "walk every hop to find the tip" into a handful of lookups.
+   */
+  async scriptHasHistory(scriptHash: string): Promise<boolean> {
+    const resp = await fetchWithRetry(`${WOC_BASE}/script/${scriptHash}/history`)
+    if (!resp.ok) return false
+    const data: any = await resp.json()
+    const rows: any[] = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : [])
+    return rows.length > 0
+  }
+
+
   async getUnspentByScriptHash(scriptHash: string): Promise<Utxo[]> {
     const mapRows = (data: any): Utxo[] => {
       const rows: any[] = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : [])
