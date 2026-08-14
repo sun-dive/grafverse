@@ -264,11 +264,11 @@
   function race(c, finishUnits){
     var st=GM.arm(GM.loadTrack(GM.loadCar(GM.emptyShell(),{driver:new Array(20).fill(1),eng:c.eng,tyr:c.tyr},R),
                   {finish:Math.round(finishUnits*S),green:1,gap:0}));
-    var fuel=c.tank, trace=[], spins=0, t=1, CAP=4000, over=null, ended=null;
+    var fuel=c.tank, trace=[], spins=0, t=1, CAP=4000, over=null, ended=null, top=0;
     while(st.phase!==GM.PHASE.DONE && st.phase!==GM.PHASE.OUT && fuel>R.BURN0 && st.n<CAP){
       var th=pickThrottle(st,fuel,c);
       var r; try{ r=GM.refTick(st,{throttle:th,lockTime:t++,fuel:fuel},R) }catch(e){ break }
-      st=r.state; fuel-=r.burn; if(r.spun)spins++; if(r.ended)ended=r.ended;
+      st=r.state; fuel-=r.burn; if(r.spun)spins++; if(r.ended)ended=r.ended; if(st.v>top)top=st.v;
       /* ⚠ CAN THIS STATE EVEN BE WRITTEN INTO A SCRIPT? Regulations that feel wonderful here are
          worthless if the velocities they produce do not fit their field. The battery learned that the
          expensive way: fixedField truncates SILENTLY, so an over-large value yields a well-formed
@@ -277,7 +277,7 @@
       if(!over) over=GM.stateFits(st);
       trace.push({s:st.s,v:st.v,fuel:fuel,th:th,spun:r.spun});
     }
-    return { st:st, fuel:fuel, used:c.tank-fuel, trace:trace, spins:spins, over:over, ended:ended,
+    return { st:st, fuel:fuel, used:c.tank-fuel, trace:trace, spins:spins, over:over, ended:ended, top:top,
              finished:st.phase===GM.PHASE.DONE, et:st.n };
   }
 
@@ -394,8 +394,16 @@
     row('ended', how(lastRun.A), how(lastRun.B));
     row('ET · seconds', lastRun.A.finished?secs(lastRun.A.et).toFixed(1)+' s':'—',
                         lastRun.B.finished?secs(lastRun.B.et).toFixed(1)+' s':'—');
-    row('speed at the stripe', Math.round(mph(lastRun.A.st.v))+' mph', Math.round(mph(lastRun.B.st.v))+' mph');
-    row('  …in km/h', Math.round(kmh(lastRun.A.st.v)), Math.round(kmh(lastRun.B.st.v)));
+    /* TOP SPEED and TRAP SPEED are different numbers and the difference is informative: a car that
+       peaked and then fell away was fighting drag, or lost grip, or ran the tank down to nothing near
+       the line. If they are identical the car was still pulling as it crossed — which is what a well
+       geared one does. A car that never finished has no trap speed at all. */
+    var sp=function(v){ return Math.round(mph(v))+' mph · '+Math.round(kmh(v))+' km/h' };
+    row('top speed', sp(lastRun.A.top), sp(lastRun.B.top));
+    row('at the flag', lastRun.A.finished?sp(lastRun.A.st.v):'—', lastRun.B.finished?sp(lastRun.B.st.v):'—');
+    var fade=function(r){ return r.finished && r.top>r.st.v
+      ? '−'+Math.round(mph(r.top)-mph(r.st.v))+' mph' : r.finished ? 'still pulling' : '—' };
+    row('  …fell away by', fade(lastRun.A), fade(lastRun.B));
     row('reached · metres', (lastRun.A.st.s/S).toFixed(0), (lastRun.B.st.s/S).toFixed(0));
     $('result').innerHTML=rows;
 
