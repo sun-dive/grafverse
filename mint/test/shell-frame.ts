@@ -13,7 +13,7 @@
 import { Transaction, Spend, LockingScript, UnlockingScript, TransactionSignature } from '@bsv/sdk'
 import {
   emptyShell, loadCar, loadTrack, arm, buildShellLock, shellUnlockingOps, SHELL_SCOPE,
-  FIELDS, FIELD_WIDTHS, RACER_REGS, S, type ShellState,
+  FIELDS, FIELD_WIDTHS, RACER_REGS, S, PHASE, PHASE_NAMES, type ShellState,
 } from '../src/shell.ts'
 import { serializeOutput } from '../src/covenant.ts'
 
@@ -35,8 +35,9 @@ const DRIVER = new Array(20).fill(0x9c)
 const VALUE = 50_000
 
 /**
- * Spend a shell whose output carries `next`. With an identity state machine `next` must equal the
- * state that went in — so this doubles as the test that ANY other output is rejected.
+ * Spend a shell whose output carries `next`. The only difference the script now makes is the phase, so
+ * `next` must be the input state with its phase advanced — anything else must be rejected, which is
+ * what makes this a test of the comparison as well as of the transition.
  */
 function spend(state: ShellState, next: ShellState, outValue = VALUE): { ok: boolean; why?: string } {
   const prev = buildShellLock({ state })
@@ -85,11 +86,14 @@ const LOADED: ShellState = {
   const lock = buildShellLock({ state: LOADED })
   console.log(`        locking script ${lock.toBinary().length} bytes · state ${FIELDS.length} fields`)
 
-  const r = spend(LOADED, LOADED)
-  check('★ a shell reads its own twelve fields and writes them back', r.ok)
+  const advanced = (st: ShellState): ShellState =>
+    ({ ...st, phase: Math.min(st.phase + 1, PHASE.RACING) as ShellState['phase'] })
+
+  const r = spend(LOADED, advanced(LOADED))
+  check('★ a shell reads its own twelve fields and writes back eleven unchanged', r.ok)
   if (!r.ok) console.log('   ↳', r.why)
 
-  const empty = spend(emptyShell(), emptyShell())
+  const empty = spend(emptyShell(), advanced(emptyShell()))
   check('the EMPTY shell round-trips too — every field zero', empty.ok)
   if (!empty.ok) console.log('   ↳', empty.why)
 }
@@ -98,29 +102,57 @@ const LOADED: ShellState = {
 // With an identity state machine, ANY different output must be rejected. If these pass, the comparison
 // at the end of the script is not actually comparing anything.
 {
+  const adv = { ...LOADED, phase: Math.min(LOADED.phase + 1, PHASE.RACING) as ShellState['phase'] }
   const bump = (k: keyof ShellState, by: number): ShellState =>
-    ({ ...LOADED, [k]: (LOADED[k] as number) + by })
+    ({ ...adv, [k]: (adv[k] as number) + by })
 
   check('a changed `s` is rejected', spend(LOADED, bump('s', 1)).ok, false)
   check('a changed `v` is rejected', spend(LOADED, bump('v', 1)).ok, false)
   check('a changed `n` is rejected', spend(LOADED, bump('n', 1)).ok, false)
-  check('a changed `phase` is rejected', spend(LOADED, bump('phase', 1)).ok, false)
   check('a changed `eng` is rejected', spend(LOADED, bump('eng', 1)).ok, false)
   check('a changed `slip` is rejected', spend(LOADED, bump('slip', 1)).ok, false)
   check('a changed `finish` is rejected', spend(LOADED, bump('finish', 1)).ok, false)
   check('a changed `green` is rejected', spend(LOADED, bump('green', 1)).ok, false)
   check('★ a changed DRIVER is rejected — the 20-byte hash survives as bytes',
-    spend(LOADED, { ...LOADED, driver: DRIVER.map((b, i) => i === 0 ? b ^ 1 : b) }).ok, false)
+    spend(LOADED, { ...adv, driver: DRIVER.map((b, i) => i === 0 ? b ^ 1 : b) }).ok, false)
+}
+
+// ── THE PHASE MACHINE ────────────────────────────────────────────────────────────────────────────────
+// The sequence is the anti-cheat: nobody swaps a bigger engine in after the fuel goes in, and the chain
+// records the order it happened. Here the script — not the reference — is what enforces it.
+{
+  const at = (phase: number): ShellState => ({ ...LOADED, phase: phase as ShellState['phase'] })
+  const to = (from: number, phase: number): ShellState =>
+    ({ ...LOADED, phase: phase as ShellState['phase'] })
+
+  for (const [from, want] of [[0, 1], [1, 2], [2, 3], [3, 4]] as const) {
+    check(`${PHASE_NAMES[from]} → ${PHASE_NAMES[want]}`, spend(at(from), to(from, want)).ok)
+  }
+  check('RACING → RACING · a race continues until the physics end it',
+    spend(at(PHASE.RACING), to(PHASE.RACING, PHASE.RACING)).ok)
+
+  // Skipping and standing still are the two ways to cheat the sequence, and both are refused.
+  check('EMPTY cannot skip straight to TRACK', spend(at(0), to(0, 2)).ok, false)
+  check('CAR cannot skip straight to ARMED', spend(at(1), to(1, 3)).ok, false)
+  check('★ a phase cannot stand still — you cannot re-load a car', spend(at(0), to(0, 0)).ok, false)
+  check('and it cannot go backwards', spend(at(2), to(2, 1)).ok, false)
+
+  // ★ Terminal means terminal. The run is over, the chain stops, and the final state stands as the
+  // record — there is no key anywhere that can restart a car that blew up or crossed the line.
+  check('★ a DONE shell cannot be spent AT ALL', spend(at(PHASE.DONE), to(5, 5)).ok, false)
+  check('★ an OUT shell cannot be spent AT ALL', spend(at(PHASE.OUT), to(6, 6)).ok, false)
+  check('  …not even to advance it', spend(at(PHASE.DONE), to(5, 6)).ok, false)
 }
 
 // ── the value floor ──────────────────────────────────────────────────────────────────────────────────
 // maxFee is 0 in the skeleton, so the output may not lose a satoshi. The rule itself is what is being
 // tested; the number it enforces arrives with the fee model.
 {
+  const adv = { ...LOADED, phase: Math.min(LOADED.phase + 1, PHASE.RACING) as ShellState['phase'] }
   check('the output may hold MORE than it started with — a top-up is just a spend',
-    spend(LOADED, LOADED, VALUE + 1_000).ok)
+    spend(LOADED, adv, VALUE + 1_000).ok)
   check('the output may not hold LESS while maxFee is zero',
-    spend(LOADED, LOADED, VALUE - 1).ok, false)
+    spend(LOADED, adv, VALUE - 1).ok, false)
 }
 
 // ── every field is genuinely distinguishable in the fixture ──────────────────────────────────────────

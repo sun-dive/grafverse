@@ -573,9 +573,24 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
     ops.push(op(OP.OP_TOALTSTACK))
   }
   if (isNum(FIELDS[0])) ops.push(op(OP.OP_BIN2NUM))
+
+  /* ── THE PROGRAM COUNTER ────────────────────────────────────────────────────────────────────────
+     `phase` is alone on top of the stack at exactly this moment — converted, with the other eleven
+     fields still on the altstack. That is the one place in the script where it can be transformed
+     without rolling it up from eleven deep and putting it back, so the phase machine lives here.
+
+     TERMINAL MEANS TERMINAL. A shell that is DONE or OUT cannot be spent at all: the run is over, the
+     chain stops, and its final state stands as the record. Everything from EMPTY to RACING advances by
+     one, and RACING stays where it is — a race continues until the physics end it, which is the only
+     transition the sequence alone cannot decide. */
+  ops.push(
+    op(OP.OP_DUP), PN(PHASE.DONE), op(OP.OP_LESSTHAN), op(OP.OP_VERIFY),   // phase < DONE, or nothing
+    op(OP.OP_1ADD), PN(PHASE.RACING), op(OP.OP_MIN),                        // min(phase + 1, RACING)
+  )
+
   for (let i = 1; i < FIELDS.length; i++) ops.push(op(OP.OP_FROMALTSTACK))
 
-  // ── THE STATE MACHINE GOES HERE. Identity, for now. ──
+  // ── THE REST OF THE STATE MACHINE GOES HERE. ──
 
   // values → fixed-width fields, and rebuild the script
   for (let i = FIELDS.length - 1; i > 0; i--) {
