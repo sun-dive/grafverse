@@ -239,7 +239,7 @@
     while(lo<=hi){
       var mid=(lo+hi)>>1;
       var r; try{ r=GM.refTick(st,{throttle:mid,lockTime:st.last+1,fuel:fuel},R) }catch(e){ break }
-      if(r.spun){ hi=mid-1 } else { best=mid; lo=mid+1 }
+      if(r.spun||r.ended){ hi=mid-1 } else { best=mid; lo=mid+1 }
     }
     return best;
   }
@@ -247,11 +247,11 @@
   function race(c, finishUnits){
     var st=GM.arm(GM.loadTrack(GM.loadCar(GM.emptyShell(),{driver:new Array(20).fill(1),eng:c.eng,tyr:c.tyr},R),
                   {finish:Math.round(finishUnits*S),green:1,gap:0}));
-    var fuel=c.tank, trace=[], spins=0, t=1, CAP=4000, over=null;
-    while(st.phase!==GM.PHASE.DONE && fuel>R.BURN0 && st.n<CAP){
+    var fuel=c.tank, trace=[], spins=0, t=1, CAP=4000, over=null, ended=null;
+    while(st.phase!==GM.PHASE.DONE && st.phase!==GM.PHASE.OUT && fuel>R.BURN0 && st.n<CAP){
       var th=pickThrottle(st,fuel,c);
       var r; try{ r=GM.refTick(st,{throttle:th,lockTime:t++,fuel:fuel},R) }catch(e){ break }
-      st=r.state; fuel-=r.burn; if(r.spun)spins++;
+      st=r.state; fuel-=r.burn; if(r.spun)spins++; if(r.ended)ended=r.ended;
       /* ⚠ CAN THIS STATE EVEN BE WRITTEN INTO A SCRIPT? Regulations that feel wonderful here are
          worthless if the velocities they produce do not fit their field. The battery learned that the
          expensive way: fixedField truncates SILENTLY, so an over-large value yields a well-formed
@@ -260,7 +260,7 @@
       if(!over) over=GM.stateFits(st);
       trace.push({s:st.s,v:st.v,fuel:fuel,th:th,spun:r.spun});
     }
-    return { st:st, fuel:fuel, used:c.tank-fuel, trace:trace, spins:spins, over:over,
+    return { st:st, fuel:fuel, used:c.tank-fuel, trace:trace, spins:spins, over:over, ended:ended,
              finished:st.phase===GM.PHASE.DONE, et:st.n };
   }
 
@@ -372,6 +372,9 @@
     row('fuel burned', lastRun.A.used.toLocaleString(), lastRun.B.used.toLocaleString());
     row('fuel left', Math.max(0,lastRun.A.fuel).toLocaleString(), Math.max(0,lastRun.B.fuel).toLocaleString());
     row('wheelspins', lastRun.A.spins, lastRun.B.spins);
+    var how=function(r){ return r.ended==='blown' ? 'ENGINE LET GO' : r.ended==='off' ? 'OFF THE TRACK'
+                       : r.finished ? 'crossed the line' : 'ran dry' };
+    row('ended', how(lastRun.A), how(lastRun.B));
     row('final v', (lastRun.A.st.v/S).toFixed(3), (lastRun.B.st.v/S).toFixed(3));
     row('reached', (lastRun.A.st.s/S).toFixed(1), (lastRun.B.st.s/S).toFixed(1));
     $('result').innerHTML=rows;
@@ -386,10 +389,14 @@
         'On chain that truncates silently — the script would be well formed and carry the wrong number.';
       drawChart(); drawStrip(1); return;
     }
-    if(!vA.finished && !vB.finished) v.innerHTML='<b style="color:var(--tang)">Neither car reached the line.</b> Both ran dry.';
+    var blurb=function(r,k){ return r.ended==='blown' ? '<b class="'+k+'">'+k+"'s engine let go</b>"
+                            : r.ended==='off' ? '<b class="'+k+'">'+k+' went off the track</b>' : '' };
+    var drama=[blurb(vA,'A'),blurb(vB,'B')].filter(Boolean).join(' · ');
+    if(!vA.finished && !vB.finished) v.innerHTML=(drama||'<b style="color:var(--tang)">Neither car reached the line.</b> Both ran dry.');
     else if(vA.finished && (!vB.finished || vA.et<vB.et)) v.innerHTML='<b class="A">A wins</b> — '+vA.et+' ticks'+(vB.finished?' to '+vB.et:', B ran dry');
     else if(vB.finished && (!vA.finished || vB.et<vA.et)) v.innerHTML='<b class="B">B wins</b> — '+vB.et+' ticks'+(vA.finished?' to '+vA.et:', A ran dry');
     else v.innerHTML='<b>A dead heat</b> at '+vA.et+' ticks — the pot would go to whoever got mined first.';
+    if(drama && (vA.finished||vB.finished)) v.innerHTML+=' &nbsp;·&nbsp; '+drama;
 
     drawChart();
     // Long races need longer on screen, or the whole thing is over before the eye finds the cars —

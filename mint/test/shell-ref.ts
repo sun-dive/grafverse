@@ -28,6 +28,18 @@ const REGS = PROVISIONAL_REGS
 const DRIVER = new Array(20).fill(7)
 const GREEN = 1_700_000_000
 
+/** The largest throttle that does not break traction — the bench's benchmark driver, and the only one
+ *  that can be used in a test without the engine deciding the outcome. */
+function safe(st: ShellState, fuel: number): number {
+  let lo = 0, hi = REGS.THROTTLE_MAX, best = 0
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    let r; try { r = refTick(st, { throttle: mid, lockTime: st.last + 1, fuel }) } catch { break }
+    if (r.spun) hi = mid - 1; else { best = mid; lo = mid + 1 }
+  }
+  return best
+}
+
 console.log('THE SHELL — reference implementation\n')
 
 // ── the constant genesis ─────────────────────────────────────────────────────────────────────────────
@@ -91,14 +103,15 @@ console.log('THE SHELL — reference implementation\n')
 {
   const armed = arm(loadTrack(loadCar(emptyShell(), { driver: DRIVER, eng: 10, tyr: 5 }),
     { finish: 100 * S, green: GREEN, gap: 5 }))
+  const TH = 6                                   // below BLOW_T, so the tree is tested and not the engine
   refuses('★ a false start is refused — the launch may not precede the green', () =>
-    refTick(armed, { throttle: 15, lockTime: GREEN - 1, fuel: 50_000 }))
-  const launched = refTick(armed, { throttle: 15, lockTime: GREEN, fuel: 50_000 }).state
+    refTick(armed, { throttle: TH, lockTime: GREEN - 1, fuel: 50_000 }))
+  const launched = refTick(armed, { throttle: TH, lockTime: GREEN, fuel: 50_000 }).state
   check('a launch exactly ON the green is legal', launched.phase === PHASE.RACING)
   refuses('moves closer together than the gap are refused', () =>
-    refTick(launched, { throttle: 15, lockTime: GREEN + 4, fuel: 50_000 }))
+    refTick(launched, { throttle: TH, lockTime: GREEN + 4, fuel: 50_000 }))
   check('a move exactly one gap later is legal',
-    refTick(launched, { throttle: 15, lockTime: GREEN + 5, fuel: 50_000 }).state.n === 2)
+    refTick(launched, { throttle: TH, lockTime: GREEN + 5, fuel: 50_000 }).state.n === 2)
 }
 
 // ── the physics ──────────────────────────────────────────────────────────────────────────────────────
@@ -109,7 +122,7 @@ console.log('THE SHELL — reference implementation\n')
   const base = (eng: number, tyr: number): ShellState =>
     arm(loadTrack(loadCar(emptyShell(), { driver: DRIVER, eng, tyr }),
       { finish: 1_000 * S, green: GREEN, gap: 0 }))
-  const m = { throttle: REGS.THROTTLE_MAX, lockTime: GREEN, fuel: 50_000 }
+  const m = { throttle: REGS.BLOW_T - 1, lockTime: GREEN, fuel: 50_000 }   // hardest throttle that keeps the motor
 
   // At a throttle low enough that neither car breaks traction, more engine MUST mean more acceleration.
   const gentle = { ...m, throttle: 1 }
@@ -131,7 +144,7 @@ console.log('THE SHELL — reference implementation\n')
   let tyreMonotone = true, throttleMonotone = true
   for (let t = 1; t < REGS.TYR_MAX; t++)
     if (refTick(base(12, t), m).spun === false && refTick(base(12, t + 1), m).spun === true) tyreMonotone = false
-  for (let th = 1; th < REGS.THROTTLE_MAX; th++)
+  for (let th = 1; th < REGS.BLOW_T - 1; th++)
     if (refTick(base(12, 5), { ...m, throttle: th }).spun === true &&
         refTick(base(12, 5), { ...m, throttle: th + 1 }).spun === false) throttleMonotone = false
   check('★ more tyre never causes a spin that less tyre avoided', tyreMonotone)
@@ -170,8 +183,8 @@ console.log('THE SHELL — reference implementation\n')
   let st = arm(loadTrack(loadCar(emptyShell(), { driver: DRIVER, eng: 12, tyr: 7 }),
     { finish: FINISH, green: GREEN, gap: 0 }))
   let fuel = 20_000, spins = 0, t = GREEN
-  while (st.phase !== PHASE.DONE && fuel > REGS.BURN0 && st.n < 5_000) {
-    const r = refTick(st, { throttle: REGS.THROTTLE_MAX, lockTime: t++, fuel })
+  while (st.phase !== PHASE.DONE && st.phase !== PHASE.OUT && fuel > REGS.BURN0 && st.n < 5_000) {
+    const r = refTick(st, { throttle: safe(st, fuel), lockTime: t++, fuel })
     st = r.state; fuel -= r.burn; if (r.spun) spins++
   }
   check('the car reaches the line', st.phase === PHASE.DONE)
@@ -183,8 +196,8 @@ console.log('THE SHELL — reference implementation\n')
   let slow = arm(loadTrack(loadCar(emptyShell(), { driver: DRIVER, eng: 3, tyr: 7 }),
     { finish: FINISH, green: GREEN, gap: 0 }))
   let f2 = 20_000, t2 = GREEN
-  while (slow.phase !== PHASE.DONE && f2 > REGS.BURN0 && slow.n < 5_000) {
-    const r = refTick(slow, { throttle: REGS.THROTTLE_MAX, lockTime: t2++, fuel: f2 })
+  while (slow.phase !== PHASE.DONE && slow.phase !== PHASE.OUT && f2 > REGS.BURN0 && slow.n < 5_000) {
+    const r = refTick(slow, { throttle: safe(slow, f2), lockTime: t2++, fuel: f2 })
     slow = r.state; f2 -= r.burn
   }
   // ⚠ NOT AN ASSERTION. At PROVISIONAL_REGS the big engine spins on EVERY tick and loses badly to the
@@ -200,12 +213,44 @@ console.log('THE SHELL — reference implementation\n')
   let st = arm(loadTrack(loadCar(emptyShell(), { driver: DRIVER, eng: 18, tyr: 8 }),
     { finish: 10_000 * S, green: GREEN, gap: 0 }))
   let fuel = 3_000, t = GREEN
-  while (fuel > REGS.BURN0 && st.n < 1_000) {
-    const r = refTick(st, { throttle: REGS.THROTTLE_MAX, lockTime: t++, fuel })
+  while (st.phase !== PHASE.DONE && st.phase !== PHASE.OUT && fuel > REGS.BURN0 && st.n < 1_000) {
+    const r = refTick(st, { throttle: safe(st, fuel), lockTime: t++, fuel })
     st = r.state; fuel -= r.burn
   }
   check('★ a thirsty car on a long strip runs dry short of the line', st.phase !== PHASE.DONE)
   console.log(`        ${st.n} ticks on 3,000 sat, then flat at ${(st.s / S).toFixed(1)} of 10,000`)
+}
+
+// ── WHAT HAPPENS WHEN GRIP GOES ──────────────────────────────────────────────────────────────────────
+// Three outcomes with different CAUSES, not three degrees of one event. The order they are checked in
+// is load-bearing: engine-first makes the track case unreachable, silently, because grip rises with
+// speed so the only way to break it at pace is a throttle that also grenades the motor.
+{
+  const car = (eng: number, tyr: number): ShellState =>
+    arm(loadTrack(loadCar(emptyShell(), { driver: DRIVER, eng, tyr }),
+      { finish: 5_000 * S, green: GREEN, gap: 0 }))
+
+  const smoke = refTick(car(12, 4), { throttle: 8, lockTime: GREEN, fuel: 20_000 })
+  check('a spin off the line is SMOKE — survivable', smoke.spun && smoke.ended === null)
+  check('  …and it costs momentum rather than the run', smoke.state.phase === PHASE.RACING)
+
+  const grenade = refTick(car(12, 4), { throttle: REGS.BLOW_T, lockTime: GREEN, fuel: 20_000 })
+  check('★ flat out with the wheels spinning GRENADES the engine — no load, revs run away',
+    grenade.ended === 'blown' && grenade.state.phase === PHASE.OUT)
+
+  // Build speed gently, then get greedy — the realistic way a run ends in the wall.
+  let st = car(12, 6), t = GREEN
+  for (let i = 0; i < 40; i++) st = refTick(st, { throttle: 5, lockTime: t++, fuel: 30_000 }).state
+  check('grip rises with speed, so a moving car is HARDER to spin',
+    st.v > REGS.LOOSE_V && refTick(st, { throttle: 13, lockTime: t, fuel: 30_000 }).spun === false)
+  const wall = refTick(st, { throttle: REGS.THROTTLE_MAX, lockTime: t, fuel: 30_000 })
+  check('★ but breaking grip AT SPEED puts it OFF THE TRACK — it steps sideways',
+    wall.ended === 'off' && wall.state.phase === PHASE.OUT)
+  check('  …and the two failures are told apart by SPEED, not by degree',
+    grenade.ended !== wall.ended)
+
+  refuses('a car that is OUT cannot be driven again', () =>
+    refTick(wall.state, { throttle: 1, lockTime: t + 1, fuel: 30_000 }))
 }
 
 // ── arithmetic ───────────────────────────────────────────────────────────────────────────────────────

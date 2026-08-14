@@ -125,6 +125,22 @@ export interface RacerRegs {
    * takes a risk. At 0 the run is dead. Somewhere between is a launch worth gambling on.
    */
   SPIN_KEEP: number
+  /**
+   * Velocity above which losing grip is TERMINAL rather than merely slow.
+   *
+   * Breaking traction off the line is survivable — you smoke the tyres and bog down. Breaking it once
+   * the car is moving is not: it steps sideways and the run is over. Grip RISES with speed here (GV),
+   * so a spin at speed is rare by construction, which is exactly what "the occasional one" should mean.
+   */
+  LOOSE_V: number
+  /**
+   * Throttle at or above which spinning GRENADES the engine.
+   *
+   * A different failure with a different cause: when the wheels let go the motor loses its load, and an
+   * unloaded engine held wide open runs away with itself. So this is not about grip at all — it is about
+   * what the driver does in the instant AFTER grip goes. Lift, and you keep the engine.
+   */
+  BLOW_T: number
   /** Throttle is an integer 0..THROTTLE_MAX. The driver's only freedom. */
   THROTTLE_MAX: number
   /** Bounds the covenant enforces on a loaded car — a car is provably LEGAL even if its lineage is not. */
@@ -144,6 +160,8 @@ export const PROVISIONAL_REGS: RacerRegs = {
   BURN0: 40,
   BURN_E: 6,
   SPIN_KEEP: Math.round(0.5 * S),
+  LOOSE_V: Math.round(0.35 * S),
+  BLOW_T: 14,
   THROTTLE_MAX: 15,
   ENG_MAX: 20,
   TYR_MAX: 10,
@@ -154,11 +172,12 @@ export const PROVISIONAL_REGS: RacerRegs = {
  * The sequence IS the anti-cheat. Nobody swaps a bigger engine in after the fuel goes in, and the chain
  * records the order it happened.
  */
-export const PHASE = { EMPTY: 0, CAR: 1, TRACK: 2, ARMED: 3, RACING: 4, DONE: 5 } as const
+/** DONE is across the line. OUT is anything that ended the run without crossing it. */
+export const PHASE = { EMPTY: 0, CAR: 1, TRACK: 2, ARMED: 3, RACING: 4, DONE: 5, OUT: 6 } as const
 export type Phase = (typeof PHASE)[keyof typeof PHASE]
 /** For refusals a human has to read. The covenant knows only the number. */
 export const PHASE_NAMES: Record<number, string> =
-  { 0: 'EMPTY', 1: 'CAR', 2: 'TRACK', 3: 'ARMED', 4: 'RACING', 5: 'DONE' }
+  { 0: 'EMPTY', 1: 'CAR', 2: 'TRACK', 3: 'ARMED', 4: 'RACING', 5: 'DONE', 6: 'OUT' }
 
 // ── state ────────────────────────────────────────────────────────────────────────────────────────────
 /**
@@ -309,6 +328,8 @@ export interface TickResult {
   burn: number
   /** True when the demanded force exceeded grip. */
   spun: boolean
+  /** What ended the run, if anything did. `null` while the car is still racing or once it has finished. */
+  ended: 'off' | 'blown' | null
 }
 
 /**
@@ -342,6 +363,30 @@ export function refTick(st: ShellState, m: Move, regs: RacerRegs = PROVISIONAL_R
   const demand = Math.trunc((st.eng * regs.FE * m.throttle) / regs.THROTTLE_MAX)
 
   const spun = demand > grip
+  const burn = regs.BURN0 + Math.trunc((st.eng * regs.BURN_E * m.throttle) / regs.THROTTLE_MAX)
+
+  /* ── WHAT HAPPENS WHEN GRIP GOES ────────────────────────────────────────────────────────────────
+     Three outcomes, and they are not degrees of one event — they have different causes.
+
+     SPEED IS CHECKED FIRST, and the order is load-bearing rather than stylistic. A MOVING car that
+     loses grip steps sideways and is gone — the engine stays loaded right up until the wheels break
+     away. A STATIONARY one has no load at all, so the motor runs away with itself instead. Same lost
+     grip, two different endings, decided by whether the car was going anywhere at the time.
+
+     Checked the other way round the track case is UNREACHABLE, and silently so. Grip rises with speed,
+     so at pace the only way to break it is near-max throttle — which is also the blow condition, and
+     the engine check swallows it whole. Measured: 40 gentle presses reach v 4.82 against grip 2.35, and
+     throttle 13 is clean while 14 grenades. Nobody would ever have seen the wall.
+
+     Everything else is smoke: force is capped at what the tyres can take and the car loses momentum.
+     Survivable, and the moment the driver has to decide something — lift, and you keep the engine. */
+  if (spun && st.v >= regs.LOOSE_V) {
+    return { state: { ...st, phase: PHASE.OUT, last: m.lockTime, n: st.n + 1, v: 0 }, burn, spun, ended: 'off' }
+  }
+  if (spun && m.throttle >= regs.BLOW_T) {
+    return { state: { ...st, phase: PHASE.OUT, last: m.lockTime, n: st.n + 1, v: 0 }, burn, spun, ended: 'blown' }
+  }
+
   const force = spun ? grip : demand
   const a = fdiv(force, mass)
 
@@ -350,18 +395,16 @@ export function refTick(st: ShellState, m: Move, regs: RacerRegs = PROVISIONAL_R
   if (v < 0) v = 0                                   // a car does not roll backwards down a drag strip
 
   const s = st.s + v
-  const burn = regs.BURN0 + Math.trunc((st.eng * regs.BURN_E * m.throttle) / regs.THROTTLE_MAX)
-
   const done = s >= st.finish
   return {
     state: { ...st, phase: done ? PHASE.DONE : PHASE.RACING, last: m.lockTime, s, v, n: st.n + 1 },
-    burn, spun,
+    burn, spun, ended: null,
   }
 }
 
 /** Could this car still finish on the fuel it holds? Optimistically — at best burn, ignoring physics. */
 export function canFinish(st: ShellState, fuel: number, regs: RacerRegs = PROVISIONAL_REGS): boolean {
-  return st.phase !== PHASE.DONE && fuel > regs.BURN0
+  return st.phase !== PHASE.DONE && st.phase !== PHASE.OUT && fuel > regs.BURN0
 }
 
 /**
