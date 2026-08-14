@@ -497,7 +497,7 @@ export const SHELL_STATE_LAYOUT =
 import { OP, LockingScript, UnlockingScript, type ScriptChunk } from '@bsv/sdk'
 import { extractHashOutputsOps, extractScriptCodeFieldOps } from './covenant.ts'
 import { pushTxVerifyOps, pushData, pushTxConstants, type PushTxConstants } from './pushtx.ts'
-import { op, PN, fixedField } from './covenantAsm.ts'
+import { Asm, op, PN, fixedField } from './covenantAsm.ts'
 
 /** Record type, in the same family as the battery's 0x07. */
 export const RECORD_SHELL = 0x08
@@ -663,7 +663,8 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
      worked around. Thirteen deep: PRE plus twelve. */
   ops.push(PN(13), op(OP.OP_ROLL), op(OP.OP_DROP))
 
-  // ── THE REST OF THE STATE MACHINE GOES HERE. ──
+  // ── THE PHYSICS ──
+  ops.push(...shellPhysicsOps(p.regs ?? RACER_REGS))
 
   // values → fixed-width fields, and rebuild the script
   for (let i = FIELDS.length - 1; i > 0; i--) {
@@ -688,6 +689,110 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
 }
 
 /**
+ * ONE PRESS OF THE ACCELERATOR, in Script — and it must agree with `refTick` exactly, which is what
+ * `shell-physics.ts` checks tick for tick rather than by reading.
+ *
+ * Every quantity is named and every OP_PICK depth is computed from a live stack model, because
+ * hand-counting cost the battery three bugs in one sitting.
+ *
+ * ★ Two simplifications fall out of the algebra and are worth stating, because neither is obvious:
+ *
+ *   mass  — the reference computes `fmul(fuel * S, WF)`, which is trunc(fuel·S·WF / S) = fuel·WF
+ *           exactly. The scaling cancels, so the script needs no division at all here.
+ *   force — `spun ? grip : demand` IS `min(demand, grip)`. One opcode, no branch, and the spin flag
+ *           is then recovered by comparing the two rather than being carried.
+ */
+function shellPhysicsOps(regs: RacerRegs): ScriptChunk[] {
+  const a = new Asm([
+    'throttle', 'sig', 'pubkey', 'SO', 'newV', 'PRE',
+    'phase', 'driver', 'eng', 'tyr', 'finish', 'slip', 'green', 'gap', 'last', 's', 'v', 'n',
+  ])
+  /** trunc(x·y / 2^32) — the fixed-point multiply, in Script's arbitrary-precision integers. */
+  const fmul = (): void => { a.o(OP.OP_MUL, 2, ['_p']); a.num(S); a.o(OP.OP_DIV, 2, ['_q']) }
+  /* trunc(x·2^32 / y) — scaled BEFORE dividing so precision survives. Written as explicit picks rather
+     than stack juggling: the first attempt swapped its operands and divided by the NUMERATOR, which
+     only showed itself as "divide by zero" the moment a driver lifted off entirely. */
+
+  // the tank is on the altstack under SUF; both come back, and both go back afterwards
+  a.raw(op(OP.OP_FROMALTSTACK), 0, ['SUF'])
+  a.raw(op(OP.OP_FROMALTSTACK), 0, ['fuel'])
+
+  // mass = M0 + eng·WE + tyr·WT + fuel·WF        (the car gets lighter as it burns)
+  a.pick('eng'); a.num(regs.WE); a.bin(OP.OP_MUL, 'engW')
+  a.pick('tyr'); a.num(regs.WT); a.bin(OP.OP_MUL, 'tyrW')
+  a.bin(OP.OP_ADD, 'w')
+  a.pick('fuel'); a.num(regs.WF); a.bin(OP.OP_MUL, 'fuelW')
+  a.bin(OP.OP_ADD, 'w')
+  a.num(regs.M0); a.bin(OP.OP_ADD, 'mass')
+
+  /* The tank and the script tail go straight back, now that mass is the only thing that wanted them.
+     ROLL rather than pick: the altstack must end holding exactly [hashOutputs, value, SUF], and a copy
+     left behind would sit in the middle of the physics for no reason. Order matters — value first,
+     then SUF on top of it. */
+  a.roll('fuel'); a.raw(op(OP.OP_TOALTSTACK), 1, [])
+  a.roll('SUF'); a.raw(op(OP.OP_TOALTSTACK), 1, [])
+
+  /* ── AND ONLY WHILE RACING ──────────────────────────────────────────────────────────────────────
+     A car being built does not move. The physics are gated on the NEW phase being RACING, which covers
+     both the launch (ARMED → RACING) and every move after it, and leaves the loading phases alone.
+
+     ⚠ The altstack work is deliberately OUTSIDE this branch. Asm checks that both arms agree about the
+     MAIN stack and cannot see the altstack at all, so a FROMALTSTACK in one arm and not the other would
+     leave the two silently out of step — and it would surface a hundred opcodes later as a rebuild that
+     hashes to nothing recognisable. Mass is computed unconditionally; it is a few multiplies and it
+     costs less than the risk. */
+  a.pick('phase'); a.num(PHASE.RACING); a.bin(OP.OP_NUMEQUAL, 'racing')
+  a.ifBegin()
+
+  // grip = (tyr·G0 + fmul(v, GV)) · slip / SLIP_UNIT      (the surface scales everything)
+  a.pick('tyr'); a.num(regs.G0); a.bin(OP.OP_MUL, 'tyrG')
+  a.pick('v'); a.num(regs.GV); fmul(); a.rename('vG')
+  a.bin(OP.OP_ADD, 'g')
+  a.pick('slip'); a.bin(OP.OP_MUL, 'g'); a.num(SLIP_UNIT); a.bin(OP.OP_DIV, 'grip')
+
+  // demand = eng·FE·throttle / THROTTLE_MAX
+  a.pick('eng'); a.num(regs.FE); a.bin(OP.OP_MUL, 'engF')
+  a.pick('throttle'); a.bin(OP.OP_MUL, 'engFt')
+  a.num(regs.THROTTLE_MAX); a.bin(OP.OP_DIV, 'demand')
+
+  // spun = demand > grip · force = min(demand, grip)
+  a.pick('demand'); a.pick('grip'); a.bin(OP.OP_GREATERTHAN, 'spun')
+  a.pick('demand'); a.pick('grip'); a.bin(OP.OP_MIN, 'force')
+
+  // v' = v + force/mass − fmul(v, DRAG), collapsed by SPIN_KEEP if the wheels went, floored at zero
+  a.pick('force'); a.num(S); a.bin(OP.OP_MUL, 'forceS')
+  a.pick('mass'); a.bin(OP.OP_DIV, 'accel')
+  a.pick('v'); a.bin(OP.OP_ADD, 'nv')
+  a.pick('v'); a.num(regs.DRAG); fmul(); a.rename('drag')
+  a.bin(OP.OP_SUB, 'nv')
+  a.pick('spun'); a.ifBegin()
+  a.num(regs.SPIN_KEEP); fmul(); a.rename('nv')
+  a.armReturn(['nv'])
+  a.elseArm()
+  a.armReturn(['nv'])
+  a.endIf()
+  a.num(0); a.bin(OP.OP_MAX, 'nv')
+
+  // s' = s + v'   ·   n' = n + 1
+  a.pick('s'); a.pick('nv'); a.bin(OP.OP_ADD, 'ns')
+  a.pick('n'); a.o(OP.OP_1ADD, 1, ['nn'])
+  a.armReturn(['ns', 'nv', 'nn'])
+
+  a.elseArm()
+  // not racing: the car is being built, and stands exactly where it was
+  a.pick('s', 'ns'); a.pick('v', 'nv'); a.pick('n', 'nn')
+  a.armReturn(['ns', 'nv', 'nn'])
+  a.endIf()
+
+  /* Three old fields and one working value are now buried under the new ones, and all four must go —
+     `mass` included, which was computed before the branch and therefore survived both arms. Rolled out
+     by NAME rather than by depth, so the model does the arithmetic and the order cannot matter. */
+  for (const dead of ['mass', 's', 'v', 'n']) { a.roll(dead, '_dead'); a.drop(1) }
+  a.st[a.st.length - 3] = 's'; a.st[a.st.length - 2] = 'v'; a.st[a.st.length - 1] = 'n'
+  return a.ops
+}
+
+/**
  * Two-pass, like the battery: the offset push is the same byte-width whether probing or final, so the
  * length used to size the scriptCode varint is stable.
  * Before the first field: three 2-byte header pushes = 6, then phase's 1-byte push opcode → O = 7.
@@ -708,9 +813,14 @@ export function buildShellLock(p: Omit<ShellLockParams, 'fieldOffset'>): Locking
  * positions, not arguments, and a missing push would shift every depth above it.
  */
 export function shellUnlockingOps(
-  p: { spenderOutputs: number[]; newValue: number[]; preimage: number[]; sig?: number[]; pubKey?: number[] },
+  p: { spenderOutputs: number[]; newValue: number[]; preimage: number[]
+       sig?: number[]; pubKey?: number[]; throttle?: number },
 ): ScriptChunk[] {
   return [
+    // ★ THROTTLE GOES DEEPEST — the driver's one freedom, and the only thing entering the covenant
+    // from outside. Deepest because adding an item BELOW leaves every depth measured from the top
+    // unchanged, so the signature check's offsets did not have to move to make room for it.
+    PN(p.throttle ?? 0),
     pushData(p.sig ?? []), pushData(p.pubKey ?? []),
     pushData(p.spenderOutputs), pushData(p.newValue), pushData(p.preimage),
   ]

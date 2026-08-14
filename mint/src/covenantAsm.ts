@@ -61,6 +61,20 @@ export class Asm {
     return this.raw(op(OP.OP_PICK), 1, [as ?? name + "'"])
   }
   bin(code: number, as: string): this { return this.o(code, 2, [as]) }
+  /**
+   * OP_ROLL — like pick, but the value MOVES rather than being copied, so the model must remove it
+   * from where it was. Used to put things back on the altstack in the right order, which pick cannot
+   * do because it would leave a duplicate behind.
+   */
+  roll(name: string, as?: string): this {
+    const d = this.depth(name)
+    this.raw(PN(d), 0, ['_d'])
+    this.raw(op(OP.OP_ROLL), 1, [])
+    const i = this.st.lastIndexOf(name)
+    this.st.splice(i, 1)
+    this.st.push(as ?? name)
+    return this
+  }
   drop(n: number): this { for (let i = 0; i < n; i++) this.o(OP.OP_DROP, 1, []); return this }
   /** Rename the top of the model without emitting an opcode (after a pick that is really an alias). */
   rename(as: string): this { this.st.pop(); this.st.push(as); return this }

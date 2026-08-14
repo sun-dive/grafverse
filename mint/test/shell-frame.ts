@@ -12,7 +12,7 @@
 // merely believe are correct.
 import { Transaction, Spend, LockingScript, UnlockingScript, TransactionSignature, PrivateKey, P2PKH, Hash } from '@bsv/sdk'
 import {
-  emptyShell, loadCar, loadTrack, arm, buildShellLock, shellUnlockingOps, SHELL_SCOPE,
+  emptyShell, loadCar, loadTrack, arm, refTick, buildShellLock, shellUnlockingOps, SHELL_SCOPE,
   FIELDS, FIELD_WIDTHS, RACER_REGS, S, PHASE, PHASE_NAMES, type ShellState,
 } from '../src/shell.ts'
 import { serializeOutput } from '../src/covenant.ts'
@@ -40,6 +40,20 @@ const VALUE = 50_000
 const GREEN = 1_700_000_123, LAST = 1_700_000_456, GAP = 7
 /** Comfortably past max(green, last + gap) — the default clock for moves that are not about timing. */
 const LATE = LAST + GAP + 60
+
+/**
+ * What the covenant will now accept as the successor of `st` — and the reference is what says so.
+ *
+ * Loading phases simply advance. Once the shell is armed or racing the physics run, so the answer is
+ * whatever `refTick` computes at a throttle of zero (this file's spends do not carry one). Duplicating
+ * that expectation by hand is exactly how a frame test starts agreeing with a bug.
+ */
+function next(st: ShellState, at = LATE): ShellState {
+  if (st.phase === PHASE.ARMED || st.phase === PHASE.RACING) {
+    return refTick(st, { throttle: 0, lockTime: at, fuel: VALUE }, RACER_REGS).state
+  }
+  return { ...st, phase: Math.min(st.phase + 1, PHASE.RACING) as ShellState['phase'] }
+}
 
 /**
  * Spend a shell whose output carries `next`. The only difference the script now makes is the phase, so
@@ -105,11 +119,7 @@ const LOADED: ShellState = {
   const lock = buildShellLock({ state: LOADED })
   console.log(`        locking script ${lock.toBinary().length} bytes · state ${FIELDS.length} fields`)
 
-  /** What the script does now: advance the phase, and — once racing — stamp `last` with the clock. */
-  const advanced = (st: ShellState, at = LATE): ShellState => {
-    const phase = Math.min(st.phase + 1, PHASE.RACING) as ShellState['phase']
-    return { ...st, phase, last: phase === PHASE.RACING ? at : st.last }
-  }
+  const advanced = (st: ShellState, at = LATE): ShellState => next(st, at)
 
   const r = (await spend(LOADED, advanced(LOADED)))
   check('★ a shell reads its own twelve fields and writes back eleven unchanged', r.ok)
@@ -124,7 +134,7 @@ const LOADED: ShellState = {
 // With an identity state machine, ANY different output must be rejected. If these pass, the comparison
 // at the end of the script is not actually comparing anything.
 {
-  const adv = { ...LOADED, phase: PHASE.RACING as ShellState['phase'], last: LATE }
+  const adv = next(LOADED)
   const bump = (k: keyof ShellState, by: number): ShellState =>
     ({ ...adv, [k]: (adv[k] as number) + by })
 
@@ -144,8 +154,10 @@ const LOADED: ShellState = {
 // records the order it happened. Here the script — not the reference — is what enforces it.
 {
   const at = (phase: number): ShellState => ({ ...LOADED, phase: phase as ShellState['phase'] })
+  /** The correct successor, but with the phase FORCED — so the negative cases offer a real wrong answer
+   *  rather than accidentally offering the right one. */
   const to = (from: number, phase: number): ShellState =>
-    ({ ...LOADED, phase: phase as ShellState['phase'], last: phase === PHASE.RACING ? LATE : LOADED.last })
+    ({ ...next(at(from)), phase: phase as ShellState['phase'] })
 
   for (const [from, want] of [[0, 1], [1, 2], [2, 3], [3, 4]] as const) {
     check(`${PHASE_NAMES[from]} → ${PHASE_NAMES[want]}`, (await spend(at(from), to(from, want))).ok)
@@ -170,8 +182,7 @@ const LOADED: ShellState = {
 // `driver` stops being twenty bytes the script carries around and becomes the key that must sign.
 {
   const at = (phase: number): ShellState => ({ ...LOADED, phase: phase as ShellState['phase'] })
-  const to = (phase: number): ShellState =>
-    ({ ...LOADED, phase: phase as ShellState['phase'], last: phase === PHASE.RACING ? LATE : LOADED.last })
+  const to = (phase: number): ShellState => next(at(phase - 1))
 
   check('★ the driver may move it', (await spend(at(3), to(4))).ok)
   check('★ a STRANGER may not — right shape, wrong key',
@@ -199,8 +210,12 @@ const LOADED: ShellState = {
 // has not arrived is non-final.
 {
   const armed = { ...LOADED, phase: PHASE.ARMED as ShellState['phase'], last: 0 }
-  const launched = (at: number): ShellState =>
-    ({ ...LOADED, phase: PHASE.RACING as ShellState['phase'], last: at })
+  const racing = { ...LOADED, phase: PHASE.RACING as ShellState['phase'], last: LAST }
+  /* The successor computed at a LEGAL clock, with `last` then overridden to the clock being tested.
+     The reference refuses to compute a false start at all — quite rightly — so a negative case cannot
+     ask it for one, and the script must reject on the tree before it ever looks at the physics. */
+  const launched = (at: number, from: ShellState = armed): ShellState =>
+    ({ ...next(from, Math.max(from.green, from.last + from.gap) + 120), last: at })
 
   check('★ a launch ON the green is legal',
     (await spend(armed, launched(GREEN), VALUE, DRIVER_KEY, GREEN)).ok)
@@ -209,16 +224,15 @@ const LOADED: ShellState = {
   check('  …and an hour early is no better',
     (await spend(armed, launched(GREEN - 3600), VALUE, DRIVER_KEY, GREEN - 3600)).ok, false)
 
-  const racing = { ...LOADED, phase: PHASE.RACING as ShellState['phase'], last: LAST }
   check('★ a move exactly one gap later is legal',
-    (await spend(racing, launched(LAST + GAP), VALUE, DRIVER_KEY, LAST + GAP)).ok)
+    (await spend(racing, launched(LAST + GAP, racing), VALUE, DRIVER_KEY, LAST + GAP)).ok)
   check('★ a move INSIDE the gap is refused — the machine cannot be out-clicked',
-    (await spend(racing, launched(LAST + GAP - 1), VALUE, DRIVER_KEY, LAST + GAP - 1)).ok, false)
+    (await spend(racing, launched(LAST + GAP - 1, racing), VALUE, DRIVER_KEY, LAST + GAP - 1)).ok, false)
 
   check('★ `last` is stamped with this move\'s clock, so the next gap is measured from here',
-    (await spend(racing, launched(LATE), VALUE, DRIVER_KEY, LATE)).ok)
+    (await spend(racing, launched(LATE, racing), VALUE, DRIVER_KEY, LATE)).ok)
   check('  …and a shell that lies about it is refused',
-    (await spend(racing, launched(LATE - 5), VALUE, DRIVER_KEY, LATE)).ok, false)
+    (await spend(racing, launched(LATE - 5, racing), VALUE, DRIVER_KEY, LATE)).ok, false)
 
   // Loading is not racing: the tree does not gate a car being built, and `last` stays put.
   check('the tree does not gate the loading phases',
@@ -230,7 +244,7 @@ const LOADED: ShellState = {
 // maxFee is 0 in the skeleton, so the output may not lose a satoshi. The rule itself is what is being
 // tested; the number it enforces arrives with the fee model.
 {
-  const adv = { ...LOADED, phase: PHASE.RACING as ShellState['phase'], last: LATE }
+  const adv = next(LOADED)
   check('the output may hold MORE than it started with — a top-up is just a spend',
     (await spend(LOADED, adv, VALUE + 1_000)).ok)
   check('the output may not hold LESS while maxFee is zero',
