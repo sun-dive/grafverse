@@ -1,0 +1,413 @@
+<!doctype html>
+<!-- BRC-226 demo three · Bitcoin Racers — THE TUNING BENCH — © 2026 sun-dive — Open BSV License Version 6. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bitcoin Racers · tuning bench</title>
+<meta name="robots" content="noindex">
+<meta name="description" content="A bench for feeling out the racing regulations before they are minted permanently into a covenant.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><text x=%221%22 y=%2214%22 font-size=%2214%22>🏁</text></svg>">
+<style>
+  :root{
+    --bg:#070b12; --panel:#0d1523; --line:#1d2b42; --ink:#dbe6f5; --dim:#8ba3c4; --faint:#5b7a9e;
+    --cyan:#5ad6ff; --lime:#b4ff3a; --tang:#ffab3d; --mag:#ff5d8f;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:24px 18px 70px}
+  h1{font-size:clamp(21px,3.4vw,30px);margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--dim);font-size:14px;margin:0 0 4px;max-width:78ch}
+  .warn{color:var(--tang);font-size:13px;margin:8px 0 20px;max-width:78ch}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:14px}
+  .card h2{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--cyan);margin:0 0 12px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  label{display:block;font-size:11.5px;color:var(--dim);margin:9px 0 3px;font-family:var(--mono)}
+  input[type=range]{width:100%;accent-color:var(--cyan);margin:0}
+  .val{float:right;color:var(--ink);font-family:var(--mono);font-size:11.5px}
+  select,button{font:inherit}
+  button{background:var(--cyan);color:#04131c;border:0;border-radius:22px;padding:10px 18px;font-weight:700;cursor:pointer}
+  button.ghost{background:transparent;color:var(--cyan);border:1px solid var(--line);font-weight:600}
+  button:disabled{opacity:.45;cursor:default}
+  select{background:#0a1220;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 9px;width:100%}
+  canvas{width:100%;display:block;border-radius:9px;background:#050a11;border:1px solid var(--line)}
+  table{border-collapse:collapse;font:12px/1.5 var(--mono);width:100%}
+  th,td{padding:3px 7px;text-align:right;border-bottom:1px solid #14203200}
+  th{color:var(--dim);font-weight:600}
+  td.k{text-align:left;color:var(--dim)}
+  .A{color:var(--lime)} .B{color:var(--mag)}
+  pre{background:#050a11;border:1px solid var(--line);border-radius:9px;padding:11px;overflow:auto;
+      font:11.5px/1.5 var(--mono);color:var(--dim);margin:10px 0 0}
+  .map{font:10px/1.25 var(--mono);white-space:pre;overflow-x:auto;color:var(--dim)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+  .note{color:var(--dim);font-size:12.5px;margin:10px 0 0}
+  .big{font:700 26px/1 var(--mono);letter-spacing:-.02em}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Bitcoin Racers · tuning bench 🏁</h1>
+  <p class="sub">Every number here is <b>provisional</b>. This bench exists so they can be felt rather than
+     reasoned about, and settled <i>before</i> they are minted permanently into a covenant with no key to
+     amend them.</p>
+  <p class="warn">⚠ It runs the exact code the covenant will be validated against —
+     <code>mint/src/shell.ts</code>, through <code>vendor/grafmint.js</code>. A bench that reimplements the
+     physics is a bench that quietly disagrees with the chain.</p>
+
+  <div class="card">
+    <h2>The regulations · baked into the shell, identical for every instance</h2>
+    <div class="grid" id="regs"></div>
+    <div class="row">
+      <button class="ghost" id="reset">↺ back to provisional</button>
+      <button class="ghost" id="export">⧉ copy as TypeScript</button>
+      <span class="note" id="reg-note"></span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2 class="A">Car A</h2>
+      <div id="carA"></div>
+    </div>
+    <div class="card">
+      <h2 class="B">Car B</h2>
+      <div id="carB"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>The strip</h2>
+    <label>finish line · fixed-point units <span class="val" id="v-finish"></span></label>
+    <input type="range" id="finish" min="5" max="400" step="5" value="60">
+    <canvas id="strip" width="1100" height="150"></canvas>
+    <div class="row">
+      <button id="run">▶ Run the race</button>
+      <span class="note" id="verdict"></span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Result</h2>
+      <table id="result"></table>
+      <p class="note">ET is the tick count — the chain length. Fuel burned is what the miners took, so a
+         slower run is a more expensive one with no penalty anybody had to design.</p>
+    </div>
+    <div class="card">
+      <h2>Velocity</h2>
+      <canvas id="chart" width="1100" height="230"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Traction off the line · full throttle</h2>
+    <div class="map" id="map"></div>
+    <p class="note"><b>·</b> hooks up &nbsp; <b>×</b> spins. At the provisional numbers every engine above 6
+       spins at every tyre grade, which is why a big engine currently loses to a small one by five to one.</p>
+  </div>
+
+  <div class="card">
+    <h2>Is there a dominant build?</h2>
+    <p class="note" style="margin:0 0 10px">Runs every engine and tyre combination over the current strip with
+       a driver who never breaks traction. If one build wins everywhere, the meta is broken — a good one has
+       no car that is right for every track.</p>
+    <div class="row" style="margin-top:0">
+      <button class="ghost" id="sweep">⇉ Sweep every build</button>
+      <span class="note" id="sweep-note"></span>
+    </div>
+    <div class="map" id="sweepmap" style="margin-top:10px"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $=function(i){return document.getElementById(i)};
+  var GM=null, R=null, S=1;
+
+  /* ── THE ONE RULE OF THIS BENCH ────────────────────────────────────────────────────────────────────
+     Every physics call goes through grafmint, which bundles mint/src/shell.ts — the same module the
+     covenant's Script will be validated against. Nothing here reimplements a single equation. */
+  function ensureGM(){
+    if(GM) return Promise.resolve(GM);
+    if(window.GrafMint){ GM=window.GrafMint; return Promise.resolve(GM) }
+    return new Promise(function(res,rej){
+      var s=document.createElement('script'); s.src='/vendor/grafmint.js';
+      s.onload=function(){ GM=window.GrafMint; res(GM) };
+      s.onerror=function(){ rej(Error('could not load grafmint.js — serve this page, do not open the file')) };
+      document.head.appendChild(s);
+    });
+  }
+
+  /* Which regs get a slider, and over what range. `sc` is the display scale: fixed-point values are
+     shown as the decimals a human thinks in, integers as themselves. */
+  var REGDEF=[
+    ['M0','chassis mass',0.2,4,0.05,'fp'],
+    ['WE','mass per unit of engine',0,0.4,0.005,'fp'],
+    ['WF','mass per satoshi of fuel',0,0.001,0.00001,'fp'],
+    ['FE','force per unit of engine',0.01,1.5,0.01,'fp'],
+    ['G0','grip per unit of tyre',0.01,1.5,0.01,'fp'],
+    ['GV','extra grip per unit of speed',0,3,0.02,'fp'],
+    ['DRAG','drag per tick',0,0.2,0.002,'fp'],
+    ['SPIN_KEEP','★ what survives a wheelspin',0,1,0.01,'fp'],
+    ['BURN0','satoshis burned per tick',1,300,1,'int'],
+    ['BURN_E','extra burn per unit of engine',0,40,1,'int'],
+    ['THROTTLE_MAX','throttle steps',1,63,1,'int'],
+    ['ENG_MAX','engine limit',1,40,1,'int'],
+    ['TYR_MAX','tyre limit',1,20,1,'int']
+  ];
+
+  function buildRegUI(){
+    var html='';
+    REGDEF.forEach(function(d){
+      html+='<div><label for="r-'+d[0]+'">'+d[0]+' · '+d[1]+
+            '<span class="val" id="rv-'+d[0]+'"></span></label>'+
+            '<input type="range" id="r-'+d[0]+'" min="'+d[2]+'" max="'+d[3]+'" step="'+d[4]+'"></div>';
+    });
+    $('regs').innerHTML=html;
+    REGDEF.forEach(function(d){
+      $('r-'+d[0]).addEventListener('input',function(){ readRegs(); paintMap(); showRegNote(); });
+    });
+  }
+  function setRegUI(){
+    REGDEF.forEach(function(d){
+      var v=R[d[0]]; $('r-'+d[0]).value = (d[5]==='fp') ? (v/S) : v;
+    });
+    syncRegLabels();
+  }
+  function syncRegLabels(){
+    REGDEF.forEach(function(d){
+      var raw=+$('r-'+d[0]).value;
+      $('rv-'+d[0]).textContent = (d[5]==='fp') ? raw.toFixed(String(d[4]).split('.')[1] ? String(d[4]).split('.')[1].length : 2) : raw;
+    });
+  }
+  function readRegs(){
+    REGDEF.forEach(function(d){
+      var raw=+$('r-'+d[0]).value;
+      R[d[0]] = (d[5]==='fp') ? Math.round(raw*S) : Math.round(raw);
+    });
+    syncRegLabels(); buildCarUI();
+  }
+  function showRegNote(){
+    var n=$('reg-note');
+    n.textContent = (R.SPIN_KEEP>=S) ? 'SPIN_KEEP is 1.00 — a spin costs nothing, so no driver ever takes a risk.'
+               : (R.SPIN_KEEP===0)   ? 'SPIN_KEEP is 0 — one spin ends the run.'
+               : '';
+  }
+
+  /* ── the cars ─────────────────────────────────────────────────────────────────────────────────── */
+  var CARS={ A:{eng:6,tyr:6,tank:20000,strat:'smart',fixed:8}, B:{eng:14,tyr:9,tank:20000,strat:'smart',fixed:8} };
+  function buildCarUI(){
+    ['A','B'].forEach(function(k){
+      var c=CARS[k];
+      if(c.eng>R.ENG_MAX)c.eng=R.ENG_MAX; if(c.tyr>R.TYR_MAX)c.tyr=R.TYR_MAX;
+      if(c.fixed>R.THROTTLE_MAX)c.fixed=R.THROTTLE_MAX;
+      $('car'+k).innerHTML=
+        '<label>engine <span class="val">'+c.eng+' of '+R.ENG_MAX+'</span></label>'+
+        '<input type="range" id="'+k+'-eng" min="1" max="'+R.ENG_MAX+'" step="1" value="'+c.eng+'">'+
+        '<label>tyres <span class="val">'+c.tyr+' of '+R.TYR_MAX+'</span></label>'+
+        '<input type="range" id="'+k+'-tyr" min="1" max="'+R.TYR_MAX+'" step="1" value="'+c.tyr+'">'+
+        '<label>tank · satoshis, and they are WEIGHT <span class="val">'+c.tank.toLocaleString()+'</span></label>'+
+        '<input type="range" id="'+k+'-tank" min="1000" max="200000" step="1000" value="'+c.tank+'">'+
+        '<label>driver</label>'+
+        '<select id="'+k+'-strat">'+
+          '<option value="smart"'+(c.strat==='smart'?' selected':'')+'>never breaks traction</option>'+
+          '<option value="full"'+(c.strat==='full'?' selected':'')+'>flat out, always</option>'+
+          '<option value="fixed"'+(c.strat==='fixed'?' selected':'')+'>a constant throttle</option>'+
+        '</select>'+
+        (c.strat==='fixed'
+          ? '<label>throttle <span class="val">'+c.fixed+'</span></label>'+
+            '<input type="range" id="'+k+'-fixed" min="0" max="'+R.THROTTLE_MAX+'" step="1" value="'+c.fixed+'">'
+          : '');
+      ['eng','tyr','tank','fixed'].forEach(function(f){
+        var el=$(k+'-'+f); if(el) el.addEventListener('input',function(){ CARS[k][f]=+this.value; buildCarUI(); });
+      });
+      $(k+'-strat').addEventListener('change',function(){ CARS[k].strat=this.value; buildCarUI(); });
+    });
+  }
+
+  /* ── the driver ───────────────────────────────────────────────────────────────────────────────────
+     `smart` is the benchmark that matters: the largest throttle that does NOT break traction this tick.
+     If it beats flat-out by a wide margin there is real skill in the launch; if it does not, the game is
+     a spec sheet and the constants need moving. */
+  function pickThrottle(st, fuel, c){
+    if(c.strat==='full') return R.THROTTLE_MAX;
+    if(c.strat==='fixed') return c.fixed;
+    var lo=0, hi=R.THROTTLE_MAX, best=0;
+    while(lo<=hi){
+      var mid=(lo+hi)>>1;
+      var r; try{ r=GM.refTick(st,{throttle:mid,lockTime:st.last+1,fuel:fuel},R) }catch(e){ break }
+      if(r.spun){ hi=mid-1 } else { best=mid; lo=mid+1 }
+    }
+    return best;
+  }
+
+  function race(c, finishUnits){
+    var st=GM.arm(GM.loadTrack(GM.loadCar(GM.emptyShell(),{driver:new Array(20).fill(1),eng:c.eng,tyr:c.tyr},R),
+                  {finish:Math.round(finishUnits*S),green:1,gap:0}));
+    var fuel=c.tank, trace=[], spins=0, t=1, CAP=4000;
+    while(st.phase!==GM.PHASE.DONE && fuel>R.BURN0 && st.n<CAP){
+      var th=pickThrottle(st,fuel,c);
+      var r; try{ r=GM.refTick(st,{throttle:th,lockTime:t++,fuel:fuel},R) }catch(e){ break }
+      st=r.state; fuel-=r.burn; if(r.spun)spins++;
+      trace.push({s:st.s,v:st.v,fuel:fuel,th:th});
+    }
+    return { st:st, fuel:fuel, used:c.tank-fuel, trace:trace, spins:spins,
+             finished:st.phase===GM.PHASE.DONE, et:st.n };
+  }
+
+  /* ── drawing ──────────────────────────────────────────────────────────────────────────────────── */
+  var lastRun=null;
+  function drawStrip(frac){
+    var cv=$('strip'), x=cv.getContext('2d'), W=cv.width, H=cv.height;
+    x.fillStyle='#050a11'; x.fillRect(0,0,W,H);
+    var pad=26, lane=[52,100], fin=+$('finish').value;
+    // the strip
+    x.strokeStyle='#1d2b42'; x.lineWidth=1;
+    lane.forEach(function(y){ x.beginPath(); x.moveTo(pad,y); x.lineTo(W-pad,y); x.stroke(); });
+    // start + finish
+    x.fillStyle='#2b3d5c'; x.fillRect(pad-2,26,2,H-46);
+    for(var i=0;i<12;i++){ x.fillStyle=(i%2?'#dbe6f5':'#0d1523'); x.fillRect(W-pad,26+i*((H-46)/12),6,(H-46)/12); }
+    x.fillStyle='#5b7a9e'; x.font='11px ui-monospace,monospace';
+    x.fillText('0',pad-3,20); x.fillText(fin+' units',W-pad-46,20);
+    if(!lastRun) return;
+    ['A','B'].forEach(function(k,idx){
+      var run=lastRun[k], y=lane[idx], col=idx?'#ff5d8f':'#b4ff3a';
+      var upto=Math.max(1,Math.floor(run.trace.length*frac));
+      var pt=run.trace[Math.min(upto,run.trace.length)-1];
+      var prog=pt? Math.min(1, pt.s/(fin*S)) : 0;
+      var px=pad+prog*(W-2*pad-8);
+      // the trail
+      x.strokeStyle=col+'44'; x.lineWidth=3; x.beginPath(); x.moveTo(pad,y); x.lineTo(px,y); x.stroke();
+      // the car
+      x.fillStyle=col; x.fillRect(px-9,y-7,18,14);
+      x.fillStyle='#04131c'; x.font='700 9px ui-monospace,monospace'; x.fillText(k,px-3,y+3);
+      x.fillStyle=col; x.font='11px ui-monospace,monospace';
+      x.fillText('eng '+CARS[k].eng+' · tyr '+CARS[k].tyr+(pt?' · tick '+upto:''),pad,y-14);
+    });
+  }
+  function drawChart(){
+    var cv=$('chart'), x=cv.getContext('2d'), W=cv.width, H=cv.height, pad=30;
+    x.fillStyle='#050a11'; x.fillRect(0,0,W,H);
+    if(!lastRun) return;
+    var maxT=1,maxV=1;
+    ['A','B'].forEach(function(k){ lastRun[k].trace.forEach(function(p,i){ if(i>maxT)maxT=i; if(p.v>maxV)maxV=p.v }) });
+    x.strokeStyle='#1d2b42'; x.beginPath(); x.moveTo(pad,H-pad); x.lineTo(W-8,H-pad); x.moveTo(pad,8); x.lineTo(pad,H-pad); x.stroke();
+    x.fillStyle='#5b7a9e'; x.font='10px ui-monospace,monospace';
+    x.fillText('v',6,14); x.fillText('ticks',W-38,H-10); x.fillText((maxV/S).toFixed(2),4,24);
+    ['A','B'].forEach(function(k,idx){
+      var tr=lastRun[k].trace, col=idx?'#ff5d8f':'#b4ff3a';
+      x.strokeStyle=col; x.lineWidth=1.6; x.beginPath();
+      tr.forEach(function(p,i){
+        var px=pad+(i/maxT)*(W-pad-10), py=H-pad-(p.v/maxV)*(H-pad-14);
+        i?x.lineTo(px,py):x.moveTo(px,py);
+      });
+      x.stroke();
+    });
+  }
+  function paintMap(){
+    if(!GM) return;
+    var out='  eng\\tyr', t;
+    for(t=1;t<=R.TYR_MAX;t++) out+=String(t).padStart(3);
+    out+='\n';
+    for(var e=1;e<=R.ENG_MAX;e++){
+      out+=String(e).padStart(7)+' ';
+      for(t=1;t<=R.TYR_MAX;t++){
+        var st=GM.arm(GM.loadTrack(GM.loadCar(GM.emptyShell(),{driver:new Array(20).fill(1),eng:e,tyr:t},R),
+                      {finish:1000*S,green:1,gap:0}));
+        var r=GM.refTick(st,{throttle:R.THROTTLE_MAX,lockTime:1,fuel:20000},R);
+        out+=(r.spun?'  ×':'  ·');
+      }
+      out+='\n';
+    }
+    $('map').textContent=out;
+  }
+
+  function runRace(){
+    var fin=+$('finish').value;
+    lastRun={ A:race(CARS.A,fin), B:race(CARS.B,fin) };
+    var rows='<tr><th class="k"></th><th class="A">A</th><th class="B">B</th></tr>';
+    function row(k,a,b){ rows+='<tr><td class="k">'+k+'</td><td class="A">'+a+'</td><td class="B">'+b+'</td></tr>' }
+    row('ET · ticks', lastRun.A.finished?lastRun.A.et:'DNF', lastRun.B.finished?lastRun.B.et:'DNF');
+    row('fuel burned', lastRun.A.used.toLocaleString(), lastRun.B.used.toLocaleString());
+    row('fuel left', Math.max(0,lastRun.A.fuel).toLocaleString(), Math.max(0,lastRun.B.fuel).toLocaleString());
+    row('wheelspins', lastRun.A.spins, lastRun.B.spins);
+    row('final v', (lastRun.A.st.v/S).toFixed(3), (lastRun.B.st.v/S).toFixed(3));
+    row('reached', (lastRun.A.st.s/S).toFixed(1), (lastRun.B.st.s/S).toFixed(1));
+    $('result').innerHTML=rows;
+
+    var vA=lastRun.A, vB=lastRun.B, v=$('verdict');
+    if(!vA.finished && !vB.finished) v.innerHTML='<b style="color:var(--tang)">Neither car reached the line.</b> Both ran dry.';
+    else if(vA.finished && (!vB.finished || vA.et<vB.et)) v.innerHTML='<b class="A">A wins</b> — '+vA.et+' ticks'+(vB.finished?' to '+vB.et:', B ran dry');
+    else if(vB.finished && (!vA.finished || vB.et<vA.et)) v.innerHTML='<b class="B">B wins</b> — '+vB.et+' ticks'+(vA.finished?' to '+vA.et:', A ran dry');
+    else v.innerHTML='<b>A dead heat</b> at '+vA.et+' ticks — the pot would go to whoever got mined first.';
+
+    drawChart();
+    var t0=performance.now();
+    (function anim(){
+      var f=Math.min(1,(performance.now()-t0)/1800);
+      drawStrip(f); if(f<1) requestAnimationFrame(anim);
+    })();
+  }
+
+  /* ── the sweep: is one build right for everything? ────────────────────────────────────────────── */
+  function sweep(){
+    var fin=+$('finish').value, best=null, worst=0, res=[];
+    $('sweep-note').textContent='running…';
+    setTimeout(function(){
+      var t0=performance.now();
+      for(var e=1;e<=R.ENG_MAX;e++){
+        res[e]=[];
+        for(var t=1;t<=R.TYR_MAX;t++){
+          var r=race({eng:e,tyr:t,tank:CARS.A.tank,strat:'smart',fixed:0},fin);
+          res[e][t]= r.finished ? r.et : null;
+          if(r.finished){ if(!best||r.et<best.et) best={eng:e,tyr:t,et:r.et}; if(r.et>worst)worst=r.et; }
+        }
+      }
+      var out='  eng\\tyr', t2;
+      for(t2=1;t2<=R.TYR_MAX;t2++) out+=String(t2).padStart(5);
+      out+='\n';
+      for(var e2=1;e2<=R.ENG_MAX;e2++){
+        out+=String(e2).padStart(7)+' ';
+        for(t2=1;t2<=R.TYR_MAX;t2++){
+          var v=res[e2][t2];
+          out+= v===null ? '  DNF' : String(v).padStart(5);
+        }
+        out+='\n';
+      }
+      $('sweepmap').textContent=out;
+      $('sweep-note').innerHTML='fastest: <b>engine '+best.eng+', tyres '+best.tyr+'</b> at '+best.et+
+        ' ticks · slowest finisher '+worst+' · '+Math.round(performance.now()-t0)+' ms';
+    },20);
+  }
+
+  /* ── boot ─────────────────────────────────────────────────────────────────────────────────────── */
+  ensureGM().then(function(){
+    S=GM.SHELL_S;
+    R=Object.assign({},GM.PROVISIONAL_REGS);
+    buildRegUI(); setRegUI(); buildCarUI(); paintMap(); showRegNote();
+    $('v-finish').textContent=$('finish').value+' units';
+    $('finish').addEventListener('input',function(){ $('v-finish').textContent=this.value+' units' });
+    $('run').onclick=runRace;
+    $('sweep').onclick=sweep;
+    $('reset').onclick=function(){ R=Object.assign({},GM.PROVISIONAL_REGS); setRegUI(); buildCarUI(); paintMap(); showRegNote(); };
+    $('export').onclick=function(){
+      var body=REGDEF.map(function(d){
+        return '  '+d[0]+': '+(d[5]==='fp' ? 'Math.round('+(R[d[0]]/S)+' * S)' : R[d[0]])+',';
+      }).join('\n');
+      var text='export const RACER_REGS: RacerRegs = {\n'+body+'\n}\n';
+      try{ navigator.clipboard.writeText(text) }catch(e){}
+      $('reg-note').textContent='copied — paste over PROVISIONAL_REGS in mint/src/shell.ts';
+      console.log(text);
+    };
+    runRace();
+  }).catch(function(e){
+    document.querySelector('.wrap').insertAdjacentHTML('beforeend',
+      '<div class="card" style="border-color:var(--mag)"><b>'+e.message+'</b></div>');
+  });
+})();
+</script>
+</body>
+</html>

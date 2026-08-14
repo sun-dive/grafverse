@@ -85,3 +85,14 @@ export {
   toFundingInputs, wocScriptHash, resolveHolderEdition,
   scanIncomingEditions, scanMySales, scanCollectionBuyers,
 } from './editionBuilder.ts'
+
+// ── the programmable shell (BRC-226 demo three — Bitcoin Racers) ──
+// Exported so the tuning bench runs the EXACT code the covenant will be validated against. A toy that
+// reimplements the physics is a toy that quietly disagrees with the chain, which is the one thing it
+// must never do — the battery's preview is bit-identical to its covenant for the same reason.
+export {
+  PHASE, PHASE_NAMES, FIELDS as SHELL_FIELDS, FIELD_WIDTHS as SHELL_FIELD_WIDTHS, STATE_BYTES,
+  PROVISIONAL_REGS, SHELL_STATE_LAYOUT, SHELL_SCOPE, SHELL_FEE_SLACK, S as SHELL_S,
+  emptyShell, loadCar, loadTrack, arm, refTick, canFinish, ShellRefused, fmul, fdiv,
+} from './shell.ts'
+export type { ShellState, RacerRegs, Move, TickResult, Phase } from './shell.ts'
