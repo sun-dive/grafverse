@@ -1020,7 +1020,10 @@ function shellPhysicsOps(regs: RacerRegs): ScriptChunk[] {
      eleven fields away. A stack cannot push something DOWNWARD, so instead every field above it is
      rolled UP over it, in FIELDS order. Eleven rolls, and the order comes out exactly right. */
   for (const k of ['driver', 'pool', 'eng', 'tyr', 'finish', 'slip', 'green', 'gap', 'last', 'ns', 'nv', 'nn']) a.roll(k)
-  if (process.env.SHELL_DEBUG) console.log('  leaves:', a.st.join(','))
+  /* ⚠ `process` DOES NOT EXIST IN A BROWSER, and this file is bundled into one. Unguarded, this line
+     threw ReferenceError the instant a page built a lock — which every racers page does on load, so
+     nothing ran at all. The SDK guards its own `process.release` check the same way; this did not. */
+  if (typeof process !== 'undefined' && process.env.SHELL_DEBUG) console.log('  leaves:', a.st.join(','))
   a.st[a.st.length - (FIELDS.length)] = 'phase'
   a.st[a.st.length - 3] = 's'; a.st[a.st.length - 2] = 'v'; a.st[a.st.length - 1] = 'n'
   return a.ops
