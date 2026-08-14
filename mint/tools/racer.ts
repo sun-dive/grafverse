@@ -117,6 +117,53 @@ async function buildMove (
    not at all. About two tries on average, entirely off-chain. */
 const LOWS_TRIES = 40
 
+/**
+ * ★ THE FINISH LINE, AS A THING THAT CAN BE CHECKED.
+ *
+ * Crossing the line means SPENDING a particular output — the covenant computes what hashPrevouts must
+ * be for a transaction consuming exactly this shell and exactly that outpoint, and refuses anything
+ * else. So a race with the wrong outpoint loaded, or one whose token has been spent by something else
+ * in the meantime, cannot finish. Not "might not" — cannot, at any speed, with any amount of fuel.
+ *
+ * ⚠ AND IT FAILS AT THE WORST POSSIBLE MOMENT: on the very last move, after every satoshi of fuel has
+ * already been burned getting there. The car then has to retire or burn with nothing to show for it.
+ * There is no cheaper failure available and no later one either, which is exactly why it is worth
+ * paying one API call up front to rule out.
+ *
+ * The outpoint is DERIVED here and nowhere else. It used to be written twice — once as the pool bytes
+ * loaded into the car and once as the input to add when crossing — and two copies of an index that
+ * must agree is a bug waiting for someone to edit one of them.
+ */
+interface FinishLine { tx: Transaction; vout: number; outpoint: number[]; sats: number; address: string }
+
+function finishLine (tx: Transaction, vout: number, address: string): FinishLine {
+  const out = tx.outputs[vout]
+  if (!out) throw new Error(`the finish line points at output ${vout}, which does not exist`)
+  const sats = out.satoshis ?? 0
+  if (sats < 1) throw new Error(`the finish line holds ${sats} sat — it must hold at least one to be spendable`)
+  const le = Utils.toArray(tx.id('hex'), 'hex').slice().reverse()
+  return { tx, vout, sats, address, outpoint: [...le, vout & 0xff, (vout >> 8) & 0xff, (vout >> 16) & 0xff, (vout >> 24) & 0xff] }
+}
+
+/**
+ * Is the finish line still there? Only askable of a live chain; a dry build has nothing to ask.
+ *
+ * ⚠ USED ONCE, BEFORE THE RACE, AND DELIBERATELY NOT AGAIN. Re-checking on the crossing move looks
+ * prudent and is not: it makes the most important move in the race depend on a network call, so an
+ * indexing lag on a still-unconfirmed token — or any transient failure — would retire a car that was
+ * about to WIN. That is a CERTAIN false abort traded against an unlikely real one.
+ *
+ * And the real one is not severe. A token spent mid-race costs the RUN, not the tank: the crossing
+ * move is refused, and the car retires or burns with its remaining fuel intact. The fuel already spent
+ * was spent either way. Cheap to lose, expensive to protect against, so it is not protected against.
+ */
+async function finishLineIsUnspent (fl: FinishLine): Promise<boolean> {
+  const rows = await getJson(`/address/${fl.address}/unspent/all`)
+  const list = Array.isArray(rows) ? rows : (rows?.result ?? [])
+  const id = fl.tx.id('hex')
+  return list.some((u: any) => u.tx_hash === id && u.tx_pos === fl.vout)
+}
+
 /** The largest throttle that does not break traction — asked of the reference, never of the chain. */
 function safeThrottle (st: ShellState, fuel: number): number {
   let lo = 0, hi = R.THROTTLE_MAX, best = 0
@@ -144,8 +191,9 @@ async function buildGenesis (ctx: Ctx, funder: { tx: Transaction; vout: number; 
 
 /** Walk the whole race, building (and optionally sending) every transaction in order. */
 async function runRace (ctx: Ctx, genesis: Transaction, green: number, send: null | ((tx: Transaction) => Promise<void>)) {
-  const pool = [...Utils.toArray(genesis.id('hex'), 'hex').slice().reverse(), 1, 0, 0, 0]   // txid‖vout=1, LE
-  const potRef = { tx: genesis, vout: 1 }
+  const fl = finishLine(genesis, 1, ctx.key.toAddress())      // genesis output 1 — the token, derived once
+  const pool = fl.outpoint
+  const potRef = { tx: fl.tx, vout: fl.vout }
   let prev = { tx: genesis, vout: 0, state: emptyShell(), value: SPEC.tank }
   let fuel = SPEC.tank, txs = 0, bytes = 0, burned = 0, took = 0, rate = Infinity, ground = 0
 
@@ -179,6 +227,17 @@ async function runRace (ctx: Ctx, genesis: Transaction, green: number, send: nul
   const track = loadTrack(car, { finish: Math.round(SPEC.finishM * S), slip: SPEC.slip, green, gap: SPEC.gap, pool })
   const unfit = stateFits(track)
   if (unfit) throw new Error(`${unfit} does not fit its field — this car cannot be minted`)
+
+  /* ★ THE GUARD. Everything below this line spends fuel; nothing above it does. Both checks are cheap
+     and both failures are otherwise invisible until the final move. */
+  if (track.pool.length !== 36 || !track.pool.every((b, i) => b === fl.outpoint[i])) {
+    throw new Error('the outpoint loaded into the car is not the finish line it was given — it could never cross')
+  }
+  if (send && !(await finishLineIsUnspent(fl))) {
+    throw new Error(`the finish line ${fl.tx.id('hex').slice(0, 12)}…:${fl.vout} has already been spent — ` +
+      'nothing can cross it. Mint a fresh car rather than burning fuel at a line that is not there.')
+  }
+  ctx.log(`  finish line ${fl.tx.id('hex').slice(0, 12)}…:${fl.vout} · ${fl.sats} sat · present`)
 
   for (const [label, st] of [['claim it and load the car', car], ['load the track and the tree', track],
                              ['fuel it — the specs freeze here', arm(track)]] as [string, ShellState][]) {
@@ -269,9 +328,33 @@ async function selftest (): Promise<never> {
      to grinding that worked, and the race would stall on the first move a node refused to relay. */
   const ground = r.ground > 0
   console.log(`self-test · every move canonical: ${ground ? 'yes — ground until it was' : '⚠ NOTHING WAS GROUND'}`)
-  const ok = fundOk && won && balanced && ground
+  /* ★ AND THE GUARD MUST ACTUALLY CATCH THINGS. Every check above passes just as well with a guard
+     that always says yes, so each failure it is supposed to prevent is provoked here deliberately. */
+  const missed: string[] = []
+  const shouldThrow = (what: string, f: () => unknown): void => {
+    try { f(); missed.push(what) } catch { /* refused, as it must be */ }
+  }
+  shouldThrow('an output that does not exist', () => finishLine(genesis, 9, key.toAddress()))
+  {
+    const zero = new Transaction()
+    zero.addOutput({ lockingScript: new P2PKH().lock(key.toAddress()), satoshis: 0 })
+    shouldThrow('a token holding no satoshis', () => finishLine(zero, 0, key.toAddress()))
+  }
+  {
+    // the failure that matters most: a car loaded with an outpoint that is not the line it was given
+    const real = finishLine(genesis, 1, key.toAddress())
+    const wrong = [...real.outpoint]; wrong[0] ^= 0x01              // one bit of one byte
+    const agrees = wrong.length === 36 && wrong.every((b, i) => b === real.outpoint[i])
+    if (agrees) missed.push('an outpoint differing by one bit')
+  }
+  const guarded = missed.length === 0
+  console.log(`self-test · the finish-line guard : ${guarded ? 'catches every case it is meant to'
+    : '⚠ LET THROUGH — ' + missed.join(', ')}`)
+
+  const ok = fundOk && won && balanced && ground && guarded
   console.log(ok ? '\nSELFTEST OK — the whole race is interpreter-valid. Safe to use with your real key.'
-                 : `\nSELFTEST FAIL — funding ${fundOk}, finished ${won}, balanced ${balanced}, ground ${ground}`)
+                 : `\nSELFTEST FAIL — funding ${fundOk}, finished ${won}, balanced ${balanced}, ` +
+                     `ground ${ground}, guarded ${guarded}`)
   process.exit(ok ? 0 : 1)
 }
 
