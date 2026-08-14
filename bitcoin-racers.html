@@ -41,6 +41,11 @@
   .big{font:700 30px/1 var(--mono);letter-spacing:-.02em}
   .note{color:var(--dim);font-size:12.5px;margin:10px 0 0}
   .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:14px}
+  .foot{margin-top:38px;padding-top:22px;border-top:1px solid var(--line);color:var(--faint);
+        font-size:13px;line-height:1.65;max-width:76ch}
+  .foot b{color:var(--dim)} .foot a{color:var(--cyan);text-decoration:none}
+  .foot a:hover{text-decoration:underline}
+  .foot code{font-family:var(--mono);font-size:12px;color:var(--dim)}
 </style>
 </head>
 <body>
@@ -116,6 +121,24 @@
     <p class="note">The covenant is <b id="locksize">—</b> of Bitcoin Script. It carries its own state in
       its own locking script, so each transaction is that script twice over — once in the output and once
       inside the preimage that authorises the spend. That is what a move costs.</p>
+  </div>
+
+  <div class="foot">
+    <b>Colophon.</b> The covenant is <code>mint/src/shell.ts</code>. It was designed and written on
+    <b>14 August 2026</b> by <b>sun-dive</b>, who made every design decision on this page — the drag race
+    that deleted the track problem, the finish line as a UTXO so winning and being paid are one act, the
+    three ways to lose grip told apart by cause, and the regulations themselves, felt out on the
+    <a href="/racers.html">bench</a> rather than chosen on paper — with <b>Claude (Opus 5)</b>, who wrote
+    the Script and the tests.
+    <br><br>
+    Built in six steps, each proved through the same interpreter a node runs before the next began. The
+    mistakes are in the commit history deliberately: a fee that would have been unmineable, a covenant
+    that enforced a sequence and loaded nothing, a test comparing a thing to itself, and depths written
+    down instead of derived. Every one was found by measuring something rather than by reasoning about
+    it, which is the only method here that has ever worked.
+    <br><br>
+    © 2026 sun-dive · Open BSV License Version 6 · <a href="/brc226.html">demo one</a> ·
+    <a href="/battery.html">demo two</a> · <b>in the covenant we trust</b>
   </div>
 </div>
 
