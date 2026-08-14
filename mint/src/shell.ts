@@ -196,8 +196,19 @@ export interface ShellState {
 export const FIELDS = ['phase', 'driver', 'eng', 'tyr', 'finish', 'green', 'gap', 'last', 's', 'v', 'n'] as const
 /** Fixed byte-widths, by field. PUBLISHED alongside FIELDS. */
 export const FIELD_WIDTHS: Record<(typeof FIELDS)[number], number> = {
-  phase: 1, driver: 20, eng: 2, tyr: 2, finish: 6, green: 4, gap: 4, last: 4, s: 6, v: 5, n: 4,
+  phase: 1, driver: 20, eng: 2, tyr: 2, finish: 6, green: 5, gap: 4, last: 5, s: 6, v: 5, n: 4,
 }
+/**
+ * ⚠ `green` and `last` are FIVE bytes, not four, and that is not tidiness.
+ *
+ * They hold `nLockTime`. Sign-magnitude in four bytes caps at 2,147,483,647 — which as a Unix timestamp
+ * is 19 January 2038. A shell minted today would simply stop accepting valid start times on that date,
+ * permanently, with no key anywhere able to widen the field. Five bytes carries it to the year 10,000.
+ *
+ * The cost of the insurance is two bytes, about 0.4 sat per move. The cost of discovering it later is a
+ * dead standard and every instance ever built.
+ */
+export const FIXED_POINT_FIELDS = ['finish', 's', 'v'] as const
 /** Total register file, in bytes. */
 export const STATE_BYTES = FIELDS.reduce((a, k) => a + FIELD_WIDTHS[k], 0)
 
@@ -213,6 +224,33 @@ export function emptyShell(): ShellState {
     driver: new Array(20).fill(0),
     eng: 0, tyr: 0, finish: 0, green: 0, gap: 0, last: 0, s: 0, v: 0, n: 0,
   }
+}
+
+/**
+ * The largest magnitude a field can hold. Sign-magnitude in `n` bytes spends one bit on the sign, so
+ * the usable range is ±(2^(8n−1) − 1) — NOT 2^(8n).
+ */
+export const fieldMax = (bytes: number): number => 2 ** (8 * bytes - 1) - 1
+
+/**
+ * ⚠ DOES THIS STATE ACTUALLY FIT? Returns the first field that does not, or null.
+ *
+ * The battery learned this the expensive way: `fixedField` truncates silently, so a value too large for
+ * its field produces a perfectly well-formed script carrying the wrong number, and the covenant then
+ * rejects a spend nobody can explain. Regulations that feel wonderful on a bench are worthless if the
+ * velocities they produce cannot be encoded — and at extreme settings that is easy to arrange:
+ * `FE` 1.5 against `M0` 0.2 yields 300 units of velocity in one tick, and `v` holds 128.
+ *
+ * Check this while TUNING, not after minting.
+ */
+export function stateFits(st: ShellState): string | null {
+  for (const k of FIELDS) {
+    if (k === 'driver') { if (st.driver.length !== 20) return 'driver'; continue }
+    const v = st[k] as number
+    if (!Number.isFinite(v)) return k
+    if (Math.abs(v) > fieldMax(FIELD_WIDTHS[k])) return k
+  }
+  return null
 }
 
 // ── the loading phases ───────────────────────────────────────────────────────────────────────────────

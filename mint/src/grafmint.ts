@@ -96,3 +96,4 @@ export {
   emptyShell, loadCar, loadTrack, arm, refTick, canFinish, ShellRefused, fmul, fdiv,
 } from './shell.ts'
 export type { ShellState, RacerRegs, Move, TickResult, Phase } from './shell.ts'
+export { stateFits, fieldMax } from './shell.ts'

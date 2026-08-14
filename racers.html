@@ -247,14 +247,20 @@
   function race(c, finishUnits){
     var st=GM.arm(GM.loadTrack(GM.loadCar(GM.emptyShell(),{driver:new Array(20).fill(1),eng:c.eng,tyr:c.tyr},R),
                   {finish:Math.round(finishUnits*S),green:1,gap:0}));
-    var fuel=c.tank, trace=[], spins=0, t=1, CAP=4000;
+    var fuel=c.tank, trace=[], spins=0, t=1, CAP=4000, over=null;
     while(st.phase!==GM.PHASE.DONE && fuel>R.BURN0 && st.n<CAP){
       var th=pickThrottle(st,fuel,c);
       var r; try{ r=GM.refTick(st,{throttle:th,lockTime:t++,fuel:fuel},R) }catch(e){ break }
       st=r.state; fuel-=r.burn; if(r.spun)spins++;
+      /* ⚠ CAN THIS STATE EVEN BE WRITTEN INTO A SCRIPT? Regulations that feel wonderful here are
+         worthless if the velocities they produce do not fit their field. The battery learned that the
+         expensive way: fixedField truncates SILENTLY, so an over-large value yields a well-formed
+         script carrying the wrong number and a spend nobody can explain. Caught while tuning, not
+         after minting. */
+      if(!over) over=GM.stateFits(st);
       trace.push({s:st.s,v:st.v,fuel:fuel,th:th});
     }
-    return { st:st, fuel:fuel, used:c.tank-fuel, trace:trace, spins:spins,
+    return { st:st, fuel:fuel, used:c.tank-fuel, trace:trace, spins:spins, over:over,
              finished:st.phase===GM.PHASE.DONE, et:st.n };
   }
 
@@ -355,6 +361,15 @@
     $('result').innerHTML=rows;
 
     var vA=lastRun.A, vB=lastRun.B, v=$('verdict');
+    var over=vA.over||vB.over;
+    if(over){
+      var cap=GM.fieldMax(GM.SHELL_FIELD_WIDTHS[over]);
+      var human=(over==='v'||over==='s'||over==='finish') ? (cap/S).toLocaleString()+' units' : cap.toLocaleString();
+      v.innerHTML='<b style="color:var(--mag)">⚠ THESE REGULATIONS CANNOT BE MINTED.</b> ' +
+        '<code>'+over+'</code> ran past its '+GM.SHELL_FIELD_WIDTHS[over]+'-byte field (max '+human+'). ' +
+        'On chain that truncates silently — the script would be well formed and carry the wrong number.';
+      drawChart(); drawStrip(1); return;
+    }
     if(!vA.finished && !vB.finished) v.innerHTML='<b style="color:var(--tang)">Neither car reached the line.</b> Both ran dry.';
     else if(vA.finished && (!vB.finished || vA.et<vB.et)) v.innerHTML='<b class="A">A wins</b> — '+vA.et+' ticks'+(vB.finished?' to '+vB.et:', B ran dry');
     else if(vB.finished && (!vA.finished || vB.et<vA.et)) v.innerHTML='<b class="B">B wins</b> — '+vB.et+' ticks'+(vA.finished?' to '+vA.et:', A ran dry');
