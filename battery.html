@@ -381,13 +381,14 @@
 
           <div class="err" id="c-err"></div>
           <button id="c-go" style="width:100%;margin-top:6px">Continue →</button>
-          <p class="note"><b>One transaction, signed by your own key.</b> Your grafverse wallet signs it here — the same self-custody key you mint with, restorable from your seed phrase. The transaction adds the fuel, advances the picture, writes your mark and returns your change, all at once. If anything fails it is never broadcast, so nothing moves.</p>
+          <p class="note"><b>This page holds no key and broadcasts nothing.</b> It reads that address's coins from the chain and assembles <b>one transaction</b> — fuel in, picture advanced, mark written, change back to you — then hands it over for you to sign in whatever wallet holds the address. No account, no wallet here, nothing to install.</p>
         </div>
 
           <div id="st-fund" style="display:none">
-            <p class="note" style="margin-top:0"><b>Here is the signing request. Sign it in your own wallet.</b>
-               This page never holds a key. Your signer rebuilds the transaction from these inputs and signs
-               what it built — so nothing here has to be trusted, only checked. These four lines are all of it.</p>
+            <p class="note" style="margin-top:0"><b>Here is the transaction. Sign it in your own wallet.</b>
+               It has two inputs. The battery's needs no key and is <b>already complete</b> — the covenant
+               authorises itself with a proof about the transaction. Yours is the only blank in the whole
+               document. Fill it in and broadcast. These five lines are everything it does.</p>
             <div class="stat"><span>fuel into the battery</span><b id="b-add">—</b></div>
             <div class="stat"><span>your mark</span><b id="b-mark" style="font-weight:400;text-align:right;max-width:60%"></b></div>
             <div class="stat"><span>change back to you</span><b id="b-change">—</b></div>
@@ -395,7 +396,7 @@
             <div class="stat"><span>built on tip</span><b id="b-tip" style="font-weight:400;font-size:11px">—</b></div>
 
             <label style="display:block;font-size:11.5px;color:var(--dim);margin:12px 0 3px">
-              signing request <span id="b-fmt" style="color:var(--faint)">(your signer rebuilds it and signs its own)</span>
+              transaction to sign <span id="b-fmt" style="color:var(--faint)">(unsigned transaction — sign input #2, the only blank in it)</span>
             </label>
             <textarea id="b-hex" readonly rows="4" style="width:100%;background:#0b1220;color:var(--dim);
               border:1px solid var(--line);border-radius:8px;padding:8px;font:11px/1.4 ui-monospace,monospace;
@@ -409,18 +410,15 @@
             <p class="note">Sign and broadcast it wherever you like — <b>nothing here needs to know</b>. The
                board reads the chain, so your mark appears when the transaction confirms. If it fails with
                <i>missing inputs</i>, the battery advanced while you were signing: come back and rebuild.</p>
+            <p class="note" style="color:var(--mag)"><b>Sign it exactly as it is.</b> The amounts are already
+               worked out. If your wallet offers to pick its own coins or "optimise" the inputs, say no — the
+               change here is a fixed number, so a larger coin does not come back to you as change. It goes to
+               the miner. Everything the transaction pays is on the four lines above.</p>
           </div>
 
-        <div id="st-done" style="display:none">
-          <p class="note ok" style="margin-top:0;font-size:14px"><b>Done — your fuel is in the battery.</b></p>
-          <div class="stat"><span>you added</span><b id="d-added">—</b></div>
-          <div class="stat"><span>battery now holds</span><b id="d-fuel">—</b></div>
-          <div class="stat"><span>your mark</span><b id="d-mark" style="font-weight:400;text-align:right;max-width:60%"></b></div>
-          <div class="addr" id="d-txid" style="margin-top:10px">…</div>
-          <a id="d-link" class="ghost" href="#" target="_blank" rel="nofollow noopener"
-             style="display:block;text-align:center;margin-top:10px;padding:11px;border-radius:24px;border:1px solid var(--line);color:var(--cyan);text-decoration:none;font:600 14px system-ui">see it on chain ↗</a>
-          <button id="d-close" style="width:100%;margin-top:8px">Close</button>
-        </div>
+        <!-- There is no third step. The page hands over a transaction and never learns what you did
+             with it — so a "done" panel here could only be a guess. The board is the answer, and it
+             gets it from the chain. -->
 
       </div>
     </div>
@@ -1369,7 +1367,10 @@
 
   /* ── contribute: the signed half ──────────────────────────────────────────────────────────────── */
   var ov=$('ov');
-  function show(step){ ['st-compose','st-fund','st-done'].forEach(function(id){
+  /* Two steps, not three. There was a "done — your fuel is in the battery" panel, which the page can
+     no longer honestly show: it does not broadcast, so it never learns whether you signed. The board
+     answers that question anyway, by reading the chain. */
+  function show(step){ ['st-compose','st-fund'].forEach(function(id){
     $(id).style.display = id===step?'':'none' }) }
   /* FUNDING IS OPEN. It was paused while the covenant was replaced; this now funds the battery minted
      at 3840x2160. There is no pending-session concept left to resume — a top-up is ONE signed
@@ -1378,8 +1379,8 @@
     ov.classList.add('on');
     show('st-compose');
   }
-  function close(){ ov.classList.remove('on'); if(poll){clearInterval(poll);poll=null} }
-  $('lv-fuelit').onclick=open; $('md-x').onclick=close; $('d-close').onclick=function(){close();load(true)};
+  function close(){ ov.classList.remove('on'); load(true) }
+  $('lv-fuelit').onclick=open; $('md-x').onclick=close;
   ov.addEventListener('click',function(e){ if(e.target===ov) close() });
 
 
@@ -1393,31 +1394,30 @@
   });
   $('c-amt').dispatchEvent(new Event('input'));
 
-  var poll=null;
-  /* ── ONE TRANSACTION, SIGNED BY A KEY YOU OWN ────────────────────────────────────────────────────
-     This used to mint a THROWAWAY key, ask you to send it the fuel, then spend that key into the
-     covenant. Two transactions — and between them your coins sat on a key that existed only in this
-     browser's localStorage. Clear your history, lose the tab to a crash, start on a phone and finish
-     on a laptop: unreachable. The page warned about it, which put the entire risk on a visitor
-     remembering a sentence AFTER they had already sent money.
+  /* ── THE PAGE HOLDS NO KEY AND NEEDS NO WALLET ───────────────────────────────────────────────────
+     Two requirements have been removed from this flow. Both existed for the page's convenience rather
+     than the funder's, and each one was a way for money to go wrong.
 
-     Now it signs with YOUR wallet — the same self-custody key grafverse mints with, restorable from a
-     seed phrase. Build fails, nothing broadcast. Broadcast fails, nothing moved. There is no state in
-     between where coins can be stranded, because the only key involved is one you can restore. */
+     First a THROWAWAY key: mint one here, ask you to send it the fuel, then spend it into the covenant.
+     Two transactions — and between them your coins sat on a key that existed only in this browser's
+     localStorage. Lose the tab, switch device or clear your history and they were unreachable. The page
+     warned about it, which put the whole risk on a visitor remembering a sentence AFTER sending money.
+
+     Then a grafverse wallet, which outlived the signing it was there for. The page went on refusing to
+     build for a watch-only browser long after it had stopped signing anything — and it never used the
+     address it insisted on. A locked door standing on its own, with no wall attached.
+
+     What is left is all of it: an amount, a mark, and an address for the change. The page reads that
+     address's coins from the chain, names one as the input, assembles the transaction and stops. You
+     sign it in whatever wallet holds that address. Nothing here has to be trusted because nothing here
+     is used — only outpoints, and every one of them is checkable against the chain. */
   $('c-go').onclick=function(){
     var amt=Math.floor(+$('c-amt').value||0), mark=$('c-mark').value.trim(), recv=$('c-recv').value.trim();
     var e=$('c-err'); e.textContent='';
     if(!(amt>=1000)) return e.textContent='Add at least 1,000 sat — a top-up costs ~350 sat in fees whatever its size.';
     if(bytesOf(mark)>220) return e.textContent='That mark is over 220 bytes.';
     if(!/^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(recv)) return e.textContent='That does not look like a BSV address.';
-    ensureGM().then(function(G){
-      var w=G.loadOrCreateWallet();
-      if(w.watchOnly || !w.key){
-        return e.textContent='This browser holds a WATCH-ONLY wallet, which cannot sign. Import a key first.';
-      }
-      var p={ addr:w.address, amt:amt, mark:mark, recv:recv, need:amt+FEEPAD };
-      show('st-fund'); resume(p);
-    }).catch(function(err){ e.textContent=err.message });
+    show('st-fund'); resume({ amt:amt, mark:mark, recv:recv });
   };
 
   /* The funder's coins, read from the chain — the page needs to name ONE input in the
@@ -1491,19 +1491,25 @@
         $('b-change').textContent=fmt(change)+' sat → '+p.recv;
         $('b-fee').textContent=fmt(fee)+' sat';
         $('b-tip').textContent=d.tipTxid;
-        showHex(false);
+        showHex(false);          // the transaction, not the request
       }).catch(function(err){
         $('b-hex').value='';
         $('f-err').textContent=err.message;
       });
     }
-    function showHex(raw){
+    /* THE TRANSACTION IS WHAT YOU GET, and the request is the alternate — that order matters.
+       The request is a JSON document describing what to build; the only thing that reads it is the
+       command-line signer in this repo. Handing a visitor a format one bespoke tool understands, and
+       burying the transaction behind a toggle, is a page serving its own architecture. So the default
+       is the transaction: input #1 is the covenant and is already complete (OP_PUSH_TX needs no key),
+       input #2 is yours and is deliberately BLANK. Your wallet fills in that one blank and broadcasts. */
+    function showHex(req){
       if(!built||!request) return;
-      $('b-hex').value = raw ? built.toHex() : JSON.stringify(request,null,1);
-      $('b-fmt').textContent = raw ? '(the assembled transaction — for a signer that wants one)'
-                                   : '(signing request — your signer rebuilds it and signs its own)';
-      $('b-raw').textContent = raw ? 'signing request instead' : 'assembled transaction instead';
-      $('b-raw').onclick=function(){ showHex(!raw) };
+      $('b-hex').value = req ? JSON.stringify(request,null,1) : built.toHex();
+      $('b-fmt').textContent = req ? '(signing request — for a signer that rebuilds it from scratch)'
+                                   : '(unsigned transaction — sign input #2, the only blank in it)';
+      $('b-raw').textContent = req ? 'unsigned transaction instead' : 'signing request instead';
+      $('b-raw').onclick=function(){ showHex(!req) };
     }
     $('b-copy').onclick=function(){
       var t=$('b-hex'); t.select();
@@ -1513,7 +1519,6 @@
     };
 
     $('f-cancel').onclick=function(){
-      if(poll){clearInterval(poll);poll=null}
       show('st-compose');
       $('f-err').textContent='';
     };
