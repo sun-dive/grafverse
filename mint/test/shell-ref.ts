@@ -51,7 +51,10 @@ console.log('THE SHELL — reference implementation\n')
     const v = (a as unknown as Record<string, unknown>)[k]
     return Array.isArray(v) ? v.every(x => x === 0) : v === 0
   }))
-  check('the register file is small enough to be worth carrying', STATE_BYTES < 80)
+  /* 98 bytes, and 56 of them are the driver hash and the pool outpoint — identity and the prize,
+     neither of which compresses. At ~2.12 bytes per move that is about 21 sat a move just to carry
+     the state, or roughly 1,800 sat over an 88-tick race. The physics are the cheap part. */
+  check('the register file is small enough to be worth carrying', STATE_BYTES < 128)
   console.log(`        ${STATE_BYTES} bytes of state · ~${(STATE_BYTES * 2.12 / 10).toFixed(1)} sat/move just to carry it`)
 }
 
@@ -311,7 +314,7 @@ console.log('THE SHELL — reference implementation\n')
   const bytes = Buffer.byteLength(SHELL_STATE_LAYOUT, 'utf8')
   check('the layout fits one OP_RETURN', bytes <= 220)
   check('it names every field', FIELDS.every(k => SHELL_STATE_LAYOUT.includes(k)))
-  check('it carries a version', SHELL_STATE_LAYOUT.startsWith('BITCOIN RACER SHELL v1'))
+  check('it carries a version', SHELL_STATE_LAYOUT.startsWith('BITCOIN RACER v1'))
   console.log(`        ${bytes} bytes of 220`)
 }
 

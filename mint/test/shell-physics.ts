@@ -6,7 +6,7 @@
 // Not "does it validate" but "does it agree". The covenant is fed a state and a throttle, and the
 // output it will accept is the one `refTick` produced — so a script that is merely self-consistent
 // fails here. Every case runs through `Spend`, the interpreter a node uses.
-import { Transaction, Spend, UnlockingScript, TransactionSignature, PrivateKey, P2PKH, Hash } from '@bsv/sdk'
+import { Transaction, Spend, UnlockingScript, LockingScript, TransactionSignature, PrivateKey, P2PKH, Hash, Utils } from '@bsv/sdk'
 import {
   emptyShell, loadCar, loadTrack, arm, refTick, buildShellLock, shellUnlockingOps, SHELL_SCOPE,
   RACER_REGS, S, PHASE, stateFits, type ShellState,
@@ -23,22 +23,36 @@ const u64le = (n: number): number[] => {
   return b
 }
 
+/* THE POT. A real output, whose outpoint is baked into every racing fixture — because from here on a
+   car cannot cross the line without spending it in the same transaction. An outpoint serializes as the
+   txid in LITTLE-ENDIAN followed by a 4-byte index, which is also how the preimage carries it. */
+const POOL_TX = (() => { const t = new Transaction(); t.addOutput({ lockingScript: LockingScript.fromASM('OP_TRUE'), satoshis: 25_000 }); return t })()
+const POOL_VOUT = 0
+const POOL_OUTPOINT = [
+  ...[...Utils.toArray(POOL_TX.id('hex'), 'hex')].reverse(),
+  POOL_VOUT & 255, (POOL_VOUT >> 8) & 255, (POOL_VOUT >> 16) & 255, (POOL_VOUT >> 24) & 255,
+]
+
 const KEY = PrivateKey.fromRandom()
 const DRIVER = Hash.hash160(KEY.toPublicKey().encode(true) as number[])
 const GREEN = 1_700_000_000, GAP = 1, FUEL = 40_000
 
 /** Offer the covenant `next` as the result of applying `throttle` to `state`. */
 async function offer(state: ShellState, next: ShellState, throttle: number, at: number,
-                     fuel = FUEL): Promise<{ ok: boolean; why?: string }> {
+                     fuel = FUEL, withPot = next.phase === PHASE.DONE): Promise<{ ok: boolean; why?: string }> {
   const prev = buildShellLock({ state })
   const src = new Transaction(); src.addOutput({ lockingScript: prev, satoshis: fuel })
   const tx = new Transaction(); tx.version = 2
   tx.addInput({ sourceTransaction: src, sourceOutputIndex: 0, sequence: 0xfffffffe })
+  /* ★ THE POT, IN THE SAME TRANSACTION. The covenant computes what hashPrevouts must be for a spend of
+     exactly these two outpoints and refuses anything else — so winning and being paid are one act. */
+  if (withPot) tx.addInput({ sourceTransaction: POOL_TX, sourceOutputIndex: POOL_VOUT, sequence: 0xfffffffe,
+                             unlockingScript: new UnlockingScript([]) })
   tx.addOutput({ lockingScript: buildShellLock({ state: next }), satoshis: fuel })
   tx.lockTime = at
   const preimage = TransactionSignature.format({
     sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: fuel,
-    transactionVersion: tx.version, otherInputs: [], inputIndex: 0, outputs: tx.outputs,
+    transactionVersion: tx.version, otherInputs: tx.inputs.slice(1), inputIndex: 0, outputs: tx.outputs,
     inputSequence: 0xfffffffe, subscript: prev, lockTime: tx.lockTime, scope: SHELL_SCOPE,
   })
   const chunks = (await new P2PKH().unlock(KEY).sign(tx, 0)).chunks
@@ -49,7 +63,7 @@ async function offer(state: ShellState, next: ShellState, throttle: number, at: 
   try {
     return { ok: new Spend({
       sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: fuel, lockingScript: prev,
-      transactionVersion: tx.version, otherInputs: [], outputs: tx.outputs, inputIndex: 0,
+      transactionVersion: tx.version, otherInputs: tx.inputs.slice(1), outputs: tx.outputs, inputIndex: 0,
       unlockingScript: tx.inputs[0].unlockingScript!, inputSequence: 0xfffffffe, lockTime: tx.lockTime,
     }).validate() === true }
   } catch (e) { return { ok: false, why: (e as Error).message.split('\n')[0] } }
@@ -57,7 +71,7 @@ async function offer(state: ShellState, next: ShellState, throttle: number, at: 
 
 const racing = (eng: number, tyr: number, slip: number, v: number, s: number, n: number): ShellState => ({
   ...arm(loadTrack(loadCar(emptyShell(), { driver: DRIVER, eng, tyr }, RACER_REGS),
-    { finish: 5_000 * S, slip, green: GREEN, gap: GAP })),
+    { finish: 5_000 * S, slip, green: GREEN, gap: GAP, pool: POOL_OUTPOINT })),
   phase: PHASE.RACING, last: GREEN, s, v, n,
 })
 
@@ -140,6 +154,38 @@ console.log('THE PHYSICS IN SCRIPT — measured against the reference, not again
   const pretend = { ...want.state, phase: PHASE.RACING as ShellState['phase'] }
   check('★ a car that went out cannot pretend it is still racing',
     (await offer(st, pretend, RACER_REGS.THROTTLE_MAX, GREEN + GAP)).ok, false)
+}
+
+// ── ★ YOU CANNOT CROSS THE LINE WITHOUT THE POT ──────────────────────────────────────────────────────
+// The finish line is not a signal about the money, it IS the money. hashPrevouts is a hash over every
+// input's outpoint, so the covenant computes what it must be for a spend of exactly two things — this
+// shell and the pool it was told about at load time — and refuses anything else.
+{
+  const st = { ...racing(16, 9, 1000, Math.round(3 * S), Math.round(30 * S), 7), finish: Math.round(31 * S) }
+  const want = refTick(st, { throttle: 8, lockTime: GREEN + GAP, fuel: FUEL }, RACER_REGS)
+  check('this fixture really does cross the line', want.state.phase === PHASE.DONE && want.ended == null)
+
+  check('★ crossing WITH the pot is accepted',
+    (await offer(st, want.state, 8, GREEN + GAP, FUEL, true)).ok)
+  check('★ crossing WITHOUT it is refused — no pot, no finish',
+    (await offer(st, want.state, 8, GREEN + GAP, FUEL, false)).ok, false)
+
+  // …and the pot named at load time is the only one that will do.
+  /* ⚠ A DIFFERENT VALUE, or it is not a different pot. Built exactly like the real one — same script,
+     same amount, no inputs — it serializes identically and therefore has the SAME txid, so the test
+     passed while comparing a thing to itself. */
+  const decoy = new Transaction()
+  decoy.addOutput({ lockingScript: LockingScript.fromASM('OP_TRUE'), satoshis: 25_001 })
+  const wrong = { ...st, pool: [...[...Utils.toArray(decoy.id('hex'), 'hex')].reverse(), 0, 0, 0, 0] }
+  const wantW = refTick(wrong, { throttle: 8, lockTime: GREEN + GAP, fuel: FUEL }, RACER_REGS)
+  check('★ and a DIFFERENT pot is refused — the race names its own',
+    (await offer(wrong, wantW.state, 8, GREEN + GAP, FUEL, true)).ok, false)
+
+  // A move that does NOT finish must not demand the pot, or every tick would need it.
+  const mid = { ...racing(16, 9, 1000, Math.round(1 * S), Math.round(5 * S), 7), finish: Math.round(500 * S) }
+  const wantM = refTick(mid, { throttle: 8, lockTime: GREEN + GAP, fuel: FUEL }, RACER_REGS)
+  check('an ordinary move needs no pot at all',
+    (await offer(mid, wantM.state, 8, GREEN + GAP, FUEL, false)).ok)
 }
 
 console.log(`\n${pass}/${pass + fail} checks passed`)

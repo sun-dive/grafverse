@@ -248,6 +248,14 @@ export interface ShellState {
   phase: Phase
   /** hash160 of the one key that may configure, fund and drive this instance. */
   driver: number[]
+  /**
+   * The prize pool's outpoint — 32-byte txid then 4-byte index, exactly as a transaction serializes it.
+   *
+   * Baked when the track is loaded, because the covenant must know WHICH pot before the flag drops. It
+   * is 36 bytes it carries for the whole race to be spent in a single instant, which is the price of
+   * the finish line being the money rather than a signal about it.
+   */
+  pool: number[]
   eng: number      // engine size, 0..ENG_MAX
   tyr: number      // tyre grade, 0..TYR_MAX
   finish: number   // the line — for a drag race this IS the track
@@ -268,10 +276,10 @@ export interface ShellState {
 }
 
 /** Field order as laid out in the script. PUBLISHED — a rebuilder needs this exact order. */
-export const FIELDS = ['phase', 'driver', 'eng', 'tyr', 'finish', 'slip', 'green', 'gap', 'last', 's', 'v', 'n'] as const
+export const FIELDS = ['phase', 'driver', 'pool', 'eng', 'tyr', 'finish', 'slip', 'green', 'gap', 'last', 's', 'v', 'n'] as const
 /** Fixed byte-widths, by field. PUBLISHED alongside FIELDS. */
 export const FIELD_WIDTHS: Record<(typeof FIELDS)[number], number> = {
-  phase: 1, driver: 20, eng: 2, tyr: 2, finish: 6, slip: 2, green: 5, gap: 4, last: 5, s: 6, v: 5, n: 4,
+  phase: 1, driver: 20, pool: 36, eng: 2, tyr: 2, finish: 6, slip: 2, green: 5, gap: 4, last: 5, s: 6, v: 5, n: 4,
 }
 /**
  * ⚠ `green` and `last` are FIVE bytes, not four, and that is not tidiness.
@@ -298,7 +306,7 @@ export const STATE_BYTES = FIELDS.reduce((a, k) => a + FIELD_WIDTHS[k], 0)
 export function emptyShell(): ShellState {
   return {
     phase: PHASE.EMPTY,
-    driver: new Array(20).fill(0),
+    driver: new Array(20).fill(0), pool: new Array(36).fill(0),
     eng: 0, tyr: 0, finish: 0, slip: 0, green: 0, gap: 0, last: 0, s: 0, v: 0, n: 0,
   }
 }
@@ -320,9 +328,10 @@ export const fieldMax = (bytes: number): number => 2 ** (8 * bytes - 1) - 1
  *
  * Check this while TUNING, not after minting.
  */
+const isNumField = (k: (typeof FIELDS)[number]): boolean => k !== 'driver' && k !== 'pool'
 export function stateFits(st: ShellState): string | null {
   for (const k of FIELDS) {
-    if (k === 'driver') { if (st.driver.length !== 20) return 'driver'; continue }
+    if (!isNumField(k)) { if ((st[k] as number[]).length !== FIELD_WIDTHS[k]) return k; continue }
     const v = st[k] as number
     if (!Number.isFinite(v)) return k
     if (Math.abs(v) > fieldMax(FIELD_WIDTHS[k])) return k
@@ -349,7 +358,7 @@ export function loadCar(
 
 /** PHASE 1 → 2 · load the track and the start. For a drag race the track is one number: the line. */
 export function loadTrack(
-  st: ShellState, p: { finish: number; green: number; gap: number; slip?: number },
+  st: ShellState, p: { finish: number; green: number; gap: number; slip?: number; pool?: number[] },
 ): ShellState {
   need(st.phase === PHASE.CAR, `a track can only be loaded onto a shell holding a car (this one is ${PHASE_NAMES[st.phase]})`)
   need(p.finish > 0, 'the finish line must be beyond the start')
@@ -357,7 +366,9 @@ export function loadTrack(
   need(p.gap >= 0, 'the minimum gap cannot be negative')
   const slip = p.slip ?? SLIP_UNIT
   need(slip > 0, 'a surface with no grip at all is not a race track')
-  return { ...st, phase: PHASE.TRACK, finish: p.finish, slip, green: p.green, gap: p.gap }
+  const pool = p.pool ?? new Array(36).fill(0)
+  need(pool.length === 36, 'the pool outpoint must be 36 bytes — a 32-byte txid then a 4-byte index')
+  return { ...st, phase: PHASE.TRACK, finish: p.finish, slip, green: p.green, gap: p.gap, pool }
 }
 
 /**
@@ -487,7 +498,7 @@ export function canFinish(st: ShellState, fuel: number, regs: RacerRegs = PROVIS
    have not happened yet. The regulation VALUES are deliberately absent: they live in the script, which
    a rebuilder already has. */
 export const SHELL_STATE_LAYOUT =
-  'BITCOIN RACER SHELL v1|' + FIELDS.join(',') + '|w' + FIELDS.map(k => FIELD_WIDTHS[k]).join(',') + '|' +
+  'BITCOIN RACER v1|' + FIELDS.join(',') + '|w' + FIELDS.map(k => FIELD_WIDTHS[k]).join(',') + '|' +
   'sm LE|1=2^32|slip/1e3|m=M0+eng*WE+tyr*WT+fuel*WF|g=(tyr*G0+v*GV)*slip|' +
   'F=min(eng*FE*t/TM,g)|v+=F/m-v*DRAG|s+=v'
 
@@ -502,8 +513,21 @@ import { Asm, op, PN, fixedField } from './covenantAsm.ts'
 /** Record type, in the same family as the battery's 0x07. */
 export const RECORD_SHELL = 0x08
 
-/** `driver` is a 20-byte HASH. Everything else is a number. That distinction runs through the script. */
-const isNum = (k: (typeof FIELDS)[number]): boolean => k !== 'driver'
+/**
+ * Values read out of the preimage and carried on the MAIN stack beneath PRE, deepest first:
+ *
+ *   nLockTime · hashPrevouts · this input's outpoint
+ *
+ * Named as a constant because every depth computed against them is derived from it. When it was two
+ * and the code assumed one, the timing rule picked a 36-byte outpoint where it wanted a timestamp and
+ * wrote it into `last` — surfacing a hundred opcodes later as NUM2BIN refusing a 36-byte value in a
+ * 5-byte field, with nothing pointing back at the cause.
+ */
+export const CARRIED = ['nLockTime', 'hashPrev', 'outpoint'] as const
+
+/** `driver` and `pool` are raw BYTES; everything else is a number. That distinction runs through the
+ *  whole script — BIN2NUM on a hash or an outpoint is nonsense, and NUM2BIN would not put it back. */
+const isNum = (k: (typeof FIELDS)[number]): boolean => k !== 'driver' && k !== 'pool'
 
 /**
  * The state, as pushes: a three-byte header then the twelve fixed-width fields.
@@ -516,7 +540,7 @@ function fieldChunks(s: ShellState): ScriptChunk[] {
     pushData([0x50]),            // protocol prefix "P"
     pushData([0x01]),            // format version
     pushData([RECORD_SHELL]),    // record type
-    ...FIELDS.map(k => pushData(isNum(k) ? fixedField(s[k] as number, FIELD_WIDTHS[k]) : s.driver)),
+    ...FIELDS.map(k => pushData(isNum(k) ? fixedField(s[k] as number, FIELD_WIDTHS[k]) : (s[k] as number[]))),
   ]
 }
 
@@ -561,21 +585,21 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
        shell in phase 0 is UNCLAIMED and anyone may take it — which is right, because that transition
        is what sets the driver. From phase 1 onward the signature is compulsory: your car, your key.
 
-       Stack here, bottom to top: sig · pubkey · SO · newV · preimage · [15 literal pushes]. */
-    PN(11), op(OP.OP_PICK), op(OP.OP_BIN2NUM),   // the OLD phase
+       Stack here, bottom to top: throttle · sig · pubkey · SO · newV · preimage · [16 literal pushes]. */
+    PN(12), op(OP.OP_PICK), op(OP.OP_BIN2NUM),   // the OLD phase
     op(OP.OP_0NOTEQUAL),                          // …is this shell claimed?
     op(OP.OP_IF),
-      PN(10), op(OP.OP_PICK),                     // the driver hash, from the script's own bytes
-      PN(19), op(OP.OP_PICK),                     // the public key offered
+      PN(11), op(OP.OP_PICK),                     // the driver hash, from the script's own bytes
+      PN(20), op(OP.OP_PICK),                     // the public key offered
       op(OP.OP_HASH160), op(OP.OP_EQUALVERIFY),   // it must be THE driver's
-      PN(19), op(OP.OP_PICK),                     // the signature
-      PN(19), op(OP.OP_PICK),                     // and the key again, for CHECKSIG
+      PN(20), op(OP.OP_PICK),                     // the signature
+      PN(20), op(OP.OP_PICK),                     // and the key again, for CHECKSIG
       op(OP.OP_CHECKSIG), op(OP.OP_VERIFY),
     op(OP.OP_ENDIF),
 
-    // 3 header + 12 fields = 15 pushes: seven pairs and a single
+    // 3 header + 13 fields = 16 pushes: eight pairs
     op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP),
-    op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_DROP),
+    op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP),
     ...pushTxVerifyOps(c),                                   // [SO, newV, preimage]
     op(OP.OP_DUP), op(OP.OP_DUP), op(OP.OP_DUP),
     ...extractHashOutputsOps(), op(OP.OP_TOALTSTACK),        // alt:[hashOutputs]
@@ -592,7 +616,21 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
     op(OP.OP_SIZE), pushData([8]), op(OP.OP_SUB), op(OP.OP_SPLIT), op(OP.OP_NIP),
     pushData([4]), op(OP.OP_SPLIT), op(OP.OP_DROP), op(OP.OP_BIN2NUM),   // [.., preimage, nLockTime]
     op(OP.OP_SWAP),                                          // preimage back on top
-    ...extractScriptCodeFieldOps(),                          // [SO, newV, nLockTime, field]
+
+    /* ── THE POT ────────────────────────────────────────────────────────────────────────────────────
+       Two more fields out of the preimage, at the offsets BIP143 fixes:
+         hashPrevouts  4 bytes in, 32 long — a hash over EVERY input's outpoint
+         this outpoint 68 bytes in, 36 long — nVersion(4) + hashPrevouts(32) + hashSequence(32)
+       Both ride the main stack beneath PRE until the physics know whether this move crossed the line.
+       ⚠ hashPrevouts is only real because the scope is SIGHASH_ALL. Under ANYONECANPAY it is thirty-two
+       zero bytes and none of this is possible — which is why funding your own car was the price. */
+    op(OP.OP_DUP), op(OP.OP_DUP),
+    pushData([4]), op(OP.OP_SPLIT), op(OP.OP_NIP), pushData([32]), op(OP.OP_SPLIT), op(OP.OP_DROP),
+    op(OP.OP_TOALTSTACK),                                    // hashPrevouts → alt, briefly
+    pushData([68]), op(OP.OP_SPLIT), op(OP.OP_NIP), pushData([36]), op(OP.OP_SPLIT), op(OP.OP_DROP),
+    op(OP.OP_FROMALTSTACK), op(OP.OP_SWAP),                  // [.., nLockTime, preimage, hashPrev, outpoint]
+    PN(2), op(OP.OP_ROLL),                                   // preimage back on top — it is TWO deep
+    ...extractScriptCodeFieldOps(),                          // [.., nLockTime, hashPrev, outpoint, field]
     PN(p.fieldOffset), op(OP.OP_SPLIT),                      // [.., PRE, rest]
   ]
   // peel the twelve fields off `rest`
@@ -645,14 +683,20 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
 
        `last` then becomes this move's nLockTime, so the next one is measured from here. */
     if (FIELDS[i] === 'last') {
+      /* ⚠ DEPTHS DERIVED, NOT WRITTEN DOWN. When field `i` has just been restored, f0…fi sit above PRE
+         — so f0 is at depth i, PRE at i+1 and nLockTime at i+2, whatever the field list happens to be.
+         These were hardcoded once, and adding `pool` to FIELDS silently shifted every one of them: the
+         rule then compared the wrong stack slots and every racing move failed. */
+      const dPhase = i, dGreen = i - FIELDS.indexOf('green')
+      const dLock = i + 1 + CARRIED.length          // …fields, then PRE, then the carried values
       ops.push(
-        PN(8), op(OP.OP_PICK), PN(PHASE.RACING), op(OP.OP_NUMEQUAL),   // only while racing
+        PN(dPhase), op(OP.OP_PICK), PN(PHASE.RACING), op(OP.OP_NUMEQUAL),   // only while racing
         op(OP.OP_IF),
-          op(OP.OP_OVER), op(OP.OP_ADD),                    // last + gap
-          PN(2), op(OP.OP_PICK), op(OP.OP_MAX),             // max(green, last + gap)
-          PN(10), op(OP.OP_PICK),                           // nLockTime
-          op(OP.OP_LESSTHANOREQUAL), op(OP.OP_VERIFY),      // the gate
-          PN(9), op(OP.OP_PICK),                            // `last` := this move's nLockTime
+          op(OP.OP_OVER), op(OP.OP_ADD),                        // last + gap
+          PN(dGreen), op(OP.OP_PICK), op(OP.OP_MAX),            // max(green, last + gap)
+          PN(dLock), op(OP.OP_PICK),                            // nLockTime
+          op(OP.OP_LESSTHANOREQUAL), op(OP.OP_VERIFY),          // the gate
+          PN(dLock - 1), op(OP.OP_PICK),                        // `last` := this move's nLockTime
         op(OP.OP_ENDIF),
       )
     }
@@ -660,8 +704,8 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
 
   /* nLockTime has done its work — the tree is passed and `last` is stamped. It sits under PRE and the
      twelve fields, and the rebuild below assumes it is not there, so it is rolled out now rather than
-     worked around. Thirteen deep: PRE plus twelve. */
-  ops.push(PN(13), op(OP.OP_ROLL), op(OP.OP_DROP))
+     worked around. It is the deepest of the three carried values, under hashPrevouts and the outpoint. */
+  ops.push(PN(FIELDS.length + CARRIED.length), op(OP.OP_ROLL), op(OP.OP_DROP))
 
   // ── THE PHYSICS ──
   ops.push(...shellPhysicsOps(p.regs ?? RACER_REGS))
@@ -704,8 +748,8 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
  */
 function shellPhysicsOps(regs: RacerRegs): ScriptChunk[] {
   const a = new Asm([
-    'throttle', 'sig', 'pubkey', 'SO', 'newV', 'PRE',
-    'phase', 'driver', 'eng', 'tyr', 'finish', 'slip', 'green', 'gap', 'last', 's', 'v', 'n',
+    'throttle', 'sig', 'pubkey', 'SO', 'newV', ...CARRIED.filter(k => k !== 'nLockTime'), 'PRE',
+    'phase', 'driver', 'pool', 'eng', 'tyr', 'finish', 'slip', 'green', 'gap', 'last', 's', 'v', 'n',
   ])
   /** trunc(x·y / 2^32) — the fixed-point multiply, in Script's arbitrary-precision integers. */
   const fmul = (): void => { a.o(OP.OP_MUL, 2, ['_p']); a.num(S); a.o(OP.OP_DIV, 2, ['_q']) }
@@ -800,7 +844,16 @@ function shellPhysicsOps(regs: RacerRegs): ScriptChunk[] {
   a.pick('cv', 'nv')
   // crossing the line is just arithmetic — s' ≥ finish, and the chain stops
   a.pick('ns'); a.pick('finish'); a.bin(OP.OP_GREATERTHANOREQUAL, 'home')
-  a.ifBegin(); a.num(PHASE.DONE, 'np'); a.armReturn(['np'])
+  a.ifBegin()
+  /* ★ AND YOU CANNOT CROSS THE LINE WITHOUT THE POT IN THE SAME TRANSACTION.
+     hashPrevouts is a hash over every input's outpoint, so the covenant computes what it MUST be for a
+     transaction spending exactly two things — this shell, and the pool it was told about at load time —
+     and refuses anything else. Winning and being paid become one act: there is no separate claim to
+     make, nothing to trust, and no second transaction in which something could go wrong. */
+  a.pick('outpoint'); a.pick('pool'); a.bin(OP.OP_CAT, 'both')
+  a.o(OP.OP_HASH256, 1, ['want'])
+  a.pick('hashPrev'); a.bin(OP.OP_EQUAL, 'gotPot'); a.o(OP.OP_VERIFY, 1, [])
+  a.num(PHASE.DONE, 'np'); a.armReturn(['np'])
   a.elseArm(); a.num(PHASE.RACING, 'np'); a.armReturn(['np']); a.endIf()
   a.armReturn(['ns', 'nv', 'nn', 'np'])
   a.endIf()
@@ -817,15 +870,15 @@ function shellPhysicsOps(regs: RacerRegs): ScriptChunk[] {
   /* Four dead values are now buried under the new ones — the three old fields, plus `mass`, which was
      computed before the branch and therefore survived both arms. Rolled out by NAME, so the model does
      the arithmetic and the order cannot matter. */
-  for (const dead of ['mass', 'phase', 's', 'v', 'n']) { a.roll(dead, '_dead'); a.drop(1) }
+  for (const dead of ['mass', 'hashPrev', 'outpoint', 'phase', 's', 'v', 'n']) { a.roll(dead, '_dead'); a.drop(1) }
 
   /* ★ AND THE NEW PHASE HAS TO GET BACK TO THE FRONT.
      It was written early — the sequence needs deciding before the fields are even extracted — but only
      the physics know whether this move ended the run, so the physics must be able to overrule it from
      eleven fields away. A stack cannot push something DOWNWARD, so instead every field above it is
      rolled UP over it, in FIELDS order. Eleven rolls, and the order comes out exactly right. */
-  for (const k of ['driver', 'eng', 'tyr', 'finish', 'slip', 'green', 'gap', 'last', 'ns', 'nv', 'nn']) a.roll(k)
-  a.st[a.st.length - 11] = 'phase'
+  for (const k of ['driver', 'pool', 'eng', 'tyr', 'finish', 'slip', 'green', 'gap', 'last', 'ns', 'nv', 'nn']) a.roll(k)
+  a.st[a.st.length - (FIELDS.length)] = 'phase'
   a.st[a.st.length - 3] = 's'; a.st[a.st.length - 2] = 'v'; a.st[a.st.length - 1] = 'n'
   return a.ops
 }

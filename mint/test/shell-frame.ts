@@ -13,7 +13,7 @@
 import { Transaction, Spend, LockingScript, UnlockingScript, TransactionSignature, PrivateKey, P2PKH, Hash } from '@bsv/sdk'
 import {
   emptyShell, loadCar, loadTrack, arm, refTick, buildShellLock, shellUnlockingOps, SHELL_SCOPE,
-  FIELDS, FIELD_WIDTHS, RACER_REGS, S, PHASE, PHASE_NAMES, type ShellState,
+  FIELDS, FIELD_WIDTHS, RACER_REGS, S, PHASE, PHASE_NAMES, stateFits, type ShellState,
 } from '../src/shell.ts'
 import { serializeOutput } from '../src/covenant.ts'
 
@@ -160,7 +160,9 @@ const LOADED: ShellState = {
     ({ ...next(at(from)), phase: phase as ShellState['phase'] })
 
   for (const [from, want] of [[0, 1], [1, 2], [2, 3], [3, 4]] as const) {
-    check(`${PHASE_NAMES[from]} → ${PHASE_NAMES[want]}`, (await spend(at(from), to(from, want))).ok)
+    const r = await spend(at(from), to(from, want))
+    check(`${PHASE_NAMES[from]} → ${PHASE_NAMES[want]}`, r.ok)
+    if (!r.ok) console.log('   ↳', r.why)
   }
   check('RACING → RACING · a race continues until the physics end it',
     (await spend(at(PHASE.RACING), to(PHASE.RACING, PHASE.RACING))).ok)
@@ -254,11 +256,14 @@ const LOADED: ShellState = {
 // ── every field is genuinely distinguishable in the fixture ──────────────────────────────────────────
 // A frame test whose fixture has repeated values can pass with fields transposed.
 {
-  const nums = FIELDS.filter(k => k !== 'driver').map(k => LOADED[k] as number)
+  const nums = FIELDS.filter(k => typeof LOADED[k] === 'number').map(k => LOADED[k] as number)
   check('the fixture uses a distinct value for every numeric field', new Set(nums).size === nums.length)
-  check('and every one fits its field',
-    FIELDS.filter(k => k !== 'driver').every(k =>
-      Math.abs(LOADED[k] as number) <= 2 ** (8 * FIELD_WIDTHS[k] - 1) - 1))
+  /* Asked of stateFits rather than recomputed here, because this test grew its own copy of the width
+     rule, excluded `driver` by name, and then quietly returned NaN the day a second byte-field was
+     added. One implementation of "does it fit", used everywhere. */
+  const bad = stateFits(LOADED)
+  check('and every one fits its field', bad === null)
+  if (bad !== null) console.log(`        '${bad}' does not fit`)
 }
 
 console.log(`\n${pass}/${pass + fail} checks passed`)
