@@ -273,19 +273,35 @@
     x.fillStyle='#5b7a9e'; x.font='11px ui-monospace,monospace';
     x.fillText('0',pad-3,20); x.fillText(fin+' units',W-pad-46,20);
     if(!lastRun) return;
+
+    /* ★ ONE CLOCK FOR BOTH CARS.
+       This used to advance each car through ITS OWN trace over the same animation, so a 20-tick car
+       and a 140-tick car always reached the line at the same instant — the picture showed a dead heat
+       while the verdict named a winner. The two disagreed, and the picture was the one lying.
+       ET is the tick count, so ticks are the clock. The car needing fewer of them arrives first, which
+       is exactly what the result says, and a car that has finished sits at the line while the other
+       is still coming. */
+    var span=Math.max(lastRun.A.trace.length, lastRun.B.trace.length);
+    var clock=Math.max(1,Math.floor(span*frac));
+    x.fillStyle='#8ba3c4'; x.font='11px ui-monospace,monospace';
+    x.fillText('tick '+clock+' / '+span, W/2-32, 18);
+
     ['A','B'].forEach(function(k,idx){
       var run=lastRun[k], y=lane[idx], col=idx?'#ff5d8f':'#b4ff3a';
-      var upto=Math.max(1,Math.floor(run.trace.length*frac));
-      var pt=run.trace[Math.min(upto,run.trace.length)-1];
+      var upto=Math.min(clock, run.trace.length);          // a finished car STOPS; it does not keep pace
+      var pt=run.trace[upto-1];
       var prog=pt? Math.min(1, pt.s/(fin*S)) : 0;
       var px=pad+prog*(W-2*pad-8);
+      var home=run.finished && clock>=run.trace.length;
       // the trail
       x.strokeStyle=col+'44'; x.lineWidth=3; x.beginPath(); x.moveTo(pad,y); x.lineTo(px,y); x.stroke();
-      // the car
+      // the car — outlined once it is across the line, so the moment of winning is visible
       x.fillStyle=col; x.fillRect(px-9,y-7,18,14);
+      if(home){ x.strokeStyle='#dbe6f5'; x.lineWidth=2; x.strokeRect(px-11,y-9,22,18) }
       x.fillStyle='#04131c'; x.font='700 9px ui-monospace,monospace'; x.fillText(k,px-3,y+3);
       x.fillStyle=col; x.font='11px ui-monospace,monospace';
-      x.fillText('eng '+CARS[k].eng+' · tyr '+CARS[k].tyr+(pt?' · tick '+upto:''),pad,y-14);
+      x.fillText('eng '+CARS[k].eng+' · tyr '+CARS[k].tyr+
+                 (home ? ' · HOME in '+run.et : pt ? ' · tick '+upto : ''), pad, y-14);
     });
   }
   function drawChart(){
@@ -345,9 +361,13 @@
     else v.innerHTML='<b>A dead heat</b> at '+vA.et+' ticks — the pot would go to whoever got mined first.';
 
     drawChart();
+    // Long races need longer on screen, or the whole thing is over before the eye finds the cars —
+    // but a 4,000-tick run must not take four seconds of staring either.
+    var span=Math.max(lastRun.A.trace.length, lastRun.B.trace.length);
+    var dur=Math.min(4000, Math.max(1200, span*22));
     var t0=performance.now();
     (function anim(){
-      var f=Math.min(1,(performance.now()-t0)/1800);
+      var f=Math.min(1,(performance.now()-t0)/dur);
       drawStrip(f); if(f<1) requestAnimationFrame(anim);
     })();
   }
