@@ -90,8 +90,14 @@ async function spend(state: ShellState, next: ShellState, outValue = VALUE,
     sig = chunks[0].data ?? []
     pubKey = chunks[1].data ?? []
   }
-  tx.inputs[0].unlockingScript = new UnlockingScript(
-    shellUnlockingOps({ spenderOutputs, newValue: u64le(outValue), preimage, sig, pubKey }))
+  /* Always supply every loadable, taken from the state being offered. The covenant only READS them in
+     the transition that owns each one, so supplying them on every spend is both harmless and what a
+     real builder does — and it is why the covenant counts positions rather than arguments. */
+  tx.inputs[0].unlockingScript = new UnlockingScript(shellUnlockingOps({
+    spenderOutputs, newValue: u64le(outValue), preimage, sig, pubKey,
+    load: { driver: next.driver, pool: next.pool, eng: next.eng, tyr: next.tyr,
+            finish: next.finish, slip: next.slip, green: next.green, gap: next.gap },
+  }))
 
   try {
     const ok = new Spend({
@@ -125,9 +131,16 @@ const LOADED: ShellState = {
   check('★ a shell reads its own twelve fields and writes back eleven unchanged', r.ok)
   if (!r.ok) console.log('   ↳', r.why)
 
-  const empty = (await spend(emptyShell(), advanced(emptyShell())))
-  check('the EMPTY shell round-trips too — every field zero', empty.ok)
-  if (!empty.ok) console.log('   ↳', empty.why)
+  /* ★ An empty shell cannot simply ADVANCE — claiming it and loading a car are the same act, so a
+     successor carrying no engine is refused by the regulations on the way in. That is the covenant
+     being stricter than this test used to assume, and it is the right way round. */
+  const bare = await spend(emptyShell(), advanced(emptyShell()))
+  check('★ an EMPTY shell cannot advance without a legal car', bare.ok, false)
+
+  const claimed = await spend(emptyShell(),
+    { ...loadCar(emptyShell(), { driver: DRIVER, eng: 9, tyr: 4 }, RACER_REGS) })
+  check('…but it advances happily WITH one', claimed.ok)
+  if (!claimed.ok) console.log('   ↳', claimed.why)
 }
 
 // ── the frame is doing real work, not merely passing ─────────────────────────────────────────────────
@@ -196,9 +209,9 @@ const LOADED: ShellState = {
   // so nothing could sign for it — and it does not need to, because claiming it is what SETS the
   // driver. This is the one transition in the whole machine that anybody may make.
   const unclaimed = emptyShell()
-  const claimed = { ...unclaimed, phase: PHASE.CAR as ShellState['phase'] }
-  check('★ an unclaimed shell can be claimed by anyone, unsigned',
-    (await spend(unclaimed, claimed, VALUE, null)).ok)
+  const taken = loadCar(unclaimed, { driver: DRIVER, eng: 9, tyr: 4 }, RACER_REGS)
+  check('★ an unclaimed shell can be claimed by anyone, unsigned — and claiming LOADS the car',
+    (await spend(unclaimed, taken, VALUE, null)).ok)
   check('  …and the moment it is claimed, the signature becomes compulsory',
     (await spend({ ...unclaimed, phase: PHASE.CAR as ShellState['phase'], driver: DRIVER },
                  { ...unclaimed, phase: PHASE.TRACK as ShellState['phase'], driver: DRIVER },

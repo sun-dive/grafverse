@@ -67,6 +67,21 @@ export const SHELL_FEE_PER_KB = 100
  */
 export const SHELL_FEE_SLACK = 64
 
+/**
+ * ⚠⚠ PROVISIONAL AND WRONG. A placeholder so a race can BURN FUEL at all before step 6.
+ *
+ * The value rule is a floor: `out ≥ V − MAX_FEE`. At zero — where it sat until now — the output may
+ * never hold less than the input, so no move can pay a fee and no race can run. That is exactly what
+ * the first end-to-end simulation hit.
+ *
+ * ⚠ It MUST be replaced by a number MEASURED from a serialized spend, not this one. A hand count
+ * undercounts the output script-length varint (a 1,5xx-byte script needs 3 bytes, not 1), and that is
+ * precisely how the battery's first MAX_FEE landed under the relay floor with no key to amend it.
+ * And it needs ~64 sat of slack above the true fee, because pinning nLockTime for the tree took away
+ * the lever the battery grinds for LOW_S.
+ */
+export const SHELL_MAX_FEE_PROVISIONAL = 900
+
 // ── fixed point ──────────────────────────────────────────────────────────────────────────────────────
 /** 1.0 = 2^32, as the battery. One convention across covenants is worth more than a tuned one. */
 export const SHIFT = 32
@@ -525,6 +540,38 @@ export const RECORD_SHELL = 0x08
  */
 export const CARRIED = ['nLockTime', 'hashPrev', 'outpoint'] as const
 
+/**
+ * ★ WHAT THE UNLOCKING SCRIPT MAY LOAD, and the phase that owns each.
+ *
+ * The shell enforces a SEQUENCE — that was step 1 — but a sequence with nothing flowing into it is a
+ * turnstile, not a machine. This is what makes it programmable: values arrive from outside and are
+ * written into the covenant's own script, once, in the transition that owns them, and are immutable
+ * after. Nobody swaps a bigger engine in at phase 3 because phase 3 does not accept engines.
+ *
+ * ⚠ ORDER IS THE INTERFACE. These are pushed DEEPEST in the unlocking script, in exactly this order,
+ * because adding items below leaves every depth measured from the top unchanged — so the signature
+ * check and the physics did not have to move to make room. Reorder this and the covenant reads the
+ * wrong argument, silently.
+ *
+ * `at` is the NEW phase, not the old one: 0→1 and 1→2 are unambiguous, so the phase the covenant has
+ * just computed is enough to say which transition this is.
+ *
+ * The bounds are the ones §5 of the spec promised — **the shell's constants ARE the racing
+ * regulations**. A car is provably legal even though its lineage is only publicly checkable, because
+ * an illegal one cannot be written into a shell at all.
+ */
+export interface Loadable { k: (typeof FIELDS)[number]; at: number; bytes?: number; min?: number; max?: number }
+export const loadables = (regs: RacerRegs): Loadable[] => [
+  { k: 'driver', at: PHASE.CAR, bytes: 20 },
+  { k: 'pool', at: PHASE.TRACK, bytes: 36 },
+  { k: 'eng', at: PHASE.CAR, min: 1, max: regs.ENG_MAX },
+  { k: 'tyr', at: PHASE.CAR, min: 1, max: regs.TYR_MAX },
+  { k: 'finish', at: PHASE.TRACK, min: 1 },
+  { k: 'slip', at: PHASE.TRACK, min: 1 },
+  { k: 'green', at: PHASE.TRACK, min: 1 },
+  { k: 'gap', at: PHASE.TRACK, min: 0 },
+]
+
 /** `driver` and `pool` are raw BYTES; everything else is a number. That distinction runs through the
  *  whole script — BIN2NUM on a hash or an outpoint is nonsense, and NUM2BIN would not put it back. */
 const isNum = (k: (typeof FIELDS)[number]): boolean => k !== 'driver' && k !== 'pool'
@@ -568,6 +615,7 @@ export interface ShellLockParams {
  * hardest bugs were all in this layer rather than in its arithmetic.
  */
 export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
+  const regs = p.regs ?? RACER_REGS
   const maxFee = p.maxFee ?? 0
   const c = p.c ?? pushTxConstants(SHELL_SCOPE)
   const ops: ScriptChunk[] = [
@@ -682,6 +730,33 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
        than a real tree, which only catches the foul after you have committed it.
 
        `last` then becomes this move's nLockTime, so the next one is measured from here. */
+    /* ── LOADING ────────────────────────────────────────────────────────────────────────────────────
+       A field is reachable for exactly one instant — right now, alone on top of the stack. So the
+       transition that owns it swaps the carried value for the one supplied in the unlocking script,
+       checks it against the regulations, and every other transition leaves it exactly as it was.
+       ⚠ Depths derived, never written: the supplied values sit under everything, so their distance
+       from the top grows with each field restored. */
+    const LD = loadables(regs).findIndex(l => l.k === FIELDS[i])
+    if (LD >= 0) {
+      const all = loadables(regs), l = all[LD]
+      const above = (all.length - 1 - LD) + 5 + CARRIED.length + 1 + (i + 1)
+      ops.push(
+        PN(i), op(OP.OP_PICK), PN(l.at), op(OP.OP_NUMEQUAL),   // is this the transition that loads it?
+        op(OP.OP_IF),
+          op(OP.OP_DROP),                                       // the value carried in is not wanted
+          PN(above - 1), op(OP.OP_PICK),                        // …this one is
+      )
+      if (l.bytes != null) {
+        // a hash or an outpoint: only its LENGTH can be checked, but a wrong one would misalign every
+        // future split of this script, so it is worth the four opcodes
+        ops.push(op(OP.OP_SIZE), PN(l.bytes), op(OP.OP_NUMEQUALVERIFY))
+      } else {
+        if (l.min != null) ops.push(op(OP.OP_DUP), PN(l.min), op(OP.OP_GREATERTHANOREQUAL), op(OP.OP_VERIFY))
+        if (l.max != null) ops.push(op(OP.OP_DUP), PN(l.max), op(OP.OP_LESSTHANOREQUAL), op(OP.OP_VERIFY))
+      }
+      ops.push(op(OP.OP_ENDIF))
+    }
+
     if (FIELDS[i] === 'last') {
       /* ⚠ DEPTHS DERIVED, NOT WRITTEN DOWN. When field `i` has just been restored, f0…fi sit above PRE
          — so f0 is at depth i, PRE at i+1 and nLockTime at i+2, whatever the field list happens to be.
@@ -907,8 +982,15 @@ export function shellUnlockingOps(
   p: { spenderOutputs: number[]; newValue: number[]; preimage: number[]
        sig?: number[]; pubKey?: number[]; throttle?: number },
 ): ScriptChunk[] {
+  const all = loadables(p.regs ?? RACER_REGS)
   return [
-    // ★ THROTTLE GOES DEEPEST — the driver's one freedom, and the only thing entering the covenant
+    /* ★ THE LOADABLES GO DEEPEST OF ALL, in `loadables` order. Every one is pushed on every spend even
+       though at most five are wanted, because the covenant counts POSITIONS, not arguments — a missing
+       push would shift every depth above it. Empty is the honest value for one that is not being used. */
+    ...all.map(l => l.bytes != null
+      ? pushData((p.load?.[l.k] as number[]) ?? [])
+      : PN((p.load?.[l.k] as number) ?? 0)),
+    // ★ THROTTLE — the driver's one freedom, and the only thing entering the covenant
     // from outside. Deepest because adding an item BELOW leaves every depth measured from the top
     // unchanged, so the signature check's offsets did not have to move to make room for it.
     PN(p.throttle ?? 0),
