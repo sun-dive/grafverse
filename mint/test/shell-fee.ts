@@ -85,9 +85,17 @@ let worst = 0, biggest = 0, smallest = Infinity
      figure is not documentation — it sets what every move pays. If the script grows and the constant
      stays behind, every race quietly underpays and the moves stop being mined, exactly as they did at
      BURN0 = 40. Measuring it here and not comparing it would be measuring for the sake of the log. */
-  check('★ the measured worst move matches what BURN0 is derived from', worst === SHELL_WORST_MOVE_BYTES)
-  console.log(`        measured ${worst} B · source says ${SHELL_WORST_MOVE_BYTES} B` +
-    (worst === SHELL_WORST_MOVE_BYTES ? '' : `  ⇒ SET SHELL_WORST_MOVE_BYTES = ${worst}`))
+  /* ⚠ A BOUND, NOT AN EQUALITY. DER signatures are 70–73 bytes depending on whether r and s need a
+     leading zero, so this measurement moves by a byte between runs. Demanding equality made the suite
+     oscillate between 3,738 and 3,739, each run "correcting" the last. What actually matters is that
+     the real thing never EXCEEDS what BURN0 was derived from — and that the bound has not rotted so
+     far above reality that races are quietly overpaying. */
+  const HEADROOM = 16
+  check('★ the worst move stays within what BURN0 is derived from', worst <= SHELL_WORST_MOVE_BYTES)
+  check('  …and the bound has not drifted far above it', worst > SHELL_WORST_MOVE_BYTES - HEADROOM)
+  console.log(`        measured ${worst} B · bound ${SHELL_WORST_MOVE_BYTES} B` +
+    (worst <= SHELL_WORST_MOVE_BYTES ? ` · ${SHELL_WORST_MOVE_BYTES - worst} B of headroom`
+                                     : `  ⇒ RAISE SHELL_WORST_MOVE_BYTES TO ${worst + 2}`))
   console.log(`        burns range ${smallest} … ${biggest} sat`)
 
   // ★ RULE ONE: the smallest burn must clear the relay floor, or those moves never get mined.

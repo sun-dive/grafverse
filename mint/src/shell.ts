@@ -68,10 +68,15 @@ export const SHELL_FEE_PER_KB = 100
 export const SHELL_FEE_SLACK = 64
 
 /**
- * ★ THE WORST MOVE, MEASURED. Re-measured whenever the script changes; `shell-fee` asserts it, so a
- * script that grows past this figure fails the suite rather than quietly underpaying on chain.
+ * ★ THE WORST MOVE — AN UPPER BOUND, MEASURED. `shell-fee` asserts the real thing never exceeds it, so
+ * a script that grows fails the suite rather than quietly underpaying on chain.
+ *
+ * ⚠ NOT an exact figure, and it must not be: a DER signature is 70–73 bytes depending on whether `r`
+ * and `s` need a leading zero, so the same race measures 3,738 or 3,739 bytes on different runs with
+ * different keys. Pinning it exactly made the suite oscillate between two values, each "correcting"
+ * the other. Two bytes of headroom above the observed maximum costs 0.2 satoshi and cannot go under.
  */
-export const SHELL_WORST_MOVE_BYTES = 3679
+export const SHELL_WORST_MOVE_BYTES = 3741
 
 /**
  * ★ THE RATE THE BURN IS DERIVED AT — a tenth of a satoshi above SHELL_FEE_PER_KB, and no more.
@@ -92,10 +97,18 @@ export const SHELL_BURN_RATE_PER_KB = SHELL_FEE_PER_KB + 0.1
  * takes, so the SMALLEST burn must clear the relay floor or those moves are simply never mined.
  * MEASURED by serializing a real spend, 2026-08-14:
  *
- *   worst transaction   3,679 bytes  →  369 sat at the rate we pay
+ *   worst transaction   ≤3,741 bytes  →  375 sat at the rate we pay
  *   burn at BURN0 = 40   40 sat  =  10.9 sat/KB   ← a tenth of the floor. Unmineable.
  *   burn at BURN0 = 400 400 sat  = 108.7 sat/KB   ← clears it, and overpays by 8.7%
- *   burn at BURN0 = 369 369 sat  = 100.3 sat/KB   ← what the network actually asks for
+ *   burn at BURN0 = 375 375 sat  = 100.3 sat/KB   ← what the network actually asks for
+ *
+ * ⚠ 3,679 → 3,741 when the BURN branch was added. At the old figure the burn came to 98.7 sat/KB —
+ * UNDER the floor, on every move of every race, silently. The assertion in `shell-fee` caught it the
+ * moment the script grew, which is the entire reason that check exists.
+ *
+ * ⚠ The size and the burn depend on each OTHER — a bigger burn can encode a byte wider, which makes
+ * the move it is paying for larger. Treating the constant as a BOUND rather than an equality settles
+ * that too: there is nothing to converge, only something to stay under.
  *
  * ⇒ BURN0 is not written down at all. It is `ceil(WORST_MOVE_BYTES × FEE_PER_KB / 1000)`, so the two
  * things that decide it are both named and both checked, and a script that grows re-derives its own
@@ -223,11 +236,12 @@ export interface RacerRegs {
  *                         shifted down about two engine sizes (402 m wants eng 18 rather than 20).
  *   BURN_E     6 → 35     big engines are genuinely thirsty now, so they can run dry — the tank
  *                         stopped being free and became a real part of the build.
- *   BURN0    40 → 369    ⚠ NOT a tuning choice and no longer a NUMBER — it is DERIVED from the worst
+ *   BURN0    40 → 375    ⚠ NOT a tuning choice and no longer a NUMBER — it is DERIVED from the worst
  *                         move's measured size and the rate we are willing to pay. The burn IS the
  *                         mining fee, and at 40 a small engine paid 11 sat/KB, so its moves would
  *                         never have been mined. It sat at 400 briefly, which cleared the floor by
- *                         8.7% — real money for nothing, 32 sat on every move of every race.
+ *                         8.7% — real money for nothing, 32 sat on every move of every race. Now it
+ *                         re-derives itself whenever the script changes size.
  *   FE      0.20 → 0.32   closes the gap to a real Top Fuel car, and gives the top of the engine
  *                         range somewhere to go instead of plateauing.
  *   G0      0.15 → 0.36   more grip to spend, which is what makes the extra force usable at all.
@@ -253,7 +267,7 @@ export const RACER_REGS: RacerRegs = {
   SPIN_KEEP: Math.round(0.5 * S),
   LOOSE_V: Math.round(0.35 * S),        // ⚠ untuned — no slider existed
   BLOW_T: 14,                           // ⚠ untuned — no slider existed
-  BURN0: Math.ceil(SHELL_WORST_MOVE_BYTES * SHELL_BURN_RATE_PER_KB / 1000),   // 369 — see the MAX_FEE note
+  BURN0: Math.ceil(SHELL_WORST_MOVE_BYTES * SHELL_BURN_RATE_PER_KB / 1000),   // 375 — see the MAX_FEE note
   BURN_E: 35,
   THROTTLE_MAX: 15,
   ENG_MAX: 24,
@@ -656,6 +670,16 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
   const regs = p.regs ?? RACER_REGS
   const maxFee = p.maxFee ?? 0
   const c = p.c ?? pushTxConstants(SHELL_SCOPE)
+
+  /* ⚠ DERIVED, because the burn branch reads its flag while the state's own literals are still on the
+     stack — the deepest reach in the whole script, and the one most exposed to a field being added.
+     Bottom to top at that moment: burn · retire · loadables · throttle · sig · pubkey · SO · newV ·
+     preimage · the 16 literal pushes. */
+  const LITERALS = 3 + FIELDS.length
+  const UNLOCK_ABOVE = 5 + 1 + loadables(regs).length          // preimage…sig, throttle, the loadables
+  const dBurn = LITERALS + UNLOCK_ABOVE + 1                    // …then retire, then burn
+  const BURN_DROPS = (dBurn + 1) / 2                           // clear the lot in pairs
+  if (!Number.isInteger(BURN_DROPS)) throw new Error(`burn leaves an odd stack (${dBurn + 1}) — add an OP_DROP`)
   const ops: ScriptChunk[] = [
     ...fieldChunks(p.state),
 
@@ -682,6 +706,30 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
       PN(20), op(OP.OP_PICK),                     // and the key again, for CHECKSIG
       op(OP.OP_CHECKSIG), op(OP.OP_VERIFY),
     op(OP.OP_ENDIF),
+
+    /* ── ★ BURN — HOW A CAR IS FINALLY CLEARED AWAY ─────────────────────────────────────────────────
+       Every other path out of a race leaves ONE SATOSHI in a shell that can never be spent again: the
+       phase machine verifies `phase < DONE` on every move, so a DONE or OUT shell is terminal in the
+       strongest sense. That satoshi is not merely dust — it is a permanent entry in the UTXO set that
+       every node must carry forever, and a track running races would mint one per car. Retirement
+       stopped the TANK being stranded. This is what stops the headstone being stranded too.
+
+       The rule is the one PharLap's editions already use, and it enforces NOTHING: the driver's
+       signature is SIGHASH_ALL, so it already commits to every output of this transaction. They have
+       said where the money goes by signing. There is nothing left for a covenant to check, and no
+       output of its own to re-create — the car simply ceases to exist.
+
+       ⚠ Which is exactly why it must sit BELOW the driver check and not above it. The signature is
+       verified before this branch is even read, so a burn is unforgeable for any claimed shell.
+       ⚠ And why it re-verifies that the shell IS claimed: at phase 0 the driver is twenty zero bytes
+       and the signature check above is skipped, so an unguarded burn here would let a passer-by sweep
+       an unclaimed car in one transaction. Claiming it first is still open to anyone — that is the
+       design — but it costs them a transaction and puts their key on the record. */
+    PN(dBurn), op(OP.OP_PICK), op(OP.OP_IF),
+      PN(12), op(OP.OP_PICK), op(OP.OP_BIN2NUM), op(OP.OP_0NOTEQUAL), op(OP.OP_VERIFY),  // claimed only
+      ...Array.from({ length: BURN_DROPS }, () => op(OP.OP_2DROP)),
+      op(OP.OP_1),
+    op(OP.OP_ELSE),
 
     // 3 header + 13 fields = 16 pushes: eight pairs
     op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP),
@@ -865,7 +913,12 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
     op(OP.OP_SWAP), op(OP.OP_CAT), op(OP.OP_SWAP), op(OP.OP_CAT),
     op(OP.OP_HASH256), op(OP.OP_FROMALTSTACK), op(OP.OP_EQUAL),
   )
-  return ops
+  /* …and close the burn branch opened right after the driver check. The ordinary path IS the else
+     arm, so this is the last opcode in the whole script — both arms leave one truthy value.
+     ⚠ This belongs to shellLockOps and nothing else. Appended to shellPhysicsOps by mistake it landed
+     mid-script, silently closing the burn IF early: the counts still balanced, the script still
+     parsed, and every burn ran on into the ordinary path until OP_NUM2BIN found an empty stack. */
+  return [...ops, op(OP.OP_ENDIF)]
 }
 
 /**
@@ -888,7 +941,7 @@ function shellPhysicsOps(regs: RacerRegs): ScriptChunk[] {
        still computed correctly, because model and reality shifted by the same eight, so the model
        looked right and the physics passed. Only `retire`, which sits BELOW them, came out eight too
        shallow — and picked a loadable instead. A partial model is worse than none: it is confident. */
-    'retire', ...loadables(regs).map(l => 'ld_' + l.k),
+    'burn', 'retire', ...loadables(regs).map(l => 'ld_' + l.k),
     'throttle', 'sig', 'pubkey', 'SO', 'newV', ...CARRIED.filter(k => k !== 'nLockTime'), 'PRE',
     'phase', 'driver', 'pool', 'eng', 'tyr', 'finish', 'slip', 'green', 'gap', 'last', 's', 'v', 'n',
   ])
@@ -1073,10 +1126,14 @@ export function buildShellLock(p: Omit<ShellLockParams, 'fieldOffset'>): Locking
  */
 export function shellUnlockingOps(
   p: { spenderOutputs: number[]; newValue: number[]; preimage: number[]
-       sig?: number[]; pubKey?: number[]; throttle?: number },
+       sig?: number[]; pubKey?: number[]; throttle?: number; retire?: boolean; burn?: boolean
+       load?: Record<string, number | number[]>; regs?: RacerRegs },
 ): ScriptChunk[] {
   const all = loadables(p.regs ?? RACER_REGS)
   return [
+    /* ★ BURN — the driver's decision to CLEAR THE CAR AWAY, and the reason no satoshi is locked forever.
+       Deeper even than retire, so every depth measured from the top stayed exactly where it was. */
+    PN(p.burn ? 1 : 0),
     /* ★ RETIRE — the driver's decision to stop, and the reason a tank is never lost.
        A car below BURN0 cannot afford another move, so without this it sits in RACING FOREVER with its
        remaining fuel locked in an output nothing can spend. That is the commonest way to strand
