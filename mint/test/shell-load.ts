@@ -12,7 +12,7 @@
 import { Transaction, Spend, UnlockingScript, LockingScript, TransactionSignature, PrivateKey, P2PKH, Hash, Utils } from '@bsv/sdk'
 import {
   emptyShell, loadCar, loadTrack, arm, refTick, buildShellLock, shellUnlockingOps, SHELL_SCOPE,
-  RACER_REGS, S, PHASE, PHASE_NAMES, stateFits, SHELL_MAX_FEE_PROVISIONAL as MAXFEE, type ShellState,
+  RACER_REGS, S, PHASE, PHASE_NAMES, stateFits, SHELL_MAX_FEE as MAXFEE, type ShellState,
 } from '../src/shell.ts'
 import { serializeOutput } from '../src/covenant.ts'
 

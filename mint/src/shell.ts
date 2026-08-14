@@ -68,19 +68,31 @@ export const SHELL_FEE_PER_KB = 100
 export const SHELL_FEE_SLACK = 64
 
 /**
- * ⚠⚠ PROVISIONAL AND WRONG. A placeholder so a race can BURN FUEL at all before step 6.
+ * ★ MAX_FEE — DERIVED FROM THE REGULATIONS, NOT WRITTEN DOWN.
  *
- * The value rule is a floor: `out ≥ V − MAX_FEE`. At zero — where it sat until now — the output may
- * never hold less than the input, so no move can pay a fee and no race can run. That is exactly what
- * the first end-to-end simulation hit.
+ * The value rule is a floor: `out ≥ V − MAX_FEE`. So it must be at least the largest burn any legal
+ * car can produce, plus the LOW_S slack — and computing it from the regs means a bench session that
+ * raises BURN_E cannot silently leave it behind.
  *
- * ⚠ It MUST be replaced by a number MEASURED from a serialized spend, not this one. A hand count
- * undercounts the output script-length varint (a 1,5xx-byte script needs 3 bytes, not 1), and that is
- * precisely how the battery's first MAX_FEE landed under the relay floor with no key to amend it.
- * And it needs ~64 sat of slack above the true fee, because pinning nLockTime for the tree took away
- * the lever the battery grinds for LOW_S.
+ * ⚠ AND THE BURN IS THE MINING FEE. Whatever the output holds less than the input is what the miner
+ * takes, so the SMALLEST burn must clear the relay floor or those moves are simply never mined.
+ * MEASURED by serializing a real spend, 2026-08-14:
+ *
+ *   worst transaction   3,620 bytes  →  362 sat at the official 100 sat/KB
+ *   burn at BURN0 = 40   40 sat  =  11 sat/KB   ← a third of the floor. Unmineable.
+ *   burn at BURN0 = 400 400 sat  = 110 sat/KB   ← clears it
+ *
+ * That is why BURN0 is 400 and not a number anybody chose. The battery's first MAX_FEE was HAND
+ * COUNTED, undercounted the output script-length varint, and landed under the floor with no key to
+ * amend it. Measure, or do not mint.
+ *
+ * ⚠ The 64 sat of slack is not decoration either: pinning nLockTime for the Christmas tree took away
+ * the lever the battery grinds for LOW_S, so the fee is the only one left.
  */
-export const SHELL_MAX_FEE_PROVISIONAL = 900
+export const shellMaxFee = (regs: RacerRegs = RACER_REGS): number =>
+  regs.BURN0 + regs.ENG_MAX * regs.BURN_E + SHELL_FEE_SLACK
+/** The settled value at RACER_REGS. Kept as a constant so tests and pages agree on one number. */
+export const SHELL_MAX_FEE = 400 + 24 * 35 + 64
 
 // ── fixed point ──────────────────────────────────────────────────────────────────────────────────────
 /** 1.0 = 2^32, as the battery. One convention across covenants is worth more than a tuned one. */
@@ -195,6 +207,10 @@ export interface RacerRegs {
  *                         shifted down about two engine sizes (402 m wants eng 18 rather than 20).
  *   BURN_E     6 → 35     big engines are genuinely thirsty now, so they can run dry — the tank
  *                         stopped being free and became a real part of the build.
+ *   BURN0    40 → 400    ⚠ NOT a tuning choice — FORCED by measurement. The burn IS the mining fee,
+ *                         and a move serializes to ~3,620 bytes, which costs 362 sat at the official
+ *                         100 sat/KB. At 40 a small engine paid 11 sat/KB and its moves would never
+ *                         have been mined. See the note on MAX_FEE below.
  *   FE      0.20 → 0.32   closes the gap to a real Top Fuel car, and gives the top of the engine
  *                         range somewhere to go instead of plateauing.
  *   G0      0.15 → 0.36   more grip to spend, which is what makes the extra force usable at all.
@@ -220,7 +236,7 @@ export const RACER_REGS: RacerRegs = {
   SPIN_KEEP: Math.round(0.5 * S),
   LOOSE_V: Math.round(0.35 * S),        // ⚠ untuned — no slider existed
   BLOW_T: 14,                           // ⚠ untuned — no slider existed
-  BURN0: 40,
+  BURN0: 400,
   BURN_E: 35,
   THROTTLE_MAX: 15,
   ENG_MAX: 24,

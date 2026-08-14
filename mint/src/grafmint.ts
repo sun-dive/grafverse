@@ -98,7 +98,7 @@ export {
 export type { ShellState, RacerRegs, Move, TickResult, Phase } from './shell.ts'
 // the SCRIPT itself, so a page can run the covenant rather than a description of it
 export { RACER_REGS, buildShellLock, shellLockOps, shellUnlockingOps, RECORD_SHELL, SLIP_UNIT,
-         SHELL_MAX_FEE_PROVISIONAL, loadables } from './shell.ts'
+         SHELL_MAX_FEE, shellMaxFee, loadables } from './shell.ts'
 export { serializeOutput } from './covenant.ts'
 export { TransactionSignature, Hash, Utils } from '@bsv/sdk'
 export { stateFits, fieldMax } from './shell.ts'

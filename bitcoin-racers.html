@@ -148,7 +148,7 @@
      only says what state we EXPECT, and the covenant is free to disagree, in which case the move is
      rejected and the race stops. That disagreement is the only thing worth testing. */
   function move(state, next, opts){
-    var MF=GM.SHELL_MAX_FEE_PROVISIONAL;
+    var MF=GM.SHELL_MAX_FEE;
     var prev=GM.buildShellLock({state:state,maxFee:MF});
     var src=new GM.Transaction(); src.addOutput({lockingScript:prev,satoshis:opts.fuel});
     var tx=new GM.Transaction(); tx.version=2;
@@ -279,7 +279,7 @@
       row('transactions', txs);
       row('total size', (bytes/1024).toFixed(1)+' KB');
       row('fuel burned', sat.toLocaleString()+' sat');
-      row('covenant', GM.buildShellLock({state:st,maxFee:GM.SHELL_MAX_FEE_PROVISIONAL}).toBinary().length+' B');
+      row('covenant', GM.buildShellLock({state:st,maxFee:GM.SHELL_MAX_FEE}).toBinary().length+' B');
       $('result').innerHTML=rows;
       $('status').innerHTML='every one of the '+txs+' transactions was accepted by the interpreter';
       $('run').disabled=false;
@@ -326,7 +326,7 @@
     };
     ['eng','tyr','tank','fin','slip','gap'].forEach(function(id){ $(id).addEventListener('input',sync) });
     sync();
-    $('locksize').textContent=GM.buildShellLock({state:GM.emptyShell(),maxFee:GM.SHELL_MAX_FEE_PROVISIONAL}).toBinary().length+' bytes';
+    $('locksize').textContent=GM.buildShellLock({state:GM.emptyShell(),maxFee:GM.SHELL_MAX_FEE}).toBinary().length+' bytes';
     $('run').onclick=run;
     draw();
   }).catch(function(e){
