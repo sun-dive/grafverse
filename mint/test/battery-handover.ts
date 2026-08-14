@@ -100,7 +100,21 @@ completed.inputs[0].sourceTransaction = handover.inputs[0].sourceTransaction
 completed.inputs[1].sourceTransaction = handover.inputs[1].sourceTransaction
 completed.inputs[1].unlockingScript = await new P2PKH().unlock(funder).sign(completed, 1)
 
+/* ⚠ WITHOUT THIS THE SIGNATURE IS DISCARDED, SILENTLY — see PharLap/docs/SDK_SERIALIZATION_CACHE_BUG.md.
+   `Transaction.fromHex` stores the bytes it parsed, and `toHex()` returns them however the inputs have
+   been mutated since. This test USED to pass without it, because it validated the object it had just
+   written to rather than the bytes that object serializes to — which is precisely how the SDK bug hid
+   in the first place, and it is a poor model of a wallet, since a real one broadcasts BYTES. */
+completed.invalidateSerializationCaches()
+
 check('the wallet\'s own input validates', validateInput(completed, 1, new P2PKH().lock(addr), FUND))
+
+// ★ And the SERIALIZED result really is signed — asserted on what would be broadcast, not on the object.
+{
+  const asSent = Transaction.fromHex(completed.toHex())
+  check('★ the completed transaction is signed IN THE BYTES', (asSent.inputs[1].unlockingScript?.toBinary().length ?? 0) > 100)
+  check('  …and is no longer the transaction that was handed over', completed.toHex() !== handover.toHex())
+}
 check('★ the covenant input STILL validates after the funder signed',
   validateInput(completed, 0, covLock, FUEL))
 
