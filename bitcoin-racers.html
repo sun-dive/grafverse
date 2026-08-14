@@ -179,6 +179,10 @@
     if(opts.pot) tx.addInput({sourceTransaction:opts.pot.tx,sourceOutputIndex:0,sequence:0xfffffffe,
                               unlockingScript:new GM.UnlockingScript([])});
     tx.addOutput({lockingScript:GM.buildShellLock({state:next,maxFee:MF}),satoshis:opts.out});
+    /* ★ THE MONEY LEAVES HERE. On any move that ENDS the run the covenant drops its value floor to a
+       single satoshi, so everything above that satoshi can be paid out to the driver. This second
+       output is the difference between a race and a very expensive way to lock coins up forever. */
+    if(opts.payout>0) tx.addOutput({lockingScript:new GM.P2PKH().lock(KEY.toAddress()),satoshis:opts.payout});
     tx.lockTime=opts.at;
 
     var pre=GM.TransactionSignature.format({
@@ -192,7 +196,7 @@
         spenderOutputs:tx.outputs.slice(1).flatMap(function(o){
           return GM.serializeOutput(o.satoshis||0,o.lockingScript.toBinary()) }),
         newValue:u64(opts.out), preimage:pre,
-        sig:ch[0].data||[], pubKey:ch[1].data||[], throttle:opts.throttle||0,
+        sig:ch[0].data||[], pubKey:ch[1].data||[], throttle:opts.throttle||0, retire:!!opts.retire,
         /* Every loadable, on every move. The covenant reads each only in the transition that OWNS it,
            so supplying them always is both harmless and what a real builder does — the script counts
            positions, not arguments. */
@@ -229,11 +233,12 @@
 
     // the pot: a real output whose outpoint the covenant is told about before the flag drops
     var pot=new GM.Transaction();
-    pot.addOutput({lockingScript:GM.LockingScript.fromASM('OP_TRUE'),satoshis:Math.round(tank/2)});
+    var potSats=Math.round(tank/2);
+    pot.addOutput({lockingScript:GM.LockingScript.fromASM('OP_TRUE'),satoshis:potSats});
     var idLE=GM.Utils.toArray(pot.id('hex'),'hex').slice().reverse();
     var poolOutpoint=idLE.concat([0,0,0,0]);
 
-    var st=GM.emptyShell(), fuel=tank, at=GREEN, bytes=0, txs=0, sat=0;
+    var st=GM.emptyShell(), fuel=tank, at=GREEN, bytes=0, txs=0, sat=0, took=0, retired=false;
     var steps=[
       ['claim it and load the car', function(s){ return GM.loadCar(s,{driver:DRIVER,eng:eng,tyr:tyr},R) }],
       ['load the track and the tree', function(s){ return GM.loadTrack(s,{finish:Math.round(finM*S),slip:slip,
@@ -259,22 +264,56 @@
       });
     });
 
+    /* ★ THE TRAILER RESERVE. Retiring is itself a move, and a move costs its fee plus the one satoshi
+       the covenant always keeps. So a driver cannot spend the tank to the last drop: the moment the
+       next tick would leave less than it costs to stop, the run has to end voluntarily — or the tank
+       is locked in an output nothing can spend. Holding back enough to get the car home is not an
+       implementation detail here, it is a decision the driver makes on every single move. */
+    var RESERVE=R.BURN0+1;
+
+    /* ★ RETIREMENT — the reason a tank is never stranded. One flag in the unlocking script sends the
+       shell straight to OUT from wherever it stands: the car stops where it is, nothing loads, the
+       clock is left alone, and the floor drops to a single satoshi so the remaining fuel comes home.
+       It costs one ordinary move's fee. The car's record stands at whatever it had reached. */
+    function retire(){
+      var payout=fuel-R.BURN0-1;
+      at=Math.max(st.green, st.last+st.gap);
+      return move(st,{...st,phase:GM.PHASE.OUT},{fuel:fuel,out:1,at:at,retire:true,payout:payout})
+        .then(function(r){
+          txs++; bytes+=r.bytes; sat+=R.BURN0;
+          if(!r.ok){ log('<span class="no">✗</span> tx '+String(txs).padStart(3)+'  retire — '+r.why,'no');
+                     throw Error('rejected') }
+          st={...st,phase:GM.PHASE.OUT}; fuel=1; took=payout; retired=true;
+          log('<span class="ok">✓</span> tx '+String(txs).padStart(3)+'  '+String(r.bytes).padStart(5)+' B   '+
+              '<span class="hi">RETIRED</span> — too low to run and still afford to stop; '+
+              payout.toLocaleString()+' sat recovered','hi');
+        });
+    }
+
     // the race itself
     chain=chain.then(function loop(){
       if(st.phase===GM.PHASE.DONE||st.phase===GM.PHASE.OUT) return;
-      if(fuel<=R.BURN0){ log('  <span class="hi">out of fuel</span> — the car coasts to a halt','hi'); return }
       if(st.n>900){ log('  stopped at 900 moves','hi'); return }
       var th=safe(st,fuel);
       at=Math.max(st.green, st.last+st.gap);
       var want;
       try{ want=GM.refTick(st,{throttle:th,lockTime:at,fuel:fuel},R) }catch(e){ log('  '+e.message,'no'); return }
       var crossing = want.state.phase===GM.PHASE.DONE;
-      return move(st,want.state,{fuel:fuel,out:fuel-want.burn,at:at,throttle:th,
-                                 pot:crossing?{tx:pot}:null}).then(function(r){
+      var ending = crossing || want.state.phase===GM.PHASE.OUT;
+
+      // Can't afford this tick and still afford to stop? Then stop, and take what's left.
+      if(!ending && fuel-want.burn<RESERVE) return retire();
+
+      /* On the last move the floor drops to one satoshi and the rest — plus the pot, if the line was
+         crossed — goes to the driver's own key. */
+      var payout = ending ? (fuel-want.burn-1)+(crossing?potSats:0) : 0;
+      return move(st,want.state,{fuel:fuel,out:ending?1:fuel-want.burn,at:at,throttle:th,
+                                 payout:payout, pot:crossing?{tx:pot}:null}).then(function(r){
         txs++; bytes+=r.bytes; sat+=want.burn;
         if(!r.ok){ log('<span class="no">✗</span> tx '+String(txs).padStart(3)+'  move '+st.n+' — '+r.why,'no');
                    throw Error('rejected') }
         st=want.state; fuel-=want.burn;
+        if(ending) took=payout;
         trace.push({s:st.s,v:st.v,spun:want.spun});
         if(st.n<=3 || st.n%10===0 || crossing || want.ended){
           log('<span class="ok">✓</span> tx '+String(txs).padStart(3)+'  '+String(r.bytes).padStart(5)+' B   '+
@@ -295,13 +334,18 @@
       var row=function(k,v){ rows+='<tr><td class="k">'+k+'</td><td class="v">'+v+'</td></tr>' };
       var done=st.phase===GM.PHASE.DONE;
       $('verdict').innerHTML = done ? '<span class="ok">'+(st.n*SEC).toFixed(2)+' s</span>'
-        : st.phase===GM.PHASE.OUT ? '<span class="no">DNF</span>' : '<span class="hi">out of fuel</span>';
+        : retired ? '<span class="hi">retired</span>' : '<span class="no">DNF</span>';
       row('moves · ET', st.n+' ticks');
       row('speed at the flag', Math.round(mph(st.v))+' mph');
       row('reached', (st.s/S).toFixed(0)+' of '+finM+' m');
       row('transactions', txs);
       row('total size', (bytes/1024).toFixed(1)+' KB');
       row('fuel burned', sat.toLocaleString()+' sat');
+      /* ★ The line that proves nothing was stranded: whatever the tank started with either burned as
+         mining fees or came back out, less the single satoshi the covenant keeps as its headstone. */
+      row(done?'won and recovered':retired?'recovered':'recovered from the wreck',
+          '<span class="'+(done?'ok':'hi')+'">'+took.toLocaleString()+' sat</span>');
+      row('left in the shell', '1 sat');
       row('covenant', GM.buildShellLock({state:st,maxFee:GM.SHELL_MAX_FEE}).toBinary().length+' B');
       $('result').innerHTML=rows;
       $('status').innerHTML='every one of the '+txs+' transactions was accepted by the interpreter';
@@ -309,6 +353,9 @@
       draw();
     }).catch(function(e){
       $('verdict').innerHTML='<span class="no">rejected</span>';
+      /* Clear the table rather than leave it: stale numbers beside the word "rejected" read as though
+         the refused run produced them, which is the one thing this page must never imply. */
+      $('result').innerHTML='';
       $('status').textContent='the covenant refused a move — the race stops there';
       $('run').disabled=false;
     });
