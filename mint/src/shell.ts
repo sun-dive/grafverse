@@ -172,8 +172,12 @@ export interface RacerRegs {
  * into the shell: one covenant hosts a meta whose answer changes with the strip.
  *
  * What moved, and why it produced that:
- *   DRAG    0.02 → 0.05   the engine of the whole effect. More drag means speed must be EARNED and
- *                         held, so a big motor needs distance before its advantage shows.
+ *   DRAG   0.02 → 0.062   the engine of the whole effect. More drag means speed must be EARNED and
+ *                         held, so a big motor needs distance before its advantage shows. Raised from
+ *                         0.05 to bring terminal speeds down toward what a real car traps: at 0.05 an
+ *                         eng 16 car ran 393 mph against a real dragster's ~330. At 0.062 it runs 360
+ *                         in 4.7 s, against a real 4.5 — and the distance ladder survives intact,
+ *                         shifted down about two engine sizes (402 m wants eng 18 rather than 20).
  *   BURN_E     6 → 35     big engines are genuinely thirsty now, so they can run dry — the tank
  *                         stopped being free and became a real part of the build.
  *   FE      0.20 → 0.32   closes the gap to a real Top Fuel car, and gives the top of the engine
@@ -197,7 +201,7 @@ export const RACER_REGS: RacerRegs = {
   FE: Math.round(0.32 * S),
   G0: Math.round(0.36 * S),
   GV: Math.round(0.30 * S),
-  DRAG: Math.round(0.05 * S),
+  DRAG: Math.round(0.062 * S),
   SPIN_KEEP: Math.round(0.5 * S),
   LOOSE_V: Math.round(0.35 * S),        // ⚠ untuned — no slider existed
   BLOW_T: 14,                           // ⚠ untuned — no slider existed

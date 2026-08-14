@@ -238,11 +238,27 @@ console.log('THE SHELL — reference implementation\n')
   check('★ flat out with the wheels spinning GRENADES the engine — no load, revs run away',
     grenade.ended === 'blown' && grenade.state.phase === PHASE.OUT)
 
-  // Build speed gently, then get greedy — the realistic way a run ends in the wall.
-  let st = car(12, 6), t = GREEN
+  /* Build speed gently, then get greedy — the realistic way a run ends in the wall.
+     ⚠ Asserted as a PROPERTY, not a magic throttle number. This test first read "throttle 13 is clean
+     at speed", which was true at DRAG 0.05 and false at 0.062 — the car tops out lower, so grip at
+     speed is lower, and 13 put it in the wall. The claim being made is that grip RISES with speed, so
+     the honest way to say it is that a moving car tolerates more throttle than a standing one. That
+     holds at any constants; a threshold of 13 only held at one. */
+  const maxSafe = (at: ShellState): number => {
+    let best = 0
+    for (let th = 1; th <= REGS.THROTTLE_MAX; th++) {
+      // A car still on the line is gated by the green; one already racing by the minimum gap.
+      const r = refTick(at, { throttle: th, lockTime: Math.max(at.green, at.last + at.gap), fuel: 30_000 })
+      if (!r.spun && r.ended === null) best = th
+    }
+    return best
+  }
+  const standing = car(12, 6)
+  let st = standing, t = GREEN
   for (let i = 0; i < 40; i++) st = refTick(st, { throttle: 5, lockTime: t++, fuel: 30_000 }).state
-  check('grip rises with speed, so a moving car is HARDER to spin',
-    st.v > REGS.LOOSE_V && refTick(st, { throttle: 13, lockTime: t, fuel: 30_000 }).spun === false)
+  check('grip rises with speed, so a moving car takes MORE throttle than a standing one',
+    st.v > REGS.LOOSE_V && maxSafe(st) > maxSafe(standing))
+  console.log(`        standing ${maxSafe(standing)} · at v ${(st.v / S).toFixed(2)} it takes ${maxSafe(st)}`)
   const wall = refTick(st, { throttle: REGS.THROTTLE_MAX, lockTime: t, fuel: 30_000 })
   check('★ but breaking grip AT SPEED puts it OFF THE TRACK — it steps sideways',
     wall.ended === 'off' && wall.state.phase === PHASE.OUT)
