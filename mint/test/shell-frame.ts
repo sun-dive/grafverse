@@ -10,7 +10,7 @@
 //
 // Everything runs through `Spend`, the same interpreter a node uses. Nothing is asserted about bytes we
 // merely believe are correct.
-import { Transaction, Spend, LockingScript, UnlockingScript, TransactionSignature } from '@bsv/sdk'
+import { Transaction, Spend, LockingScript, UnlockingScript, TransactionSignature, PrivateKey, P2PKH, Hash } from '@bsv/sdk'
 import {
   emptyShell, loadCar, loadTrack, arm, buildShellLock, shellUnlockingOps, SHELL_SCOPE,
   FIELDS, FIELD_WIDTHS, RACER_REGS, S, PHASE, PHASE_NAMES, type ShellState,
@@ -31,7 +31,11 @@ const u64le = (n: number): number[] => {
   return b
 }
 
-const DRIVER = new Array(20).fill(0x9c)
+/* A real key, because the covenant now demands a real signature. `driver` is its hash160 — the same
+   twenty bytes a P2PKH address is built from, which is what lets an ordinary wallet drive a car. */
+const DRIVER_KEY = PrivateKey.fromRandom()
+const DRIVER = Hash.hash160(DRIVER_KEY.toPublicKey().encode(true) as number[])
+const STRANGER = PrivateKey.fromRandom()
 const VALUE = 50_000
 
 /**
@@ -39,7 +43,8 @@ const VALUE = 50_000
  * `next` must be the input state with its phase advanced — anything else must be rejected, which is
  * what makes this a test of the comparison as well as of the transition.
  */
-function spend(state: ShellState, next: ShellState, outValue = VALUE): { ok: boolean; why?: string } {
+async function spend(state: ShellState, next: ShellState, outValue = VALUE,
+               signer: PrivateKey | null = DRIVER_KEY): { ok: boolean; why?: string } {
   const prev = buildShellLock({ state })
   const source = new Transaction()
   source.addOutput({ lockingScript: prev, satoshis: VALUE })
@@ -57,8 +62,18 @@ function spend(state: ShellState, next: ShellState, outValue = VALUE): { ok: boo
     lockTime: tx.lockTime, scope: SHELL_SCOPE,
   })
   const spenderOutputs = tx.outputs.slice(1).flatMap(o => serializeOutput(o.satoshis ?? 0, o.lockingScript.toBinary()))
+
+  /* The signature is an ORDINARY one over this input — P2PKH's own template produces it, using the
+     source output's locking script as the subscript, which here is the covenant. That is the whole
+     point: a car is driven by a normal wallet key doing a normal thing. */
+  let sig: number[] = [], pubKey: number[] = []
+  if (signer != null) {
+    const chunks = (await new P2PKH().unlock(signer).sign(tx, 0)).chunks
+    sig = chunks[0].data ?? []
+    pubKey = chunks[1].data ?? []
+  }
   tx.inputs[0].unlockingScript = new UnlockingScript(
-    shellUnlockingOps({ spenderOutputs, newValue: u64le(outValue), preimage }))
+    shellUnlockingOps({ spenderOutputs, newValue: u64le(outValue), preimage, sig, pubKey }))
 
   try {
     const ok = new Spend({
@@ -89,11 +104,11 @@ const LOADED: ShellState = {
   const advanced = (st: ShellState): ShellState =>
     ({ ...st, phase: Math.min(st.phase + 1, PHASE.RACING) as ShellState['phase'] })
 
-  const r = spend(LOADED, advanced(LOADED))
+  const r = (await spend(LOADED, advanced(LOADED)))
   check('★ a shell reads its own twelve fields and writes back eleven unchanged', r.ok)
   if (!r.ok) console.log('   ↳', r.why)
 
-  const empty = spend(emptyShell(), advanced(emptyShell()))
+  const empty = (await spend(emptyShell(), advanced(emptyShell())))
   check('the EMPTY shell round-trips too — every field zero', empty.ok)
   if (!empty.ok) console.log('   ↳', empty.why)
 }
@@ -106,15 +121,15 @@ const LOADED: ShellState = {
   const bump = (k: keyof ShellState, by: number): ShellState =>
     ({ ...adv, [k]: (adv[k] as number) + by })
 
-  check('a changed `s` is rejected', spend(LOADED, bump('s', 1)).ok, false)
-  check('a changed `v` is rejected', spend(LOADED, bump('v', 1)).ok, false)
-  check('a changed `n` is rejected', spend(LOADED, bump('n', 1)).ok, false)
-  check('a changed `eng` is rejected', spend(LOADED, bump('eng', 1)).ok, false)
-  check('a changed `slip` is rejected', spend(LOADED, bump('slip', 1)).ok, false)
-  check('a changed `finish` is rejected', spend(LOADED, bump('finish', 1)).ok, false)
-  check('a changed `green` is rejected', spend(LOADED, bump('green', 1)).ok, false)
+  check('a changed `s` is rejected', (await spend(LOADED, bump('s', 1))).ok, false)
+  check('a changed `v` is rejected', (await spend(LOADED, bump('v', 1))).ok, false)
+  check('a changed `n` is rejected', (await spend(LOADED, bump('n', 1))).ok, false)
+  check('a changed `eng` is rejected', (await spend(LOADED, bump('eng', 1))).ok, false)
+  check('a changed `slip` is rejected', (await spend(LOADED, bump('slip', 1))).ok, false)
+  check('a changed `finish` is rejected', (await spend(LOADED, bump('finish', 1))).ok, false)
+  check('a changed `green` is rejected', (await spend(LOADED, bump('green', 1))).ok, false)
   check('★ a changed DRIVER is rejected — the 20-byte hash survives as bytes',
-    spend(LOADED, { ...adv, driver: DRIVER.map((b, i) => i === 0 ? b ^ 1 : b) }).ok, false)
+    (await spend(LOADED, { ...adv, driver: DRIVER.map((b, i) => i === 0 ? b ^ 1 : b) })).ok, false)
 }
 
 // ── THE PHASE MACHINE ────────────────────────────────────────────────────────────────────────────────
@@ -126,22 +141,47 @@ const LOADED: ShellState = {
     ({ ...LOADED, phase: phase as ShellState['phase'] })
 
   for (const [from, want] of [[0, 1], [1, 2], [2, 3], [3, 4]] as const) {
-    check(`${PHASE_NAMES[from]} → ${PHASE_NAMES[want]}`, spend(at(from), to(from, want)).ok)
+    check(`${PHASE_NAMES[from]} → ${PHASE_NAMES[want]}`, (await spend(at(from), to(from, want))).ok)
   }
   check('RACING → RACING · a race continues until the physics end it',
-    spend(at(PHASE.RACING), to(PHASE.RACING, PHASE.RACING)).ok)
+    (await spend(at(PHASE.RACING), to(PHASE.RACING, PHASE.RACING))).ok)
 
   // Skipping and standing still are the two ways to cheat the sequence, and both are refused.
-  check('EMPTY cannot skip straight to TRACK', spend(at(0), to(0, 2)).ok, false)
-  check('CAR cannot skip straight to ARMED', spend(at(1), to(1, 3)).ok, false)
-  check('★ a phase cannot stand still — you cannot re-load a car', spend(at(0), to(0, 0)).ok, false)
-  check('and it cannot go backwards', spend(at(2), to(2, 1)).ok, false)
+  check('EMPTY cannot skip straight to TRACK', (await spend(at(0), to(0, 2))).ok, false)
+  check('CAR cannot skip straight to ARMED', (await spend(at(1), to(1, 3))).ok, false)
+  check('★ a phase cannot stand still — you cannot re-load a car', (await spend(at(0), to(0, 0))).ok, false)
+  check('and it cannot go backwards', (await spend(at(2), to(2, 1))).ok, false)
 
   // ★ Terminal means terminal. The run is over, the chain stops, and the final state stands as the
   // record — there is no key anywhere that can restart a car that blew up or crossed the line.
-  check('★ a DONE shell cannot be spent AT ALL', spend(at(PHASE.DONE), to(5, 5)).ok, false)
-  check('★ an OUT shell cannot be spent AT ALL', spend(at(PHASE.OUT), to(6, 6)).ok, false)
-  check('  …not even to advance it', spend(at(PHASE.DONE), to(5, 6)).ok, false)
+  check('★ a DONE shell cannot be spent AT ALL', (await spend(at(PHASE.DONE), to(5, 5))).ok, false)
+  check('★ an OUT shell cannot be spent AT ALL', (await spend(at(PHASE.OUT), to(6, 6))).ok, false)
+  check('  …not even to advance it', (await spend(at(PHASE.DONE), to(5, 6))).ok, false)
+}
+
+// ── ONLY THE DRIVER MAY MOVE THE CAR ─────────────────────────────────────────────────────────────────
+// `driver` stops being twenty bytes the script carries around and becomes the key that must sign.
+{
+  const at = (phase: number): ShellState => ({ ...LOADED, phase: phase as ShellState['phase'] })
+  const to = (phase: number): ShellState => ({ ...LOADED, phase: phase as ShellState['phase'] })
+
+  check('★ the driver may move it', (await spend(at(3), to(4))).ok)
+  check('★ a STRANGER may not — right shape, wrong key',
+    (await spend(at(3), to(4), VALUE, STRANGER)).ok, false)
+  check('★ nor may nobody — an unsigned move on a claimed shell is refused',
+    (await spend(at(3), to(4), VALUE, null)).ok, false)
+
+  // ★ An EMPTY shell is UNCLAIMED. Its driver is twenty zero bytes and no public key hashes to that,
+  // so nothing could sign for it — and it does not need to, because claiming it is what SETS the
+  // driver. This is the one transition in the whole machine that anybody may make.
+  const unclaimed = emptyShell()
+  const claimed = { ...unclaimed, phase: PHASE.CAR as ShellState['phase'] }
+  check('★ an unclaimed shell can be claimed by anyone, unsigned',
+    (await spend(unclaimed, claimed, VALUE, null)).ok)
+  check('  …and the moment it is claimed, the signature becomes compulsory',
+    (await spend({ ...unclaimed, phase: PHASE.CAR as ShellState['phase'], driver: DRIVER },
+                 { ...unclaimed, phase: PHASE.TRACK as ShellState['phase'], driver: DRIVER },
+                 VALUE, null)).ok, false)
 }
 
 // ── the value floor ──────────────────────────────────────────────────────────────────────────────────
@@ -150,9 +190,9 @@ const LOADED: ShellState = {
 {
   const adv = { ...LOADED, phase: Math.min(LOADED.phase + 1, PHASE.RACING) as ShellState['phase'] }
   check('the output may hold MORE than it started with — a top-up is just a spend',
-    spend(LOADED, adv, VALUE + 1_000).ok)
+    (await spend(LOADED, adv, VALUE + 1_000)).ok)
   check('the output may not hold LESS while maxFee is zero',
-    spend(LOADED, adv, VALUE - 1).ok, false)
+    (await spend(LOADED, adv, VALUE - 1)).ok, false)
 }
 
 // ── every field is genuinely distinguishable in the fixture ──────────────────────────────────────────

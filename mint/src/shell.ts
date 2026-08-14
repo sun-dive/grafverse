@@ -548,6 +548,31 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
   const c = p.c ?? pushTxConstants(SHELL_SCOPE)
   const ops: ScriptChunk[] = [
     ...fieldChunks(p.state),
+
+    /* ── ONLY THE DRIVER MAY MOVE THIS CAR ──────────────────────────────────────────────────────────
+       Checked HERE, at the very top, against the state's own LITERAL pushes — which are still on the
+       stack and have not been dropped yet. Two reasons, and neither is convenience.
+
+       First, the OLD phase is needed and only exists here. By the time the fields are extracted the
+       phase machine has already advanced it, and the question being asked is about the phase this
+       shell is IN, not the one it is going to.
+
+       Second, an EMPTY shell has a driver of twenty zero bytes, and no public key hashes to that. So a
+       shell in phase 0 is UNCLAIMED and anyone may take it — which is right, because that transition
+       is what sets the driver. From phase 1 onward the signature is compulsory: your car, your key.
+
+       Stack here, bottom to top: sig · pubkey · SO · newV · preimage · [15 literal pushes]. */
+    PN(11), op(OP.OP_PICK), op(OP.OP_BIN2NUM),   // the OLD phase
+    op(OP.OP_0NOTEQUAL),                          // …is this shell claimed?
+    op(OP.OP_IF),
+      PN(10), op(OP.OP_PICK),                     // the driver hash, from the script's own bytes
+      PN(19), op(OP.OP_PICK),                     // the public key offered
+      op(OP.OP_HASH160), op(OP.OP_EQUALVERIFY),   // it must be THE driver's
+      PN(19), op(OP.OP_PICK),                     // the signature
+      PN(19), op(OP.OP_PICK),                     // and the key again, for CHECKSIG
+      op(OP.OP_CHECKSIG), op(OP.OP_VERIFY),
+    op(OP.OP_ENDIF),
+
     // 3 header + 12 fields = 15 pushes: seven pairs and a single
     op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP),
     op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_DROP),
@@ -626,9 +651,19 @@ export function buildShellLock(p: Omit<ShellLockParams, 'fieldOffset'>): Locking
   return new LockingScript(shellLockOps({ ...p, fieldOffset: varIntSize + O }))
 }
 
-/** The unlocking half: the trailing outputs, the new value, and the preimage. No signature. */
+/**
+ * The unlocking half: the driver's signature and key, the trailing outputs, the new value, and the
+ * preimage — in that order, because the covenant reads them at fixed depths.
+ *
+ * The signature and key go DEEPEST so the preimage stays on top for OP_PUSH_TX. Claiming an unclaimed
+ * shell needs neither, but both must still be pushed — empty is fine — because the covenant counts
+ * positions, not arguments, and a missing push would shift every depth above it.
+ */
 export function shellUnlockingOps(
-  p: { spenderOutputs: number[]; newValue: number[]; preimage: number[] },
+  p: { spenderOutputs: number[]; newValue: number[]; preimage: number[]; sig?: number[]; pubKey?: number[] },
 ): ScriptChunk[] {
-  return [pushData(p.spenderOutputs), pushData(p.newValue), pushData(p.preimage)]
+  return [
+    pushData(p.sig ?? []), pushData(p.pubKey ?? []),
+    pushData(p.spenderOutputs), pushData(p.newValue), pushData(p.preimage),
+  ]
 }
