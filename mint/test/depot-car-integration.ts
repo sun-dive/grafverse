@@ -144,13 +144,10 @@ function mint(tank: number, carValue = DEPOT_DRAW): { ok: boolean; tx: Transacti
     } catch (e) { refused = (e as Error).message.split('\n')[0]; return false }
   }
 
-  /* ⚠ A CAR STILL NEEDS A FINISH LINE. Crossing means SPENDING the pot outpoint, so a pool of zero
-     bytes is a line nothing can cross — the car runs to within a tick of it and stops. Supplied here
-     as an ordinary 1-sat coin; who supplies it for a KEYLESS visitor is the open question this test
-     exists to raise. */
-  const POT = new Transaction()
-  POT.addOutput({ lockingScript: new P2PKH().lock(GAME.toAddress()), satoshis: 1 })
-  const POOL = [...Utils.toArray(POT.id('hex'), 'hex').slice().reverse(), 0, 0, 0, 0]
+  /* ★ NO FINISH-LINE TOKEN. A public car is racing nobody, so there is no payment to guard and no
+     outpoint to spend — which is what lets a visitor with no coins finish at all. This test is why:
+     it watched a car run to 59 metres of 60 and stop one tick short, holding fuel it could not use. */
+  const POOL = new Array(36).fill(0)
 
   const GREEN = 1_700_000_000
   const built = loadCar(FRESH, { driver: OWNER, eng: 10, tyr: 10 }, R)
@@ -165,10 +162,10 @@ function mint(tank: number, carValue = DEPOT_DRAW): { ok: boolean; tx: Transacti
     const want = refTick(st, { throttle: 8, lockTime: at, fuel }, R)
     const ending = want.state.phase === PHASE.DONE || want.state.phase === PHASE.OUT
     if (!ending && fuel - want.burn < R.BURN0 + 1) break
-    if (!(await move(want.state, fuel - want.burn, at, 8, ending ? POT : undefined))) break
+    if (!(await move(want.state, fuel - want.burn, at, 8))) break
     fuel -= want.burn
   }
-  check('★★ …and races it to the line, with no key anywhere in the chain', st.phase === PHASE.DONE)
+  check('★★ …and races it home with NO KEY AND NO COIN anywhere in the chain', st.phase === PHASE.DONE)
   if (refused) console.log('   ↳', refused)
   console.log(`        ${moves} moves · ${(st.s / S).toFixed(0)} m · ${fuel.toLocaleString()} sat left of 12,000`)
 }

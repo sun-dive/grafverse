@@ -932,7 +932,7 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
   ops.push(PN(FIELDS.length + CARRIED.length), op(OP.OP_ROLL), op(OP.OP_DROP))
 
   // ── THE PHYSICS ──
-  ops.push(...shellPhysicsOps(p.regs ?? RACER_REGS))
+  ops.push(...shellPhysicsOps(p.regs ?? RACER_REGS, isPublic))
 
   // values → fixed-width fields, and rebuild the script
   for (let i = FIELDS.length - 1; i > 0; i--) {
@@ -980,7 +980,7 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
  *   force — `spun ? grip : demand` IS `min(demand, grip)`. One opcode, no branch, and the spin flag
  *           is then recovered by comparing the two rather than being carried.
  */
-function shellPhysicsOps(regs: RacerRegs): ScriptChunk[] {
+function shellPhysicsOps(regs: RacerRegs, isPublic = false): ScriptChunk[] {
   const a = new Asm([
     /* ⚠ THE WHOLE STACK, LOADABLES INCLUDED. Leaving them out cost an evening: everything ABOVE them
        still computed correctly, because model and reality shifted by the same eight, so the model
@@ -1090,10 +1090,24 @@ function shellPhysicsOps(regs: RacerRegs): ScriptChunk[] {
      hashPrevouts is a hash over every input's outpoint, so the covenant computes what it MUST be for a
      transaction spending exactly two things — this shell, and the pool it was told about at load time —
      and refuses anything else. Winning and being paid become one act: there is no separate claim to
-     make, nothing to trust, and no second transaction in which something could go wrong. */
-  a.pick('outpoint'); a.pick('pool'); a.bin(OP.OP_CAT, 'both')
-  a.o(OP.OP_HASH256, 1, ['want'])
-  a.pick('hashPrev'); a.bin(OP.OP_EQUAL, 'gotPot'); a.o(OP.OP_VERIFY, 1, [])
+     make, nothing to trust, and no second transaction in which something could go wrong.
+
+     ── ⚠ AND A PUBLIC CAR HAS NO POT, BECAUSE IT IS RACING NOBODY ────────────────────────────────
+     This rule guards a PAYMENT. In a time trial nobody is paid, so there is nothing to guard — and the
+     price of guarding it is fatal to the whole variant: crossing means SPENDING an outpoint, so a
+     keyless visitor would need a coin of their own to finish. Found by the integration test, which
+     watched a car run to 59 metres of 60 and stop one tick short with fuel to spare.
+
+     ⇒ Removing it costs the multi-car race nothing. A race with a PURSE has entrants with wallets, so
+     it is the owned variant, where this stands untouched.
+     ⚠ What it does give up is EXCLUSIVITY — the pot is also why only one transaction can win, since
+     only one can spend it. Two public cars may both reach DONE. Correct for a time trial, where every
+     run stands alone; a real head-to-head would want the pot covenant, not this. */
+  if (!isPublic) {
+    a.pick('outpoint'); a.pick('pool'); a.bin(OP.OP_CAT, 'both')
+    a.o(OP.OP_HASH256, 1, ['want'])
+    a.pick('hashPrev'); a.bin(OP.OP_EQUAL, 'gotPot'); a.o(OP.OP_VERIFY, 1, [])
+  }
   a.num(PHASE.DONE, 'np'); a.armReturn(['np'])
   a.elseArm(); a.num(PHASE.RACING, 'np'); a.armReturn(['np']); a.endIf()
   a.armReturn(['ns', 'nv', 'nn', 'np'])
