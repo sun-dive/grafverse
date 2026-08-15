@@ -109,8 +109,13 @@
   <div class="card">
     <h2>Traction off the line · full throttle</h2>
     <div class="map" id="map"></div>
-    <p class="note"><b>·</b> hooks up &nbsp; <b>×</b> spins. At the provisional numbers every engine above 6
-       spins at every tyre grade, which is why a big engine currently loses to a small one by five to one.</p>
+    <!-- ⚠ THIS USED TO ASSERT A RACE RESULT ("a big engine loses to a small one by five to one") and
+         went stale the moment the regulations were retuned — the page was stating something false
+         about its own numbers. It now describes only what the map itself shows, which cannot rot. -->
+    <p class="note"><b>·</b> hooks up &nbsp; <b>×</b> spins — <b>at FULL throttle</b>, which is the one
+       thing no sane driver uses off the line. A car marked <b>×</b> is not a car that loses; it is a car
+       that must <i>lift</i> to launch, trading force for grip until speed brings the grip back (GV).
+       So read this as where the throttle stops being free, not as a verdict. The verdict is the race.</p>
   </div>
 
   <div class="card">
@@ -169,11 +174,20 @@
     ['FE','force per unit of engine',0.01,1.5,0.01,'fp'],
     ['G0','grip per unit of tyre',0.01,1.5,0.01,'fp'],
     ['GV','extra grip per unit of speed',0,3,0.02,'fp'],
-    ['DRAG','drag per tick',0,0.2,0.002,'fp'],
+    ['DRAG','drag per tick — the LINEAR term',0,0.2,0.002,'fp'],
+    /* ⚠ step 0.0001, not 0.0005 — a range input SNAPS to its step, and 0.0097 is not a multiple of
+       0.0005, so the slider would have quietly opened at 0.0095 and the note would have been lying. */
+    ['DRAG2','★★ QUADRATIC drag (v²) — this sets top speed',0,0.05,0.0001,'fp'],
     ['SPIN_KEEP','★ what survives a wheelspin',0,1,0.01,'fp'],
     ['LOOSE_V','above this speed, losing grip puts you OFF',0.05,3,0.05,'fp'],
     ['BLOW_T','spinning at this throttle GRENADES the engine',1,63,1,'int'],
-    ['BURN0','satoshis burned per tick',1,300,1,'int'],
+    ['BLOW_V','★★ above this SPEED the engine lets go — 0 disables it',0,700,5,'mph'],
+    /* ⚠ max 1000, not 300. BURN0 is 375 — DERIVED from the script's worst move against the fee floor,
+       not chosen — and a range input CLAMPS. The slider therefore opened at 300, and `readRegs` reads
+       every slider on every drag, so touching ANY control silently rewrote the burn from 375 to 300.
+       Every tuning session before this one was run 20% cheap. Caught by `checkSliderRanges` below,
+       which now refuses to let it happen quietly again. */
+    ['BURN0','satoshis burned per tick · DERIVED — see shellMaxFee',1,1000,1,'int'],
     ['BURN_E','extra burn per unit of engine',0,40,1,'int'],
     ['THROTTLE_MAX','throttle steps',1,63,1,'int'],
     ['ENG_MAX','engine limit',1,40,1,'int'],
@@ -192,23 +206,46 @@
       $('r-'+d[0]).addEventListener('input',function(){ readRegs(); paintMap(); showRegNote(); });
     });
   }
-  function setRegUI(){
+  /* ★ A THIRD SCALE, because nobody tunes a top speed in fixed-point metres per tick. `v` is metres
+     per 0.1 s, so mph = (v/S) * 22.3694 — the same conversion the readouts and the CLI already use.
+     The slider is in mph; the reg stays fixed-point, and the conversion lives in ONE place. */
+  var MPH_PER_UNIT = 22.3694;
+  function regToUI(d){ var v=R[d[0]]; return d[5]==='fp' ? v/S : d[5]==='mph' ? (v/S)*MPH_PER_UNIT : v; }
+  function uiToReg(d,raw){ return d[5]==='fp' ? Math.round(raw*S) : d[5]==='mph' ? Math.round((raw/MPH_PER_UNIT)*S) : Math.round(raw); }
+
+  /* ★ THE CHECK THAT WOULD HAVE CAUGHT THE BURN0 BUG, AND WILL CATCH THE NEXT ONE.
+     A range input silently CLAMPS a value outside its min/max. Since `readRegs` reads every slider on
+     every drag, one out-of-range reg means moving an unrelated control quietly rewrites it — the bench
+     then tunes against numbers the covenant will never use, and says nothing. So every reg is checked
+     against its own slider's range at boot, and a failure is LOUD. */
+  function checkSliderRanges(){
+    var bad=[];
     REGDEF.forEach(function(d){
-      var v=R[d[0]]; $('r-'+d[0]).value = (d[5]==='fp') ? (v/S) : v;
+      var ui=regToUI(d);
+      if (ui < +d[2] || ui > +d[3]) bad.push(d[0]+' is '+ui+', outside the slider’s '+d[2]+'–'+d[3]);
     });
+    if (bad.length){
+      console.error('BENCH: reg outside its slider range — it will be CLAMPED and silently rewritten:\n  '+bad.join('\n  '));
+      var n=$('reg-note');
+      if (n) n.textContent='⚠ '+bad.join(' · ')+' — widen the slider in REGDEF before tuning.';
+    }
+    return bad;
+  }
+
+  function setRegUI(){
+    REGDEF.forEach(function(d){ $('r-'+d[0]).value = regToUI(d); });
     syncRegLabels();
   }
   function syncRegLabels(){
     REGDEF.forEach(function(d){
       var raw=+$('r-'+d[0]).value;
-      $('rv-'+d[0]).textContent = (d[5]==='fp') ? raw.toFixed(String(d[4]).split('.')[1] ? String(d[4]).split('.')[1].length : 2) : raw;
+      $('rv-'+d[0]).textContent = (d[5]==='fp')
+        ? raw.toFixed(String(d[4]).split('.')[1] ? String(d[4]).split('.')[1].length : 2)
+        : (d[5]==='mph') ? (raw>0 ? raw+' mph' : 'off') : raw;
     });
   }
   function readRegs(){
-    REGDEF.forEach(function(d){
-      var raw=+$('r-'+d[0]).value;
-      R[d[0]] = (d[5]==='fp') ? Math.round(raw*S) : Math.round(raw);
-    });
+    REGDEF.forEach(function(d){ R[d[0]] = uiToReg(d, +$('r-'+d[0]).value); });
     syncRegLabels(); buildCarUI();
   }
   function showRegNote(){
@@ -219,7 +256,11 @@
   }
 
   /* ── the cars ─────────────────────────────────────────────────────────────────────────────────── */
-  var CARS={ A:{eng:6,tyr:6,tank:20000,strat:'smart',fixed:8}, B:{eng:14,tyr:9,tank:20000,strat:'smart',fixed:8} };
+  /* ⚠ 20,000 was a tank for the LINEAR model. With quadratic drag on, both demo cars ran dry at ~160 m
+     of the quarter mile and the bench opened on a double DNF — which reads as "the page is broken"
+     rather than "these cars are underfuelled". Measured at DRAG2 0.003: eng 6/tyr 6 needs 50,000 and
+     eng 14/tyr 9 needs 44,000, so they start above that with a little margin. */
+  var CARS={ A:{eng:6,tyr:6,tank:55000,strat:'smart',fixed:8}, B:{eng:14,tyr:9,tank:48000,strat:'smart',fixed:8} };
   function buildCarUI(){
     ['A','B'].forEach(function(k){
       var c=CARS[k];
@@ -481,10 +522,74 @@
   }
 
   /* ── boot ─────────────────────────────────────────────────────────────────────────────────────── */
+  /* ★ WHERE THE BENCH STARTS, WHICH IS NOT WHERE THE COVENANT STARTS.
+     `DRAG2` and `BLOW_V` ship as ZERO — that is the linear-drag model every car on mainnet runs, and
+     the Script does not compute either term yet, so a lock built with them set is refused outright.
+     The bench is where they get decided, so its sliders open at the measured sweet spot instead:
+
+       DRAG2 0.003    where the speed STOPS CLIMBING without making the race long. Measured on the
+                      real refTick, eng 14 / tyr 10 at a quarter mile:
+
+                        DRAG2 0        35,000 tank   4.0 s   459 mph   → 490 at 804 m, still climbing
+                        DRAG2 0.003    42,000 tank   4.9 s   347 mph   → 348 at 804 m, a PLATEAU
+                        DRAG2 0.0097   60,000 tank   7.0 s   247 mph   → 246, and no longer a drag race
+
+     BLOW_V 380     sits BETWEEN the plateaus at 0.003 — eng 14 settles at 347, eng 24 at 419. So the
+                    biggest engine is the one that must lift before the line, and a mid-size one never
+                    thinks about it. That is the trade; without it eng 24 is strictly better.
+
+     ⚠ THE TENSION TO TUNE AGAINST: a real top fuel car traps about 330 mph and covers the quarter in
+     ~4.5 s. At 0.003 the speeds run high (347–419) but the TIME is right. More drag buys realistic
+     speeds and costs seconds. Both are starting points to argue with, not answers. */
+  /* ⚠ THE WHOLE TUNE LIVES HERE, NOT JUST THE TWO NEW TERMS.
+     `PROVISIONAL_REGS` is what the COVENANT ships — still the untuned model, because DRAG2 and BLOW_V
+     cannot land in shell.ts until the Script computes them. Overriding only the two new regs meant a
+     reload silently restored DRAG 0.062 and THROTTLE_MAX 15 underneath them, so the bench would open
+     on numbers that were never tuned together and the 3.8 s below would simply not be true. A tune is
+     a SET; carry all of it or none of it. */
+  var BENCH_START = {
+    M0: 0.85, WE: 0.05, WT: 0.03, WF: 0.00011,
+    FE: 0.32, G0: 0.36, GV: 0.30,
+    DRAG: 0.02, DRAG2: 0.005, SPIN_KEEP: 0.43, LOOSE_V: 0.35,
+    BLOW_T: 14, BLOW_V_MPH: 330,
+    BURN0: 375, BURN_E: 35, THROTTLE_MAX: 16, ENG_MAX: 24, TYR_MAX: 10,
+  };
+  /* ★ SOLVED TO THE TARGET: the fastest build the regulations allow runs a quarter mile in 3.8 s at a
+     329 mph trap — a real Top Fuel car's numbers. Fastest build is eng 18 / tyr 10 on a 28,000 tank.
+
+       DRAG2  BLOW_V     fastest      time    trap
+       0.0045  330 mph   eng 15/t10   3.8 s   330
+     ★ 0.0050  330 mph   eng 18/t10   3.8 s   329
+       0.0055  330 mph   eng 16/t10   3.9 s   329
+       0.0060  330 mph   eng 16/t10   4.0 s   330
+
+     ⚠ AND WHY THE CEILING RATHER THAN DRAG ALONE. Drag by itself cannot deliver both numbers: at the
+     DRAG2 that yields 3.8 s the cars trap 397 mph, and at the DRAG2 that yields 330 mph they take
+     4.7 s. Only a speed ceiling decouples elapsed time from top speed, which is what let both land.
+
+     ⇒ It does NOT flatten the field, which was the worry. Every quick build traps together anyway —
+     423–435 mph with the ceiling switched off entirely — because they all reach terminal velocity.
+     Real Top Fuel cars trap within a few mph of each other for the same reason. Trap spread comes
+     from the SLOW builds that never get there, and that spread is untouched. */
+  /* Applied through REGDEF so a reg can never be set by a name the sliders do not know about — the
+     scale ('fp' vs 'int') is read from the same table the UI uses, so there is one description of
+     what each number IS. `BLOW_V` arrives in mph and is the one that needs converting. */
+  function benchStart(){
+    var r=Object.assign({},GM.PROVISIONAL_REGS), missing=[];
+    REGDEF.forEach(function(d){
+      var k=d[0];
+      if (k==='BLOW_V') { r.BLOW_V = Math.round((BENCH_START.BLOW_V_MPH / MPH_PER_UNIT) * S); return; }
+      if (!(k in BENCH_START)) { missing.push(k); return; }        // left at the shipped value, on purpose or not
+      r[k] = (d[5]==='fp') ? Math.round(BENCH_START[k] * S) : Math.round(BENCH_START[k]);
+    });
+    if (missing.length) console.warn('BENCH: not in BENCH_START, so shipped values are used: '+missing.join(', '));
+    return r;
+  }
+
   ensureGM().then(function(){
     S=GM.SHELL_S;
-    R=Object.assign({},GM.PROVISIONAL_REGS);
-    buildRegUI(); setRegUI(); buildCarUI(); paintMap(); showRegNote();
+    R=benchStart();
+    buildRegUI(); setRegUI(); buildCarUI(); paintMap(); showRegNote(); checkSliderRanges();
     var finLabel=function(){
       var m=+$('finish').value;
       var tag = m===QUARTER_MILE ? ' · the quarter mile' : m===305 ? ' · 1,000 ft' : '';
@@ -500,14 +605,30 @@
     $('slip').addEventListener('input',function(){ slipLabel(); paintMap(); });
     $('run').onclick=runRace;
     $('sweep').onclick=sweep;
-    $('reset').onclick=function(){ R=Object.assign({},GM.PROVISIONAL_REGS); setRegUI(); buildCarUI(); paintMap(); showRegNote(); };
+    $('reset').onclick=function(){ R=benchStart(); setRegUI(); buildCarUI(); paintMap(); showRegNote(); };
     $('export').onclick=function(){
       var body=REGDEF.map(function(d){
-        return '  '+d[0]+': '+(d[5]==='fp' ? 'Math.round('+(R[d[0]]/S)+' * S)' : R[d[0]])+',';
+        /* ⚠ THE COMMA GOES BEFORE THE COMMENT. Emitting `... * S)   // mph` and then appending ','
+           put the separator INSIDE the comment, so the next reg ran on and the paste would not
+           compile. Caught on the first real export. Comments are appended after the comma now.
+           ⚠ AND THE DECIMALS ARE ROUNDED to the slider's own step: a slider at 0.85 reads back as
+           0.8500000000931323 through /S and *S, and a reg nobody can read is a reg nobody can check. */
+        var dp = String(d[4]).split('.')[1] ? String(d[4]).split('.')[1].length : 0;
+        var v, note='';
+        if (d[5]==='fp')       { v='Math.round('+(+(R[d[0]]/S).toFixed(dp))+' * S)'; }
+        else if (d[5]==='mph') { v = R[d[0]]===0 ? '0'
+                                   : 'Math.round(('+Math.round((R[d[0]]/S)*MPH_PER_UNIT)+' / 22.3694) * S)'; note='   // mph'; }
+        else                   { v=R[d[0]]; }
+        return '  '+d[0]+': '+v+','+note;
       }).join('\n');
       var text='export const RACER_REGS: RacerRegs = {\n'+body+'\n}\n';
       try{ navigator.clipboard.writeText(text) }catch(e){}
-      $('reg-note').textContent='copied — paste over PROVISIONAL_REGS in mint/src/shell.ts';
+      /* ⚠ THE NOTE HAS TO SAY THIS. Pasting a non-zero DRAG2 or BLOW_V into shell.ts does not just
+         change a number — the Script cannot do that arithmetic yet, so buildShellLock refuses to build
+         at all rather than mint a car whose covenant disagrees with the reference about how fast it is. */
+      $('reg-note').textContent = (R.DRAG2 || R.BLOW_V)
+        ? 'copied — ⚠ DRAG2/BLOW_V are set, so shell.ts will REFUSE to build a lock until shellPhysicsOps is ported. Tune here first.'
+        : 'copied — paste over PROVISIONAL_REGS in mint/src/shell.ts';
       console.log(text);
     };
     runRace();
