@@ -92,14 +92,41 @@ console.log('THE PUBLIC CAR — the reference state machine\n')
   check('  …and still does not own it', eq(rebuilt.driver, OWNER))
 }
 
-// ── the reset is available ONLY at the end ────────────────────────────────────────────────────────
-// A reset mid-race would be a free undo: enter a bad run, reset, keep the fuel. The clock has to matter.
+// ── ★ THE RESET IS AVAILABLE FROM EVERY PHASE ─────────────────────────────────────────────────────
+// This block used to assert the OPPOSITE — that only a DONE or OUT car could be reset, on the grounds
+// that a mid-race reset is a free undo. That rule was deleted, and the reason it had to go is the
+// SECOND thing tested here: engine and tyres load on EMPTY → CAR, so reset is the only road back to
+// the start. A reset legal only at the END is a car nobody can set up at the BEGINNING.
+//
+// It protected nothing in any case: a public car has no pot and no branch that pays a driver, so an
+// undo takes money from no one. It spends the owner's satoshis and returns no time for them.
 for (const [name, phase] of [['EMPTY', PHASE.EMPTY], ['CAR', PHASE.CAR], ['TRACK', PHASE.TRACK],
-                             ['ARMED', PHASE.ARMED], ['RACING', PHASE.RACING]] as [string, number][]) {
-  refused(`  a ${name} car cannot be reset — no free undo`, () => publicReset({ ...freshPublicShell(OWNER), phase }))
+                             ['ARMED', PHASE.ARMED], ['RACING', PHASE.RACING], ['DONE', PHASE.DONE],
+                             ['OUT', PHASE.OUT]] as [string, ShellState['phase']][]) {
+  // dirty in every field a race could have touched, so "reset" cannot pass by accident
+  const dirty = { ...freshPublicShell(OWNER), phase, eng: 22, tyr: 4, last: 1_700_000_099, n: 37, s: 999, v: 42 }
+  check(`  a ${name} car resets`, publicReset(dirty).phase === PHASE.EMPTY)
+  check(`  …to the one constant`, isAtRest(publicReset(dirty), OWNER))
 }
-check('★ …but an OUT car can — a wreck is not a grave either',
-  publicReset({ ...freshPublicShell(OWNER), phase: PHASE.OUT, n: 12, s: 999 }).phase === PHASE.EMPTY)
+
+// ★ THE ONE THAT PAYS FOR THE RULE'S REMOVAL: a car somebody else configured can be taken back to
+// EMPTY and rebuilt to a different spec, WITHOUT ever racing it. That is what "reconfigurable before a
+// race" means, and it was impossible while reset was a terminal-only transition.
+{
+  const theirs = publicLoadCar(freshPublicShell(OWNER), { eng: 3, tyr: 1 }, R)
+  const mine = publicLoadCar(publicReset(theirs), { eng: 22, tyr: 10 }, R)
+  check('★ a car another driver set up can be reset and rebuilt, without racing it',
+    mine.eng === 22 && mine.tyr === 10)
+  check('  …and the owner still survives it', eq(mine.driver, OWNER))
+}
+
+// ★ AND IT UN-BRICKS A CAR. `gap` has no upper bound, so one transaction can put the next legal move
+// sixty-eight years away. Capping it would cost bytes on every move of every race; the reset clears it
+// for nothing, because the timing gate keys on the NEW phase and a reset car is no longer RACING.
+{
+  const bricked = { ...freshPublicShell(OWNER), phase: PHASE.RACING, gap: 2_147_483_647, last: 1_700_000_000 }
+  check('★ a car bricked with a 68-year gap resets anyway', isAtRest(publicReset(bricked), OWNER))
+}
 
 // ── 5. ONLY THE OWNER MAY BURN ────────────────────────────────────────────────────────────────────
 // The refusal matters more than the permission: every other property of a public car holds just as

@@ -8,7 +8,7 @@
  *                             owned shell              PUBLIC car
  *   driver / owner            loaded, then required    fixed at genesis, never loadable
  *   signature on a move       required from phase 1    NEVER — anyone may drive
- *   retire                    pays the driver, → OUT   RESETS: → EMPTY, fuel kept
+ *   retire                    pays the driver, → OUT   RESETS from ANY phase: → EMPTY, fuel kept
  *   burn                      owner-signed sweep       owner-signed sweep (the upgrade path)
  *   any output paying a person on an ordinary move     IMPOSSIBLE — no rule creates one
  *
@@ -40,7 +40,7 @@
  * birth, and never making it loadable, is what shuts that door.
  */
 import {
-  emptyShell, loadCar, PHASE, PHASE_NAMES, FIELDS, ShellRefused, stateFits,
+  emptyShell, loadCar, PHASE, FIELDS, ShellRefused, stateFits,
   RACER_REGS, type ShellState, type RacerRegs,
 } from './shell.ts'
 
@@ -84,7 +84,7 @@ export function publicLoadCar(
 }
 
 /**
- * ★ THE RESET · DONE or OUT → EMPTY, with the fuel untouched.
+ * ★ THE RESET · ANY PHASE → EMPTY, with the fuel untouched.
  *
  * The owned shell verifies `phase < DONE` on every move, so a finished car is terminal and its
  * remaining satoshis are reachable only by burning it. A public car instead goes back to the start:
@@ -92,10 +92,31 @@ export function publicLoadCar(
  *
  * ⇒ Which makes the life cycle the battery's, already settled as the right one — it ticks forward, or
  * it waits for a recharge. There is no state in which it is finished and holding money.
+ *
+ * ── ⚠ THIS ONCE REFUSED EVERY PHASE BUT DONE AND OUT, AND THE RULE WAS DELETED ────────────────────
+ * The refusal was called "no free undo": enter a bad run, reset, keep the fuel. It went for two
+ * reasons, and the second is the one that matters.
+ *
+ *   1. IT PROTECTED NOBODY. A public car has no pot, and no branch reachable by a driver pays a
+ *      person — fuel leaves only as mining fees. So a mid-race reset takes money from no one; it
+ *      spends the OWNER's satoshis and returns no time for them. And a driver could already retry
+ *      as often as they liked by finishing and resetting, so the rule bought a principle rather
+ *      than a protection. The locking script is paid for twice on every move of every race, forever,
+ *      and this one bought nothing.
+ *
+ *   2. ★ THE DRIVER MUST BE ABLE TO RECONFIGURE A CAR *BEFORE* A RACE. Engine and tyres load on
+ *      EMPTY → CAR, so a car a stranger half-loaded to their own taste is stuck with it until
+ *      somebody races it out. Reset is the only way back to EMPTY, so a reset that is legal only at
+ *      the END is a car that cannot be set up at the START.
+ *
+ * ★ AND IT UN-BRICKS THE CAR FOR FREE. `gap` and `finish` are loadable with no upper bound, so one
+ * transaction at TRACK can set a gap of sixty-eight years and leave the fuel unreachable behind a
+ * timing gate. Capping them would cost bytes on every move of every race to prevent something that
+ * happens rarely. Instead: reset sets the new phase to EMPTY, and the timing gate — like the physics
+ * and the loads — keys on the NEW phase, so it never fires. The car is simply back at the start.
+ * The cure was already in the machinery, put there for another reason entirely.
  */
 export function publicReset(st: ShellState): ShellState {
-  need(st.phase === PHASE.DONE || st.phase === PHASE.OUT,
-    `only a finished car can be reset (this one is ${PHASE_NAMES[st.phase]})`)
   return freshPublicShell(st.driver)
 }
 
@@ -111,13 +132,15 @@ export function ownerMayBurn(st: ShellState, signerHash160: number[]): boolean {
          st.driver.every((b, i) => b === signerHash160[i])
 }
 
-/** Every way a public car can legally leave a phase. Stated once so Script and reference cannot drift. */
+/** Every way a public car can legally leave a phase. Stated once so Script and reference cannot drift.
+ *  ⚠ `reset` appears in EVERY row but EMPTY, where it is a no-op rather than a refusal — see
+ *  `publicReset` for why the phase guard that used to be here was deleted rather than narrowed. */
 export const PUBLIC_TRANSITIONS: Readonly<Record<number, readonly string[]>> = Object.freeze({
   [PHASE.EMPTY]:  ['load the car', 'owner burn'],
-  [PHASE.CAR]:    ['load the track', 'owner burn'],
-  [PHASE.TRACK]:  ['arm', 'owner burn'],
-  [PHASE.ARMED]:  ['tick', 'owner burn'],
-  [PHASE.RACING]: ['tick', 'owner burn'],
+  [PHASE.CAR]:    ['load the track', 'reset', 'owner burn'],
+  [PHASE.TRACK]:  ['arm', 'reset', 'owner burn'],
+  [PHASE.ARMED]:  ['tick', 'reset', 'owner burn'],
+  [PHASE.RACING]: ['tick', 'reset', 'owner burn'],
   [PHASE.DONE]:   ['reset', 'owner burn'],
   [PHASE.OUT]:    ['reset', 'owner burn'],
 })
