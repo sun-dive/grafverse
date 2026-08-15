@@ -28,7 +28,7 @@ deployment:
     - /bin/cp milkyway.webp "$DEPLOYPATH"                 # all-sky backdrop image
     - /bin/cp lang-*.js "$DEPLOYPATH"                     # i18n language packs (lang-ja.js, lang-zh-Hant.js, …) lazy-loaded by the game
     - /bin/cp brc226.html "$DEPLOYPATH"                   # BRC-226 blueprint — self-contained, crawlable (coined-term SEO); shareable at grafverse.com/brc226.html
-    - /bin/cp bitcoin-racers.html "$DEPLOYPATH"           # BRC-226 demo three — the COVENANT, run through the real interpreter (noindex; nothing broadcast)
+    - /bin/cp bitcoin-racers.html "$DEPLOYPATH"           # BRC-226 demo three — the COVENANT, run through the real interpreter (indexable entry point; nothing broadcast)
     - /bin/cp green-test.html "$DEPLOYPATH"                # "A Green Test Is Not Evidence" — the article, canonical here; Substack is syndication
     - /bin/mkdir -p "$DEPLOYPATH/img" && /bin/cp img/green-test-*.webp "$DEPLOYPATH/img/"   # its cover + in-body image
     - /bin/cp racers.html "$DEPLOYPATH"                   # BRC-226 demo three — the TUNING BENCH for Bitcoin Racers (noindex; runs mint/src/shell.ts via grafmint)
