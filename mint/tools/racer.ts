@@ -380,12 +380,30 @@ const RETRY_BACKOFF_MS = [2_000, 5_000, 15_000, 30_000]
 const isDuplicate = (body: string): boolean =>
   /already.?known|txn-already|duplicate|already in (the )?mempool/i.test(body)
 
+/**
+ * ★ IS THIS TRANSACTION ALREADY ON CHAIN?
+ *
+ * ⚠ THE QUESTION A RESUME HAS TO ASK, and asking the wrong one cost a run. A node that already has a
+ * transaction IN ITS MEMPOOL says "already known" — but one that has already MINED it says
+ * `Missing inputs`, because from where it stands the input is simply spent. Those two answers look
+ * completely different and mean the same thing: it worked the first time.
+ *
+ * ⇒ So a failed broadcast is not a failure until we have checked whether our own txid is already
+ * there. Deterministic signing (RFC 6979) is what makes that a meaningful question: a rebuild produces
+ * the SAME txid, so finding it on chain proves this exact transaction already landed rather than
+ * merely something like it.
+ */
+async function alreadyOnChain (id: string): Promise<boolean> {
+  try { return (await fetch(`${WOC}/tx/hash/${id}`)).ok } catch { return false }
+}
+
 async function broadcast (tx: Transaction): Promise<void> {
   const raw = tx.toHex()
   for (let attempt = 0; ; attempt++) {
     const w = await fetch(`${WOC}/tx/raw`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txhex: raw }) })
     const body = (await w.text()).trim()
     if (w.ok || isDuplicate(body)) break
+    if (await alreadyOnChain(tx.id('hex'))) return     // already landed — this is a resume catching up
     if (w.status === 429 && attempt < RETRY_BACKOFF_MS.length) {
       const wait = RETRY_BACKOFF_MS[attempt]
       console.log(`        …throttled by WoC, waiting ${wait / 1000}s`)
