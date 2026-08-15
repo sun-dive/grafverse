@@ -49,13 +49,43 @@
   <p class="sub">A drag car that lives inside a Bitcoin covenant, fuelled by a covenant that holds the tank.
      Configure it, race it. <b>No wallet, no key, no satoshi</b> — every move is authorised by arithmetic.</p>
 
-  <div class="panel">
+  <!-- ★ THE SILO IS THE PICTURE, as the Mandelbrot is the battery's. SVG, not a raster: it is a
+       vessel with a level, so it wants to be drawn at whatever size the page is, and it is ~2 KB. -->
+  <div class="panel" style="display:flex;gap:22px;align-items:center;flex-wrap:wrap">
+    <svg id="silo" viewBox="0 0 120 200" width="120" height="200" role="img"
+         aria-label="the fuel depot, and how full it is">
+      <defs>
+        <linearGradient id="fuel" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ffd479"/><stop offset="100%" stop-color="#ff9b2f"/>
+        </linearGradient>
+        <clipPath id="tankClip"><path d="M20 42 h80 v120 a10 10 0 0 1 -10 10 h-60 a10 10 0 0 1 -10 -10 z"/></clipPath>
+      </defs>
+      <!-- the dome, the body, the legs -->
+      <path d="M20 42 a40 22 0 0 1 80 0" fill="#1b2634" stroke="#2c3d52" stroke-width="2"/>
+      <path d="M20 42 h80 v120 a10 10 0 0 1 -10 10 h-60 a10 10 0 0 1 -10 -10 z"
+            fill="#131c27" stroke="#2c3d52" stroke-width="2"/>
+      <g clip-path="url(#tankClip)"><rect id="fuelLvl" x="20" y="172" width="80" height="0" fill="url(#fuel)"/></g>
+      <path d="M20 42 h80 v120 a10 10 0 0 1 -10 10 h-60 a10 10 0 0 1 -10 -10 z"
+            fill="none" stroke="#2c3d52" stroke-width="2"/>
+      <!-- banding, so it reads as a tank rather than a glass -->
+      <g stroke="#22303f" stroke-width="1.5" opacity=".8">
+        <line x1="20" y1="78" x2="100" y2="78"/><line x1="20" y1="114" x2="100" y2="114"/>
+        <line x1="20" y1="150" x2="100" y2="150"/>
+      </g>
+      <!-- the pump: a hose out of the base, which is the only way fuel ever leaves -->
+      <path d="M100 160 q22 0 22 -22" fill="none" stroke="#2c3d52" stroke-width="3"/>
+      <rect x="34" y="176" width="10" height="16" fill="#1b2634"/><rect x="76" y="176" width="10" height="16" fill="#1b2634"/>
+      <text id="siloTxt" x="60" y="112" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
+            font-size="13" fill="#dfe7ef">—</text>
+    </svg>
+    <div style="flex:1;min-width:240px">
     <div class="lbl">On chain right now</div>
     <div class="row"><span>the depot</span><span id="d-depot" class="dim">reading…</span></div>
     <div class="row"><span>the car</span><span id="d-car" class="dim">reading…</span></div>
     <div class="row"><span>fuel in the car</span><span id="d-fuel" class="dim">—</span></div>
     <div class="row"><span>phase</span><span id="d-phase" class="dim">—</span></div>
     <p class="note" id="d-note" style="margin-top:10px"></p>
+    </div>
   </div>
 
   <div class="grid">
@@ -83,6 +113,25 @@
         <button id="reload" class="ghost">↺ Re-read the chain</button>
       </div>
     </div>
+  </div>
+
+  <div class="panel">
+    <div class="lbl">Put fuel in the tank</div>
+    <p class="note" style="margin-top:0">The tank is <b>unbounded on the way in</b> and bounded on the way
+       out — fuel can only ever leave into a car, and a car burns it as mining fees. Not even the owner
+       can take it: the burn refuses any tank holding 913 sat or more.</p>
+    <div class="grid" style="gap:10px">
+      <label>satoshis <b id="v-add">50,000</b><input type="range" id="add" min="1000" max="500000" step="1000" value="50000"></label>
+      <div>
+        <label style="margin-top:10px">your address <span class="dim">— one coin must cover it all</span></label>
+        <input id="addr" placeholder="1..." style="width:100%;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--fg);font-family:ui-monospace,Menlo,monospace;font-size:13px">
+        <label style="margin-top:10px">a mark, if you like <span class="dim">— rides in an OP_RETURN</span></label>
+        <input id="mark" maxlength="60" placeholder="first fuel 🏁" style="width:100%;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--fg);font-size:13px">
+      </div>
+    </div>
+    <div style="margin-top:12px"><button id="build" class="ghost">⛽ Build the top-up</button></div>
+    <p class="note" id="f-out"></p>
+    <textarea id="f-hex" style="display:none;width:100%;height:110px;margin-top:8px;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--dim);font-family:ui-monospace,Menlo,monospace;font-size:11px" readonly></textarea>
   </div>
 
   <div class="strip"><div class="fin"></div><div class="car" id="carEl">🏎</div></div>
@@ -146,6 +195,7 @@ async function readChain(){
     var dtx=await getJSON('/tx/hash/'+depotAt);
     var dsat=Math.round((dtx.vout[dv].value||0)*1e8);
     $('d-depot').textContent=sat(dsat)+' sat';
+    paintSilo(dsat);
     $('d-depot').className='';
 
     var at=await findCar();
@@ -162,9 +212,13 @@ async function readChain(){
     $('d-fuel').textContent=sat(fuel)+' sat'; $('d-fuel').className='';
     var names=['EMPTY','CAR','TRACK','ARMED','RACING','DONE','OUT'];
     $('d-phase').textContent=names[car.phase]+(car.n?' · '+car.n+' moves':''); $('d-phase').className='';
-    $('d-note').innerHTML= car.phase===0
-      ? 'At rest, and configurable by anybody — including you.'
-      : '<span class="warn">Someone left this car mid-run. Configuring it resets it first, which is legal from any phase.</span>';
+    /* ⚠ DONE and OUT are FINISHED, not abandoned — saying "left mid-run" of a car that crossed the
+       line reads as a fault where there was a result. Three states, three sentences. */
+    $('d-note').innerHTML =
+        car.phase===0 ? 'At rest, and configurable by anybody — including you.'
+      : car.phase===5 ? '<span class="ok">This car finished its run.</span> Configuring it resets it first, which is legal from any phase.'
+      : car.phase===6 ? 'This run ended before the line. Configuring it resets it first — the fuel stays in the car.'
+      : '<span class="warn">Someone left this car mid-run.</span> Configuring it resets it first, which is legal from any phase.';
     window.__fuel=fuel;
     replan();
   }catch(e){ log('⚠ '+e.message,'no') }
@@ -208,7 +262,9 @@ function replan(){
                               + 'Grip or the engine, not the fuel — that one is on the driver.';
   /* ⚠ 'out' is ALLOWED: wrecking it or blowing the engine ends the run but leaves the fuel in the car,
      so the next driver resets it and races on. Only 'dry' strands anything. */
-  $('go').disabled = p.steps.length===0 || (p.outcome==='dry' && !rescueable);
+  /* ⚠ 'stalled' was leaving the button LIVE: steps.length is 1 (the reset), so pressing it spent 397
+     sat to arrive somewhere that still cannot race. A button that can only waste money is a bug. */
+  $('go').disabled = p.steps.length===0 || p.outcome==='stalled' || (p.outcome==='dry' && !rescueable);
   $('go').textContent = p.outcome==='home' ? '▶ Run it on mainnet' : '▶ Run it anyway';
 }
 
@@ -266,6 +322,79 @@ function syncLabel(k){
   $(k).addEventListener('input',function(){ syncLabel(k); replan() });
   syncLabel(k);
 });
+/* ── ★ THE SILO'S LEVEL ─────────────────────────────────────────────────────────────────────────────
+   Full = what the tank has ever been given, so the picture reads as "how much is left of what people
+   put in" rather than against an invented capacity. Same choice the battery made. */
+/* ★ SEEDED FROM THE GENESIS, or the silo reads FULL the first time it is opened — it had only ever
+   seen one value, so the tank was 984 of a high-water mark of 984. The picture must be honest about
+   how much of what was given is left. */
+var everGiven=11500;
+function paintSilo(tank){
+  everGiven=Math.max(everGiven,tank);
+  var TOP=42, BOT=172, H=BOT-TOP;
+  var frac=everGiven? Math.max(0,Math.min(1,tank/everGiven)) : 0;
+  var h=Math.round(H*frac);
+  $('fuelLvl').setAttribute('y',BOT-h); $('fuelLvl').setAttribute('height',h);
+  $('siloTxt').textContent=sat(tank);
+  $('siloTxt').setAttribute('fill', frac>0.55?'#3a2a10':'#dfe7ef');   // legible against fuel or against steel
+}
+
+/* ── ⛽ THE TOP-UP: BUILD IT, HAND IT OVER ──────────────────────────────────────────────────────────
+   The page assembles the whole transaction and stops. It holds no key, signs nothing and broadcasts
+   nothing. The covenant's own input is already COMPLETE when this returns — OP_PUSH_TX authorises it
+   with a proof about the transaction, so no key exists for it anywhere. The only blank is yours. */
+async function buildTopUp(){
+  var out=$('f-out'), amt=+$('add').value, addr=$('addr').value.trim(), mk=$('mark').value.trim();
+  $('f-hex').style.display='none';
+  if(!/^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(addr)){ out.innerHTML='<span class="no">that does not look like a BSV address</span>'; return }
+  out.textContent='reading your coins…';
+  try{
+    var pad=GM.TOPUP_FEE_PAD||300;
+    var us=await getJSON('/address/'+addr+'/unspent');
+    /* ⚠ ONE COIN, NOT A BALANCE. A covenant spend takes exactly one funding input, so two payments of
+       half do not merge — and a wallet showing plenty across several coins still cannot do this. */
+    var u=(us||[]).filter(function(x){return x.value>=amt+pad}).sort(function(a,b){return a.value-b.value})[0];
+    if(!u){
+      var tot=(us||[]).reduce(function(a,x){return a+x.value},0);
+      out.innerHTML='<span class="no">no SINGLE coin at that address holds '+sat(amt+pad)+' sat</span>'+
+        ' — you have '+sat(tot)+' across '+(us||[]).length+' coins, but a covenant spend takes exactly one input.'+
+        ' Send yourself one payment of '+sat(amt+pad)+' and try again.';
+      return;
+    }
+    out.textContent='building…';
+    var depotAt=await currentDepot();
+    var dHex=await getText('/tx/'+depotAt.txid+'/hex'), fHex=await getText('/tx/'+u.tx_hash+'/hex');
+    var tx=GM.buildDepotTopUpTx({
+      depot:{ sourceTransaction:GM.Transaction.fromHex(dHex), outputIndex:depotAt.vout, value:depotAt.sats },
+      carScript:GM.buildShellLock({state:GM.freshPublicShell(GM.Utils.fromBase58Check(OWNER_ADDR).data),
+                                   maxFee:GM.SHELL_MAX_FEE, public:true}).toBinary(),
+      owner:GM.Utils.fromBase58Check(OWNER_ADDR).data,
+      addSats:amt,
+      funder:{ sourceTransaction:GM.Transaction.fromHex(fHex), outputIndex:u.tx_pos },
+      changeAddress:addr, mark:mk||null
+    });
+    var hex=tx.toHex();
+    out.innerHTML='<span class="ok">built — the tank goes '+sat(depotAt.sats)+' → '+sat(depotAt.sats+amt)+' sat.</span>'+
+      ' <b>Input #2 is the only blank in it</b>; sign that one in your wallet and broadcast. The covenant\'s'+
+      ' input is already complete and has no key anywhere.';
+    $('f-hex').style.display='block'; $('f-hex').value=hex;
+  }catch(e){ out.innerHTML='<span class="no">'+e.message+'</span>' }
+}
+
+/** Where the depot is NOW — it moves every time it is tapped or topped up. */
+async function currentDepot(){
+  var txid=DEPOT_TXID, vout=0;
+  for(var i=0;i<40;i++){
+    var sp=null; try{ sp=await getJSON('/tx/'+txid+'/'+vout+'/spent') }catch(e){ sp=null }
+    if(!sp||!sp.txid) break;
+    txid=sp.txid; vout=0;
+  }
+  var tx=await getJSON('/tx/hash/'+txid);
+  return {txid:txid,vout:vout,sats:Math.round((tx.vout[vout].value||0)*1e8)};
+}
+
+$('add').addEventListener('input',function(){ $('v-add').textContent=sat($('add').value) });
+$('build').onclick=buildTopUp;
 $('reload').onclick=readChain;
 $('go').onclick=run;
 
