@@ -649,6 +649,14 @@ export interface ShellLockParams {
   fieldOffset: number
   regs?: RacerRegs
   maxFee?: number
+  /**
+   * ★ Build the PUBLIC variant: a car anyone may drive and nobody may claim.
+   *
+   * It is the same covenant with one condition swapped. No signature is asked for on a move, and
+   * `driver` holds the OWNER — consulted by the burn and by nothing else. See the note on the
+   * signature gate for why that is a change of gate rather than a change of meaning.
+   */
+  public?: boolean
   c?: PushTxConstants
 }
 
@@ -675,6 +683,7 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
      stack — the deepest reach in the whole script, and the one most exposed to a field being added.
      Bottom to top at that moment: burn · retire · loadables · throttle · sig · pubkey · SO · newV ·
      preimage · the 16 literal pushes. */
+  const isPublic = p.public ?? false
   const LITERALS = 3 + FIELDS.length
   const UNLOCK_ABOVE = 5 + 1 + loadables(regs).length          // preimage…sig, throttle, the loadables
   const dBurn = LITERALS + UNLOCK_ABOVE + 1                    // …then retire, then burn
@@ -695,9 +704,23 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
        shell in phase 0 is UNCLAIMED and anyone may take it — which is right, because that transition
        is what sets the driver. From phase 1 onward the signature is compulsory: your car, your key.
 
-       Stack here, bottom to top: throttle · sig · pubkey · SO · newV · preimage · [16 literal pushes]. */
-    PN(12), op(OP.OP_PICK), op(OP.OP_BIN2NUM),   // the OLD phase
-    op(OP.OP_0NOTEQUAL),                          // …is this shell claimed?
+       Stack here, bottom to top: throttle · sig · pubkey · SO · newV · preimage · [16 literal pushes].
+
+       ── ★ AND IN A PUBLIC CAR, ONLY THE CONDITION CHANGES ──────────────────────────────────────────
+       A public car is driven by anyone and owned by the game. Both facts come from swapping what gates
+       this block — the body below is identical, because "prove you hold the key this shell names" is
+       the same question whether the answer is required of a driver or of an owner:
+
+         owned    IF (phase ≠ 0)   a signature on every move from phase 1 · your car, your key
+         public   IF (burn)        a signature ONLY to burn · anyone may drive, one party may retire
+
+       ⇒ So `driver` is not repurposed by some convention held in a comment. In a public car nothing
+       ever asks it to authorise a MOVE, and the only branch that consults it is the burn. It holds the
+       owner because that is the only thing it is ever used for. */
+    ...(isPublic
+      ? [PN(dBurn), op(OP.OP_PICK)]                        // public: a signature only for a burn
+      : [PN(12), op(OP.OP_PICK), op(OP.OP_BIN2NUM),        // owned:  the OLD phase…
+         op(OP.OP_0NOTEQUAL)]),                            //         …is this shell claimed?
     op(OP.OP_IF),
       PN(11), op(OP.OP_PICK),                     // the driver hash, from the script's own bytes
       PN(20), op(OP.OP_PICK),                     // the public key offered
@@ -726,7 +749,11 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
        an unclaimed car in one transaction. Claiming it first is still open to anyone — that is the
        design — but it costs them a transaction and puts their key on the record. */
     PN(dBurn), op(OP.OP_PICK), op(OP.OP_IF),
-      PN(12), op(OP.OP_PICK), op(OP.OP_BIN2NUM), op(OP.OP_0NOTEQUAL), op(OP.OP_VERIFY),  // claimed only
+      /* ⚠ The claimed-check is an OWNED rule and a public car must not carry it: a public car is owned
+         from birth but starts at phase 0, so this would refuse to burn a fresh one. It is unnecessary
+         there anyway — the block above already demanded the owner's signature for this very branch,
+         and a public car with a zero owner is one nobody can burn, which is its minter's problem. */
+      ...(isPublic ? [] : [PN(12), op(OP.OP_PICK), op(OP.OP_BIN2NUM), op(OP.OP_0NOTEQUAL), op(OP.OP_VERIFY)]),
       ...Array.from({ length: BURN_DROPS }, () => op(OP.OP_2DROP)),
       op(OP.OP_1),
     op(OP.OP_ELSE),
