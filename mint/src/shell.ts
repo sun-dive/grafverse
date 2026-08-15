@@ -76,7 +76,7 @@ export const SHELL_FEE_SLACK = 64
  * different keys. Pinning it exactly made the suite oscillate between two values, each "correcting"
  * the other. Two bytes of headroom above the observed maximum costs 0.2 satoshi and cannot go under.
  */
-export const SHELL_WORST_MOVE_BYTES = 3816
+export const SHELL_WORST_MOVE_BYTES = 3932
 
 /**
  * ★ THE RATE THE BURN IS DERIVED AT — a tenth of a satoshi above SHELL_FEE_PER_KB, and no more.
@@ -888,7 +888,10 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
      chain stops, and its final state stands as the record. Everything from EMPTY to RACING advances by
      one, and RACING stays where it is — a race continues until the physics end it, which is the only
      transition the sequence alone cannot decide. */
-  ops.push(op(OP.OP_DUP), PN(PHASE.DONE), op(OP.OP_LESSTHAN), op(OP.OP_VERIFY))   // terminal stays terminal
+  /* ⚠ OWNED ONLY. A public car RESETS out of DONE and OUT, so the check cannot sit here for it — it
+     moves into the ordinary arm of the branch below, where it still forbids resurrecting a finished
+     car into RACING but no longer forbids returning it to EMPTY. Same rule, one arm narrower. */
+  if (!isPublic) ops.push(op(OP.OP_DUP), PN(PHASE.DONE), op(OP.OP_LESSTHAN), op(OP.OP_VERIFY))
 
   /* ★ RETIRING IS A PHASE DECISION, and deciding it here makes everything downstream fall into place
      for free: the loads key on the NEW phase, so an OUT shell loads nothing and cannot trip the track
@@ -899,13 +902,25 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
      without a way to stop it would sit in RACING FOREVER with its tank locked in an output nothing can
      spend. That is the COMMONEST way to strand satoshis — commoner than wrecking, commoner than
      winning. The value rule below then drops the floor to one satoshi, and the driver takes the rest. */
+  /* ── ★ AND IN A PUBLIC CAR THE SAME FLAG MEANS RESET ────────────────────────────────────────────
+     The flag keeps its slot in the unlocking script and changes only what it DOES: an owned car ends
+     its run at OUT and pays the driver, a public car goes back to EMPTY and keeps its fuel for the
+     next one. One branch, two meanings, no second condition to pick and no extra byte.
+
+     ★ AND EVERYTHING DOWNSTREAM FALLS INTO PLACE FOR FREE, exactly as retiring already did — because
+     it all keys on the NEW phase. At EMPTY nothing loads, the timing gate does not fire, and the
+     physics do not run, so a reset from any phase is inert in every rule that follows. That is also
+     what un-bricks a car parked behind a sixty-eight-year `gap`. */
   {
     const dRetire = loadables(regs).length + 5 + CARRIED.length + 2
     ops.push(
       PN(dRetire), op(OP.OP_PICK),
       op(OP.OP_IF),
-        op(OP.OP_DROP), PN(PHASE.OUT),                                      // the run ends here
+        op(OP.OP_DROP),
+        ...(isPublic ? [op(OP.OP_0)] : [PN(PHASE.OUT)]),                     // reset to EMPTY · or the run ends
       op(OP.OP_ELSE),
+        // ⚠ the terminal check lives HERE for a public car — see the note above the branch
+        ...(isPublic ? [op(OP.OP_DUP), PN(PHASE.DONE), op(OP.OP_LESSTHAN), op(OP.OP_VERIFY)] : []),
         op(OP.OP_1ADD), PN(PHASE.RACING), op(OP.OP_MIN),                    // min(phase + 1, RACING)
       op(OP.OP_ENDIF),
     )
@@ -987,8 +1002,39 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
   // ── THE PHYSICS ──
   ops.push(...shellPhysicsOps(p.regs ?? RACER_REGS, isPublic))
 
+  /* ── ★ THE RESET SCRUBS EVERY FIELD BUT THE OWNER ───────────────────────────────────────────────
+     A public car at rest must be BYTE-IDENTICAL to a freshly minted one, because the depot pins ONE
+     hash of a car at rest and never parses an output. So it is not enough to zero the race — stale
+     engine and tyre values make the reset car a DIFFERENT SCRIPT and the depot's cheapest rule stops
+     working. Every field except `driver` goes to zero, and `phase` is already zero from the branch
+     above.
+
+     ★ IT COSTS ALMOST NOTHING BECAUSE IT REUSES THE REBUILD. The spec costed a separate reset arm at
+     ~35 B against ~110 B for conditional zeroing, and preferred the arm despite calling it surgery on
+     the region where the altstack and the output comparison meet. Neither estimate survives contact:
+     done HERE the rebuild already emits every push byte and every width, so the reset only has to
+     replace the VALUES — and it needs no second path through the tail at all.
+
+     ⚠ THE DEPTH IS DERIVED, NOT WRITTEN DOWN. When field `i` is on top, fields 0..i-1 sit under it,
+     then PRE, newV, SO, pubkey, sig, throttle, then the loadables, then the flag. Confirmed against
+     the assembler's own model — `SHELL_DEBUG=1` prints the stack this loop inherits — rather than
+     counted by hand, which is how three bugs arrived in one sitting the last time. */
+  const dResetAt = (i: number): number => i + 7 + loadables(regs, isPublic).length
+
   // values → fixed-width fields, and rebuild the script
   for (let i = FIELDS.length - 1; i > 0; i--) {
+    if (isPublic && FIELDS[i] !== 'driver') {
+      ops.push(
+        PN(dResetAt(i)), op(OP.OP_PICK),
+        op(OP.OP_IF),
+          op(OP.OP_DROP),
+          /* `pool` is 36 raw bytes and never goes through NUM2BIN below, so its zeroes are made here.
+             Everything else is a number and is zero until the width is applied. */
+          ...(isNum(FIELDS[i]) ? [op(OP.OP_0)]
+                               : [op(OP.OP_0), PN(FIELD_WIDTHS[FIELDS[i]]), op(OP.OP_NUM2BIN)]),
+        op(OP.OP_ENDIF),
+      )
+    }
     if (isNum(FIELDS[i])) ops.push(PN(FIELD_WIDTHS[FIELDS[i]]), op(OP.OP_NUM2BIN))
     ops.push(op(OP.OP_TOALTSTACK))
   }

@@ -36,14 +36,14 @@ const POOL = [...Utils.toArray(POT.id('hex'), 'hex').slice().reverse(), 0, 0, 0,
 const GREEN = 1_700_000_000
 
 /** ★ SERIALIZED. The number this test rests on is read off the wire, never counted. */
-async function bytesOf(st: ShellState, next: ShellState, throttle: number, pot = false): Promise<number> {
-  const prev = buildShellLock({ state: st, maxFee: SHELL_MAX_FEE })
+async function bytesOf(st: ShellState, next: ShellState, throttle: number, pot = false, isPublic = false): Promise<number> {
+  const prev = buildShellLock({ state: st, maxFee: SHELL_MAX_FEE, public: isPublic })
   const src = new Transaction(); src.addOutput({ lockingScript: prev, satoshis: 60_000 })
   const tx = new Transaction(); tx.version = 2
   tx.addInput({ sourceTransaction: src, sourceOutputIndex: 0, sequence: 0xfffffffe })
   if (pot) tx.addInput({ sourceTransaction: POT, sourceOutputIndex: 0, sequence: 0xfffffffe,
                          unlockingScript: new UnlockingScript([]) })
-  tx.addOutput({ lockingScript: buildShellLock({ state: next, maxFee: SHELL_MAX_FEE }), satoshis: 59_000 })
+  tx.addOutput({ lockingScript: buildShellLock({ state: next, maxFee: SHELL_MAX_FEE, public: isPublic }), satoshis: 59_000 })
   tx.lockTime = Math.max(st.green, st.last + st.gap)
   const pre = TransactionSignature.format({ sourceTXID: src.id('hex'), sourceOutputIndex: 0,
     sourceSatoshis: 60_000, transactionVersion: 2, otherInputs: tx.inputs.slice(1), inputIndex: 0,
@@ -68,15 +68,25 @@ console.log('MAX_FEE — measured, not counted\n')
 // ── the worst transaction any legal race can produce ─────────────────────────────────────────────────
 let worst = 0, biggest = 0, smallest = Infinity
 {
-  for (const [eng, tyr, th, pot] of [
+  /* ⚠ BOTH VARIANTS, AND THIS ONE ESCAPED. The sweep only ever built OWNED locks, so when the reset
+     branch made the PUBLIC lock the bigger of the two — 1732 against 1674, and the lock is paid for
+     TWICE in every move — the bound stopped covering the car it most needed to. Measured after the
+     fact: a public tick paid 97.2 sat/KB against a 100 floor, unmineable, and every test was green.
+     BURN0 is permanent and there is no key to amend it, so the bound must be the worst move ANY legal
+     car can produce, not the worst move the variant we happened to measure produces. */
+  for (const isPublic of [false, true]) {
+   for (const [eng, tyr, th, pot] of [
     [1, 1, 0, false], [1, RACER_REGS.TYR_MAX, 6, false],
     [RACER_REGS.ENG_MAX, RACER_REGS.TYR_MAX, 12, false],
     [RACER_REGS.ENG_MAX, RACER_REGS.TYR_MAX, 12, true],
-  ] as const) {
+   ] as const) {
     const st = racing(eng, tyr)
     const want = refTick(st, { throttle: th, lockTime: st.last + st.gap, fuel: 60_000 }, RACER_REGS)
-    worst = Math.max(worst, await bytesOf(st, want.state, th, pot))
+    const b = await bytesOf(st, want.state, th, pot, isPublic)
+    if (b > worst) console.log(`        worst so far: ${b} B  (${isPublic ? 'PUBLIC' : 'owned'} eng ${eng}/tyr ${tyr})`)
+    worst = Math.max(worst, b)
     biggest = Math.max(biggest, want.burn); smallest = Math.min(smallest, want.burn)
+   }
   }
   const trueFee = Math.ceil(worst * SHELL_FEE_PER_KB / 1000)
   console.log(`        worst move serializes to ${worst} bytes → ${trueFee} sat at ${SHELL_FEE_PER_KB} sat/KB`)
