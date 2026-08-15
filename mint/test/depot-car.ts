@@ -32,8 +32,9 @@ const u64 = (n: number): number[] => { const b: number[] = []; let x = n
   for (let i = 0; i < 8; i++) { b.push(x % 256); x = Math.floor(x / 256) } return b }
 
 /** A stand-in for the public car: any script of known bytes will prove the rule. */
+const OWNER = Array.from({ length: 20 }, (_, i) => i + 1)
 const CAR = LockingScript.fromASM('OP_DUP OP_HASH160 ' + '11'.repeat(20) + ' OP_EQUALVERIFY OP_CHECKSIG OP_NOP')
-const LOCK = buildDepotLock({ carScript: CAR.toBinary() })
+const LOCK = buildDepotLock({ carScript: CAR.toBinary(), owner: OWNER })
 const DRAIN = DEPOT_DRAW + DEPOT_MAX_FEE
 const V = 500_000
 const SOMEONE = PrivateKey.fromRandom().toAddress()

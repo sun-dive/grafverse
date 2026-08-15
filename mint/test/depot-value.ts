@@ -28,8 +28,9 @@ const u64 = (n: number): number[] => { const b: number[] = []; let x = n
 
 /* ⚠ Fuel that leaves must go into a car (step 3b), so the drawn amount goes to one here. This file is
    about HOW MUCH may leave; where it goes is depot-car's business. */
+const OWNER = Array.from({ length: 20 }, (_, i) => i + 1)
 const CAR = LockingScript.fromASM('OP_DUP OP_HASH160 ' + '11'.repeat(20) + ' OP_EQUALVERIFY OP_CHECKSIG OP_NOP')
-const LOCK = buildDepotLock({ carScript: CAR.toBinary() })
+const LOCK = buildDepotLock({ carScript: CAR.toBinary(), owner: OWNER })
 const DRAIN = DEPOT_DRAW + DEPOT_MAX_FEE
 const V = 500_000
 

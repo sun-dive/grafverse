@@ -35,8 +35,9 @@ const check = (n: string, got: boolean, want = true): void => {
 const u64 = (n: number): number[] => { const b: number[] = []; let x = n
   for (let i = 0; i < 8; i++) { b.push(x % 256); x = Math.floor(x / 256) } return b }
 
+const OWNER = Array.from({ length: 20 }, (_, i) => i + 1)
 const CAR = LockingScript.fromASM('OP_DUP OP_HASH160 ' + '11'.repeat(20) + ' OP_EQUALVERIFY OP_CHECKSIG OP_NOP')
-const LOCK = buildDepotLock({ carScript: CAR.toBinary() })
+const LOCK = buildDepotLock({ carScript: CAR.toBinary(), owner: OWNER })
 const DRAIN = DEPOT_DRAW + DEPOT_MAX_FEE
 const V = 500_000
 const THIEF = PrivateKey.fromRandom().toAddress()
@@ -97,7 +98,7 @@ check('  …one satoshi beyond that is refused', spend(V - DRAIN, [car(DRAIN - D
 // ★ That distinction is the whole reason this section exists separately: a test that passed here
 // without it would have been reporting on the wrong rule.
 {
-  const BIG = buildDepotLock({ carScript: CAR.toBinary(), draw: 300_000, maxTank: DEPOT_MAX_TANK })
+  const BIG = buildDepotLock({ carScript: CAR.toBinary(), owner: OWNER, draw: 300_000, maxTank: DEPOT_MAX_TANK })
   const bigSpend = (keep: number, rest: { lockingScript: LockingScript; satoshis: number }[]): boolean => {
     const src = new Transaction(); src.addOutput({ lockingScript: BIG, satoshis: V })
     const tx = new Transaction(); tx.version = 2

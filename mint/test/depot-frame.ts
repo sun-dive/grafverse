@@ -25,8 +25,9 @@ const u64 = (n: number): number[] => { const b: number[] = []; let x = n
 /* A stand-in car, so the depot builds. The frame is about SELF-REBUILD, so every spend below leaves
    the balance alone — nothing leaves the tank, so step 3b's car rule never engages and cannot mask a
    frame bug by refusing for the wrong reason. */
+const OWNER = Array.from({ length: 20 }, (_, i) => i + 1)
 const CAR = LockingScript.fromASM('OP_DUP OP_HASH160 ' + '11'.repeat(20) + ' OP_EQUALVERIFY OP_CHECKSIG OP_NOP')
-const LOCK = buildDepotLock({ carScript: CAR.toBinary() })
+const LOCK = buildDepotLock({ carScript: CAR.toBinary(), owner: OWNER })
 const V = 500_000
 const SOMEONE = PrivateKey.fromRandom().toAddress()
 

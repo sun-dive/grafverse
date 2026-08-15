@@ -122,7 +122,7 @@ export const DEPOT_MAX_FEE = 500
  * let the depot say "whatever I do not keep goes to the car" instead of merely "out0 is me".
  */
 export function depotLockOps(
-  p: { carScript: number[]; draw?: number; maxFee?: number; maxTank?: number; c?: PushTxConstants },
+  p: { carScript: number[]; owner: number[]; draw?: number; maxFee?: number; maxTank?: number; c?: PushTxConstants },
 ): ScriptChunk[] {
   const draw = p.draw ?? DEPOT_DRAW
   const maxFee = p.maxFee ?? DEPOT_MAX_FEE
@@ -136,6 +136,7 @@ export function depotLockOps(
      splits at two fixed offsets and compares one hash. */
   const carField = [...varint(p.carScript.length), ...p.carScript]
   const carHash = Hash.sha256(carField)
+  if (p.owner.length !== 20) throw new Error(`the owner must be a 20-byte hash160, got ${p.owner.length}`)
 
   /* ★ THE MOST A SINGLE SPEND MAY COST THE TANK. One number, so there is one place to be wrong and
      one place to change it — and the covenant never learns them apart, which is the point: whether a
@@ -143,6 +144,31 @@ export function depotLockOps(
   const drain = draw + maxFee
 
   return [
+    /* ── ★ THE OWNER BURN — THE UPGRADE PATH, AND THE ONLY BRANCH THAT PAYS ANYBODY ─────────────────
+       A covenant cannot be amended. Replacing a design means burning what exists and minting its
+       successor, so a depot with no owner would strand its whole balance in v1 the day a better one
+       existed. Permanence is right when it IS the demonstration; here the demonstration is the racing,
+       and a depot is equipment. Equipment should be replaceable.
+
+       It enforces NO OUTPUTS, exactly as PharLap's editions do: the owner's SIGHASH_ALL signature
+       already commits to every one of them, so by signing they have said where the money goes. There
+       is nothing left for a covenant to check.
+
+       ⚠ AND IT IS FIRST, before a single rule below it. Everything else in this script constrains
+       where fuel may go; the owner is the one party allowed to ignore all of it, so the branch has to
+       sit outside those rules rather than inside them.
+
+       Stack, bottom to top: [ burn, sig, pubkey, SO, newValue, preimage ]. The three new pushes go
+       DEEPEST so every depth the rest of the script measures from the top stayed exactly where it was. */
+    PN(5), op(OP.OP_PICK), op(OP.OP_IF),
+      PN(3), op(OP.OP_PICK), op(OP.OP_HASH160),          // the key offered…
+      pushData(p.owner), op(OP.OP_EQUALVERIFY),          // …must be THE owner's
+      PN(4), op(OP.OP_PICK), PN(4), op(OP.OP_PICK),      // the signature, and the key again
+      op(OP.OP_CHECKSIG), op(OP.OP_VERIFY),
+      op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP), // nothing survives a burn
+      op(OP.OP_1),
+    op(OP.OP_ELSE),
+
     ...pushTxVerifyOps(c),                  // [ SO, newV, preimage ]           ← the preimage is real
 
     /* ★ READ ITS OWN BALANCE FIRST, while the preimage is still whole. Stashed on the altstack so the
@@ -221,7 +247,13 @@ export function depotLockOps(
     PN(2), op(OP.OP_ROLL),                  // [ hashOutputs, out0, SO ]
     op(OP.OP_CAT),                          // [ hashOutputs, out0 ‖ SO ]
     op(OP.OP_HASH256),                      // [ hashOutputs, HASH256(all outputs) ]
-    op(OP.OP_EQUAL),                        // [ bool ]
+    op(OP.OP_EQUAL),                        // [ burn, sig, pubkey, bool ]
+
+    /* ⚠ AND THE THREE BURN PUSHES MUST NOT BE LEFT LYING THERE. A standard spend has to finish with a
+       clean stack — one true value and nothing else — so the ordinary path removes what it never used.
+       OP_NIP three times rather than a trip through the altstack, which keeps both arms free of it. */
+    op(OP.OP_NIP), op(OP.OP_NIP), op(OP.OP_NIP),
+    op(OP.OP_ENDIF),
   ]
 }
 
@@ -252,9 +284,17 @@ export function depotUnlockingOps(p: {
   spenderOutputs: number[]
   newValue: number[]
   preimage: number[]
+  /** The owner's decision to retire this depot into its replacement. */
+  burn?: boolean
+  sig?: number[]
+  pubKey?: number[]
 }): ScriptChunk[] {
   if (p.newValue.length !== 8) throw new Error(`newValue must be 8 bytes little-endian, got ${p.newValue.length}`)
-  return [pushData(p.spenderOutputs), pushData(p.newValue), pushData(p.preimage)]
+  return [
+    // deepest first — see the burn branch for why these three go below everything else
+    PN(p.burn ? 1 : 0), pushData(p.sig ?? []), pushData(p.pubKey ?? []),
+    pushData(p.spenderOutputs), pushData(p.newValue), pushData(p.preimage),
+  ]
 }
 
 /** Convenience: the unlocking script itself. */
