@@ -1,0 +1,243 @@
+<!-- BRC-226 demo four · THE FUEL DEPOT — a car anyone can drive, on mainnet, with no wallet.
+     © 2026 sun-dive · Open BSV License v6.
+
+     ⚠ IT RUNS THE EXACT CODE THE COVENANT IS VALIDATED AGAINST — mint/src/publicDriver.ts through
+     vendor/grafmint.js. Nothing here reimplements the physics, and nothing here holds a key. -->
+<title>The Fuel Depot · a Bitcoin car anyone can drive</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="A drag car that lives in a Bitcoin covenant, fuelled by a covenant-held depot. Configure it and race it on mainnet — no wallet, no key, no satoshi. Every move is a real transaction authorised by arithmetic alone.">
+<link rel="canonical" href="https://grafverse.com/depot.html">
+<meta property="og:title" content="The Fuel Depot · a Bitcoin car anyone can drive">
+<meta property="og:description" content="Two covenants that cannot read each other, agreeing in one transaction — and not a signature between them.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://grafverse.com/depot.html">
+<style>
+  :root{--bg:#0b0f14;--fg:#dfe7ef;--dim:#8fa3b8;--acc:#31c8ff;--warm:#ffb454;--good:#5ee08a;--bad:#ff6b6b;
+        --panel:#111823;--line:#1d2836}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:980px;margin:0 auto;padding:28px 18px 80px}
+  h1{font-size:1.7rem;margin:0 0 6px;letter-spacing:-.02em}
+  .sub{color:var(--dim);margin:0 0 22px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0}
+  .lbl{font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;color:var(--acc);
+       text-transform:uppercase;margin-bottom:12px}
+  .row{display:flex;justify-content:space-between;gap:12px;align-items:baseline;padding:3px 0}
+  .row span:last-child{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:700px){.grid{grid-template-columns:1fr}}
+  label{display:block;font-size:13px;color:var(--dim);margin:10px 0 2px}
+  label b{color:var(--fg);float:right;font-family:ui-monospace,Menlo,monospace}
+  input[type=range]{width:100%;accent-color:var(--acc)}
+  button{background:var(--acc);color:#04141c;border:0;border-radius:8px;padding:11px 18px;font:600 15px/1 inherit;
+         cursor:pointer}
+  button:disabled{background:#25333f;color:#5d6f80;cursor:not-allowed}
+  button.ghost{background:transparent;color:var(--acc);border:1px solid var(--line)}
+  .strip{height:64px;background:#080c11;border:1px solid var(--line);border-radius:8px;position:relative;overflow:hidden;margin:12px 0}
+  .car{position:absolute;top:18px;left:0;width:26px;height:26px;border-radius:5px;background:var(--acc);
+       display:grid;place-items:center;color:#04141c;font:700 12px/1 ui-monospace,Menlo,monospace;transition:left .09s linear}
+  .fin{position:absolute;top:0;bottom:0;right:8px;width:3px;background:repeating-linear-gradient(0deg,#fff 0 6px,#333 6px 12px)}
+  .log{font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;background:#080c11;border:1px solid var(--line);
+       border-radius:8px;padding:12px;max-height:280px;overflow:auto;white-space:pre-wrap}
+  .ok{color:var(--good)} .no{color:var(--bad)} .warn{color:var(--warm)} .dim{color:var(--dim)}
+  a{color:var(--acc)}
+  .note{color:var(--dim);font-size:13px}
+</style>
+
+<div class="wrap">
+  <h1>The Fuel Depot 🏁</h1>
+  <p class="sub">A drag car that lives inside a Bitcoin covenant, fuelled by a covenant that holds the tank.
+     Configure it, race it. <b>No wallet, no key, no satoshi</b> — every move is authorised by arithmetic.</p>
+
+  <div class="panel">
+    <div class="lbl">On chain right now</div>
+    <div class="row"><span>the depot</span><span id="d-depot" class="dim">reading…</span></div>
+    <div class="row"><span>the car</span><span id="d-car" class="dim">reading…</span></div>
+    <div class="row"><span>fuel in the car</span><span id="d-fuel" class="dim">—</span></div>
+    <div class="row"><span>phase</span><span id="d-phase" class="dim">—</span></div>
+    <p class="note" id="d-note" style="margin-top:10px"></p>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="lbl">Configure the car</div>
+      <label>engine <b id="v-eng">14</b><input type="range" id="eng" min="1" max="24" value="14"></label>
+      <label>tyres <b id="v-tyr">10</b><input type="range" id="tyr" min="1" max="10" value="10"></label>
+      <label>the strip <b id="v-fin">60 m</b><input type="range" id="fin" min="20" max="200" step="10" value="60"></label>
+      <p class="note">Fuel is <b>mass</b>. A bigger engine is thirstier, and a heavier car is slower —
+         so the tank is a racing decision, not a budget line.</p>
+    </div>
+
+    <div class="panel">
+      <div class="lbl">The run</div>
+      <div class="row"><span>transactions</span><span id="p-txs">—</span></div>
+      <div class="row"><span>fuel burned</span><span id="p-burn">—</span></div>
+      <div class="row"><span>left in the car</span><span id="p-left">—</span></div>
+      <div class="row"><span>predicted</span><span id="p-et">—</span></div>
+      <p class="note" id="p-why"></p>
+      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+        <button id="go" disabled>▶ Run it on mainnet</button>
+        <button id="reload" class="ghost">↺ Re-read the chain</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="strip"><div class="fin"></div><div class="car" id="carEl">🏎</div></div>
+  <div class="log" id="log">booting…</div>
+
+  <p class="note" style="margin-top:18px">
+    ⚠ This spends <b>real satoshis</b> from a covenant-held tank — the car's own fuel pays each move's
+    mining fee. Nothing here can pay <i>you</i>: a public car has no branch that pays a person, so fuel
+    leaves only as fees. And nothing here is unrecoverable — a reset is legal from any phase, and
+    anyone may tick a stalled car forward.
+  </p>
+</div>
+
+<script>
+/* ── ★ ONE IMPLEMENTATION, SHARED WITH THE CHAIN ────────────────────────────────────────────────────
+   Everything below is UI. The decoding, the planning, the physics and the transaction building all
+   come from vendor/grafmint.js, which is mint/src/ bundled — the same code the covenant is validated
+   against and the same code the CLI uses. */
+var GM=null, WOC='https://api.whatsonchain.com/v1/bsv/main';
+var OWNER_ADDR='12tMiZzdMUGdR2me8Y6H7VjQkFTekrz141';
+var DEPOT_TXID='fe861da6a8943bff060a67fc154ec944aadb7ab5d379f83e8ea6ede0d573f722';
+/* ⚠ The car moves every time it is driven, so its outpoint is NOT a constant. This is where it was
+   last seen; the page walks forward from here by asking whether that output is still unspent. */
+var CAR_SEED={txid:'e57b702546c87cbf457d53f7975c3bf6692cb175686cf0eee9cd33b7f8edc7b8',vout:1};
+
+var $=function(i){return document.getElementById(i)};
+var car=null, carTx=null, carOut=null, plan=null;
+
+function log(s,cls){ var e=$('log'); e.innerHTML+=(e.innerHTML?'\n':'')+(cls?'<span class="'+cls+'">'+s+'</span>':s); e.scrollTop=e.scrollHeight }
+function sat(n){ return Number(n).toLocaleString() }
+
+function loadGM(){ return new Promise(function(res,rej){
+  var s=document.createElement('script'); s.src='/vendor/grafmint.js';
+  s.onload=function(){ GM=window.GrafMint; GM?res():rej(Error('grafmint loaded but exported nothing')) };
+  s.onerror=function(){ rej(Error('could not load grafmint.js — serve this page, do not open the file')) };
+  document.head.appendChild(s);
+})}
+
+async function getJSON(p){ var r=await fetch(WOC+p); if(!r.ok) throw Error('WoC '+p+' → '+r.status); return r.json() }
+async function getText(p){ var r=await fetch(WOC+p); if(!r.ok) throw Error('WoC '+p+' → '+r.status); return r.text() }
+
+/* ★ FIND THE CAR. It was last seen at CAR_SEED; if that output has been spent, follow the spend — a
+   public car's successor is always output 0 of whatever spent it. Bounded, so a page cannot spin. */
+async function findCar(){
+  var txid=CAR_SEED.txid, vout=CAR_SEED.vout;
+  for(var hop=0; hop<60; hop++){
+    var spent=null;
+    try{ spent=await getJSON('/tx/'+txid+'/'+vout+'/spent'); }catch(e){ spent=null }
+    if(!spent || !spent.txid) return {txid:txid,vout:vout,hops:hop};
+    txid=spent.txid; vout=0;                       // the successor is always out0
+  }
+  throw Error('the car has moved more than 60 times since this page was written');
+}
+
+async function readChain(){
+  $('go').disabled=true;
+  try{
+    var d=await getJSON('/tx/'+DEPOT_TXID+'/0/spent').catch(function(){return null});
+    var depotAt=DEPOT_TXID, dv=0;
+    if(d&&d.txid){ depotAt=d.txid; dv=0 }
+    var dtx=await getJSON('/tx/hash/'+depotAt);
+    var dsat=Math.round((dtx.vout[dv].value||0)*1e8);
+    $('d-depot').textContent=sat(dsat)+' sat';
+    $('d-depot').className='';
+
+    var at=await findCar();
+    carOut=at;
+    var ctx=await getJSON('/tx/hash/'+at.txid);
+    var vo=ctx.vout[at.vout];
+    var hex=vo.scriptPubKey.hex;
+    var fuel=Math.round((vo.value||0)*1e8);
+    car=GM.shellStateFromScript(hex);
+    if(!car){ $('d-car').textContent='not a car'; $('d-car').className='no'; return }
+    carTx=GM.Transaction.fromHex(await getText('/tx/'+at.txid+'/hex'));
+    $('d-car').innerHTML=at.txid.slice(0,12)+'…:'+at.vout+(at.hops?' <span class="dim">('+at.hops+' moves on)</span>':'');
+    $('d-car').className='';
+    $('d-fuel').textContent=sat(fuel)+' sat'; $('d-fuel').className='';
+    var names=['EMPTY','CAR','TRACK','ARMED','RACING','DONE','OUT'];
+    $('d-phase').textContent=names[car.phase]+(car.n?' · '+car.n+' moves':''); $('d-phase').className='';
+    $('d-note').innerHTML= car.phase===0
+      ? 'At rest, and configurable by anybody — including you.'
+      : '<span class="warn">Someone left this car mid-run. Configuring it resets it first, which is legal from any phase.</span>';
+    window.__fuel=fuel;
+    replan();
+  }catch(e){ log('⚠ '+e.message,'no') }
+}
+
+function replan(){
+  if(!car||!GM) return;
+  var cfg={eng:+$('eng').value,tyr:+$('tyr').value,finishM:+$('fin').value,
+           green:Math.floor(Date.now()/1000)-3*3600};   // ⚠ green in the PAST — median time past
+  var p;
+  try{ p=GM.planRace(car,window.__fuel,cfg) }catch(e){ $('p-why').textContent=e.message; return }
+  plan=p;
+  var last=p.steps[p.steps.length-1];
+  $('p-txs').textContent=p.steps.length;
+  $('p-burn').textContent=sat(window.__fuel-(last?last.out:window.__fuel))+' sat';
+  $('p-left').textContent=last?sat(last.out)+' sat':'—';
+  $('p-et').textContent=p.feasible?((last.next.n*0.1).toFixed(1)+' s'):'—';
+  $('p-why').innerHTML=p.feasible
+    ? '<span class="ok">This run finishes on the fuel the car holds.</span>'
+    : '<span class="no">'+(p.why||'not feasible')+'</span> — refused before spending anything.';
+  $('go').disabled=!p.feasible;
+}
+
+async function broadcast(hex){
+  var r=await fetch(WOC+'/tx/raw',{method:'POST',headers:{'Content-Type':'application/json'},
+                                   body:JSON.stringify({txhex:hex})});
+  var t=(await r.text()).trim();
+  if(!r.ok) throw Error(t.slice(0,140));
+  return t.replace(/"/g,'');
+}
+
+async function run(){
+  $('go').disabled=true; $('reload').disabled=true;
+  var st=car, val=window.__fuel, prev=carTx, sent=0;
+  log('\n── the run ──');
+  for(var i=0;i<plan.steps.length;i++){
+    var step=plan.steps[i];
+    var at=GM.lockTimeFor(st);
+    var m;
+    try{ m=GM.buildPublicMove({prevTx:prev,vout:(i===0?carOut.vout:0),state:st,value:val,step:step,lockTime:at}) }
+    catch(e){ log('⚠ build failed: '+e.message,'no'); break }
+    if(!m.ok){ log('⚠ the covenant refused: '+step.label,'no'); break }
+    try{
+      var id=await broadcast(m.tx.toHex());
+      sent++;
+      log(String(sent).padStart(3)+'  '+step.label+'   '+id.slice(0,12)+'…  −'+step.burn+' sat','ok');
+    }catch(e){ log('⚠ '+step.label+' → '+e.message,'no'); break }
+    prev=m.tx; st=step.next; val=step.out;
+    paint(st);
+    await new Promise(function(r){setTimeout(r,350)});          // ⚠ pace it — WoC throttles bursts
+  }
+  var names=['EMPTY','CAR','TRACK','ARMED','RACING','DONE','OUT'];
+  log('\n'+(st.phase===5?'🏁 HOME in '+(st.n*0.1).toFixed(1)+' s · '+(st.s/GM.SHELL_S).toFixed(0)+' m · '
+        +((st.v/GM.SHELL_S)*22.3694).toFixed(0)+' mph':'ended at '+names[st.phase])
+      +' · '+sent+' transactions · '+sat(val)+' sat left in the car', st.phase===5?'ok':'warn');
+  $('reload').disabled=false;
+  setTimeout(readChain,1500);
+}
+
+function paint(st){
+  if(!st||!st.finish) return;
+  var pct=Math.max(0,Math.min(1,(st.s/st.finish)));
+  $('carEl').style.left=(pct*(document.querySelector('.strip').clientWidth-40))+'px';
+}
+
+['eng','tyr','fin'].forEach(function(k){
+  $(k).addEventListener('input',function(){
+    $('v-'+(k==='fin'?'fin':k)).textContent = k==='fin' ? ($(k).value+' m') : $(k).value;
+    replan();
+  });
+});
+$('reload').onclick=readChain;
+$('go').onclick=run;
+
+loadGM().then(function(){
+  log('grafmint loaded — the same code the covenant is validated against','dim');
+  return readChain();
+}).catch(function(e){ log('⚠ '+e.message,'no') });
+</script>

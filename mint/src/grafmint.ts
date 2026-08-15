@@ -102,3 +102,15 @@ export { RACER_REGS, buildShellLock, shellLockOps, shellUnlockingOps, RECORD_SHE
 export { serializeOutput } from './covenant.ts'
 export { TransactionSignature, Hash, Utils } from '@bsv/sdk'
 export { stateFits, fieldMax } from './shell.ts'
+
+// ── driving a PUBLIC car that is already on chain (the depot demo) ──
+// ★ The page uses THESE. A page that reimplements the physics is a page that quietly disagrees with
+// the chain — and the decoder in particular must never be rewritten by hand: the state is thirteen
+// separate pushes, and read at flat offsets it yields plausible nonsense rather than an error.
+export {
+  shellStateFromScript, isPublicCar, planRace, buildPublicMove, lockTimeFor, smDecode, restingCar,
+} from './publicDriver.ts'
+export type { Step, RaceConfig } from './publicDriver.ts'
+export { freshPublicShell, publicReset, isAtRest } from './publicShell.ts'
+export { buildDepotLock, DEPOT_DRAW, DEPOT_MAX_FEE, DEPOT_MAX_TANK, DEPOT_BURN_BELOW } from './depot.ts'
+export { SHELL_TANK_MAX, SHELL_SCOPE as SHELL_SIGHASH_SCOPE } from './shell.ts'
