@@ -78,19 +78,27 @@
       <text id="siloTxt" x="60" y="112" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
             font-size="13" fill="#dfe7ef">—</text>
     </svg>
+    <!-- ★ THE DEPOT PANEL IS ABOUT FUEL AND NOTHING ELSE. It used to carry the car's outpoint, the
+         car's fuel and the car's phase as well, which made a reader work out which of four numbers
+         belonged to which thing. A silo holds fuel. The only questions it should answer are how much
+         is in it and how much a car takes. -->
     <div style="flex:1;min-width:240px">
-    <div class="lbl">On chain right now</div>
-    <div class="row"><span>the depot</span><span id="d-depot" class="dim">reading…</span></div>
-    <div class="row"><span>the car</span><span id="d-car" class="dim">reading…</span></div>
-    <div class="row"><span>fuel in the car</span><span id="d-fuel" class="dim">—</span></div>
-    <div class="row"><span>phase</span><span id="d-phase" class="dim">—</span></div>
+    <div class="lbl">The depot</div>
+    <div class="row"><span>fuel in the tank</span><span id="d-depot" class="dim">reading…</span></div>
+    <div class="row"><span>one tap fills a car with</span><span id="d-draw" class="dim">—</span></div>
+    <div class="row"><span>a car holds at most</span><span id="d-cap" class="dim">—</span></div>
+    <div class="row"><span>taps left in the tank</span><span id="d-taps" class="dim">—</span></div>
     <p class="note" id="d-note" style="margin-top:10px"></p>
     </div>
   </div>
 
   <div class="grid">
     <div class="panel">
-      <div class="lbl">Configure the car</div>
+      <div class="lbl">The car</div>
+      <div class="row"><span>on chain</span><span id="d-car" class="dim">reading…</span></div>
+      <div class="row"><span>fuel in the car</span><span id="d-fuel" class="dim">—</span></div>
+      <div class="row"><span>state</span><span id="d-phase" class="dim">—</span></div>
+      <p class="note" id="c-note" style="margin:8px 0 2px"></p>
       <label>engine <b id="v-eng">14</b><input type="range" id="eng" min="1" max="24" value="14"></label>
       <label>tyres <b id="v-tyr">10</b><input type="range" id="tyr" min="1" max="10" value="10"></label>
       <!-- ⚠ step 1 and a max past the quarter mile ON PURPOSE. At max 200 a driver could not even
@@ -196,6 +204,15 @@ async function readChain(){
     var dsat=Math.round((dtx.vout[dv].value||0)*1e8);
     $('d-depot').innerHTML=sat(dsat)+' sat <a class="dim" style="font-size:12px" href="https://whatsonchain.com/tx/'
       +depotAt+'" target="_blank" rel="nofollow noopener">on chain</a>';
+    $('d-depot').className='';
+    var DRAW=GM.DEPOT_DRAW, CAP=GM.SHELL_TANK_MAX, FEE=GM.DEPOT_MAX_FEE;
+    var taps=Math.max(0,Math.floor((dsat-FEE)/DRAW));
+    $('d-draw').textContent=sat(DRAW)+' sat'; $('d-draw').className='';
+    $('d-cap').textContent=sat(CAP)+' sat  ('+(CAP/DRAW)+' taps)'; $('d-cap').className='';
+    $('d-taps').textContent=taps; $('d-taps').className= taps?'':'warn';
+    $('d-note').innerHTML = taps
+      ? 'Enough to fuel '+taps+' car'+(taps>1?'s':'')+'.'
+      : '<span class="warn">Not enough for a tap.</span> Put fuel in below — the tank is unbounded on the way in.';
     paintSilo(dsat);
     $('d-depot').className='';
 
@@ -227,7 +244,7 @@ async function readChain(){
     $('d-phase').className='';
     /* ⚠ DONE and OUT are FINISHED, not abandoned — saying "left mid-run" of a car that crossed the
        line reads as a fault where there was a result. Three states, three sentences. */
-    $('d-note').innerHTML =
+    $('c-note').innerHTML =
         car.phase===0 ? 'At rest, and configurable by anybody — including you.'
       : car.phase===5 ? '<span class="ok">This car finished its run.</span> Configuring it resets it first, which is legal from any phase.'
       : car.phase===6 ? 'This run ended before the line. Configuring it resets it first — the fuel stays in the car.'
