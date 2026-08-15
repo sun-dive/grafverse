@@ -29,6 +29,8 @@ deployment:
     - /bin/cp lang-*.js "$DEPLOYPATH"                     # i18n language packs (lang-ja.js, lang-zh-Hant.js, …) lazy-loaded by the game
     - /bin/cp brc226.html "$DEPLOYPATH"                   # BRC-226 blueprint — self-contained, crawlable (coined-term SEO); shareable at grafverse.com/brc226.html
     - /bin/cp bitcoin-racers.html "$DEPLOYPATH"           # BRC-226 demo three — the COVENANT, run through the real interpreter (noindex; nothing broadcast)
+    - /bin/cp green-test.html "$DEPLOYPATH"                # "A Green Test Is Not Evidence" — the article, canonical here; Substack is syndication
+    - /bin/mkdir -p "$DEPLOYPATH/img" && /bin/cp img/green-test-*.webp "$DEPLOYPATH/img/"   # its cover + in-body image
     - /bin/cp racers.html "$DEPLOYPATH"                   # BRC-226 demo three — the TUNING BENCH for Bitcoin Racers (noindex; runs mint/src/shell.ts via grafmint)
     - /bin/cp battery.html "$DEPLOYPATH"                  # BRC-226 demo two — the Bitcoin battery: simulator, presets, fuel gauge, loop preview
     - /bin/cp robots.txt "$DEPLOYPATH"                    # crawl directives (allow content, disallow the .php endpoints + /worlds/) + Sitemap: pointer
