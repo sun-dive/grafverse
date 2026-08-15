@@ -161,6 +161,24 @@ export function depotLockOps(
        Stack, bottom to top: [ burn, sig, pubkey, SO, newValue, preimage ]. The three new pushes go
        DEEPEST so every depth the rest of the script measures from the top stayed exactly where it was. */
     PN(5), op(OP.OP_PICK), op(OP.OP_IF),
+      /* ★★ AND ONLY WHEN THE TANK IS EMPTY — which is what makes even the OWNER unable to run off
+         with it. "Empty" has a precise meaning: less than one DRAW, so the depot can no longer fill a
+         car even once. A tank that cannot do its job may be cleared away; a tank that can, may not.
+
+         ⇒ The upgrade path survives untouched, because it never needed the balance to MOVE. Deploy the
+         successor alongside, point the page at it, let the old one drain through actual racing, then
+         clear the husk. Exactly how the shell's headstone works.
+
+         ⇒ And the honest sentence the page was going to need — "a donor is trusting the owner not to
+         sweep this" — is no longer true, so it is no longer needed. The most an owner can ever take is
+         one satoshi under a DRAW.
+
+         ⚠ THE COST, STATED: this removes the rescue hatch. If the car path turns out to have a bug, a
+         funded depot's balance can only leave through cars, and no owner override exists to retrieve
+         it. Mitigation is the sensible thing anyway — do not put much in the tank until it is proven. */
+      op(OP.OP_DUP), ...extractValueOps(), op(OP.OP_BIN2NUM),
+      PN(draw), op(OP.OP_LESSTHAN), op(OP.OP_VERIFY),
+
       PN(3), op(OP.OP_PICK), op(OP.OP_HASH160),          // the key offered…
       pushData(p.owner), op(OP.OP_EQUALVERIFY),          // …must be THE owner's
       PN(4), op(OP.OP_PICK), PN(4), op(OP.OP_PICK),      // the signature, and the key again

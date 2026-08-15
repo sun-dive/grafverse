@@ -1,12 +1,21 @@
 // © BSV Association — Open BSV License v6.
-// THE DEPOT · the OWNER BURN — the upgrade path, and the only branch that pays anybody.
+// THE DEPOT · the OWNER BURN — clearing a husk, and nothing more.
 //
 //   node --experimental-strip-types mint/test/depot-burn.ts
 //
-// A covenant cannot be amended. Replacing a design means burning what exists and minting its
-// successor — so a depot with no owner would strand its entire balance in v1 the day a better one
-// existed. Permanence is right when it IS the demonstration; here the demonstration is the racing, and
-// a depot is equipment. Equipment should be replaceable.
+// A covenant cannot be amended, so replacing a design means burning what exists and minting its
+// successor. A depot is equipment, not a monument, and equipment should be replaceable.
+//
+// ★★ BUT ONLY WHEN THE TANK IS EMPTY — below one DRAW, so it can no longer fill a car even once. That
+// single condition deletes the trust ask rather than shrinking it: a donor is NOT trusting the owner
+// not to sweep the depot, because the owner cannot. The most anyone can ever take is one satoshi under
+// a DRAW.
+//
+// ⇒ The upgrade path survives because it never needed the balance to MOVE. Deploy the successor
+// alongside, point the page at it, let the old one drain through actual racing, then clear the husk.
+//
+// ⚠ THE COST, STATED: no rescue hatch. If the car path has a bug, a funded depot's balance can only
+// leave through cars and no owner override exists. Do not put much in the tank until it is proven.
 //
 // ★ THE REFUSALS COME FIRST, AND THEY MATTER MORE THAN THE PERMISSION. Every other property of this
 // covenant — the value floor, the car rule, the arrival bound — holds just as well with a burn branch
@@ -32,7 +41,10 @@ const STRANGER_KEY = PrivateKey.fromRandom()
 const OWNER = Hash.hash160(OWNER_KEY.toPublicKey().encode(true) as number[])
 const CAR = LockingScript.fromASM('OP_DUP OP_HASH160 ' + '11'.repeat(20) + ' OP_EQUALVERIFY OP_CHECKSIG OP_NOP')
 const LOCK = buildDepotLock({ carScript: CAR.toBinary(), owner: OWNER })
-const V = 500_000
+/* ⚠ A BURN IS ONLY LEGAL ON AN EMPTY TANK — less than one DRAW, so the depot can no longer fill a
+   car even once. These cases therefore run on a husk; the full-tank refusals are asserted below. */
+const V = DEPOT_DRAW - 1
+const FULL = 500_000
 
 /**
  * Try to burn a depot, sweeping it to `to`. There is NO depot output and no car — that is the point,
@@ -72,7 +84,44 @@ async function burn(opts: {
   } catch { return false }
 }
 
-console.log('THE OWNER BURN — nobody but the owner, and then anything at all\n')
+console.log('THE OWNER BURN — only a husk, and only its owner\n')
+console.log(`        a tank may be burnt below ${DEPOT_DRAW.toLocaleString()} sat — one DRAW\n`)
+
+// ── ★★ NOT EVEN THE OWNER MAY BURN A FUNDED TANK ──────────────────────────────────────────────────
+// The rule that deletes the trust ask rather than shrinking it. Without it a donor is trusting the
+// owner not to sweep the depot; with it, the most an owner can ever take is one satoshi under a DRAW.
+{
+  const bigLock = LOCK
+  const burnAt = async (value: number): Promise<boolean> => {
+    const src = new Transaction(); src.addOutput({ lockingScript: bigLock, satoshis: value })
+    const tx = new Transaction(); tx.version = 2
+    tx.addInput({ sourceTransaction: src, sourceOutputIndex: 0, sequence: 0xfffffffe })
+    tx.addOutput({ lockingScript: new P2PKH().lock(OWNER_KEY.toAddress()), satoshis: Math.max(1, value - 400) })
+    tx.lockTime = 0
+    const pre = TransactionSignature.format({
+      sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: value, transactionVersion: 2,
+      otherInputs: [], inputIndex: 0, outputs: tx.outputs, inputSequence: 0xfffffffe,
+      subscript: bigLock, lockTime: tx.lockTime, scope: DEPOT_SCOPE,
+    })
+    const ch = (await new P2PKH().unlock(OWNER_KEY).sign(tx, 0)).chunks
+    tx.inputs[0].unlockingScript = buildDepotUnlock({
+      spenderOutputs: tx.outputs.flatMap(o => serializeOutput(o.satoshis ?? 0, o.lockingScript.toBinary())),
+      newValue: u64(0), preimage: pre, burn: true, sig: ch[0].data ?? [], pubKey: ch[1].data ?? [],
+    })
+    try {
+      return new Spend({
+        sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: value, lockingScript: bigLock,
+        transactionVersion: 2, otherInputs: [], outputs: tx.outputs, inputIndex: 0,
+        unlockingScript: tx.inputs[0].unlockingScript, inputSequence: 0xfffffffe, lockTime: tx.lockTime,
+      }).validate() === true
+    } catch { return false }
+  }
+  check('★★ the OWNER may NOT burn a funded tank', await burnAt(FULL), false)
+  check('★ …nor one holding exactly one DRAW', await burnAt(DEPOT_DRAW), false)
+  check('★ …but may clear a husk one satoshi under it', await burnAt(DEPOT_DRAW - 1))
+  check('  and a husk of one satoshi', await burnAt(1))
+}
+
 
 // ── ★ THE REFUSALS ────────────────────────────────────────────────────────────────────────────────
 check('★★ a STRANGER cannot burn the depot', await burn({ signer: STRANGER_KEY, to: STRANGER_KEY }), false)
@@ -93,25 +142,25 @@ check('  …across as many outputs as they like', await burn({ outputs: 3 }))
 // The three burn pushes sit DEEPEST so no existing depth moved, and the ordinary arm removes them
 // before it finishes so a spend still ends with a clean stack.
 {
-  const src = new Transaction(); src.addOutput({ lockingScript: LOCK, satoshis: V })
+  const src = new Transaction(); src.addOutput({ lockingScript: LOCK, satoshis: FULL })
   const tx = new Transaction(); tx.version = 2
   tx.addInput({ sourceTransaction: src, sourceOutputIndex: 0, sequence: 0xfffffffe })
-  tx.addOutput({ lockingScript: LOCK, satoshis: V - DEPOT_DRAW - DEPOT_MAX_FEE })
+  tx.addOutput({ lockingScript: LOCK, satoshis: FULL - DEPOT_DRAW - DEPOT_MAX_FEE })
   tx.addOutput({ lockingScript: CAR, satoshis: DEPOT_DRAW })
   tx.lockTime = 0
   const pre = TransactionSignature.format({
-    sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: V, transactionVersion: 2,
+    sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: FULL, transactionVersion: 2,
     otherInputs: [], inputIndex: 0, outputs: tx.outputs, inputSequence: 0xfffffffe,
     subscript: LOCK, lockTime: tx.lockTime, scope: DEPOT_SCOPE,
   })
   tx.inputs[0].unlockingScript = buildDepotUnlock({
     spenderOutputs: tx.outputs.slice(1).flatMap(o => serializeOutput(o.satoshis ?? 0, o.lockingScript.toBinary())),
-    newValue: u64(V - DEPOT_DRAW - DEPOT_MAX_FEE), preimage: pre,   // burn omitted entirely
+    newValue: u64(FULL - DEPOT_DRAW - DEPOT_MAX_FEE), preimage: pre,   // burn omitted entirely
   })
   let ok = false
   try {
     ok = new Spend({
-      sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: V, lockingScript: LOCK,
+      sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: FULL, lockingScript: LOCK,
       transactionVersion: 2, otherInputs: [], outputs: tx.outputs, inputIndex: 0,
       unlockingScript: tx.inputs[0].unlockingScript, inputSequence: 0xfffffffe, lockTime: tx.lockTime,
     }).validate() === true
