@@ -314,7 +314,11 @@ console.log('THE SHELL — reference implementation\n')
   const bytes = Buffer.byteLength(SHELL_STATE_LAYOUT, 'utf8')
   check('the layout fits one OP_RETURN', bytes <= 220)
   check('it names every field', FIELDS.every(k => SHELL_STATE_LAYOUT.includes(k)))
-  check('it carries a version', SHELL_STATE_LAYOUT.startsWith('BITCOIN RACER v1'))
+  /* ⚠ v2 BECAUSE THE EQUATIONS CHANGED — quadratic drag joined the velocity term. This assertion was
+     the thing that noticed: it pins a version that must move whenever the published physics move, so
+     a car cannot quietly claim a contract it no longer honours. Cars already on chain remain v1 and
+     remain correctly described by the v1 equations. */
+  check('it carries a version', SHELL_STATE_LAYOUT.startsWith('BITCOIN RACER v2'))
   console.log(`        ${bytes} bytes of 220`)
 }
 

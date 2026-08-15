@@ -76,7 +76,7 @@ export const SHELL_FEE_SLACK = 64
  * different keys. Pinning it exactly made the suite oscillate between two values, each "correcting"
  * the other. Two bytes of headroom above the observed maximum costs 0.2 satoshi and cannot go under.
  */
-export const SHELL_WORST_MOVE_BYTES = 3741
+export const SHELL_WORST_MOVE_BYTES = 3816
 
 /**
  * ★ THE RATE THE BURN IS DERIVED AT — a tenth of a satoshi above SHELL_FEE_PER_KB, and no more.
@@ -178,6 +178,31 @@ export interface RacerRegs {
   GV: number
   /** Drag, applied to velocity every tick. This is what makes you keep pressing. */
   DRAG: number
+  /**
+   * ★ QUADRATIC drag — applied as `v² · DRAG2`, alongside the linear term above.
+   *
+   * ⚠ REAL DRAG GOES AS v², AND LINEAR DRAG CANNOT HOLD A CAR BACK. Measured on the settled
+   * regulations: a quarter mile traps 459 mph and half a mile 490, still climbing, because the car
+   * gets LIGHTER as it burns fuel — so it accelerates hardest at the finish line, which is backwards.
+   * With a quadratic term the speed stops climbing and settles: at 0.0097 both a quarter mile and a
+   * half mile trap 310 mph on eng 14, and 355 on eng 24. A real top fuel car traps about 330.
+   *
+   * ⇒ So a TOP SPEED does not need a rule. It falls out of the drag term being right, and the engine
+   * ceiling with it — the biggest engine settles higher than the smallest, which is what makes engine
+   * size a trade rather than a slider you push to the right.
+   *
+   * ZERO = the linear-only model the mainnet cars run, exactly. Tune it on the bench, not here.
+   */
+  DRAG2: number
+  /**
+   * Velocity at or above which the engine or gearbox LETS GO. Zero disables it.
+   *
+   * Distinct from LOOSE_V, which is about losing grip: this one needs no wheelspin at all, and is
+   * simply the speed past which the machinery cannot survive. Its natural home is BETWEEN the plateaus
+   * that DRAG2 produces — above it a big engine must lift before the line while a mid-size one never
+   * has to think about it, and the risk is paid for by the driver rather than imposed by a bound.
+   */
+  BLOW_V: number
   /** Satoshis burned per tick regardless of throttle. */
   BURN0: number
   /** Extra satoshis burned per unit of engine at full throttle. */
@@ -256,20 +281,24 @@ export interface RacerRegs {
  * so the two failure modes were never actually felt out. They want the same treatment before minting.
  */
 export const RACER_REGS: RacerRegs = {
-  M0: Math.round(1 * S),
+  M0: Math.round(0.85 * S),
   WE: Math.round(0.05 * S),
   WT: Math.round(0.03 * S),
-  WF: Math.round(0.00013 * S),
+  WF: Math.round(0.00011 * S),
   FE: Math.round(0.32 * S),
   G0: Math.round(0.36 * S),
   GV: Math.round(0.30 * S),
-  DRAG: Math.round(0.062 * S),
-  SPIN_KEEP: Math.round(0.5 * S),
-  LOOSE_V: Math.round(0.35 * S),        // ⚠ untuned — no slider existed
-  BLOW_T: 14,                           // ⚠ untuned — no slider existed
+  DRAG: Math.round(0.02 * S),
+  DRAG2: Math.round(0.005 * S),
+  /* ★ 330 mph, WRITTEN AS THE CONVERSION rather than the integer it lands on. `v` is metres per 0.1 s,
+     so mph = (v/S)·22.3694 — a constant nobody can read is a constant nobody can check. */
+  BLOW_V: Math.round((330 / 22.3694) * S),
+  SPIN_KEEP: Math.round(0.43 * S),
+  LOOSE_V: Math.round(0.35 * S),
+  BLOW_T: 14,
   BURN0: Math.ceil(SHELL_WORST_MOVE_BYTES * SHELL_BURN_RATE_PER_KB / 1000),   // 375 — see the MAX_FEE note
   BURN_E: 35,
-  THROTTLE_MAX: 15,
+  THROTTLE_MAX: 16,
   ENG_MAX: 24,
   TYR_MAX: 10,
 }
@@ -529,9 +558,18 @@ export function refTick(st: ShellState, m: Move, regs: RacerRegs = PROVISIONAL_R
   const force = spun ? grip : demand
   const a = fdiv(force, mass)
 
-  let v = st.v + a - fmul(st.v, regs.DRAG)
+  /* ⚠ DRAG IS THE LINEAR TERM PLUS THE QUADRATIC ONE, and the quadratic one is the honest one — real
+     drag goes as v². With DRAG2 at zero this is exactly the linear model the mainnet cars run. */
+  let v = st.v + a - fmul(st.v, regs.DRAG) - fmul(fmul(st.v, st.v), regs.DRAG2)
   if (spun) v = fmul(v, regs.SPIN_KEEP)
   if (v < 0) v = 0                                   // a car does not roll backwards down a drag strip
+
+  /* ★ TOO FAST FOR THE MACHINERY. Checked on the speed this move PRODUCES, so the driver who presses
+     on past the plateau is the one who pays — lifting a tick early keeps the engine. Zero disables it,
+     and the run then ends only by grip, fuel or the finish line. */
+  if (regs.BLOW_V > 0 && v >= regs.BLOW_V) {
+    return { state: { ...st, phase: PHASE.OUT, last: m.lockTime, n: st.n + 1, v: 0 }, burn, spun, ended: 'blown' }
+  }
 
   const s = st.s + v
   const done = s >= st.finish
@@ -565,9 +603,24 @@ export function canFinish(st: ShellState, fuel: number, regs: RacerRegs = PROVIS
    have not happened yet. The regulation VALUES are deliberately absent: they live in the script, which
    a rebuilder already has. */
 export const SHELL_STATE_LAYOUT =
-  'BITCOIN RACER v1|' + FIELDS.join(',') + '|w' + FIELDS.map(k => FIELD_WIDTHS[k]).join(',') + '|' +
+  'BITCOIN RACER v2|' + FIELDS.join(',') + '|w' + FIELDS.map(k => FIELD_WIDTHS[k]).join(',') + '|' +
   'sm LE|1=2^32|slip/1e3|m=M0+eng*WE+tyr*WT+fuel*WF|g=(tyr*G0+v*GV)*slip|' +
-  'F=min(eng*FE*t/TM,g)|v+=F/m-v*DRAG|s+=v'
+  /* ⚠⚠ THE VERSION HAD TO MOVE, AND THAT IS THE POINT OF HAVING ONE. The equations are part of the
+     published contract, so a car whose drag term is linear+quadratic cannot go on calling itself v1 —
+     a rebuilder reading `v1` and applying these equations computes the wrong race, and one reading
+     `v1` on a car already mined and applying the OLD equations must keep getting the right one. The
+     cars on mainnet stay v1 and stay correct; these are v2.
+
+     ⚠ AND THE BLOW RULE IS DELIBERATELY NOT HERE. First attempt added `out if v>=BV` and blew the
+     budget at 237 of 220 — but the fix is not to squeeze it in, because the ENDING rules were never
+     published in the first place: `LOOSE_V` and `BLOW_T` govern moves that have not happened yet too,
+     and neither appears. This string publishes what a rebuilder cannot derive without the script —
+     the layout, the encoding, and the equations of MOTION. How a run ends is enforced by the covenant
+     a verifier already has. Following that precedent rather than the budget.
+
+     `D`/`D2` for the two drag terms, as `TM` already stands for THROTTLE_MAX — the values live in the
+     script, so these are labels for the equation, not names to resolve. */
+  'F=min(eng*FE*t/TM,g)|v+=F/m-v*D-v*v*D2|s+=v'
 
 // ═══ THE SCRIPT ══════════════════════════════════════════════════════════════════════════════════════
 // Everything above is the reference implementation. Everything below is the covenant that must agree
@@ -1044,12 +1097,28 @@ function shellPhysicsOps(regs: RacerRegs, isPublic = false): ScriptChunk[] {
   a.pick('demand'); a.pick('grip'); a.bin(OP.OP_GREATERTHAN, 'spun')
   a.pick('demand'); a.pick('grip'); a.bin(OP.OP_MIN, 'force')
 
-  // v' = v + force/mass − fmul(v, DRAG), collapsed by SPIN_KEEP if the wheels went, floored at zero
+  // v' = v + force/mass − fmul(v, DRAG) − fmul(fmul(v,v), DRAG2), collapsed by SPIN_KEEP if the wheels
+  // went, floored at zero
   a.pick('force'); a.num(S); a.bin(OP.OP_MUL, 'forceS')
   a.pick('mass'); a.bin(OP.OP_DIV, 'accel')
   a.pick('v'); a.bin(OP.OP_ADD, 'cv')
   a.pick('v'); a.num(regs.DRAG); fmul(); a.rename('drag')
   a.bin(OP.OP_SUB, 'cv')
+
+  /* ── ★ THE QUADRATIC TERM ───────────────────────────────────────────────────────────────────────
+     Real drag goes as v², and the linear term alone cannot hold a car back: it was measured trapping
+     459 mph at a quarter mile and 490 at half a mile, still climbing, because the car gets LIGHTER as
+     it burns fuel and so accelerates hardest at the finish line. With this term the speed settles.
+
+     ★ EMITTED ONLY WHEN IT IS SET. At DRAG2 = 0 the reference subtracts zero, so a script that omits
+     the opcodes computes exactly the same number — and a car tuned back to the linear model is then
+     BYTE-IDENTICAL to the ones already on mainnet. A term that costs nothing when unused is a term
+     nobody has to argue about. */
+  if (regs.DRAG2 !== 0) {
+    a.pick('v'); a.pick('v'); fmul(); a.rename('vsq')
+    a.num(regs.DRAG2); fmul(); a.rename('drag2')
+    a.bin(OP.OP_SUB, 'cv')
+  }
   a.pick('spun'); a.ifBegin()
   a.num(regs.SPIN_KEEP); fmul(); a.rename('cv')
   a.armReturn(['cv'])
@@ -1073,6 +1142,22 @@ function shellPhysicsOps(regs: RacerRegs, isPublic = false): ScriptChunk[] {
   a.pick('throttle'); a.num(regs.BLOW_T); a.bin(OP.OP_GREATERTHANOREQUAL, 'wide')
   a.bin(OP.OP_BOOLOR, 'bad')
   a.pick('spun'); a.bin(OP.OP_BOOLAND, 'out')
+
+  /* ── ★ AND TOO FAST FOR THE MACHINERY, WHICH NEEDS NO WHEELSPIN AT ALL ──────────────────────────
+     A third way to end a run, and the only one that does not begin with losing grip: past this speed
+     the engine or gearbox simply lets go. It is judged on the speed this move PRODUCED (`cv`, after
+     spin and the floor), not the speed it started at — so the driver who presses on past the plateau
+     is the one who pays, and lifting a tick early keeps the engine.
+
+     ⚠ `LOOSE_V` reads the OLD `v` and this reads the NEW one, which looks inconsistent and is not:
+     stepping sideways is caused by the grip you had when the wheels broke away, and over-revving is
+     caused by the speed you arrived at. Two different questions about two different instants.
+
+     Zero emits nothing, exactly as DRAG2 does. */
+  if (regs.BLOW_V !== 0) {
+    a.pick('cv'); a.num(regs.BLOW_V); a.bin(OP.OP_GREATERTHANOREQUAL, 'overrev')
+    a.bin(OP.OP_BOOLOR, 'out')
+  }
 
   a.pick('out'); a.ifBegin()
   // the run is over where it stands: no further ground, no speed, but the tick still counted
@@ -1169,6 +1254,11 @@ function shellPhysicsOps(regs: RacerRegs, isPublic = false): ScriptChunk[] {
  * Before the first field: three 2-byte header pushes = 6, then phase's 1-byte push opcode → O = 7.
  */
 export function buildShellLock(p: Omit<ShellLockParams, 'fieldOffset'>): LockingScript {
+  /* The port guard that lived here is GONE, and deliberately noted rather than silently deleted:
+     `shellPhysicsOps` now computes both DRAG2 and BLOW_V, so a lock can no longer promise arithmetic
+     it does not do. What replaced it is not another guard but a test — `shell-physics` runs the two
+     implementations against each other at the tuned regulations, where a divergence is a failure
+     rather than a thing both sides agree about. */
   const O = 2 + 2 + 2 + 1
   const probeLen = new LockingScript(shellLockOps({ ...p, fieldOffset: 1 })).toBinary().length
   const varIntSize = probeLen < 253 ? 1 : probeLen < 65536 ? 3 : 5
