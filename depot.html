@@ -194,7 +194,8 @@ async function readChain(){
     if(d&&d.txid){ depotAt=d.txid; dv=0 }
     var dtx=await getJSON('/tx/hash/'+depotAt);
     var dsat=Math.round((dtx.vout[dv].value||0)*1e8);
-    $('d-depot').textContent=sat(dsat)+' sat';
+    $('d-depot').innerHTML=sat(dsat)+' sat <a class="dim" style="font-size:12px" href="https://whatsonchain.com/tx/'
+      +depotAt+'" target="_blank" rel="nofollow noopener">on chain</a>';
     paintSilo(dsat);
     $('d-depot').className='';
 
@@ -207,7 +208,12 @@ async function readChain(){
     car=GM.shellStateFromScript(hex);
     if(!car){ $('d-car').textContent='not a car'; $('d-car').className='no'; return }
     carTx=GM.Transaction.fromHex(await getText('/tx/'+at.txid+'/hex'));
-    $('d-car').innerHTML=at.txid.slice(0,12)+'…:'+at.vout+(at.hops?' <span class="dim">('+at.hops+' moves on)</span>':'');
+    /* ⚠ SAY WHERE IT IS, NOT HOW FAR IT HAS COME. This used to append "(12 moves on)", which is true
+       and unhelpful: it invites the reader to think of the car — and then the depot — as something
+       that scurries around the chain, when what they want to know is that there IS one and how much
+       is in it. The hop-chasing stays in the code, where it is a mechanism rather than a message. */
+    $('d-car').innerHTML='<a href="https://whatsonchain.com/tx/'+at.txid+'" target="_blank" rel="nofollow noopener">'
+      +at.txid.slice(0,12)+'…</a>';
     $('d-car').className='';
     $('d-fuel').textContent=sat(fuel)+' sat'; $('d-fuel').className='';
     var names=['EMPTY','CAR','TRACK','ARMED','RACING','DONE','OUT'];
