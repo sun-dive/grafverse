@@ -34,6 +34,7 @@ import {
   pushTxVerifyOps, pushTxConstants, pushData, type PushTxConstants,
 } from './pushtx.ts'
 import { extractHashOutputsOps, extractScriptCodeFieldOps } from './covenant.ts'
+import { RACER_REGS } from './shell.ts'
 import { op, PN } from './covenantAsm.ts'
 
 /** A byte-count for OP_SPLIT — always small, and never a script NUMBER. Kept apart from `PN` on purpose. */
@@ -103,6 +104,25 @@ export const DEPOT_MAX_TANK = 10 * DEPOT_DRAW
 export const DEPOT_MAX_FEE = 500
 
 /**
+ * ★★ EMPTY FOR THE RACE IS NOT EMPTY FOR FUNCTIONALITY.
+ *
+ * The burn threshold was DRAW, which is wrong: a tank holding one satoshi under a draw is not empty at
+ * all — it can still fuel a short run. Burning it destroys usable fuel AND hands the owner ten thousand
+ * satoshis for nothing. Those are two different questions:
+ *
+ *   empty for the RACE           cannot fund a full race          → a short race, not a dead tank
+ *   empty for FUNCTIONALITY      cannot buy a single move         → nothing left to do. Clear it.
+ *
+ * ⇒ DERIVED, not chosen: the least a depot must hold to deliver even one tick of racing is one move's
+ * fuel plus the cost of delivering it. Below that it can buy nothing, for anybody, ever.
+ *
+ * The practical effect is that the owner's maximum possible take falls from 9,999 satoshis to under
+ * 900 — a hundredth of a cent — which is the difference between "you can take a bit" and "there is
+ * nothing there to take".
+ */
+export const DEPOT_BURN_BELOW = RACER_REGS.BURN0 + DEPOT_MAX_FEE
+
+/**
  * ★ THE FRAME. Stack on entry, bottom to top: [ spenderOutputs, newValue, preimage ].
  *
  *   spenderOutputs   every output of this transaction AFTER out0, serialized as value(8) ‖ varint ‖ script
@@ -122,11 +142,12 @@ export const DEPOT_MAX_FEE = 500
  * let the depot say "whatever I do not keep goes to the car" instead of merely "out0 is me".
  */
 export function depotLockOps(
-  p: { carScript: number[]; owner: number[]; draw?: number; maxFee?: number; maxTank?: number; c?: PushTxConstants },
+  p: { carScript: number[]; owner: number[]; draw?: number; maxFee?: number; maxTank?: number; burnBelow?: number; c?: PushTxConstants },
 ): ScriptChunk[] {
   const draw = p.draw ?? DEPOT_DRAW
   const maxFee = p.maxFee ?? DEPOT_MAX_FEE
   const maxTank = p.maxTank ?? DEPOT_MAX_TANK
+  const burnBelow = p.burnBelow ?? DEPOT_BURN_BELOW
   const c = p.c ?? pushTxConstants(DEPOT_SCOPE)
 
   /* ★ THE CAR, AS ONE HASH. An output serializes as value(8) ‖ varint(len) ‖ script, so everything
@@ -162,8 +183,9 @@ export function depotLockOps(
        DEEPEST so every depth the rest of the script measures from the top stayed exactly where it was. */
     PN(5), op(OP.OP_PICK), op(OP.OP_IF),
       /* ★★ AND ONLY WHEN THE TANK IS EMPTY — which is what makes even the OWNER unable to run off
-         with it. "Empty" has a precise meaning: less than one DRAW, so the depot can no longer fill a
-         car even once. A tank that cannot do its job may be cleared away; a tank that can, may not.
+         with it. "Empty" means empty for FUNCTIONALITY, not empty for the race: below one move's fuel
+         plus the cost of delivering it, so the tank can buy nothing for anybody, ever. A tank that can
+         still fund a short run is not empty and may not be cleared.
 
          ⇒ The upgrade path survives untouched, because it never needed the balance to MOVE. Deploy the
          successor alongside, point the page at it, let the old one drain through actual racing, then
@@ -177,7 +199,7 @@ export function depotLockOps(
          funded depot's balance can only leave through cars, and no owner override exists to retrieve
          it. Mitigation is the sensible thing anyway — do not put much in the tank until it is proven. */
       op(OP.OP_DUP), ...extractValueOps(), op(OP.OP_BIN2NUM),
-      PN(draw), op(OP.OP_LESSTHAN), op(OP.OP_VERIFY),
+      PN(burnBelow), op(OP.OP_LESSTHAN), op(OP.OP_VERIFY),
 
       PN(3), op(OP.OP_PICK), op(OP.OP_HASH160),          // the key offered…
       pushData(p.owner), op(OP.OP_EQUALVERIFY),          // …must be THE owner's

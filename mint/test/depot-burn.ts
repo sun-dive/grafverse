@@ -26,7 +26,7 @@
 // to every output: by signing, they have said where the money goes. There is nothing left to check and
 // no output to re-create. It is the rule PharLap's editions already use.
 import { Transaction, Spend, LockingScript, TransactionSignature, PrivateKey, P2PKH, Hash } from '@bsv/sdk'
-import { buildDepotLock, buildDepotUnlock, DEPOT_SCOPE, DEPOT_DRAW, DEPOT_MAX_FEE } from '../src/depot.ts'
+import { buildDepotLock, buildDepotUnlock, DEPOT_SCOPE, DEPOT_DRAW, DEPOT_MAX_FEE, DEPOT_BURN_BELOW } from '../src/depot.ts'
 import { serializeOutput } from '../src/covenant.ts'
 
 let pass = 0, fail = 0
@@ -43,7 +43,7 @@ const CAR = LockingScript.fromASM('OP_DUP OP_HASH160 ' + '11'.repeat(20) + ' OP_
 const LOCK = buildDepotLock({ carScript: CAR.toBinary(), owner: OWNER })
 /* ⚠ A BURN IS ONLY LEGAL ON AN EMPTY TANK — less than one DRAW, so the depot can no longer fill a
    car even once. These cases therefore run on a husk; the full-tank refusals are asserted below. */
-const V = DEPOT_DRAW - 1
+const V = DEPOT_BURN_BELOW - 1
 const FULL = 500_000
 
 /**
@@ -85,7 +85,7 @@ async function burn(opts: {
 }
 
 console.log('THE OWNER BURN — only a husk, and only its owner\n')
-console.log(`        a tank may be burnt below ${DEPOT_DRAW.toLocaleString()} sat — one DRAW\n`)
+console.log(`        a tank may be burnt below ${DEPOT_BURN_BELOW.toLocaleString()} sat — one move's fuel plus its delivery\n`)
 
 // ── ★★ NOT EVEN THE OWNER MAY BURN A FUNDED TANK ──────────────────────────────────────────────────
 // The rule that deletes the trust ask rather than shrinking it. Without it a donor is trusting the
@@ -117,8 +117,10 @@ console.log(`        a tank may be burnt below ${DEPOT_DRAW.toLocaleString()} sa
     } catch { return false }
   }
   check('★★ the OWNER may NOT burn a funded tank', await burnAt(FULL), false)
-  check('★ …nor one holding exactly one DRAW', await burnAt(DEPOT_DRAW), false)
-  check('★ …but may clear a husk one satoshi under it', await burnAt(DEPOT_DRAW - 1))
+  check('★★ …nor one that can still fund a short run — EMPTY FOR THE RACE IS NOT EMPTY',
+    await burnAt(DEPOT_DRAW - 1), false)
+  check('★ …nor one holding exactly the functional floor', await burnAt(DEPOT_BURN_BELOW), false)
+  check('★ …but may clear a husk one satoshi under it', await burnAt(DEPOT_BURN_BELOW - 1))
   check('  and a husk of one satoshi', await burnAt(1))
 }
 
