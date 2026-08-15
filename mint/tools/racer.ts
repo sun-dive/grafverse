@@ -358,14 +358,46 @@ async function selftest (): Promise<never> {
   process.exit(ok ? 0 : 1)
 }
 
+const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
+
+/**
+ * ★ THE LIMIT WE ACTUALLY HIT WAS AN API THROTTLE, NOT THE NETWORK.
+ *
+ * An 880 m race got 84 chained unconfirmed spends deep and then met `429 Too Many Requests` from
+ * WhatsOnChain's CDN. The protocol never objected — a miner had already taken a 14-transaction chain
+ * and mined the whole thing in one block. We ran out of PERMISSION TO ASK, which is a different and far
+ * better answer, but it stalls a race just as effectively and leaves its fuel sitting in the car.
+ *
+ * ⇒ So: pace the requests, and back off rather than dying. A race is long enough that a couple of
+ * hundred milliseconds a move costs nothing next to losing the run.
+ *
+ * ⚠ A DUPLICATE IS NOT A FAILURE. On a resume the chain is rebuilt from the start, so the transactions
+ * already sent come back as "already known" — which means it worked the first time, not that it broke.
+ */
+const BROADCAST_GAP_MS = 350
+const RETRY_BACKOFF_MS = [2_000, 5_000, 15_000, 30_000]
+
+const isDuplicate = (body: string): boolean =>
+  /already.?known|txn-already|duplicate|already in (the )?mempool/i.test(body)
+
 async function broadcast (tx: Transaction): Promise<void> {
   const raw = tx.toHex()
-  const w = await fetch(`${WOC}/tx/raw`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txhex: raw }) })
-  const body = (await w.text()).trim()
-  if (!w.ok) throw new Error(`WoC refused ${tx.id('hex').slice(0, 12)}… → ${w.status} ${body}`)
+  for (let attempt = 0; ; attempt++) {
+    const w = await fetch(`${WOC}/tx/raw`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txhex: raw }) })
+    const body = (await w.text()).trim()
+    if (w.ok || isDuplicate(body)) break
+    if (w.status === 429 && attempt < RETRY_BACKOFF_MS.length) {
+      const wait = RETRY_BACKOFF_MS[attempt]
+      console.log(`        …throttled by WoC, waiting ${wait / 1000}s`)
+      await sleep(wait)
+      continue
+    }
+    throw new Error(`WoC refused ${tx.id('hex').slice(0, 12)}… → ${w.status} ${body.slice(0, 120)}`)
+  }
   try {
     await fetch(`${BB}/tx/broadcast`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rawtx: raw }) })
   } catch { /* the second announcer is a courtesy, not a requirement */ }
+  await sleep(BROADCAST_GAP_MS)
 }
 
 async function main (): Promise<void> {
@@ -378,22 +410,53 @@ async function main (): Promise<void> {
   const live = process.argv.includes('--broadcast')
   console.log('driver address :', addr)
 
-  const need = SPEC.tank + SPEC.pot + 2_000
-  const utxos = await getJson(`/address/${addr}/unspent`)
-  const pick = (Array.isArray(utxos) ? utxos : []).filter((u: any) => u.value >= need).sort((a: any, b: any) => a.value - b.value)[0]
-  if (!pick) { console.error(`No funding UTXO ≥ ${need.toLocaleString()} sat at ${addr} — send a little BSV there first.`); process.exit(1) }
-  console.log('funding utxo   :', `${pick.tx_hash}:${pick.tx_pos} (${pick.value.toLocaleString()} sat)`)
+  /* ── ★ RESUME — FINISHING A RACE THAT WAS INTERRUPTED ─────────────────────────────────────────────
+     A stalled race leaves its fuel sitting in a car mid-track, and burning it recovers the satoshis
+     while throwing the run away. Resuming recovers BOTH.
 
-  const src = Transaction.fromHex(await getText(`/tx/${pick.tx_hash}/hex`))
-  const green = Math.floor(Date.now() / 1000) - SPEC.greenBack
-  const { tx: genesis } = await buildGenesis(ctx, { tx: src, vout: pick.tx_pos, value: pick.value }, green)
+     ★ It works because the build is DETERMINISTIC. ECDSA signing is RFC 6979, and the LOW_S grind walks
+     nLockTime in a fixed order, so the same genesis and the same green rebuild BYTE-IDENTICAL
+     transactions — the same txids, in the same order. The ones already sent come back as duplicates and
+     are skipped; the first one that was never sent simply goes.
 
-  console.log(`\n── GENESIS · the car and the purse ──`)
-  console.log('txid   :', genesis.id('hex'))
-  console.log('car    :', genesis.outputs[0].satoshis?.toLocaleString(), 'sat   (output 0 — an EMPTY shell)')
-  console.log('purse  :', genesis.outputs[1].satoshis?.toLocaleString(), 'sat   (output 1 — claimable only by crossing)')
-  console.log('change :', genesis.outputs[2].satoshis?.toLocaleString(), 'sat →', addr)
-  if (live) { await broadcast(genesis); console.log('        BROADCAST ✓') }
+     ⚠ WHICH IS WHY `green` MUST BE GIVEN. It is derived from the clock at build time, so a resume that
+     let it default would produce a different track, a different state, and a chain that forks off the
+     one already on chain. It is printed on every run for exactly this reason.
+
+       RACER_RESUME=<genesis txid>  RACER_GREEN=<unix seconds>  … --broadcast */
+  const resumeId = process.env.RACER_RESUME
+  let genesis: Transaction
+  let green: number
+
+  if (resumeId) {
+    green = Number(process.env.RACER_GREEN)
+    if (!Number.isFinite(green) || green <= 0) {
+      console.error('RACER_RESUME needs RACER_GREEN too — the unix seconds printed as `green` on the original run.')
+      process.exit(1)
+    }
+    genesis = Transaction.fromHex(await getText(`/tx/${resumeId}/hex`))
+    console.log('resuming from  :', resumeId)
+    console.log('green          :', new Date(green * 1000).toISOString(), `(${green})`)
+    console.log('car was funded :', genesis.outputs[0].satoshis?.toLocaleString(), 'sat')
+  } else {
+    const need = SPEC.tank + SPEC.pot + 2_000
+    const utxos = await getJson(`/address/${addr}/unspent`)
+    const pick = (Array.isArray(utxos) ? utxos : []).filter((u: any) => u.value >= need).sort((a: any, b: any) => a.value - b.value)[0]
+    if (!pick) { console.error(`No funding UTXO ≥ ${need.toLocaleString()} sat at ${addr} — send a little BSV there first.`); process.exit(1) }
+    console.log('funding utxo   :', `${pick.tx_hash}:${pick.tx_pos} (${pick.value.toLocaleString()} sat)`)
+
+    const src = Transaction.fromHex(await getText(`/tx/${pick.tx_hash}/hex`))
+    green = Math.floor(Date.now() / 1000) - SPEC.greenBack
+    genesis = (await buildGenesis(ctx, { tx: src, vout: pick.tx_pos, value: pick.value }, green)).tx
+
+    console.log(`\n── GENESIS · the car and the purse ──`)
+    console.log('txid   :', genesis.id('hex'))
+    console.log('car    :', genesis.outputs[0].satoshis?.toLocaleString(), 'sat   (output 0 — an EMPTY shell)')
+    console.log('purse  :', genesis.outputs[1].satoshis?.toLocaleString(), 'sat   (output 1 — claimable only by crossing)')
+    console.log('change :', genesis.outputs[2].satoshis?.toLocaleString(), 'sat →', addr)
+    console.log('green  :', `${green}   ← keep this; a resume needs it`)
+    if (live) { await broadcast(genesis); console.log('        BROADCAST ✓') }
+  }
 
   console.log(`\n── THE RACE ── ${SPEC.finishM} m · engine ${SPEC.eng} · tyres ${SPEC.tyr} · green ${new Date(green * 1000).toISOString()}\n`)
   const r = await runRace(ctx, genesis, green, live ? broadcast : null)
