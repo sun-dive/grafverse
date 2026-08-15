@@ -34,7 +34,7 @@ import {
   pushTxVerifyOps, pushTxConstants, pushData, type PushTxConstants,
 } from './pushtx.ts'
 import { extractHashOutputsOps, extractScriptCodeFieldOps } from './covenant.ts'
-import { RACER_REGS } from './shell.ts'
+import { RACER_REGS, SHELL_TANK_MAX } from './shell.ts'
 import { op, PN } from './covenantAsm.ts'
 
 /** A byte-count for OP_SPLIT — always small, and never a script NUMBER. Kept apart from `PN` on purpose. */
@@ -91,17 +91,39 @@ export const DEPOT_SCOPE = 0x41
 export const DEPOT_DRAW = 10_000
 
 /**
- * ★ MAX_TANK — ten taps, and the pump stops filling that car.
+ * ★ MAX_TANK — FIVE taps, and the pump stops filling that car.
  *
  * A cap on how much fuel one car may hold, enforced where it cannot be argued with. Overfilling is
  * already punished by the physics — fuel is mass — but a cap makes the pump's behaviour a property of
  * the system rather than a courtesy of the page, and it bounds how much of the tank one car can be
  * holding at any moment.
  */
-export const DEPOT_MAX_TANK = 10 * DEPOT_DRAW
+/* ⚠⚠ IT MUST AGREE WITH THE CAR'S OWN CEILING, AND IT DID NOT. This was 10 × DRAW = 100,000 while
+   `SHELL_TANK_MAX` is 50,000, so the depot would happily build a refuel the car then refused — not a
+   hole, since the tighter rule wins, but a guaranteed confusing failure between two covenants that are
+   supposed to agree.
 
-/** ⚠ PROVISIONAL until step 5 measures it by SERIALIZING a real spend. Never counted by hand. */
-export const DEPOT_MAX_FEE = 500
+   ★ AND THE RULE STAYS, RATHER THAN DEFERRING TO THE CAR'S. The obvious tidy-up is to delete this and
+   let the car refuse for both — and that would be wrong. The depot and the car are TWO COVENANTS,
+   neither able to read the other, each enforcing its own rules in one transaction. A depot that filled
+   any amount and left the car to object would have delegated its safety to the car: one covenant in
+   two hats. Two of them arriving at the same bound by their own reasoning is the demonstration. */
+export const DEPOT_MAX_TANK = SHELL_TANK_MAX
+
+/**
+ * ★ MEASURED — `depot-fee` serializes a real draw and derives this. Was 500, and 500 was FATAL.
+ *
+ * ⚠⚠ THE MOST DANGEROUS CONSTANT IN THIS FILE. The value rule lets a spend take at most
+ * `DRAW + MAX_FEE` out of the tank, so MAX_FEE is a ceiling on the fee any draw can pay. A real draw
+ * serializes to 5,139 bytes — the depot's own 694 plus the CAR's 1,744 as an output, plus the preimage
+ * carrying the depot's script again — and at 500 sat that is 97.3 sat/KB. Under the 100 floor, no node
+ * relays it, and since there is no key to raise the constant the depot would have been UNSPENDABLE
+ * FROM BIRTH, with every satoshi ever donated to it locked away forever.
+ *
+ * ⇒ 516 = ceil(5139 × 100/1000) + 2. Re-run `depot-fee` after ANY change to either script: the car is
+ * an output of every draw, so the depot's fee depends on the CAR's size as much as its own.
+ */
+export const DEPOT_MAX_FEE = 516
 
 /**
  * ★★ EMPTY FOR THE RACE IS NOT EMPTY FOR FUNCTIONALITY.
