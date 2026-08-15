@@ -1,0 +1,165 @@
+# Bitcoin Racers — the settled regulations, and how to run one 🏁
+
+Physics executed **in Bitcoin Script**. Every move is a real spend the network validates against the
+covenant, so a result is not reported by a tool — it is *settled* by miners. The tool only proposes.
+
+> ⚠ **A covenant cannot be amended.** Every number below is minted permanently into a car that has no
+> key to change it. They are DERIVED and MEASURED, never chosen — and where one was chosen, it says so.
+
+---
+
+## The regulations
+
+Tuned on `racers.html`, which runs the exact code the covenant is validated against (`mint/src/shell.ts`
+through `vendor/grafmint.js`). A bench that reimplements the physics is a bench that quietly disagrees
+with the chain.
+
+```
+M0    0.85     chassis mass          DRAG   0.02    drag per tick, LINEAR
+WE    0.05     mass per engine       DRAG2  0.005   ★ drag per tick, QUADRATIC (v²)
+WT    0.03     mass per tyre         SPIN_KEEP 0.43 what survives a wheelspin
+WF    0.00011  mass per satoshi      LOOSE_V 0.35   spin above this ⇒ off the track
+FE    0.32     force per engine      BLOW_T  14     spin at this throttle ⇒ grenaded
+G0    0.36     grip per tyre         BLOW_V  330mph ★ too fast for the machinery
+GV    0.30     grip per unit speed   THROTTLE_MAX 16 · ENG_MAX 24 · TYR_MAX 10
+```
+
+### What they produce
+
+```
+  fastest quarter mile     3.9 s at 330 mph   (eng 15 / tyr 10 on 34,000)
+  builds that can race it  211 of 240
+  longest raceable track   590 m
+```
+
+★ **Real Top Fuel numbers on both axes.** Drag alone cannot deliver them — at the `DRAG2` that yields
+3.9 s the cars trap 397 mph, and at the `DRAG2` that yields 330 mph they take 4.7 s. Only a speed
+ceiling decouples elapsed time from top speed.
+
+⚠ It does **not** flatten the field. Quick builds trap 423–435 mph with the ceiling switched off
+entirely, because they all reach terminal velocity — real Top Fuel cars cluster for the same reason.
+Trap spread comes from the slow builds, and is untouched.
+
+---
+
+## The derived constants — do not hand-edit any of these
+
+| | | |
+|---|---|---|
+| `SHELL_WORST_MOVE_BYTES` | **3957** | measured by SERIALIZING a real spend, both variants |
+| `BURN0` | **397** | `ceil(worst × 100.1 / 1000)` — the burn IS the mining fee |
+| `SHELL_MAX_FEE` | **1301** | the most a move may take from the tank |
+| `SHELL_TANK_MAX` | **50,000** | five taps · public cars only |
+| lock, owned / public | 1674 / 1744 B | the public car carries the reset and the ceiling |
+
+⚠⚠ **`BURN0` IS PERMANENT AND THERE IS NO KEY TO AMEND IT.** Below the 100 sat/KB floor, ticking is
+rejected by every node FOREVER. It has been under the floor twice during development and both times
+every test was green — see *What has gone wrong* below. `shell-fee` re-derives it; when it says
+`RAISE SHELL_WORST_MOVE_BYTES TO n`, do exactly that and re-run everything.
+
+★ `SHELL_TANK_MAX` is the one number here that was **chosen above its derivation**. The biggest engine
+needs 37,000 for a quarter mile, so the rule gives 40,000 (four taps). 50,000 was taken deliberately:
+*the room to over-fill is what makes fuel-as-mass a decision.* A driver may carry more than they need
+and pay for it in acceleration.
+
+⚠ And the error is fatal in only one direction — it is a cliff, not a slope:
+
+```
+cap 30,000    0 of 240 builds can finish a quarter mile   ← unraceable, forever
+cap 50,000  211 of 240
+```
+
+---
+
+## Running a race
+
+```sh
+cd mint
+node -e "import('esbuild').then(e=>e.build({entryPoints:['tools/racer.ts'],bundle:true,format:'esm',platform:'node',target:'esnext',outfile:'tools/racer.mjs'}))"
+
+node tools/racer.mjs --selftest                 # no key, no network — the whole race locally
+ RACER_WIF=<wif> node tools/racer.mjs           # dry build: reads your UTXO, sends nothing
+ RACER_WIF=<wif> node tools/racer.mjs --broadcast
+```
+
+⚠ **WIF via env only**, never a flag and never a file. The leading space keeps it out of shell history.
+In fish: `read -s -P 'WIF: ' w; set -x RACER_WIF $w`
+
+Knobs: `RACER_TANK` (40,000) · `RACER_POT` (30,000) · `RACER_ENG` (14) · `RACER_TYR` (10) ·
+`RACER_FINISH` (402) · `RACER_SLIP` (1000)
+
+### Resuming a stalled race
+
+A stall leaves fuel sitting in a car mid-track. Burning it recovers the satoshis and throws away the
+run; resuming recovers both. It works because the build is deterministic — RFC 6979 signing and a LOW_S
+grind that walks nLockTime in a fixed order rebuild BYTE-IDENTICAL transactions.
+
+```sh
+ RACER_WIF=<wif> RACER_RESUME=<genesis txid> RACER_GREEN=<unix seconds> node tools/racer.mjs --broadcast
+```
+
+⚠ `RACER_GREEN` **must** be the value printed by the original run. Defaulted, it produces a different
+track, a different state, and a chain that forks off the one already on chain.
+
+---
+
+## ⚠ Three things mainnet needs that a simulator does not
+
+1. **Green goes in the PAST (~3 h).** nLockTime finality is judged against MEDIAN TIME PAST, which lags
+   about an hour. A race flagged at `now` sits non-final and unmineable. Costs nothing: the lockTime
+   rule is SEQUENCING, and the physics run at 0.1 s a tick regardless.
+2. **The purse must not be `OP_TRUE`.** The finishing rule checks only that the pot's OUTPOINT is input
+   1, never what locks it. A bare anyone-can-spend output is swept by bots in minutes.
+3. **Every move must pay for its own bytes.** `out = fuel` is a ZERO-FEE transaction: perfectly valid to
+   the interpreter and unrelayable by any node. `Spend` validates the script, not the economics.
+
+⚠ **API throttling, not the protocol, is what actually stops a race.** An 880 m run got 84 chained
+unconfirmed spends deep and then met `429` from WhatsOnChain. The network never objected — a miner took
+a 14-transaction chain and mined the lot in one block.
+
+---
+
+## The tests, and what each one is for
+
+```sh
+for t in shell-ref shell-frame shell-physics shell-load shell-fee shell-burn shell-blow \
+         public-ref public-gate public-reset public-tank \
+         depot-frame depot-value depot-arrival depot-car depot-burn depot-car-integration; do
+  node --experimental-strip-types test/$t.ts
+done
+```
+
+| | |
+|---|---|
+| `shell-ref` `shell-physics` | the covenant computes what the reference computes |
+| `shell-fee` | **⚠ measures BOTH variants** and re-derives `BURN0`. The one that fails first |
+| `shell-blow` | the rev limit is enforced by the SCRIPT, not only the reference |
+| `public-reset` | resets from all 7 phases; a reset carrying ANY field is refused |
+| `public-tank` | the ceiling binds on the way in, and never entombs a car already over it |
+| `depot-*` | the depot mints and refuels cars, and pays nobody |
+| `test/racers-page.mjs` | runs the SHIPPED page in a fresh `vm` with NO node globals |
+
+---
+
+## ★ What has gone wrong, so it does not go wrong again
+
+Every one of these was **green at the time**.
+
+- **A fee that would have been unmineable — twice.** 11 sat/KB against a 100 floor, then 98.3, then
+  97.2. ⇒ Measure by SERIALIZING a real spend. Hand-counts undercount the output script-length varint.
+- **⚠ The fee test measuring the wrong car.** `bytesOf()` only ever built OWNED locks, so when the reset
+  made the PUBLIC lock the bigger of the two, a public tick sat at 97.2 sat/KB with every test green.
+  ⇒ A bound must cover the worst move ANY legal car can produce, not the variant you happened to measure.
+- **A page dead on arrival.** One unguarded `process.env` in the lock builder; the suite ran the shipped
+  page in node, where `process` exists. ⇒ Test where the code RUNS, not where it is convenient.
+- **A rule that never fired.** The first `shell-blow` passed having proved nothing — full throttle spins
+  an eng 18 car off the line, so the run ended by GRIP at tick 0 and the speed rule was never reached.
+  ⇒ A rule no test has provoked is a rule no test has examined.
+- **A slider that clamped in silence.** `BURN0`'s bench slider maxed at 300 while `BURN0` was 375, and
+  the reader reads every slider on every drag — so every tuning session ran 20% cheap.
+- **Depths counted by hand.** Three bugs in one sitting. ⇒ Derive them from the assembler's own model;
+  `SHELL_DEBUG=1` prints the stack the rebuild inherits.
+
+★ And the shape they share: **a passing check is a hypothesis wearing a costume.** In a language where a
+refusal looks identical whether it came from the rule under test or from something else entirely, treat
+anything that stays green after a change with suspicion rather than relief.

@@ -51,7 +51,16 @@ const mph = (v: number): number => (v / S) / 0.1 * 2.23694
 /** THE CAR, THE TRACK, THE PURSE. The settled regulations, and a build that gets home on 60,000 sat. */
 const env = (k: string, d: number): number => (process.env[k] ? Number(process.env[k]) : d)
 const SPEC = {
-  tank: env('RACER_TANK', 60_000),   // the car's fuel — every satoshi is a mining fee or comes back
+  /* ⚠ 60,000 → 40,000, RE-MEASURED after the physics were retuned (quadratic drag, a 330 mph ceiling,
+     BURN0 397). FUEL IS MASS, so an over-filled tank is not free insurance — it is a slower car that
+     burns more getting there. eng 14 / tyr 10 over a quarter mile:
+
+       34,000  4.0 s   the least that gets home
+       40,000  4.2 s   ← the default: ~18% margin, so a real race does not strand on a rounding
+       60,000  5.1 s   the old default — a full second slower, carrying 26,000 sat of dead weight
+
+     ★ And 40,000 is under SHELL_TANK_MAX (50,000), so the same number is legal in a public car. */
+  tank: env('RACER_TANK', 40_000),   // the car's fuel — every satoshi is a mining fee or comes back
   pot: env('RACER_POT', 30_000),     // the purse, claimable only by crossing the line
   eng: env('RACER_ENG', 14),         // a build the bench says finishes a quarter mile
   tyr: env('RACER_TYR', 10),
