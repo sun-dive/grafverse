@@ -60,13 +60,34 @@ export function extractValueOps(): ScriptChunk[] {
 export const DEPOT_SCOPE = 0x41
 
 /**
- * ★ DRAW — the most fuel one spend may move out of the tank.
+ * ★ DRAW — the most fuel one spend may move out of the tank. ONE TAP OF THE PUMP.
  *
- * A policy, not a law of the covenant: it bounds how fast a depot can be emptied, and the only place
- * that fuel is allowed to go is a car. Sized from measurement — a quarter mile consumed 43,581 sat on
- * the bench, so one draw is one full race with a little room.
+ * A policy, not a law of the covenant, and it does two jobs that pull the same way: it bounds how fast
+ * a depot can be emptied, and it is the increment a driver fuels in. Both want it small.
+ *
+ * ── ★ WHY FUELLING IS A DECISION, NOT A FORMALITY ─────────────────────────────────────────────────
+ * Fuel is MASS. Carrying more of it costs acceleration, and the extra weight burns extra fuel to move,
+ * so overfilling is punished twice. Measured on the bench, without anyone looking for it:
+ *
+ *   50,000 tank   HOME in 4.80 s · 48 ticks · burned 43,395
+ *   60,000 tank   HOME in 5.40 s · 54 ticks · burned 48,669
+ *
+ * Ten thousand satoshis of insurance cost six tenths of a second. Tap too few times and you stop short
+ * of the line with nothing to show; tap too many and a slower car beats you home.
+ *
+ * ⇒ At 10,000 a quarter mile is four or five taps and a 60 m strip is one. Each tap is a transaction,
+ * so the increment is also what fuelling COSTS — which is the right shape: pumping is not free.
+ *
+ * ★ AND IT ONLY GOES ONE WAY. Not by rule but by construction: a public car has no branch that pays
+ * anybody, so fuel that goes in can only ever leave as mining fees. Easy to put in, impossible to get
+ * out — the physical intuition and the cryptographic property turn out to be the same sentence.
+ *
+ * ⚠ A top-up is legal in ANY phase, because the car's value rule is a floor. So a driver about to run
+ * dry at 300 m can tap once more mid-race: it costs speed exactly when they least want it, and it gets
+ * them home. Nobody designed that — it falls out of rules written for other reasons, and it happens in
+ * real races too. Left in deliberately.
  */
-export const DEPOT_DRAW = 50_000
+export const DEPOT_DRAW = 10_000
 
 /** ⚠ PROVISIONAL until step 5 measures it by SERIALIZING a real spend. Never counted by hand. */
 export const DEPOT_MAX_FEE = 500
