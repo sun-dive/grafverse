@@ -34,12 +34,42 @@ import {
   pushTxVerifyOps, pushTxConstants, pushData, type PushTxConstants,
 } from './pushtx.ts'
 import { extractHashOutputsOps, extractScriptCodeFieldOps } from './covenant.ts'
+import { op, PN } from './covenantAsm.ts'
 
-const op = (o: number): ScriptChunk => ({ op: o })
-const PN = (n: number): ScriptChunk => pushData([n])
+/** A byte-count for OP_SPLIT — always small, and never a script NUMBER. Kept apart from `PN` on purpose. */
+const AT = (n: number): ScriptChunk => pushData([n])
+
+/**
+ * Op fragment: consumes a verified preimage and leaves this input's own VALUE (8 bytes, little-endian).
+ *
+ * ⚠ The value sits 52 bytes from the end: the trailing 52 are
+ * value(8) ‖ nSequence(4) ‖ hashOutputs(32) ‖ nLocktime(4) ‖ sighashType(4). A fixed offset from the
+ * END, because the scriptCode in front of it is not a fixed length.
+ *
+ * ★ This is how a covenant knows its own balance. It is not told — it reads it out of the transaction
+ * it is being asked to authorise, which is the only figure it can trust.
+ */
+export function extractValueOps(): ScriptChunk[] {
+  return [
+    op(OP.OP_SIZE), AT(52), op(OP.OP_SUB), op(OP.OP_SPLIT), op(OP.OP_NIP),   // tail 52 bytes
+    AT(8), op(OP.OP_SPLIT), op(OP.OP_DROP),                                   // first 8 = value
+  ]
+}
 
 /** SIGHASH_ALL | FORKID. hashOutputs must be REAL, so ANYONECANPAY is not available to this covenant. */
 export const DEPOT_SCOPE = 0x41
+
+/**
+ * ★ DRAW — the most fuel one spend may move out of the tank.
+ *
+ * A policy, not a law of the covenant: it bounds how fast a depot can be emptied, and the only place
+ * that fuel is allowed to go is a car. Sized from measurement — a quarter mile consumed 43,581 sat on
+ * the bench, so one draw is one full race with a little room.
+ */
+export const DEPOT_DRAW = 50_000
+
+/** ⚠ PROVISIONAL until step 5 measures it by SERIALIZING a real spend. Never counted by hand. */
+export const DEPOT_MAX_FEE = 500
 
 /**
  * ★ THE FRAME. Stack on entry, bottom to top: [ spenderOutputs, newValue, preimage ].
@@ -60,13 +90,41 @@ export const DEPOT_SCOPE = 0x41
  * transaction cannot quietly add an output the covenant never saw. That property is what will later
  * let the depot say "whatever I do not keep goes to the car" instead of merely "out0 is me".
  */
-export function depotLockOps(c: PushTxConstants = pushTxConstants(DEPOT_SCOPE)): ScriptChunk[] {
+export function depotLockOps(
+  p: { draw?: number; maxFee?: number; c?: PushTxConstants } = {},
+): ScriptChunk[] {
+  const draw = p.draw ?? DEPOT_DRAW
+  const maxFee = p.maxFee ?? DEPOT_MAX_FEE
+  const c = p.c ?? pushTxConstants(DEPOT_SCOPE)
+
+  /* ★ THE MOST A SINGLE SPEND MAY COST THE TANK. One number, so there is one place to be wrong and
+     one place to change it — and the covenant never learns them apart, which is the point: whether a
+     satoshi left as fuel or as a miner's fee is not the depot's business. */
+  const drain = draw + maxFee
+
   return [
     ...pushTxVerifyOps(c),                  // [ SO, newV, preimage ]           ← the preimage is real
+
+    /* ★ READ ITS OWN BALANCE FIRST, while the preimage is still whole. Stashed on the altstack so the
+       frame below is untouched — and there are no branches in this script, so the altstack cannot get
+       out of step between arms the way it can in the shell. */
+    op(OP.OP_DUP),                          // [ SO, newV, pre, pre ]
+    ...extractValueOps(),                   // [ SO, newV, pre, V ]
+    op(OP.OP_BIN2NUM), op(OP.OP_TOALTSTACK), // alt:[V]  ·  [ SO, newV, pre ]
+
     op(OP.OP_DUP),                          // [ SO, newV, pre, pre ]
     ...extractHashOutputsOps(),             // [ SO, newV, pre, hashOutputs ]
     op(OP.OP_SWAP),                         // [ SO, newV, hashOutputs, pre ]
     ...extractScriptCodeFieldOps(),         // [ SO, newV, hashOutputs, scriptCodeField ]
+
+    /* ── ★ THE VALUE FLOOR ────────────────────────────────────────────────────────────────────────
+       out0 ≥ V − (DRAW + MAX_FEE). A FLOOR and not an equality, which is what makes a top-up free:
+       anyone may hand back MORE than they took and the covenant is satisfied. The battery's whole
+       funding mechanism is this one comparison, and the depot inherits it for nothing. */
+    PN(2), op(OP.OP_PICK), op(OP.OP_BIN2NUM),  // [ .., scField, out0value ]
+    op(OP.OP_FROMALTSTACK),                    // [ .., out0value, V ]      alt empty
+    PN(drain), op(OP.OP_SUB),                  // [ .., out0value, floor ]
+    op(OP.OP_GREATERTHANOREQUAL), op(OP.OP_VERIFY),   // [ SO, newV, hashOutputs, scriptCodeField ]
 
     /* Rebuild out0 as an output serialization: value(8) ‖ varint(len) ‖ script. `scriptCodeField`
        already carries its own length varint, which is exactly what an output needs after its value —
@@ -85,8 +143,8 @@ export function depotLockOps(c: PushTxConstants = pushTxConstants(DEPOT_SCOPE)):
  * The depot's locking script. ONE PASS — unlike the shell, which needs a two-pass build to size the
  * scriptCode varint around its own state. A stateless script has no such dependency on its length.
  */
-export function buildDepotLock(c?: PushTxConstants): LockingScript {
-  return new LockingScript(depotLockOps(c))
+export function buildDepotLock(p?: Parameters<typeof depotLockOps>[0]): LockingScript {
+  return new LockingScript(depotLockOps(p))
 }
 
 /**
