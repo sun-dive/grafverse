@@ -182,15 +182,33 @@ function replan(){
   $('p-burn').textContent=sat(window.__fuel-(last?last.out:window.__fuel))+' sat';
   $('p-left').textContent=last?sat(last.out)+' sat':'—';
   $('p-et').textContent=last?((last.next.n*0.1).toFixed(1)+' s'):'—';
-  /* ★ A PREDICTION, NEVER A REFUSAL. Under-fuel it and the car stops short of the line — that is a
-     result, not an error, and hiding it would hide the mistake the driver is entitled to make. */
+  /* ★ THE PLANNER PREDICTS; IT NEVER REFUSES. Under-fuelling is the driver's mistake to make and
+     stopping short of the line is a racing outcome, so `planRace` plans as far as the fuel goes and
+     reports where the car dies. That belongs in the covenant layer and it is permanent.
+
+     ⚠⚠ TEMPORARY — THE PAGE HOLDS THE BUTTON BACK ANYWAY, and this block has an expiry date.
+     A car that stops at 78 m should be rescued by a SPLASH-AND-DASH: tap the pump mid-race, lose a
+     tick, and carry on. That does not exist yet — the depot recognises a car by ONE HASH OF A CAR AT
+     REST, so it cannot fuel a car at 78 m, whose state (and therefore whose script) is arbitrary.
+     Until the depot pins the script's constant HEAD and TAIL either side of the state instead of the
+     whole thing, a dry car is a dead run and the fuel is only recoverable by the owner's burn.
+
+     ⇒ So the page declines to strand a car it cannot rescue. DELETE THIS THE DAY SPLASH-AND-DASH
+     LANDS — the honest behaviour is to let the driver run out and then pit. */
+  var rescueable = false;                       // ← splash-and-dash: not yet
   $('p-why').innerHTML =
       p.outcome==='home'    ? '<span class="ok">Crosses the line with '+sat(last.out)+' sat to spare.</span>'
-    : p.outcome==='dry'     ? '<span class="warn">'+p.why+'.</span> It will run, and stop there — '
-                              + 'top it up and it carries on from where it died.'
+    : p.outcome==='dry'     ? '<span class="warn">'+p.why+'.</span> The car would run and stop there. '
+                              + (rescueable ? 'Top it up and it carries on from where it died.'
+                                            : '<b>Held back for now</b> — a mid-race top-up is not built yet, '
+                                              + 'so a dry car cannot be rescued and its fuel would be stranded. '
+                                              + 'Shorten the strip, or give it a bigger engine.')
     : p.outcome==='stalled' ? '<span class="no">'+p.why+'</span>'
-    :                         '<span class="warn">'+(p.why||'ends before the line')+'</span>';
-  $('go').disabled = p.steps.length===0;
+    :                         '<span class="warn">'+(p.why||'ends before the line')+'</span> '
+                              + 'Grip or the engine, not the fuel — that one is on the driver.';
+  /* ⚠ 'out' is ALLOWED: wrecking it or blowing the engine ends the run but leaves the fuel in the car,
+     so the next driver resets it and races on. Only 'dry' strands anything. */
+  $('go').disabled = p.steps.length===0 || (p.outcome==='dry' && !rescueable);
   $('go').textContent = p.outcome==='home' ? '▶ Run it on mainnet' : '▶ Run it anyway';
 }
 
