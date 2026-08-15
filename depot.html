@@ -217,7 +217,14 @@ async function readChain(){
     $('d-car').className='';
     $('d-fuel').textContent=sat(fuel)+' sat'; $('d-fuel').className='';
     var names=['EMPTY','CAR','TRACK','ARMED','RACING','DONE','OUT'];
-    $('d-phase').textContent=names[car.phase]+(car.n?' · '+car.n+' moves':''); $('d-phase').className='';
+    /* ⚠ "DONE · 9 moves" put the word MOVES back in front of the reader, which is the one word that
+       makes a covenant sound like something wandering about the chain. The tick count is only
+       meaningful as TIME anyway — ET is the chain length — so show the time, which is what a driver
+       actually wants, and the distance beside it. */
+    $('d-phase').textContent = names[car.phase]
+      + (car.n ? ' · ' + (car.n*0.1).toFixed(1) + ' s' : '')
+      + (car.s ? ' · ' + (car.s/GM.SHELL_S).toFixed(0) + ' m' : '');
+    $('d-phase').className='';
     /* ⚠ DONE and OUT are FINISHED, not abandoned — saying "left mid-run" of a car that crossed the
        line reads as a fault where there was a result. Three states, three sentences. */
     $('d-note').innerHTML =
