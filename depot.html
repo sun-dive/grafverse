@@ -63,7 +63,10 @@
       <div class="lbl">Configure the car</div>
       <label>engine <b id="v-eng">14</b><input type="range" id="eng" min="1" max="24" value="14"></label>
       <label>tyres <b id="v-tyr">10</b><input type="range" id="tyr" min="1" max="10" value="10"></label>
-      <label>the strip <b id="v-fin">60 m</b><input type="range" id="fin" min="20" max="200" step="10" value="60"></label>
+      <!-- ⚠ step 1 and a max past the quarter mile ON PURPOSE. At max 200 a driver could not even
+           CHOOSE to attempt 402 m, so the page quietly removed the mistake it should be letting them
+           make — and a range input clamps in silence, so nothing would have said so. -->
+      <label>the strip <b id="v-fin">60 m</b><input type="range" id="fin" min="20" max="420" step="1" value="60"></label>
       <p class="note">Fuel is <b>mass</b>. A bigger engine is thirstier, and a heavier car is slower —
          so the tank is a racing decision, not a budget line.</p>
     </div>
@@ -178,11 +181,17 @@ function replan(){
   $('p-txs').textContent=p.steps.length;
   $('p-burn').textContent=sat(window.__fuel-(last?last.out:window.__fuel))+' sat';
   $('p-left').textContent=last?sat(last.out)+' sat':'—';
-  $('p-et').textContent=p.feasible?((last.next.n*0.1).toFixed(1)+' s'):'—';
-  $('p-why').innerHTML=p.feasible
-    ? '<span class="ok">This run finishes on the fuel the car holds.</span>'
-    : '<span class="no">'+(p.why||'not feasible')+'</span> — refused before spending anything.';
-  $('go').disabled=!p.feasible;
+  $('p-et').textContent=last?((last.next.n*0.1).toFixed(1)+' s'):'—';
+  /* ★ A PREDICTION, NEVER A REFUSAL. Under-fuel it and the car stops short of the line — that is a
+     result, not an error, and hiding it would hide the mistake the driver is entitled to make. */
+  $('p-why').innerHTML =
+      p.outcome==='home'    ? '<span class="ok">Crosses the line with '+sat(last.out)+' sat to spare.</span>'
+    : p.outcome==='dry'     ? '<span class="warn">'+p.why+'.</span> It will run, and stop there — '
+                              + 'top it up and it carries on from where it died.'
+    : p.outcome==='stalled' ? '<span class="no">'+p.why+'</span>'
+    :                         '<span class="warn">'+(p.why||'ends before the line')+'</span>';
+  $('go').disabled = p.steps.length===0;
+  $('go').textContent = p.outcome==='home' ? '▶ Run it on mainnet' : '▶ Run it anyway';
 }
 
 async function broadcast(hex){
@@ -227,11 +236,17 @@ function paint(st){
   $('carEl').style.left=(pct*(document.querySelector('.strip').clientWidth-40))+'px';
 }
 
+/* ⚠ THE LABELS MUST BE SYNCED AT BOOT, not only on input. They were markup-only, so a slider whose
+   HTML value differed from its hardcoded label read the old number until something was dragged — the
+   readout lying while the plan underneath was right. One function, called from both places. */
+function syncLabel(k){
+  $('v-'+k).textContent = k==='fin'
+    ? ($(k).value+' m'+(+$(k).value===402?' · the quarter mile':''))
+    : $(k).value;
+}
 ['eng','tyr','fin'].forEach(function(k){
-  $(k).addEventListener('input',function(){
-    $('v-'+(k==='fin'?'fin':k)).textContent = k==='fin' ? ($(k).value+' m') : $(k).value;
-    replan();
-  });
+  $(k).addEventListener('input',function(){ syncLabel(k); replan() });
+  syncLabel(k);
 });
 $('reload').onclick=readChain;
 $('go').onclick=run;

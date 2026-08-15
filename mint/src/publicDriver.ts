@@ -94,14 +94,18 @@ export interface RaceConfig {
  *
  * Given the car as it stands and what the driver wants, produce every move in order. Planning it all
  * up front is what lets a page say "this will take 14 transactions and burn 7,800 satoshis" BEFORE it
- * spends anything — and what lets it refuse a run the fuel cannot finish.
+ * spends anything.
+ *
+ * ★ IT DOES NOT REFUSE A RUN THE FUEL CANNOT FINISH. It plans as far as the fuel goes and reports
+ * where the car stops. Under-fuelling is the driver's mistake to make, and stopping short of the line
+ * is a racing outcome — the one a splash-and-dash exists to rescue.
  *
  * ⚠ A car that is not at EMPTY is RESET first. That is legal from any phase and costs one move, and
  * it is the only way to reconfigure a car somebody else set up.
  */
 export function planRace(
   car: ShellState, fuel: number, cfg: RaceConfig, regs: RacerRegs = RACER_REGS,
-): { steps: Step[]; feasible: boolean; why?: string } {
+): { steps: Step[]; feasible: boolean; outcome: 'home' | 'dry' | 'out' | 'stalled'; reached: number; why?: string } {
   const steps: Step[] = []
   let st = car
   let f = fuel
@@ -115,7 +119,7 @@ export function planRace(
   if (st.phase !== PHASE.EMPTY) {
     push('reset — back to an empty car', publicReset(st), { reset: true, burn: regs.BURN0 })
   }
-  if (f < regs.BURN0 * 4) return { steps, feasible: false, why: 'not enough fuel to even configure the car' }
+  if (f < regs.BURN0 * 4) return { steps, feasible: false, outcome: 'stalled', reached: 0, why: 'not enough fuel even to configure the car' }
 
   push('configure — engine and tyres',
     loadCar(st, { driver: st.driver, eng: cfg.eng, tyr: cfg.tyr }, regs), { burn: regs.BURN0 })
@@ -140,10 +144,24 @@ export function planRace(
     const throttle = safeThrottle(st, f)
     const at = Math.max(st.green, st.last + st.gap)
     const want = refTick(st, { throttle, lockTime: at, fuel: f }, regs)
-    if (f - want.burn < 1) return { steps, feasible: false, why: `runs dry at ${(st.s / S).toFixed(0)} m of ${cfg.finishM}` }
+    /* ★★ RUNNING DRY IS A RESULT, NOT AN ERROR — and this used to REFUSE the run.
+       A page that only lets you attempt races you are certain to win is not a race, it is a menu. If
+       the driver puts in too little fuel the car stops short of the line, which is the outcome every
+       real strip has, and the reason a splash-and-dash exists at all. So the plan simply ends where
+       the fuel does, and says where that is. Nothing here judges the driver. */
+    if (f - want.burn < 1) {
+      return { steps, feasible: false, outcome: 'dry',
+               why: `stops at ${(st.s / S).toFixed(0)} m of ${cfg.finishM} — out of fuel`,
+               reached: st.s / S }
+    }
     push(`move ${want.state.n} · ${(want.state.n * 0.1).toFixed(1)} s`, want.state, { throttle, burn: want.burn })
   }
-  return { steps, feasible: st.phase === PHASE.DONE, why: st.phase === PHASE.DONE ? undefined : 'the run ended before the line' }
+  const home = st.phase === PHASE.DONE
+  return {
+    steps, feasible: home, reached: st.s / S,
+    outcome: home ? 'home' : 'out',
+    why: home ? undefined : 'the run ended before the line — grip or the engine, not the fuel',
+  }
 }
 
 /** A fresh public car for this owner — what a car at rest looks like, and what the depot recognises. */
