@@ -613,8 +613,26 @@ export const CARRIED = ['nLockTime', 'hashPrev', 'outpoint'] as const
  * an illegal one cannot be written into a shell at all.
  */
 export interface Loadable { k: (typeof FIELDS)[number]; at: number; bytes?: number; min?: number; max?: number }
-export const loadables = (regs: RacerRegs): Loadable[] => [
-  { k: 'driver', at: PHASE.CAR, bytes: 20 },
+/**
+ * ★ A PHASE THAT CAN NEVER HAPPEN. Phases run 0…6, so a loadable whose transition is this one is never
+ * loaded at all: the `OP_NUMEQUAL` guarding it can never be true, and the value carried in the script
+ * survives untouched. That is how a field is made READ-ONLY without removing its slot — the layout,
+ * the depths, and the unlocking script all stay exactly as they were, and one constant differs.
+ */
+export const PHASE_NEVER = 99
+
+/**
+ * ⚠ IN A PUBLIC CAR THE DRIVER IS NOT LOADABLE, and this is not a nicety.
+ *
+ * MEASURED, before the fix existed: a passer-by loaded THEIR OWN key as the driver of a public car,
+ * became its owner, and could then burn it and walk off with the tank. Load, own, burn. The car was
+ * free to anybody who read the script.
+ *
+ * In a public car `driver` holds the OWNER and is written once, at genesis, by whoever mints it.
+ * Nothing may ever write it again.
+ */
+export const loadables = (regs: RacerRegs, isPublic = false): Loadable[] => [
+  { k: 'driver', at: isPublic ? PHASE_NEVER : PHASE.CAR, bytes: 20 },
   { k: 'pool', at: PHASE.TRACK, bytes: 36 },
   { k: 'eng', at: PHASE.CAR, min: 1, max: regs.ENG_MAX },
   { k: 'tyr', at: PHASE.CAR, min: 1, max: regs.TYR_MAX },
@@ -867,9 +885,9 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
        checks it against the regulations, and every other transition leaves it exactly as it was.
        ⚠ Depths derived, never written: the supplied values sit under everything, so their distance
        from the top grows with each field restored. */
-    const LD = loadables(regs).findIndex(l => l.k === FIELDS[i])
+    const LD = loadables(regs, isPublic).findIndex(l => l.k === FIELDS[i])
     if (LD >= 0) {
-      const all = loadables(regs), l = all[LD]
+      const all = loadables(regs, isPublic), l = all[LD]
       const above = (all.length - 1 - LD) + 5 + CARRIED.length + 1 + (i + 1)
       ops.push(
         PN(i), op(OP.OP_PICK), PN(l.at), op(OP.OP_NUMEQUAL),   // is this the transition that loads it?

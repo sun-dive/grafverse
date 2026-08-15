@@ -115,6 +115,33 @@ console.log('THE SIGNATURE GATE — anyone may drive a public car, and only its 
     await move({ state: built, next: TRACK(built), isPublic: true, signer: null }))
 }
 
+// ── ★★ AND THE OWNER CANNOT BE OVERWRITTEN ────────────────────────────────────────────────────────
+// MEASURED, before the fix existed: a passer-by loaded THEIR OWN key as the driver of a public car,
+// became its owner, and could then burn it and take the tank. Load, own, burn — the car was free to
+// anybody who read the script.
+//
+// ★ The fix keeps the loadable's SLOT and changes only its transition to a phase that can never
+// happen, so the layout, the depths and the unlocking script are all exactly as they were. One
+// constant differs, and the value carried in the script survives every move.
+{
+  const fresh = freshPublicShell(OWNER)
+  const THIEF_H = Hash.hash160(STRANGER.toPublicKey().encode(true) as number[])
+  const proper = loadCar(fresh, { driver: OWNER, eng: 14, tyr: 10 }, R)
+  const stolen = { ...proper, driver: THIEF_H }
+
+  check('★★ a passer-by may NOT load their own key as the driver',
+    await move({ state: fresh, next: stolen, isPublic: true, signer: null }), false)
+  check('★ …nor may the owner change it, which is the same rule',
+    await move({ state: fresh, next: stolen, isPublic: true, signer: KEY }), false)
+  check('  configuring the car normally is untouched',
+    await move({ state: fresh, next: proper, isPublic: true, signer: null }))
+
+  // ⚠ and the OWNED variant must still be claimable, which is what makes claiming work at all
+  const ownedClaim = loadCar(emptyShell(), { driver: THIEF_H, eng: 14, tyr: 10 }, R)
+  check('★ an OWNED shell at phase 0 is still claimable by anyone — unchanged',
+    await move({ state: emptyShell(), next: ownedClaim, isPublic: false, signer: null }))
+}
+
 // ── ★ BUT THE BURN STILL BELONGS TO THE OWNER ─────────────────────────────────────────────────────
 // The one branch that consults `driver` at all. If this were open, a public car would be free money
 // for whoever noticed — every other check above would still pass.
