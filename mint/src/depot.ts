@@ -89,6 +89,16 @@ export const DEPOT_SCOPE = 0x41
  */
 export const DEPOT_DRAW = 10_000
 
+/**
+ * ★ MAX_TANK — ten taps, and the pump stops filling that car.
+ *
+ * A cap on how much fuel one car may hold, enforced where it cannot be argued with. Overfilling is
+ * already punished by the physics — fuel is mass — but a cap makes the pump's behaviour a property of
+ * the system rather than a courtesy of the page, and it bounds how much of the tank one car can be
+ * holding at any moment.
+ */
+export const DEPOT_MAX_TANK = 10 * DEPOT_DRAW
+
 /** ⚠ PROVISIONAL until step 5 measures it by SERIALIZING a real spend. Never counted by hand. */
 export const DEPOT_MAX_FEE = 500
 
@@ -112,10 +122,11 @@ export const DEPOT_MAX_FEE = 500
  * let the depot say "whatever I do not keep goes to the car" instead of merely "out0 is me".
  */
 export function depotLockOps(
-  p: { carScript: number[]; draw?: number; maxFee?: number; c?: PushTxConstants },
+  p: { carScript: number[]; draw?: number; maxFee?: number; maxTank?: number; c?: PushTxConstants },
 ): ScriptChunk[] {
   const draw = p.draw ?? DEPOT_DRAW
   const maxFee = p.maxFee ?? DEPOT_MAX_FEE
+  const maxTank = p.maxTank ?? DEPOT_MAX_TANK
   const c = p.c ?? pushTxConstants(DEPOT_SCOPE)
 
   /* ★ THE CAR, AS ONE HASH. An output serializes as value(8) ‖ varint(len) ‖ script, so everything
@@ -161,7 +172,8 @@ export function depotLockOps(
 
        A top-up therefore stays what it was in step 3a: a spend that hands back more and is asked for
        nothing else. */
-    op(OP.OP_2DUP), op(OP.OP_LESSTHAN), op(OP.OP_TOALTSTACK),   // alt:[fuelLeft]
+    op(OP.OP_2DUP), op(OP.OP_SWAP), op(OP.OP_SUB), op(OP.OP_TOALTSTACK),   // alt:[left = V − out0]
+    op(OP.OP_2DUP), op(OP.OP_LESSTHAN), op(OP.OP_TOALTSTACK),              // alt:[left, fuelLeft]
 
     PN(drain), op(OP.OP_SUB),                  // [ .., out0value, floor ]
     op(OP.OP_GREATERTHANOREQUAL), op(OP.OP_VERIFY),   // [ SO, newV, hashOutputs, scriptCodeField ]
@@ -173,9 +185,31 @@ export function depotLockOps(
     op(OP.OP_FROMALTSTACK),                    // [ .., scField, fuelLeft ]
     op(OP.OP_IF),
       PN(3), op(OP.OP_PICK),                   // a copy of spenderOutputs
-      AT(8), op(OP.OP_SPLIT), op(OP.OP_NIP),   // drop out1's value
+      AT(8), op(OP.OP_SPLIT),                  // [ .., out1value, rest ]   ← keep the value this time
       PN(carField.length), op(OP.OP_SPLIT), op(OP.OP_DROP),   // exactly one car's worth
-      op(OP.OP_SHA256), pushData(carHash), op(OP.OP_EQUALVERIFY),
+      op(OP.OP_SHA256), pushData(carHash), op(OP.OP_EQUALVERIFY),          // [ .., out1value ]
+      op(OP.OP_BIN2NUM),
+
+      /* ── ★ TEN TAPS AND THE PUMP STOPS ────────────────────────────────────────────────────────
+         A cap on what one car may hold. Overfilling is already punished by the physics, but a cap
+         makes it a property of the system rather than a courtesy of the page. */
+      op(OP.OP_DUP), PN(maxTank), op(OP.OP_LESSTHANOREQUAL), op(OP.OP_VERIFY),
+
+      /* ── ★★ AND WHAT LEFT THE DEPOT MUST ARRIVE ───────────────────────────────────────────────
+         out1 ≥ (V − out0) − MAX_FEE. Without this the depot is not a tank but a faucet: take a full
+         DRAW, hand the car ONE SATOSHI, and send the difference to yourself. Measured, not feared —
+         the covenant accepted exactly that transaction before this line existed.
+
+         ⚠ And it cannot be enforced at the pump. An attacker does not use the pump; they build the
+         transaction by hand, and the covenant is the only thing standing there. */
+      op(OP.OP_FROMALTSTACK),                  // [ .., out1value, left ]
+      PN(maxFee), op(OP.OP_SUB),
+      op(OP.OP_GREATERTHANOREQUAL), op(OP.OP_VERIFY),
+    op(OP.OP_ELSE),
+      /* ⚠ THE ALTSTACK MUST COME OUT EVEN. `left` was pushed before the branch, so an arm that does
+         not take it back leaves the two paths silently out of step — a class of bug that surfaces a
+         hundred opcodes later wearing someone else's clothes. */
+      op(OP.OP_FROMALTSTACK), op(OP.OP_DROP),
     op(OP.OP_ENDIF),
 
     /* Rebuild out0 as an output serialization: value(8) ‖ varint(len) ‖ script. `scriptCodeField`
