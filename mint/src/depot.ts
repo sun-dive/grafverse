@@ -29,7 +29,7 @@
  * with no solution), so it derives itself from the preimage's `scriptCode` — the same trick the shell
  * and `selfReplicateCovenantOps` already use.
  */
-import { OP, LockingScript, UnlockingScript, type ScriptChunk } from '@bsv/sdk'
+import { OP, Hash, LockingScript, UnlockingScript, type ScriptChunk } from '@bsv/sdk'
 import {
   pushTxVerifyOps, pushTxConstants, pushData, type PushTxConstants,
 } from './pushtx.ts'
@@ -91,11 +91,19 @@ export const DEPOT_MAX_FEE = 500
  * let the depot say "whatever I do not keep goes to the car" instead of merely "out0 is me".
  */
 export function depotLockOps(
-  p: { draw?: number; maxFee?: number; c?: PushTxConstants } = {},
+  p: { carScript: number[]; draw?: number; maxFee?: number; c?: PushTxConstants },
 ): ScriptChunk[] {
   const draw = p.draw ?? DEPOT_DRAW
   const maxFee = p.maxFee ?? DEPOT_MAX_FEE
   const c = p.c ?? pushTxConstants(DEPOT_SCOPE)
+
+  /* ★ THE CAR, AS ONE HASH. An output serializes as value(8) ‖ varint(len) ‖ script, so everything
+     after the value is a fixed blob for a script of known length — and a public car at rest IS of
+     known length and known content. That is what step 1's reset was arranged to make true: a car
+     between races is byte-identical to one freshly minted, so the depot never parses an output. It
+     splits at two fixed offsets and compares one hash. */
+  const carField = [...varint(p.carScript.length), ...p.carScript]
+  const carHash = Hash.sha256(carField)
 
   /* ★ THE MOST A SINGLE SPEND MAY COST THE TANK. One number, so there is one place to be wrong and
      one place to change it — and the covenant never learns them apart, which is the point: whether a
@@ -123,8 +131,31 @@ export function depotLockOps(
        funding mechanism is this one comparison, and the depot inherits it for nothing. */
     PN(2), op(OP.OP_PICK), op(OP.OP_BIN2NUM),  // [ .., scField, out0value ]
     op(OP.OP_FROMALTSTACK),                    // [ .., out0value, V ]      alt empty
+
+    /* ⚠ DID ANY FUEL ACTUALLY LEAVE? Stashed before the floor consumes both numbers.
+       This is the difference between "the depot must always mint a car" — which would force a plain
+       DONATION to mint one too, absurdly — and the rule that is actually wanted:
+
+           ★ whatever leaves the depot must go to a car. If nothing leaves, nothing is required.
+
+       A top-up therefore stays what it was in step 3a: a spend that hands back more and is asked for
+       nothing else. */
+    op(OP.OP_2DUP), op(OP.OP_LESSTHAN), op(OP.OP_TOALTSTACK),   // alt:[fuelLeft]
+
     PN(drain), op(OP.OP_SUB),                  // [ .., out0value, floor ]
     op(OP.OP_GREATERTHANOREQUAL), op(OP.OP_VERIFY),   // [ SO, newV, hashOutputs, scriptCodeField ]
+
+    /* ── ★ AND IF FUEL LEFT, out1 IS A CAR ────────────────────────────────────────────────────────
+       out1 is the first entry of spenderOutputs. Split off its 8-byte value, take the next
+       `carField.length` bytes, hash them, and require the constant. Nothing is parsed and nothing is
+       trusted: if the output is shorter than a car, OP_SPLIT fails and the spend dies. */
+    op(OP.OP_FROMALTSTACK),                    // [ .., scField, fuelLeft ]
+    op(OP.OP_IF),
+      PN(3), op(OP.OP_PICK),                   // a copy of spenderOutputs
+      AT(8), op(OP.OP_SPLIT), op(OP.OP_NIP),   // drop out1's value
+      PN(carField.length), op(OP.OP_SPLIT), op(OP.OP_DROP),   // exactly one car's worth
+      op(OP.OP_SHA256), pushData(carHash), op(OP.OP_EQUALVERIFY),
+    op(OP.OP_ENDIF),
 
     /* Rebuild out0 as an output serialization: value(8) ‖ varint(len) ‖ script. `scriptCodeField`
        already carries its own length varint, which is exactly what an output needs after its value —
@@ -143,8 +174,15 @@ export function depotLockOps(
  * The depot's locking script. ONE PASS — unlike the shell, which needs a two-pass build to size the
  * scriptCode varint around its own state. A stateless script has no such dependency on its length.
  */
-export function buildDepotLock(p?: Parameters<typeof depotLockOps>[0]): LockingScript {
+export function buildDepotLock(p: Parameters<typeof depotLockOps>[0]): LockingScript {
   return new LockingScript(depotLockOps(p))
+}
+
+/** Bitcoin's variable-length integer, for the length prefix an output carries before its script. */
+export function varint(n: number): number[] {
+  if (n < 0xfd) return [n]
+  if (n <= 0xffff) return [0xfd, n & 0xff, (n >> 8) & 0xff]
+  return [0xfe, n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]
 }
 
 /**

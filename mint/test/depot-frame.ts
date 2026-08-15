@@ -22,7 +22,11 @@ const check = (n: string, got: boolean, want = true): void => {
 const u64 = (n: number): number[] => { const b: number[] = []; let x = n
   for (let i = 0; i < 8; i++) { b.push(x % 256); x = Math.floor(x / 256) } return b }
 
-const LOCK = buildDepotLock()
+/* A stand-in car, so the depot builds. The frame is about SELF-REBUILD, so every spend below leaves
+   the balance alone — nothing leaves the tank, so step 3b's car rule never engages and cannot mask a
+   frame bug by refusing for the wrong reason. */
+const CAR = LockingScript.fromASM('OP_DUP OP_HASH160 ' + '11'.repeat(20) + ' OP_EQUALVERIFY OP_CHECKSIG OP_NOP')
+const LOCK = buildDepotLock({ carScript: CAR.toBinary() })
 const V = 500_000
 const SOMEONE = PrivateKey.fromRandom().toAddress()
 
@@ -71,7 +75,7 @@ console.log(`        script hash: ${Utils.toHex(Hash.sha256(LOCK.toBinary())).sl
 
 // ── ★ IT REBUILDS ITSELF ──────────────────────────────────────────────────────────────────────────
 {
-  const r = spend({ outputs: [{ lockingScript: LOCK, satoshis: V - 500 }] })
+  const r = spend({ outputs: [{ lockingScript: LOCK, satoshis: V }] })
   check('★ a depot may be spent into a depot', r.ok)
   if (!r.ok) console.log('   ↳', r.why)
   console.log(`        ${r.bytes} bytes`)
@@ -82,16 +86,16 @@ console.log(`        script hash: ${Utils.toHex(Hash.sha256(LOCK.toBinary())).sl
 {
   const notADepot = new P2PKH().lock(SOMEONE)
   check('★ paying an ordinary address instead is REFUSED',
-    spend({ outputs: [{ lockingScript: notADepot, satoshis: V - 500 }] }).ok, false)
+    spend({ outputs: [{ lockingScript: notADepot, satoshis: V }] }).ok, false)
 
   // one byte different — the nastiest case, because everything about it still looks like a depot
   const bent = LockingScript.fromBinary([...LOCK.toBinary()])
   const bytes = bent.toBinary(); bytes[bytes.length - 1] ^= 0x01
   check('★ a script differing by ONE BYTE is refused',
-    spend({ outputs: [{ lockingScript: LockingScript.fromBinary(bytes), satoshis: V - 500 }] }).ok, false)
+    spend({ outputs: [{ lockingScript: LockingScript.fromBinary(bytes), satoshis: V }] }).ok, false)
 
   check('★ claiming a value out0 does not hold is refused',
-    spend({ outputs: [{ lockingScript: LOCK, satoshis: V - 500 }], claimValue: V }).ok, false)
+    spend({ outputs: [{ lockingScript: LOCK, satoshis: V }], claimValue: V - 500 }).ok, false)
 }
 
 // ── ⚠ EVERY OTHER OUTPUT IS BOUND TOO ─────────────────────────────────────────────────────────────
@@ -99,7 +103,7 @@ console.log(`        script hash: ${Utils.toHex(Hash.sha256(LOCK.toBinary())).sl
 // keep, and "out0 is me" would be no protection at all.
 {
   const withMark = spend({ outputs: [
-    { lockingScript: LOCK, satoshis: V - 500 },
+    { lockingScript: LOCK, satoshis: V },
     { lockingScript: LockingScript.fromASM('OP_FALSE OP_RETURN ' + Utils.toHex(Utils.toArray('a mark', 'utf8'))), satoshis: 0 },
   ] })
   check('a declared second output is fine — marks ride along', withMark.ok)
