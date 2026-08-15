@@ -76,7 +76,7 @@ export const SHELL_FEE_SLACK = 64
  * different keys. Pinning it exactly made the suite oscillate between two values, each "correcting"
  * the other. Two bytes of headroom above the observed maximum costs 0.2 satoshi and cannot go under.
  */
-export const SHELL_WORST_MOVE_BYTES = 3932
+export const SHELL_WORST_MOVE_BYTES = 3957
 
 /**
  * ★ THE RATE THE BURN IS DERIVED AT — a tenth of a satoshi above SHELL_FEE_PER_KB, and no more.
@@ -121,6 +121,31 @@ export const SHELL_BURN_RATE_PER_KB = SHELL_FEE_PER_KB + 0.1
  */
 export const shellMaxFee = (regs: RacerRegs = RACER_REGS): number =>
   regs.BURN0 + regs.ENG_MAX * regs.BURN_E + SHELL_FEE_SLACK
+/**
+ * ★ THE TANK CEILING — the most fuel a PUBLIC car may ever hold. Five taps of the pump.
+ *
+ * DERIVED, not chosen: the biggest engine on the design track. Measured at the settled regulations,
+ * eng 24 needs 38,000 satoshis to reach the end of a quarter mile, and `DRAW` is 10,000 a tap, so the
+ * cap is the next whole tap above it — with one more bought deliberately.
+ *
+ * ⚠⚠ THE ERROR IS ONLY FATAL IN ONE DIRECTION, and there is a CLIFF rather than a slope:
+ *
+ *     cap 20,000    0 of 240 builds can finish a quarter mile
+ *     cap 30,000    0 of 240          ← three taps and the design track is UNRACEABLE, forever
+ *     cap 40,000  175 of 240
+ *   ★ cap 50,000  211 of 240          ← longest raceable track 590 m
+ *     cap 60,000  224 of 240
+ *
+ * Set too low there is no key to raise it, and every car ever minted is unable to finish the track it
+ * was built for. Set high, the only cost is that a vandal can add more weight — which a single race
+ * burns back off, and which is bounded and self-healing.
+ *
+ * ⇒ 50,000 over the derived 40,000 is sun-dive's call and a design one: **the room to over-fill is
+ * what makes fuel-as-mass a decision.** A driver may deliberately carry more than they need, and pay
+ * for it in acceleration. A cap sitting exactly on the requirement would leave nothing to weigh up.
+ */
+export const SHELL_TANK_MAX = 50_000
+
 /** The settled value at RACER_REGS — see SHELL_MAX_FEE below, which is the same formula applied once. */
 
 // ── fixed point ──────────────────────────────────────────────────────────────────────────────────────
@@ -1048,7 +1073,30 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
   // the value floor, then out0, then the comparison
   ops.push(
     op(OP.OP_SWAP), op(OP.OP_DUP), op(OP.OP_BIN2NUM),
-    op(OP.OP_FROMALTSTACK), PN(maxFee), op(OP.OP_SUB),        // the ordinary floor: V − MAX_FEE
+    op(OP.OP_FROMALTSTACK),                                   // V, the value this move is spending
+    /* ── ★ THE TANK CEILING, AND ONLY A PUBLIC CAR HAS ONE ──────────────────────────────────────────
+       A public car is free to fuel, so without a ceiling one visitor can tap the pump fifty times and
+       leave a barge for everybody else — fuel is MASS, and there is no way to take it out again except
+       by burning it down the strip.
+
+       ★ IT BINDS ONLY ON A TOP-UP. Racing only ever DECREASES the value, so no branch is needed: the
+       rule is simply always true on the way down.
+
+       ⚠⚠ WRITTEN AS max(V, TANK_MAX) AND NOT AS A FLAT CAP, which is the whole care in these eleven
+       bytes. A flat `out ≤ TANK_MAX` entombs any car that is somehow ALREADY above it — a depot minted
+       before the cap was tuned, a genesis built by hand — because every spend would then fail the
+       ceiling, including the reset and the retire. A rule meant to stop a barge would have built a
+       tomb, which is precisely the failure this project lost 15,000 satoshis to. With the `max`, an
+       over-filled car can still race, still reset and still burn; it simply cannot take on MORE.
+
+       An owned car has no ceiling: its tank is its owner's own money, and capping what somebody may
+       put into their own car protects nobody. */
+    ...(isPublic ? [
+      op(OP.OP_DUP), PN(SHELL_TANK_MAX), op(OP.OP_MAX),       // cap = max(V, TANK_MAX)
+      PN(2), op(OP.OP_PICK), op(OP.OP_SWAP),                  // …against the value being written out
+      op(OP.OP_LESSTHANOREQUAL), op(OP.OP_VERIFY),
+    ] : []),
+    PN(maxFee), op(OP.OP_SUB),                                // the ordinary floor: V − MAX_FEE
     /* …unless this move ended the run, when it drops to ONE SATOSHI so the driver can recover the
        tank in the same transaction. The record stays: one sat, holding the final state, unspendable
        forever — and the chain of moves that led to it was always the real record anyway. */
