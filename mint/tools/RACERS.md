@@ -52,7 +52,7 @@ Trap spread comes from the slow builds, and is untouched.
 | `SHELL_TANK_MAX` | **50,000** | the propellant tank · the RESERVE rides on top of it |
 | `PUBLIC_CAR_REGS` | reserve 21,000 | ★ the car actually being raced · `BURN0` 397 · lock 1744 B |
 | `DEPOT_MAX_TANK` | **71,000** | 50,000 + the reserve · FOUR taps · **the depot's rule, not the car's** |
-| `DEPOT_MAX_FEE` | **841** | measured on a refuel OF THE CAR IT FUELS — 8,389 B |
+| `DEPOT_MAX_FEE` | **844** | measured on a refuel OF THE CAR IT FUELS — 8,414 B |
 | lock, owned / public | 1674 / 1720 B | the public car carries the reset, and nothing that pays anybody |
 
 ★★ **THE PUBLIC CAR IS A BATTERY** (sun-dive, 16 Aug). A battery has one branch — advance the state,
@@ -155,6 +155,7 @@ done
 | `shell-blow` | the rev limit is enforced by the SCRIPT, not only the reference |
 | `public-reset` | resets from all 7 phases; a reset carrying ANY field is refused |
 | `depot-tank` | the ceiling binds on the way in — **and it is the PUMP's rule now, not the car's** |
+| `depot-car` | a car is a SHAPE, in any phase, at `s = 0` — **and owned by this depot's owner**. Two cars of one owner are byte-identical: a car is its GENESIS, not its script |
 | `depot-dry` | ★ a short run coasts on its reserve or stops. **The pump does not come to a moving car** |
 | `depot-*` | the depot FUELS cars — it does not make them — and pays nobody |
 | `depot-refuel` | **★★ the one the depot exists for**: two covenants, two inputs, one transaction |

@@ -171,12 +171,16 @@ export const DEPOT_MAX_TANK = tankMaxFor(PUBLIC_CAR_REGS)
  *   refuel · default car   8,317 B  →  832 sat
  *   refuel · the car it fuels   8,389 B  →  839 sat      ◀ at 837 that is 99.8 sat/KB. Never relayed.
  *
- * ⇒ 841 = ceil(8389 × 100/1000) + 2. Same lesson, fifth time, and this is the first time it was caught
- * BEFORE the mint rather than after: **a bound must cover the worst spend the covenant can legally be
- * asked to make, and the CAR IS AN INPUT TO THAT.** Re-run `depot-fee` after any change to either
- * script, and make sure it is measuring the car this depot will actually be minted against.
+ * ⇒ Same lesson, fifth time, and the first time it was caught BEFORE the mint rather than after: **a
+ * bound must cover the worst spend the covenant can legally be asked to make, and the CAR IS AN INPUT
+ * TO THAT.** Re-run `depot-fee` after any change to EITHER script, and make sure it is measuring the
+ * car this depot will actually be minted against.
+ *
+ * ⚠ 841 → 844 when the owner pin and the `s = 0` rule were added: 25 bytes of depot script, and a
+ * depot's own script appears twice in a refuel too — once inside its preimage and once as output 1.
+ * Every rule in either covenant moves this number. It is measured, never reasoned about.
  */
-export const DEPOT_MAX_FEE = 841
+export const DEPOT_MAX_FEE = 844
 
 /**
  * ★★ EMPTY FOR THE RACE IS NOT EMPTY FOR FUNCTIONALITY.
@@ -240,6 +244,24 @@ export interface CarShape {
   headField: number[]
   /** The thirteen field widths, in `FIELDS` order. Each is also the push opcode that precedes it. */
   widths: number[]
+  /**
+   * ★★ THE OWNER'S HASH, PINNED — the one field's DATA that may not vary.
+   *
+   * ⚠⚠ WITHOUT IT THE DEPOT FUELS ANYBODY'S CAR, WHICH IS THEFT AND NOT GRIEFING. The walk skips
+   * every field's data so a car may be fuelled in any phase, on any track, with any engine — and
+   * `driver` is a field, holding the OWNER in a public car. Measured, before this existed:
+   *
+   *     a SECOND car, same owner (identical script, different outpoint)   FUELLED ✔  ← wanted
+   *     a car owned by SOMEBODY ELSE                                      FUELLED ⚠⚠ ← paid for
+   *
+   * ⇒ mint your own public car for one satoshi, tap the pump keylessly, then BURN it with your own
+   * key and keep the fuel. The burn is owner-only, and the thief is the owner — of their own car.
+   *
+   * ★ IT EXISTS ONLY BECAUSE THE BURN DOES. A car with no owner key has no branch that pays a person,
+   * so "any car of this shape" and "the car" become the same sentence and this pin is unnecessary.
+   * It is here for exactly as long as the burn is.
+   */
+  owner: number[]
   /** SHA256 of everything after the last field's data — the whole covenant body. */
   tailHash: number[]
   /** Offset of the first byte of the tail, for tests and tools that want to check the arithmetic. */
@@ -261,7 +283,9 @@ export function carShape(carScript: number[]): CarShape {
     throw new Error(`car layout: field 1 push opcode is ${carScript[CAR_HEAD_BYTES - 1]}, expected ${widths[0]}`)
   }
   let off = CAR_HEAD_BYTES
+  let owner: number[] = []
   widths.forEach((w, i) => {
+    if (FIELDS[i] === 'driver') owner = carScript.slice(off, off + w)
     off += w
     if (i === widths.length - 1) return
     if (carScript[off] !== widths[i + 1]) {
@@ -270,9 +294,16 @@ export function carShape(carScript: number[]): CarShape {
     off += 1
   })
   if (off >= carScript.length) throw new Error('car layout: no tail after the state region')
+  /* ⚠ AN ALL-ZERO OWNER PINS NOTHING AND LOOKS EXACTLY LIKE PINNING SOMETHING. `freshPublicShell`
+     always carries a real hash160; all zeros means the caller handed in an unclaimed OWNED shell by
+     mistake, and a depot built from it would fuel every car in the world. */
+  if (owner.length !== FIELD_WIDTHS.driver || owner.every(b => b === 0)) {
+    throw new Error('car layout: the owner field is missing or all zero — that depot would fuel anybody')
+  }
   return {
     headField: [...varint(carScript.length), ...carScript.slice(0, CAR_HEAD_BYTES)],
     widths,
+    owner,
     tailHash: Hash.sha256(carScript.slice(off)),
     stateEnd: off,
   }
@@ -327,6 +358,16 @@ export function carRecognitionOps(shape: CarShape): ScriptChunk[] {
        usable: `s` is zero all through EMPTY, CAR, TRACK and ARMED, so a driver can fuel a car that is
        already configured without resetting it. What the old one-hash depot could not do, this still
        does; what it never should have done, it now refuses. */
+    /* ── ★★ THE OWNER, PINNED — see `CarShape.owner` for what it costs and what it buys ───────────
+       Twenty-two bytes on a spend that happens a few times a race, against a thief minting their own
+       car for one satoshi and burning the tank out through it. */
+    if (FIELDS[i] === 'driver') {
+      ops.push(AT(w), op(OP.OP_SPLIT), op(OP.OP_SWAP), pushData(shape.owner), op(OP.OP_EQUALVERIFY))
+      if (i === shape.widths.length - 1) return
+      ops.push(AT(1), op(OP.OP_SPLIT), op(OP.OP_SWAP),
+        pushData([shape.widths[i + 1]]), op(OP.OP_EQUALVERIFY))
+      return
+    }
     if (FIELDS[i] === 's') {
       /* BIN2NUM rather than a seven-byte literal comparison — the field is sign-magnitude and its own
          covenant reads it the same way, so the two agree about what zero is. */

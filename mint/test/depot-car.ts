@@ -24,7 +24,7 @@
 //
 // ⚠ And the car sits at OUTPUT 0 now, not out1. Its own covenant rebuilds itself there and cannot be
 // argued with, so the depot yields the slot and carries a PREFIX instead.
-import { Transaction, Spend, LockingScript, TransactionSignature, PrivateKey, P2PKH, Utils } from '@bsv/sdk'
+import { Transaction, Spend, LockingScript, TransactionSignature, PrivateKey, P2PKH, Utils, Hash } from '@bsv/sdk'
 import { buildDepotLock, buildDepotUnlock, DEPOT_SCOPE, DEPOT_DRAW, DEPOT_MAX_FEE } from '../src/depot.ts'
 import { buildShellLock, SHELL_MAX_FEE, PHASE, S, type ShellState } from '../src/shell.ts'
 import { freshPublicShell } from '../src/publicShell.ts'
@@ -132,6 +132,42 @@ console.log()
   const done: ShellState = { ...FRESH, phase: PHASE.DONE, n: 45, s: Math.round(402 * S) }
   check('  a car that has FINISHED is refused too — it must be RESET first, which zeroes `s`',
     spend(V, V - DRAIN, [{ lockingScript: carLock(done), satoshis: DEPOT_DRAW }]), false)
+}
+
+/* ── ★★★ AS MANY CARS AS YOU LIKE — BUT THEY MUST BE YOURS (sun-dive asked, 16 Aug) ───────────────
+   "Double check the depot is able to fuel the car, and not just that car but a second car."
+
+   ★ IT CAN, AND NOTHING IN THE SCRIPT SAYS WHICH ONE. Two cars with the same owner are the SAME
+   SCRIPT — identical bytes — and are told apart by their GENESIS and the chain of moves from it,
+   never by anything the covenant reads. That is the slot-car architecture: separate lanes, separate
+   chains, no shared state and nothing to order.
+
+   ⚠⚠ AND THAT IS WHY THE OWNER HAD TO BE PINNED. The walk skips every field's DATA, and `driver` is a
+   field — holding the OWNER in a public car. Measured before the pin existed:
+
+       a second car, same owner       FUELLED ✔  ← wanted
+       a car owned by SOMEBODY ELSE   FUELLED ⚠⚠ ← mint one for a satoshi, tap the pump keylessly,
+                                                    then burn it with your own key and keep the fuel
+
+   ⇒ Theft, not griefing, and cheap. Closed by comparing those twenty bytes instead of skipping them.
+   ★ It exists only because the BURN exists: a car with no owner key has no branch that pays a person,
+   and then any car of this shape IS the car. */
+console.log()
+{
+  const OTHER = Hash.hash160(PrivateKey.fromRandom().toPublicKey().encode(true) as number[])
+  const mine: Out = { lockingScript: CAR, satoshis: DEPOT_DRAW }
+  check('★★★ a SECOND car — same owner, same script, a different genesis — is fuelled',
+    spend(V, V - DRAIN, [mine]))
+  check('  …and a THIRD, configured differently, because only the owner and `s` are pinned',
+    spend(V, V - DRAIN, [{ lockingScript: carLock({ ...FRESH, phase: PHASE.TRACK, eng: 8, tyr: 4,
+      finish: Math.round(60 * S), slip: 1800 }), satoshis: DEPOT_DRAW }]))
+
+  const theirs = buildShellLock({ state: freshPublicShell(OTHER), maxFee: SHELL_MAX_FEE, public: true })
+  check('★★★ but a car owned by SOMEBODY ELSE is REFUSED — the pump is not a public faucet',
+    spend(V, V - DRAIN, [{ lockingScript: theirs, satoshis: DEPOT_DRAW }]), false)
+  check('  …and it really is a valid car, just not this depot\'s',
+    theirs.toBinary().length === CAR.toBinary().length && theirs.toHex() !== CAR.toHex())
+  console.log('        two cars of one owner are byte-identical — a car IS its genesis, not its script')
 }
 
 // ── ★★ AND WHAT MUST STILL BE REFUSED ─────────────────────────────────────────────────────────────
