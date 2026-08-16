@@ -379,6 +379,18 @@ export function depotLockOps(
          ⚠ THE COST, STATED: this removes the rescue hatch. If the car path turns out to have a bug, a
          funded depot's balance can only leave through cars, and no owner override exists to retrieve
          it. Mitigation is the sensible thing anyway — do not put much in the tank until it is proven. */
+      /* ⚠ AND "NO RESCUE HATCH" IS NOT THE COST OF THIS RULE, which is worth stating because the
+         opposite was believed for a while. **A funded depot always has an exit through RACING**:
+         anyone may tap the pump, the fuel lands in cars, and a car either burns it down the track or
+         is swept by its owner. The balance is never stuck — the path is simply longer.
+
+         ⇒ Which is why the DEPOT can afford a threshold that the CAR could not. A bricked car has no
+         other way out, so its burn is unconstrained; a depot has one, so its burn can be gated and buy
+         something real: a promise to donors that the tank will not be swept while it is still useful.
+
+         ⚠ A PROMISE TO DONORS is what this is, and how it should be described. Written as "not even
+         the OWNER can take it" it reads as a defence against the person paying the bills, which is
+         both wrong and insulting to the only party funding the thing. */
       op(OP.OP_DUP), ...extractValueOps(), op(OP.OP_BIN2NUM),
       PN(burnBelow), op(OP.OP_LESSTHAN), op(OP.OP_VERIFY),
 

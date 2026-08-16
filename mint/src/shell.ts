@@ -146,6 +146,65 @@ export const shellMaxFee = (regs: RacerRegs = RACER_REGS): number =>
  */
 export const SHELL_TANK_MAX = 50_000
 
+/**
+ * ★★ THE CEILING A CAR ACTUALLY CARRIES — `SHELL_TANK_MAX` plus the reserve, never minus it.
+ *
+ * The reserve is money for the miner, not fuel for the engine, so taking it out of the existing
+ * ceiling would silently shrink the tank. Measured across every build, that is exactly what happens:
+ *
+ *   21,000 carved OUT of 50,000, over a quarter mile
+ *     eng 10/tyr 10   best fill 46,000 → 4.3 s   ·   at the cap 4.3 s
+ *     eng 24/tyr 10   best fill 50,000 → 4.0 s   ·   at the cap 4.0 s
+ *   ⇒ NOT ONE BUILD can over-fill. The cap IS the optimum, for everybody.
+ *
+ * ⚠ AND THAT DELETES A DELIBERATE PART OF THE DESIGN. `SHELL_TANK_MAX` was chosen ABOVE its own
+ * derivation — the rule gives 40,000 and it is 50,000 — precisely so a driver can carry more than they
+ * need and FEEL it. "The room to over-fill is what makes fuel-as-mass a decision." A cap sitting on the
+ * requirement leaves nothing to weigh up, and a mistake nobody can make teaches nobody anything.
+ *
+ * ⇒ Adding it on top restores the design exactly: the propellant headroom is invariant, ~34,000 wanted
+ * against 50,000 available, whatever the reserve is.
+ *
+ *     eng 10/tyr 10   best 46,000 → 4.3 s   ·   brim-full 5.4 s   +1.1 s   ★ feels it
+ *     eng 14/tyr 10   best 49,000 → 3.9 s   ·   brim-full 4.6 s   +0.7 s   ★ feels it
+ *
+ * ⚠ A CLAIM THAT WAS WRONG, KEPT SO IT IS NOT REPEATED: carving the reserve out was first reported to
+ * make the 590 m track unraceable — a cliff. It does the opposite. Measured across the whole field the
+ * longest raceable track goes 580 m → 590 m, because coasting EXTENDS reach. The error came of testing
+ * ONE build instead of the best one. **Sweep the field before calling a cliff.**
+ */
+export const tankMaxFor = (regs: RacerRegs = RACER_REGS): number => SHELL_TANK_MAX + regs.RESERVE
+
+/**
+ * ★ MEASURED: what the reserve's opcodes add to a MOVE — 24 bytes of lock, paid for TWICE.
+ *
+ * ⚠ The lock appearing twice in every move is why 24 bytes of script is 48 bytes of transaction, and
+ * why a rule that fires once in a car's life is still billed on every tick of every race.
+ */
+export const SHELL_RESERVE_MOVE_BYTES = 48
+
+/**
+ * ★★ A RESERVE CAR'S REGULATIONS — and it MUST re-derive BURN0, which is the whole point of this being
+ * a function instead of a spread.
+ *
+ * ⚠⚠ THE RESERVE WAS ABOUT TO SHIP AN UNMINEABLE CAR. Measured: a v2 worst move is 3,955 B against a
+ * 3,957 bound — **two bytes of headroom.** The reserve's 48 take it to 4,002, and at BURN0 397 that is
+ * **99.2 sat/KB against a 100 floor**: every cheapest move rejected by every node, forever, with no key
+ * to amend it. That is the fourth time this project has come within a hair of exactly that fee bug, and
+ * the first time the sweep caught it before the mint rather than after.
+ *
+ * ⇒ BURN0 lives in the REGULATIONS, so it is per-variant and this costs the default car nothing: cars
+ * built with `RACER_REGS` keep 397 and stay byte-identical to the ones on mainnet.
+ *
+ * ⚠ Never hand-write a reserve car's regs. `{ ...RACER_REGS, RESERVE: n }` compiles, races in the
+ * reference, passes every physics test, and mints a car nobody can move.
+ */
+export function reserveRegs(reserve: number, base: RacerRegs = RACER_REGS): RacerRegs {
+  if (reserve === 0) return base
+  const worst = SHELL_WORST_MOVE_BYTES + SHELL_RESERVE_MOVE_BYTES
+  return { ...base, RESERVE: reserve, BURN0: Math.ceil(worst * SHELL_BURN_RATE_PER_KB / 1000) }
+}
+
 /** The settled value at RACER_REGS — see SHELL_MAX_FEE below, which is the same formula applied once. */
 
 // ── fixed point ──────────────────────────────────────────────────────────────────────────────────────
@@ -260,6 +319,37 @@ export interface RacerRegs {
    * never topped up: they cannot exploit what they never do, and need not carry the bytes.
    */
   PIT: number
+  /**
+   * ★★ THE RESERVE — satoshis that pay the miner but carry NO FUEL WEIGHT, so a dry car COASTS.
+   *
+   *   value > RESERVE   racing. Mass counts only `value − RESERVE` as fuel.
+   *   value ≤ RESERVE   NO PROPULSION. The throttle is forced shut, and the car coasts on what it has,
+   *                     drag bleeding the speed off exactly as it should.
+   *   value < BURN0     it cannot buy a tick at all. THAT is where a run truly ends.
+   *
+   * ── ⚠⚠ WHY IT HAD TO EXIST: COASTING IS NOT FREE ON A CHAIN ────────────────────────────────────
+   * A car that runs out of fuel should still roll across the line, slowing on drag. It could not:
+   * `BURN0` is charged every tick regardless of throttle, because **the burn IS the mining fee and a
+   * tick IS a transaction**. So time itself costs satoshis here, and a dry car died where it stood.
+   * BURN0 cannot be lowered — it is the relay floor for a 3,957-byte move, not a game parameter.
+   *
+   * ⇒ So carve out a portion of the value that buys ticks and weighs nothing. **A reserve of R buys
+   * R/BURN0 coasting ticks.** Measured at 21,000: fifty-two of them.
+   *
+   *   20,000 + 21,000 reserve   coasts to 395 m of 402, arriving at 81 mph   ← agonising
+   *   26,000 + reserve          ★ HOME, the last ten ticks coasting
+   *   34,000 + reserve          ★ HOME 3.9 s — a well-fuelled car barely touches it
+   *
+   * ★ AND IT PAIRS WITH `PIT` INTO A REAL DECISION: a car running low may COAST home — free, slow, and
+   * it might fall short — or PIT, which costs a standing start but restores power. Neither dominates.
+   *
+   * ⚠⚠ THE RESERVE RIDES ON TOP OF THE TANK, IT IS NOT CARVED OUT OF THE CEILING — see `tankMaxFor`.
+   *
+   * ⚠ ZERO IS THE MAINNET SETTING and must stay the default. At 0, `max(0, value − 0)` is `value` and
+   * the throttle gate can never fire, so the reference computes the identical number and the script
+   * omits the opcodes. A car built today stays BYTE-IDENTICAL to the ones already racing.
+   */
+  RESERVE: number
   /** Satoshis burned per tick regardless of throttle. */
   BURN0: number
   /** Extra satoshis burned per unit of engine at full throttle. */
@@ -350,9 +440,10 @@ export const RACER_REGS: RacerRegs = {
   /* ★ 330 mph, WRITTEN AS THE CONVERSION rather than the integer it lands on. `v` is metres per 0.1 s,
      so mph = (v/S)·22.3694 — a constant nobody can read is a constant nobody can check. */
   BLOW_V: Math.round((330 / 22.3694) * S),
-  /* ⚠ OFF BY DEFAULT, so `RACER_REGS` still builds the car that is on mainnet, byte for byte. A depot's
-     car turns it on explicitly — see `RacerRegs.PIT`. */
+  /* ⚠ BOTH OFF BY DEFAULT, so `RACER_REGS` still builds the car that is on mainnet, byte for byte. A
+     depot's car turns them on explicitly — see `RacerRegs.PIT` and `RacerRegs.RESERVE`. */
   PIT: 0,
+  RESERVE: 0,
   SPIN_KEEP: Math.round(0.43 * S),
   LOOSE_V: Math.round(0.35 * S),
   BLOW_T: 14,
@@ -588,9 +679,21 @@ export function refTick(st: ShellState, m: Move, regs: RacerRegs = PROVISIONAL_R
   if (st.phase === PHASE.ARMED) need(m.lockTime >= st.green, 'a false start: this move precedes the green')
   else need(m.lockTime >= st.last + st.gap, `moves must be at least ${st.gap} apart`)
 
+  /* ── ★ PROPELLANT vs THE RESERVE ────────────────────────────────────────────────────────────────
+     Only the fuel ABOVE the reserve makes power or weighs anything. What is left below it is the
+     miner's money: it buys ticks, so the car keeps moving, but it drives nothing. See `RacerRegs.
+     RESERVE` — at zero this is `m.fuel` and every number below is the one mainnet already computes. */
+  const propellant = regs.RESERVE === 0 ? m.fuel : Math.max(0, m.fuel - regs.RESERVE)
+
   // Mass includes the fuel, so the car gets lighter as it burns. Free, because the satoshis ARE the tank.
-  const mass = regs.M0 + st.eng * regs.WE + st.tyr * regs.WT + fmul(m.fuel * S, regs.WF)
+  const mass = regs.M0 + st.eng * regs.WE + st.tyr * regs.WT + fmul(propellant * S, regs.WF)
   need(mass > 0, 'a car cannot be massless')
+
+  /* ★★ AND WITH NO PROPELLANT THERE IS NO POWER — the car COASTS.
+     The throttle is forced shut rather than the run being ended: a dry car at 300 mph should roll on
+     and slow on drag, which is what a real one does. It rolls for as long as it can buy ticks, and
+     `BURN0` is what a tick costs — so the reserve is, exactly, how far it can coast. */
+  const throttle = propellant > 0 ? m.throttle : 0
 
   /* ── ★★ FUEL ARRIVING IS A PIT STOP (sun-dive, 16 Aug) ──────────────────────────────────────────
      The tick is COUNTED, the car covers NO DISTANCE, and it ends STATIONARY. A real drag car that
@@ -630,10 +733,10 @@ export function refTick(st: ShellState, m: Move, regs: RacerRegs = PROVISIONAL_R
   // Grip rises with speed, which is why a big engine wastes force off the line and rewards good tyres.
   // The surface scales everything the tyres and the speed were going to give you.
   const grip = Math.trunc(((st.tyr * regs.G0 + fmul(st.v, regs.GV)) * st.slip) / SLIP_UNIT)
-  const demand = Math.trunc((st.eng * regs.FE * m.throttle) / regs.THROTTLE_MAX)
+  const demand = Math.trunc((st.eng * regs.FE * throttle) / regs.THROTTLE_MAX)
 
   const spun = demand > grip
-  const burn = regs.BURN0 + Math.trunc((st.eng * regs.BURN_E * m.throttle) / regs.THROTTLE_MAX)
+  const burn = regs.BURN0 + Math.trunc((st.eng * regs.BURN_E * throttle) / regs.THROTTLE_MAX)
 
   /* ── WHAT HAPPENS WHEN GRIP GOES ────────────────────────────────────────────────────────────────
      Three outcomes, and they are not degrees of one event — they have different causes.
@@ -653,7 +756,7 @@ export function refTick(st: ShellState, m: Move, regs: RacerRegs = PROVISIONAL_R
   if (spun && st.v >= regs.LOOSE_V) {
     return { state: { ...st, phase: PHASE.OUT, last: m.lockTime, n: st.n + 1, v: 0 }, burn, spun, ended: 'off' }
   }
-  if (spun && m.throttle >= regs.BLOW_T) {
+  if (spun && throttle >= regs.BLOW_T) {
     return { state: { ...st, phase: PHASE.OUT, last: m.lockTime, n: st.n + 1, v: 0 }, burn, spun, ended: 'blown' }
   }
 
@@ -724,6 +827,41 @@ export const SHELL_STATE_LAYOUT =
      `D`/`D2` for the two drag terms, as `TM` already stands for THROTTLE_MAX — the values live in the
      script, so these are labels for the equation, not names to resolve. */
   'F=min(eng*FE*t/TM,g)|v+=F/m-v*D-v*v*D2|s+=v'
+
+/**
+ * ★★ THE LAYOUT A GIVEN SET OF REGULATIONS ACTUALLY OBEYS — v2 unchanged, or v3 when it must be.
+ *
+ * ⚠⚠ THE RESERVE CHANGES TWO PUBLISHED EQUATIONS, so a car carrying one may not call itself v2:
+ *
+ *   m = M0+eng*WE+tyr*WT+fuel*WF     becomes  …+p*WF, where p = max(0, val − R)
+ *   F = min(eng*FE*t/TM,g)           becomes  the same with t gated to zero when p is zero
+ *
+ * A rebuilder reading `v2` and applying the v2 equations to a reserve car computes the wrong race —
+ * exactly the failure that forced v1 → v2 when quadratic drag arrived. **Mainnet cars stay v2 and stay
+ * correct**, because at RESERVE 0 this returns the v2 string byte for byte.
+ *
+ * ── ⚠ AND THE 220-BYTE BUDGET WAS A LEGACY NUMBER ──────────────────────────────────────────────────
+ * 220 is Bitcoin Core's old OP_RETURN RELAY POLICY, not a BSV limit — this project puts entire WebP
+ * images on chain. The real structural boundary is **255**: the largest push OP_PUSHDATA1 can carry
+ * with a single length byte. v2 stays 209 and unchanged; v3 has room to say what it does.
+ *
+ * ⇒ The BURN formula stays dropped, and for its own reason rather than the budget: it is the one thing
+ * here a rebuilder can MEASURE rather than be told, since every tick's consumption is the output's
+ * value delta, visible on chain. The reserve is not measurable that way — nothing on chain says which
+ * satoshis were weightless — so it has to be said.
+ *
+ * ⚠ WHEN `PIT` LANDS IN SCRIPT IT MUST BE ADDED HERE TOO. It changes the state a fuel-arrival move
+ * writes (no distance, velocity zero), which is an equation of MOTION and not an ending rule, so a
+ * rebuilder cannot recompute that move without it.
+ */
+export function shellStateLayout(regs: RacerRegs = RACER_REGS): string {
+  if (regs.RESERVE === 0 && regs.PIT === 0) return SHELL_STATE_LAYOUT
+  return SHELL_STATE_LAYOUT
+    .replace('BITCOIN RACER v2', 'BITCOIN RACER v3')
+    .replace('slip/1e3|', 'slip/1e3|p=max(0,val-R)|')
+    .replace('+fuel*WF', '+p*WF')
+    .replace('F=min(eng*FE*t/TM,g)', 'F=min(eng*FE*t/TM,g)|t=0 if p=0')
+}
 
 // ═══ THE SCRIPT ══════════════════════════════════════════════════════════════════════════════════════
 // Everything above is the reference implementation. Everything below is the covenant that must agree
@@ -1170,7 +1308,9 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
        An owned car has no ceiling: its tank is its owner's own money, and capping what somebody may
        put into their own car protects nobody. */
     ...(isPublic ? [
-      op(OP.OP_DUP), PN(SHELL_TANK_MAX), op(OP.OP_MAX),       // cap = max(V, TANK_MAX)
+      /* ⚠ THE CEILING RISES WITH THE RESERVE — see `tankMaxFor`. At RESERVE 0 this is SHELL_TANK_MAX
+         and the byte is the one already on mainnet. */
+      op(OP.OP_DUP), PN(tankMaxFor(regs)), op(OP.OP_MAX),      // cap = max(V, TANK_MAX + RESERVE)
       PN(2), op(OP.OP_PICK), op(OP.OP_SWAP),                  // …against the value being written out
       op(OP.OP_LESSTHANOREQUAL), op(OP.OP_VERIFY),
     ] : []),
@@ -1212,8 +1352,9 @@ function shellPhysicsOps(regs: RacerRegs, isPublic = false): ScriptChunk[] {
      matters. This project has shipped a lock that disagreed with its reference before.
      ⇒ Refuse to build it until the ops exist. Delete this line in the commit that adds them. */
   if (regs.PIT !== 0) {
-    throw new Error('PIT is implemented in the reference but NOT yet in Script — a lock built ' +
-      'with it would disagree with the reference. See shell-pit.ts.')
+    throw new Error('PIT is implemented in the reference but NOT yet in Script — a lock built with it ' +
+      'would promise arithmetic it does not do, and would disagree with the reference on exactly the ' +
+      'move that matters. See test/shell-pit.ts.')
   }
   const a = new Asm([
     /* ⚠ THE WHOLE STACK, LOADABLES INCLUDED. Leaving them out cost an evening: everything ABOVE them
@@ -1234,11 +1375,29 @@ function shellPhysicsOps(regs: RacerRegs, isPublic = false): ScriptChunk[] {
   a.raw(op(OP.OP_FROMALTSTACK), 0, ['SUF'])
   a.raw(op(OP.OP_FROMALTSTACK), 0, ['fuel'])
 
-  // mass = M0 + eng·WE + tyr·WT + fuel·WF        (the car gets lighter as it burns)
+  /* ── ★★ THE RESERVE, AND IT GOES FIRST ─────────────────────────────────────────────────────────
+     `propellant = max(0, V − RESERVE)`, and a flag saying whether there is any. Both are computed
+     BEFORE the mass is assembled, so neither has to be threaded past a half-built sum — `w` and
+     `fuelW` must be the top two when they are added, and a value parked between them would be added
+     instead. Everything below picks by NAME, so the two extra slots sit harmlessly underneath.
+
+     ⚠ ONLY THE MASS AND THE DEMAND NEED IT. The covenant never computes the BURN — it enforces the
+     value floor `out ≥ V − MAX_FEE` and nothing finer — so the reference's burn gate has no Script
+     counterpart and needs none. The state transition is what the two must agree on, and burn does not
+     enter it.
+
+     ⚠ At RESERVE 0 not one opcode is emitted and `fuel` is used directly, exactly as before. */
+  if (regs.RESERVE !== 0) {
+    a.pick('fuel'); a.num(regs.RESERVE); a.bin(OP.OP_SUB, 'prop')
+    a.num(0); a.bin(OP.OP_MAX, 'prop')                          // propellant = max(0, V − RESERVE)
+    a.pick('prop'); a.num(0); a.bin(OP.OP_GREATERTHAN, 'hasFuel')
+  }
+
+  // mass = M0 + eng·WE + tyr·WT + propellant·WF   (the car gets lighter as it burns; the reserve never weighed)
   a.pick('eng'); a.num(regs.WE); a.bin(OP.OP_MUL, 'engW')
   a.pick('tyr'); a.num(regs.WT); a.bin(OP.OP_MUL, 'tyrW')
   a.bin(OP.OP_ADD, 'w')
-  a.pick('fuel'); a.num(regs.WF); a.bin(OP.OP_MUL, 'fuelW')
+  a.pick(regs.RESERVE !== 0 ? 'prop' : 'fuel'); a.num(regs.WF); a.bin(OP.OP_MUL, 'fuelW')
   a.bin(OP.OP_ADD, 'w')
   a.num(regs.M0); a.bin(OP.OP_ADD, 'mass')
 
@@ -1269,9 +1428,15 @@ function shellPhysicsOps(regs: RacerRegs, isPublic = false): ScriptChunk[] {
   a.bin(OP.OP_ADD, 'g')
   a.pick('slip'); a.bin(OP.OP_MUL, 'g'); a.num(SLIP_UNIT); a.bin(OP.OP_DIV, 'grip')
 
-  // demand = eng·FE·throttle / THROTTLE_MAX
+  /* demand = eng·FE·throttle / THROTTLE_MAX
+     ★ …and with no propellant there is no demand, so the throttle is multiplied by the gate. Zeroing
+     the DEMAND is enough to zero everything downstream: `spun = demand > grip` is then false, so the
+     off-track and blown-engine endings — both of which require a spin — cannot fire either, and
+     `force = min(demand, grip)` is zero. One multiply buys the whole coasting rule. */
   a.pick('eng'); a.num(regs.FE); a.bin(OP.OP_MUL, 'engF')
-  a.pick('throttle'); a.bin(OP.OP_MUL, 'engFt')
+  a.pick('throttle')
+  if (regs.RESERVE !== 0) { a.pick('hasFuel'); a.bin(OP.OP_MUL, 'thGated') }
+  a.bin(OP.OP_MUL, 'engFt')
   a.num(regs.THROTTLE_MAX); a.bin(OP.OP_DIV, 'demand')
 
   // spun = demand > grip · force = min(demand, grip)
@@ -1412,7 +1577,12 @@ function shellPhysicsOps(regs: RacerRegs, isPublic = false): ScriptChunk[] {
   a.roll('fuel'); a.raw(op(OP.OP_TOALTSTACK), 1, [])   // alt: [HO, over, V]
   a.roll('SUF'); a.raw(op(OP.OP_TOALTSTACK), 1, [])    // alt: [HO, over, V, SUF]
 
-  for (const dead of ['mass', 'hashPrev', 'outpoint', 'phase', 's', 'v', 'n']) { a.roll(dead, '_dead'); a.drop(1) }
+  /* ⚠ THE RESERVE'S TWO SLOTS DIE HERE TOO. They were pushed before the mass and picked by name ever
+     since; left on the stack they would sit under the rebuild and the depths above them would all be
+     one out. Added to the same list rather than dropped somewhere clever. */
+  const dead = ['mass', 'hashPrev', 'outpoint', 'phase', 's', 'v', 'n']
+  if (regs.RESERVE !== 0) dead.unshift('hasFuel', 'prop')
+  for (const d of dead) { a.roll(d, '_dead'); a.drop(1) }
 
   /* ★ AND THE NEW PHASE HAS TO GET BACK TO THE FRONT.
      It was written early — the sequence needs deciding before the fields are even extracted — but only

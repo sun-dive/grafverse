@@ -6,16 +6,16 @@
 // A covenant cannot be amended, so replacing a design means burning what exists and minting its
 // successor. A depot is equipment, not a monument, and equipment should be replaceable.
 //
-// ★★ BUT ONLY WHEN THE TANK IS EMPTY — below one DRAW, so it can no longer fill a car even once. That
-// single condition deletes the trust ask rather than shrinking it: a donor is NOT trusting the owner
-// not to sweep the depot, because the owner cannot. The most anyone can ever take is one satoshi under
-// a DRAW.
+// ★★ BUT ONLY WHEN THE TANK IS EMPTY — below one move's fuel plus its delivery, so it can no longer
+// buy anything for anybody. It is a PROMISE TO DONORS that the tank will not be swept while it is still
+// useful — not a defence against the owner, who is the one paying for it.
 //
 // ⇒ The upgrade path survives because it never needed the balance to MOVE. Deploy the successor
 // alongside, point the page at it, let the old one drain through actual racing, then clear the husk.
 //
-// ⚠ THE COST, STATED: no rescue hatch. If the car path has a bug, a funded depot's balance can only
-// leave through cars and no owner override exists. Do not put much in the tank until it is proven.
+// ★ AND THE BALANCE IS NEVER STUCK, which is why the depot can afford this rule where the CAR could
+// not. A funded depot always has an exit through RACING: anyone may tap the pump, the fuel lands in
+// cars, and a car burns it down the track or is swept by its owner. The path is longer, not closed.
 //
 // ★ THE REFUSALS COME FIRST, AND THEY MATTER MORE THAN THE PERMISSION. Every other property of this
 // covenant — the value floor, the car rule, the arrival bound — holds just as well with a burn branch
@@ -43,8 +43,8 @@ const STRANGER_KEY = PrivateKey.fromRandom()
 const OWNER = Hash.hash160(OWNER_KEY.toPublicKey().encode(true) as number[])
 const CAR = buildShellLock({ state: freshPublicShell(OWNER), maxFee: SHELL_MAX_FEE, public: true })
 const LOCK = buildDepotLock({ carScript: CAR.toBinary(), owner: OWNER })
-/* ⚠ A BURN IS ONLY LEGAL ON AN EMPTY TANK — less than one DRAW, so the depot can no longer fill a
-   car even once. These cases therefore run on a husk; the full-tank refusals are asserted below. */
+/* ⚠ A BURN IS ONLY LEGAL ON AN EMPTY TANK — below one move's fuel plus its delivery, so the depot can
+   buy nothing for anybody. These cases run on a husk; the full-tank refusals are asserted below. */
 const V = DEPOT_BURN_BELOW - 1
 const FULL = 500_000
 

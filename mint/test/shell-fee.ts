@@ -18,7 +18,8 @@
 import { Transaction, UnlockingScript, LockingScript, TransactionSignature, PrivateKey, P2PKH, Hash, Utils } from '@bsv/sdk'
 import {
   emptyShell, loadCar, loadTrack, arm, refTick, buildShellLock, shellUnlockingOps, SHELL_SCOPE,
-  RACER_REGS, S, PHASE, SHELL_FEE_PER_KB, SHELL_FEE_SLACK, SHELL_MAX_FEE, shellMaxFee, type ShellState, SHELL_WORST_MOVE_BYTES } from '../src/shell.ts'
+  RACER_REGS, S, PHASE, SHELL_FEE_PER_KB, SHELL_FEE_SLACK, SHELL_MAX_FEE, shellMaxFee, type ShellState,
+  type RacerRegs, SHELL_WORST_MOVE_BYTES, reserveRegs } from '../src/shell.ts'
 import { serializeOutput } from '../src/covenant.ts'
 
 let pass = 0, fail = 0
@@ -36,14 +37,15 @@ const POOL = [...Utils.toArray(POT.id('hex'), 'hex').slice().reverse(), 0, 0, 0,
 const GREEN = 1_700_000_000
 
 /** ★ SERIALIZED. The number this test rests on is read off the wire, never counted. */
-async function bytesOf(st: ShellState, next: ShellState, throttle: number, pot = false, isPublic = false): Promise<number> {
-  const prev = buildShellLock({ state: st, maxFee: SHELL_MAX_FEE, public: isPublic })
+async function bytesOf(st: ShellState, next: ShellState, throttle: number, pot = false, isPublic = false,
+                       regs: RacerRegs = RACER_REGS): Promise<number> {
+  const prev = buildShellLock({ state: st, maxFee: SHELL_MAX_FEE, public: isPublic, regs })
   const src = new Transaction(); src.addOutput({ lockingScript: prev, satoshis: 60_000 })
   const tx = new Transaction(); tx.version = 2
   tx.addInput({ sourceTransaction: src, sourceOutputIndex: 0, sequence: 0xfffffffe })
   if (pot) tx.addInput({ sourceTransaction: POT, sourceOutputIndex: 0, sequence: 0xfffffffe,
                          unlockingScript: new UnlockingScript([]) })
-  tx.addOutput({ lockingScript: buildShellLock({ state: next, maxFee: SHELL_MAX_FEE, public: isPublic }), satoshis: 59_000 })
+  tx.addOutput({ lockingScript: buildShellLock({ state: next, maxFee: SHELL_MAX_FEE, public: isPublic, regs }), satoshis: 59_000 })
   tx.lockTime = Math.max(st.green, st.last + st.gap)
   const pre = TransactionSignature.format({ sourceTXID: src.id('hex'), sourceOutputIndex: 0,
     sourceSatoshis: 60_000, transactionVersion: 2, otherInputs: tx.inputs.slice(1), inputIndex: 0,
@@ -74,19 +76,43 @@ let worst = 0, biggest = 0, smallest = Infinity
      fact: a public tick paid 97.2 sat/KB against a 100 floor, unmineable, and every test was green.
      BURN0 is permanent and there is no key to amend it, so the bound must be the worst move ANY legal
      car can produce, not the worst move the variant we happened to measure produces. */
-  for (const isPublic of [false, true]) {
-   for (const [eng, tyr, th, pot] of [
-    [1, 1, 0, false], [1, RACER_REGS.TYR_MAX, 6, false],
-    [RACER_REGS.ENG_MAX, RACER_REGS.TYR_MAX, 12, false],
-    [RACER_REGS.ENG_MAX, RACER_REGS.TYR_MAX, 12, true],
-   ] as const) {
-    const st = racing(eng, tyr)
-    const want = refTick(st, { throttle: th, lockTime: st.last + st.gap, fuel: 60_000 }, RACER_REGS)
-    const b = await bytesOf(st, want.state, th, pot, isPublic)
-    if (b > worst) console.log(`        worst so far: ${b} B  (${isPublic ? 'PUBLIC' : 'owned'} eng ${eng}/tyr ${tyr})`)
-    worst = Math.max(worst, b)
-    biggest = Math.max(biggest, want.burn); smallest = Math.min(smallest, want.burn)
+  /* ⚠⚠ AND THE REGULATIONS ARE A DIMENSION TOO — this escaped a SECOND time, the same way. `bytesOf`
+     took `isPublic` but not `regs`, so when `RESERVE` added 24 bytes to the lock — 48 to every move,
+     because the lock is paid for twice — the sweep went on measuring the variant WITHOUT it and
+     reported healthy headroom for a car that no longer existed.
+     ⇒ A bound must cover the worst move ANY LEGAL VARIANT produces. `isPublic` was the first axis;
+     the regs are the second. Add PIT here in the commit that builds it. */
+  const VARIANTS: Array<{ label: string; regs: RacerRegs }> = [
+    { label: 'v2', regs: RACER_REGS },
+    { label: 'v3 reserve', regs: reserveRegs(21_000) },
+  ]
+  const byVariant = new Map<string, number>()
+  for (const { label, regs } of VARIANTS) {
+   for (const isPublic of [false, true]) {
+    for (const [eng, tyr, th, pot] of [
+     [1, 1, 0, false], [1, RACER_REGS.TYR_MAX, 6, false],
+     [RACER_REGS.ENG_MAX, RACER_REGS.TYR_MAX, 12, false],
+     [RACER_REGS.ENG_MAX, RACER_REGS.TYR_MAX, 12, true],
+    ] as const) {
+     const st = racing(eng, tyr)
+     const want = refTick(st, { throttle: th, lockTime: st.last + st.gap, fuel: 60_000 }, regs)
+     const b = await bytesOf(st, want.state, th, pot, isPublic, regs)
+     byVariant.set(label, Math.max(byVariant.get(label) ?? 0, b))
+     if (label === 'v2') {
+       worst = Math.max(worst, b)
+       biggest = Math.max(biggest, want.burn); smallest = Math.min(smallest, want.burn)
+     }
+    }
    }
+  }
+  /* ★★ EVERY VARIANT MUST CLEAR THE FLOOR ON ITS OWN BURN0 — the rule, stated once and applied to all.
+     A variant whose script grew but whose BURN0 did not is a car that cannot be mined, and it looks
+     exactly like a healthy one until a node refuses it. */
+  for (const { label, regs } of VARIANTS) {
+    const b = byVariant.get(label)!
+    const rate = regs.BURN0 * 1000 / b
+    check(`★★ ${label}: its cheapest move clears the relay floor`, rate >= SHELL_FEE_PER_KB)
+    console.log(`        ${label.padEnd(11)} ${b} B · BURN0 ${regs.BURN0} = ${rate.toFixed(1)} sat/KB`)
   }
   const trueFee = Math.ceil(worst * SHELL_FEE_PER_KB / 1000)
   console.log(`        worst move serializes to ${worst} bytes → ${trueFee} sat at ${SHELL_FEE_PER_KB} sat/KB`)
