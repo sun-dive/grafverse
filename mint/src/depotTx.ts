@@ -14,16 +14,40 @@
  *
  * ⇒ Which is the battery's property restated: **bounded on the way out, unbounded on the way in.**
  *
- * ── ⚠ ONE COIN, NOT A BALANCE ─────────────────────────────────────────────────────────────────────
- * A covenant spend takes exactly one funding input, so the contributor needs ONE utxo covering the
- * amount plus the fee. Two payments of half do not merge, and a wallet showing plenty across several
- * coins will still fail. The page must say so before it builds, not after.
+ * ── ✗ "ONE COIN, NOT A BALANCE" WAS WRONG, AND IT WAS THE REASON MORE THAN THE RULE ────────────────
+ * This used to take exactly one funding coin and explain it as *"a covenant spend takes exactly one
+ * funding input"*. That is not true of any covenant here. **The depot never looks at inputs at all** —
+ * `hashPrevouts` does not appear in `depot.ts` even once. It checks its own preimage, the value floor,
+ * the car rule, and that the outputs rebuild to `hashOutputs`.
+ *
+ * ⇒ THE REAL CONSTRAINT IS WEAKER: the depot's unlocking script EMBEDS its preimage, and that preimage
+ * commits to `hashPrevouts` and `hashSequence` — every input's outpoint. So the input SET must be FINAL
+ * before the covenant's input is built. **Known in advance, not singular.** Add every funding coin up
+ * front and the covenant's half stays valid; the contributor signs several blanks instead of one.
+ *
+ * ⚠ Which turned a builder's convenience into a wallet-shaped problem: a contributor holding plenty
+ * across several coins was told to go and pay themselves first. sun-dive, 16 Aug: *"it is a bad UX."*
+ *
+ * ⚠ AND THE PAD MUST SCALE WITH THEM. `TOPUP_FEE_PAD` was measured for ONE input and its change; each
+ * extra input is another ~148 bytes of transaction to pay for. A fixed pad with three coins underpays,
+ * which is the relay floor all over again — so it is per-input, and `depot-topup-tx` serializes real
+ * multi-coin top-ups and checks the rate rather than trusting the arithmetic.
  */
 import { Transaction, P2PKH, TransactionSignature, LockingScript, OP, Utils } from '@bsv/sdk'
 import { buildDepotLock, buildDepotUnlock, DEPOT_SCOPE, DEPOT_MAX_FEE } from './depot.ts'
 
-/** Enough to cover the contributor's own input and change at the official rate. Measured, not guessed. */
+/** Enough to cover the contributor's first input and their change, at the official rate. Measured. */
 export const TOPUP_FEE_PAD = 300
+
+/**
+ * What each ADDITIONAL funding coin adds to the pad. A P2PKH input serializes to ~148 bytes — 32 txid,
+ * 4 index, 1 length, ~107 script, 4 sequence — which is ~15 satoshis at 100 sat/KB, rounded up to 20
+ * because underpaying is unrelayable and overpaying by five is nothing.
+ */
+export const TOPUP_INPUT_PAD = 20
+
+/** The fee pad for a top-up funded by `n` coins. One number, so the guard and the change agree. */
+export const topUpPad = (n: number): number => TOPUP_FEE_PAD + Math.max(0, n - 1) * TOPUP_INPUT_PAD
 
 const u64 = (n: number): number[] => {
   const b: number[] = []; let x = n
@@ -38,8 +62,13 @@ export interface TopUpParams {
   carScript: number[]
   owner: number[]
   addSats: number
-  /** The contributor's coin. Exactly one, and it must cover `addSats + fee`. */
+  /**
+   * The contributor's coins. One or several — together they must cover `addSats + topUpPad(n)`.
+   * ⚠ ALL of them are added before the covenant's input is built, because its preimage commits to
+   * every outpoint. A coin added afterwards invalidates the depot's half.
+   */
   funder: { sourceTransaction: Transaction; outputIndex: number }
+    | Array<{ sourceTransaction: Transaction; outputIndex: number }>
   changeAddress: string
   /** An optional mark, written to an OP_RETURN — the contributor's line on the board. */
   mark?: string | null
@@ -58,16 +87,24 @@ export function buildDepotTopUpTx(p: TopUpParams): Transaction {
   if (!onChain || Utils.toHex(onChain.lockingScript.toBinary()) !== depotLock.toHex()) {
     throw new Error('that outpoint is not this depot — wrong txid, wrong output, or a different owner key')
   }
-  const funded = p.funder.sourceTransaction.outputs[p.funder.outputIndex]?.satoshis ?? 0
-  if (funded < p.addSats + TOPUP_FEE_PAD) {
-    throw new Error(`one coin must cover ${(p.addSats + TOPUP_FEE_PAD).toLocaleString()} sat; this one holds ${funded.toLocaleString()}`)
+  const coins = Array.isArray(p.funder) ? p.funder : [p.funder]
+  if (coins.length === 0) throw new Error('a top-up needs at least one funding coin')
+  const funded = coins.reduce((a, c) => a + (c.sourceTransaction.outputs[c.outputIndex]?.satoshis ?? 0), 0)
+  const pad = topUpPad(coins.length)
+  if (funded < p.addSats + pad) {
+    throw new Error(`these ${coins.length} coin(s) must cover ${(p.addSats + pad).toLocaleString()} sat; ` +
+      `they hold ${funded.toLocaleString()}`)
   }
 
   const tx = new Transaction(); tx.version = 2
   tx.addInput({ sourceTransaction: p.depot.sourceTransaction, sourceOutputIndex: p.depot.outputIndex,
                 sequence: 0xfffffffe })
-  tx.addInput({ sourceTransaction: p.funder.sourceTransaction, sourceOutputIndex: p.funder.outputIndex,
-                sequence: 0xffffffff })                      // ⚠ left BLANK — the contributor fills it
+  /* ⚠ EVERY funding coin goes in HERE, before the covenant's unlocking script is built below — its
+     preimage commits to all of their outpoints. Left BLANK; the contributor fills them. */
+  for (const c of coins) {
+    tx.addInput({ sourceTransaction: c.sourceTransaction, sourceOutputIndex: c.outputIndex,
+                  sequence: 0xffffffff })
+  }
 
   tx.addOutput({ lockingScript: depotLock, satoshis: p.depot.value + p.addSats })   // out0 — the tank, fuller
   if (p.mark) {
@@ -79,14 +116,14 @@ export function buildDepotTopUpTx(p: TopUpParams): Transaction {
       { op: OP.OP_FALSE }, { op: OP.OP_RETURN }, { op: m.length, data: m },
     ]), satoshis: 0 })
   }
-  const change = funded - p.addSats - TOPUP_FEE_PAD
+  const change = funded - p.addSats - pad
   if (change > 0) tx.addOutput({ lockingScript: new P2PKH().lock(p.changeAddress), satoshis: change })
 
   /* The covenant's half, complete and keyless. Its preimage commits to every output above, so the
      contributor cannot alter one after the fact without invalidating this. */
   const pre = TransactionSignature.format({
     sourceTXID: p.depot.sourceTransaction.id('hex'), sourceOutputIndex: p.depot.outputIndex,
-    sourceSatoshis: p.depot.value, transactionVersion: 2, otherInputs: [tx.inputs[1]], inputIndex: 0,
+    sourceSatoshis: p.depot.value, transactionVersion: 2, otherInputs: tx.inputs.slice(1), inputIndex: 0,
     outputs: tx.outputs, inputSequence: 0xfffffffe, subscript: depotLock, lockTime: 0, scope: DEPOT_SCOPE,
   })
   tx.inputs[0].unlockingScript = buildDepotUnlock({

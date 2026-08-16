@@ -427,33 +427,49 @@ async function buildTopUp(){
   if(!/^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(addr)){ out.innerHTML='<span class="no">that does not look like a BSV address</span>'; return }
   out.textContent='reading your coins…';
   try{
-    var pad=GM.TOPUP_FEE_PAD||300;
+    /* ── ★ AS MANY COINS AS IT TAKES, largest first ──────────────────────────────────────────────
+       This used to demand ONE coin covering the whole contribution, and told the contributor that "a
+       covenant spend takes exactly one input". That is not true of any covenant here — the depot never
+       looks at inputs at all. The real constraint is that the input SET must be final BEFORE the
+       covenant's unlocking script is built, because its preimage commits to every outpoint. Known in
+       advance, not singular. So a wallet holding a balance across several coins can now contribute
+       without paying itself first. ⚠ The pad grows with each extra input — GM.topUpPad(n). */
     var us=await getJSON('/address/'+addr+'/unspent');
-    /* ⚠ ONE COIN, NOT A BALANCE. A covenant spend takes exactly one funding input, so two payments of
-       half do not merge — and a wallet showing plenty across several coins still cannot do this. */
-    var u=(us||[]).filter(function(x){return x.value>=amt+pad}).sort(function(a,b){return a.value-b.value})[0];
-    if(!u){
+    var all=(us||[]).slice().sort(function(a,b){return b.value-a.value});
+    var picked=[], have=0;
+    for(var ci=0; ci<all.length; ci++){
+      if(have >= amt+GM.topUpPad(picked.length)) break;
+      picked.push(all[ci]); have+=all[ci].value;
+    }
+    var pad=GM.topUpPad(picked.length||1);
+    if(!picked.length || have < amt+pad){
       var tot=(us||[]).reduce(function(a,x){return a+x.value},0);
-      out.innerHTML='<span class="no">no SINGLE coin at that address holds '+sat(amt+pad)+' sat</span>'+
-        ' — you have '+sat(tot)+' across '+(us||[]).length+' coins, but a covenant spend takes exactly one input.'+
-        ' Send yourself one payment of '+sat(amt+pad)+' and try again.';
+      out.innerHTML='<span class="no">that address holds '+sat(tot)+' across '+(us||[]).length+' coin(s)</span>'+
+        ' — this contribution needs '+sat(amt+pad)+' including the fee. Send it a little more, or lower the amount.';
       return;
     }
     out.textContent='building…';
     var depotAt=await currentDepot();
-    var dHex=await getText('/tx/'+depotAt.txid+'/hex'), fHex=await getText('/tx/'+u.tx_hash+'/hex');
+    var dHex=await getText('/tx/'+depotAt.txid+'/hex');
+    var funders=[];
+    for(var fi=0; fi<picked.length; fi++){
+      var fh=await getText('/tx/'+picked[fi].tx_hash+'/hex');
+      funders.push({ sourceTransaction:GM.Transaction.fromHex(fh), outputIndex:picked[fi].tx_pos });
+    }
     var tx=GM.buildDepotTopUpTx({
       depot:{ sourceTransaction:GM.Transaction.fromHex(dHex), outputIndex:depotAt.vout, value:depotAt.sats },
       carScript:GM.buildShellLock({state:GM.freshPublicShell(GM.Utils.fromBase58Check(OWNER_ADDR).data),
                                    maxFee:GM.shellMaxFee(REGS), public:true, regs:REGS}).toBinary(),
       owner:GM.Utils.fromBase58Check(OWNER_ADDR).data,
       addSats:amt,
-      funder:{ sourceTransaction:GM.Transaction.fromHex(fHex), outputIndex:u.tx_pos },
+      funder:funders,
       changeAddress:addr, mark:mk||null
     });
     var hex=tx.toHex();
+    var blanks = funders.length===1 ? '<b>Input #2 is the only blank in it</b>'
+               : '<b>Inputs #2 to #'+(funders.length+1)+' are yours</b> ('+funders.length+' coins)';
     out.innerHTML='<span class="ok">built — the tank goes '+sat(depotAt.sats)+' → '+sat(depotAt.sats+amt)+' sat.</span>'+
-      ' <b>Input #2 is the only blank in it</b>; sign that one in your wallet and broadcast. The covenant\'s'+
+      ' '+blanks+'; sign them in your wallet and broadcast. The covenant\'s'+
       ' input is already complete and has no key anywhere.';
     $('f-hex').style.display='block'; $('f-hex').value=hex;
   }catch(e){ out.innerHTML='<span class="no">'+e.message+'</span>' }

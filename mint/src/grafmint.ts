@@ -116,7 +116,7 @@ export { freshPublicShell, publicReset, isAtRest } from './publicShell.ts'
 export {
   buildDepotLock, DEPOT_DRAW, DEPOT_MAX_FEE, DEPOT_MAX_TANK, DEPOT_BURN_BELOW, DEPOT_SCOPE,
 } from './depot.ts'
-export { buildDepotTopUpTx, TOPUP_FEE_PAD } from './depotTx.ts'
+export { buildDepotTopUpTx, TOPUP_FEE_PAD, TOPUP_INPUT_PAD, topUpPad } from './depotTx.ts'
 export type { TopUpParams, TopUpRequest } from './depotTx.ts'
 export { SHELL_TANK_MAX, PUBLIC_CAR_REGS, racerRegs, reserveRegs, tankMaxFor,
          SHELL_SCOPE as SHELL_SIGHASH_SCOPE } from './shell.ts'

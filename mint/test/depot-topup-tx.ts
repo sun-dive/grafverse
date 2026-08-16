@@ -1,7 +1,7 @@
 // © BSV Association — Open BSV License v6.
 // THE CONTRIBUTE BUTTON'S BUILDER — the page assembles it, the contributor signs one blank.
 import { Transaction, Spend, PrivateKey, P2PKH, Hash, Utils } from '@bsv/sdk'
-import { buildDepotTopUpTx, TOPUP_FEE_PAD } from '../src/depotTx.ts'
+import { buildDepotTopUpTx, TOPUP_FEE_PAD, topUpPad } from '../src/depotTx.ts'
 import { buildDepotLock, DEPOT_SCOPE } from '../src/depot.ts'
 import { buildShellLock, SHELL_MAX_FEE, SHELL_FEE_PER_KB } from '../src/shell.ts'
 import { freshPublicShell } from '../src/publicShell.ts'
@@ -92,6 +92,56 @@ shouldThrow('⚠ a coin too small for the amount plus the fee is REFUSED', () =>
 shouldThrow('⚠⚠ an outpoint that is NOT this depot is REFUSED', () => buildDepotTopUpTx({
   depot: { sourceTransaction: fSrc, outputIndex: 0, value: 60_000 }, carScript: CAR.toBinary(), owner: OWNER,
   addSats: 1_000, funder: { sourceTransaction: fSrc, outputIndex: 0 }, changeAddress: KEY.toAddress() }))
+
+/* ── ★★ SEVERAL COINS, BECAUSE A WALLET HOLDS A BALANCE AND NOT A COIN ────────────────────────────
+   This builder used to take exactly ONE funding coin and explain it as "a covenant spend takes exactly
+   one funding input". Not true of any covenant here — `hashPrevouts` does not appear in `depot.ts`
+   even once. The real constraint is that the input SET must be FINAL before the covenant's unlocking
+   script is built, because its preimage commits to every outpoint: known in advance, not singular.
+
+   ⇒ A contributor holding 582 satoshis across four coins was told to go and pay themselves first.
+   sun-dive, 16 Aug: *"it is a bad UX."*
+
+   ⚠ AND THE FEE IS WHERE THIS GOES WRONG QUIETLY. Each extra input is ~148 bytes to pay for, so a
+   FIXED pad with three coins underpays and the transaction is simply never relayed — the relay floor
+   again, in a new costume. The rate is therefore MEASURED here on real serialized transactions at one,
+   two, three and four coins, not asserted from the pad arithmetic that produced it. */
+console.log()
+{
+  const dust = (n: number): Transaction => {
+    const t = new Transaction()
+    t.addOutput({ lockingScript: new P2PKH().lock(KEY.toAddress()), satoshis: n })
+    return t
+  }
+  for (const parts of [[6_000], [3_000, 3_000], [2_500, 2_000, 1_500], [2_000, 1_600, 1_400, 1_200]]) {
+    const dSrc2 = new Transaction(); dSrc2.addOutput({ lockingScript: DEPOT, satoshis: 1 })
+    const coins = parts.map(v => ({ sourceTransaction: dust(v), outputIndex: 0 }))
+    const total = parts.reduce((a, b) => a + b, 0)
+    const add = total - topUpPad(coins.length)
+    const t = buildDepotTopUpTx({
+      depot: { sourceTransaction: dSrc2, outputIndex: 0, value: 1 },
+      carScript: CAR.toBinary(), owner: OWNER, addSats: add,
+      funder: coins, changeAddress: KEY.toAddress(), mark: null,
+    })
+    for (let i = 1; i < t.inputs.length; i++) t.inputs[i].unlockingScriptTemplate = new P2PKH().unlock(KEY)
+    await t.sign()
+    const ok = (() => { try {
+      return new Spend({ sourceTXID: dSrc2.id('hex'), sourceOutputIndex: 0, sourceSatoshis: 1,
+        lockingScript: DEPOT, transactionVersion: 2, otherInputs: t.inputs.slice(1), outputs: t.outputs,
+        inputIndex: 0, unlockingScript: t.inputs[0].unlockingScript!, inputSequence: 0xfffffffe, lockTime: 0,
+      }).validate() === true
+    } catch { return false } })()
+    const size = t.toHex().length / 2
+    const fee = (1 + total) - t.outputs.reduce((a, o) => a + (o.satoshis ?? 0), 0)
+    const rate = fee * 1000 / size
+    check(`★★ ${coins.length} coin(s): the covenant accepts it, and the tank gets ${add.toLocaleString()}`,
+      ok && t.outputs[0].satoshis === 1 + add)
+    check(`  …and it clears the relay floor — ${rate.toFixed(1)} sat/KB over ${size} B`,
+      rate >= SHELL_FEE_PER_KB)
+  }
+  console.log(`        pad ${TOPUP_FEE_PAD} for one coin, +20 each after — ` +
+    `${[1, 2, 3, 4].map(n => topUpPad(n)).join(' · ')}`)
+}
 
 console.log(`\n${pass}/${pass + fail} checks passed`)
 console.log(fail === 0 ? 'TOPUP TX OK — one blank, and it is the contributor\'s.' : '⚠ TOPUP TX FAILED')
