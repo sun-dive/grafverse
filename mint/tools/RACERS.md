@@ -162,7 +162,8 @@ done
 | `depot-drain` | **⚠ the threat model, measured**: anyone can EMPTY the tank; nobody can TAKE it — it taps AND drives, because tapping alone once concluded that falsely |
 | `public-gate` | the signature gate both ways, **and that no branch of a public car pays a person** |
 | `depot-fee` | **⚠ measures a REFUEL OF THE CAR IT FUELS.** The car's script rides three times over inside one, so the CAR's size sets the DEPOT's fee |
-| `test/racers-page.mjs` | runs the SHIPPED page in a fresh `vm` with NO node globals |
+| `test/racers-page.mjs` | runs the SHIPPED simulator page in a fresh `vm` with NO node globals |
+| `test/depot-page.mjs` | **★ the page that spends REAL MONEY** — it boots, it found its covenants, and `DEPOT_TXID` · `CAR_SEED` · `REGS` agree with them |
 
 ---
 

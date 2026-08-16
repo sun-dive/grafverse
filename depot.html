@@ -159,11 +159,23 @@
    come from vendor/grafmint.js, which is mint/src/ bundled — the same code the covenant is validated
    against and the same code the CLI uses. */
 var GM=null, WOC='https://api.whatsonchain.com/v1/bsv/main';
+/* ⚠⚠ THE REGULATIONS OF THE CAR THIS PAGE DRIVES, and they must match the car the LIVE depot was built
+   to fuel — a depot recognises one car script and no other, by its SHAPE and its owner. Set together
+   with DEPOT_TXID and CAR_SEED, on 16 Aug 2026, for the depot at e889c1f1…. Change one of the three
+   and you must change all three: a page building the wrong variant produces a car the pump does not
+   recognise, and the only symptom is a refusal with nothing to point at.
+   ⚠ NULL UNTIL THE BUNDLE LOADS, and assigned in exactly one place — beside GM itself. Written as
+   `var REGS = GM.PUBLIC_CAR_REGS` at the top of the script it throws on page load, because GM is null
+   until grafmint.js arrives. Same family as `window.grafmint` vs `window.GrafMint`: the page loads the
+   bundle and finds nothing, and every button is dead before a visitor touches one. */
+var REGS=null;
 var OWNER_ADDR='12tMiZzdMUGdR2me8Y6H7VjQkFTekrz141';
-var DEPOT_TXID='fe861da6a8943bff060a67fc154ec944aadb7ab5d379f83e8ea6ede0d573f722';
-/* ⚠ The car moves every time it is driven, so its outpoint is NOT a constant. This is where it was
-   last seen; the page walks forward from here by asking whether that output is still unspent. */
-var CAR_SEED={txid:'e57b702546c87cbf457d53f7975c3bf6692cb175686cf0eee9cd33b7f8edc7b8',vout:1};
+var DEPOT_TXID='e889c1f15b2739f8729e4dc256199581137eae6df72f09ddc558bfdb54ddb0e8';
+/* ⚠ The car moves every time it is driven, so its outpoint is NOT a constant. This is its GENESIS —
+   where the car began — and the page walks forward from here by asking whether that output is still
+   unspent. ★ A car IS its genesis: two cars of one owner are byte-identical scripts, and this outpoint
+   is the only thing that says which one this page drives. */
+var CAR_SEED={txid:'e918fa438f2cab12127fbd9377022868ad35904da2146816e552b26482b11c6a',vout:0};
 
 var $=function(i){return document.getElementById(i)};
 var car=null, carTx=null, carOut=null, plan=null;
@@ -176,7 +188,13 @@ function sat(n){ return Number(n).toLocaleString() }
 
 function loadGM(){ return new Promise(function(res,rej){
   var s=document.createElement('script'); s.src='/vendor/grafmint.js';
-  s.onload=function(){ GM=window.GrafMint; GM?res():rej(Error('grafmint loaded but exported nothing')) };
+  s.onload=function(){
+    GM=window.GrafMint;
+    if(!GM) return rej(Error('grafmint loaded but exported nothing'));
+    REGS=GM.PUBLIC_CAR_REGS;
+    if(!REGS) return rej(Error('grafmint has no PUBLIC_CAR_REGS — the bundle is older than this page'));
+    res(GM);
+  };
   s.onerror=function(){ rej(Error('could not load grafmint.js — serve this page, do not open the file')) };
   document.head.appendChild(s);
 })}
@@ -329,12 +347,6 @@ async function broadcast(hex){
  *
  * ⇒ Fuel it at the line, or coast on the reserve and hope. → `mint/test/depot-dry.ts`
  */
-/* ⚠⚠ THE REGULATIONS OF THE CAR THIS PAGE DRIVES, and it must match the car the LIVE depot was built
-   to fuel — a depot recognises one car script and no other. It is the default car today, because the
-   depot on chain is the old one. **Change this to `GM.PUBLIC_CAR_REGS` in the same commit that points
-   the page at a new depot genesis, never before**: a page building the wrong variant produces a car
-   the pump does not recognise, and the only symptom is a refusal with nothing to point at. */
-var REGS = GM.RACER_REGS;
 
 async function run(){
   $('go').disabled=true; $('reload').disabled=true;
