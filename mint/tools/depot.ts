@@ -283,9 +283,27 @@ async function genesis(): Promise<void> {
      20,000 it is BELOW the tool's own minimum, so the default would have refused itself. Two taps and
      their fees — enough to prove the pump works, and small enough to be an acceptable griefing loss
      (see `depot-drain`: a tank is `balance / (DRAW + MAX_FEE)` taps from empty). */
+  /* ⚠⚠ AND THE MINIMUM IS ONE SATOSHI, NOT ONE TAP. This refused anything below `DRAW + MAX_FEE`, on
+     the reasoning that a tank too small to fund a tap is useless — which confuses "cannot pump yet"
+     with "invalid". A depot minted EMPTY and filled by the top-up flow is a perfectly good
+     deployment, and a better first test, because the top-up becomes the only way fuel ever gets in.
+     Nothing is bricked by it: the value rule is a floor, so a top-up (which hands back MORE) is legal
+     at any balance, and the funder's own input pays that transaction's fee rather than the tank.
+     ⚠ One satoshi and not zero — a 0-value output is refused as dust before the script is evaluated
+     at all, measured on both providers. */
   const fuel = Number(arg('--fuel') ?? 2 * (DEPOT_DRAW + DEPOT_MAX_FEE))
-  if (!Number.isInteger(fuel) || fuel < DEPOT_DRAW + DEPOT_MAX_FEE) {
-    console.error(`--fuel must be an integer ≥ ${sat(DEPOT_DRAW + DEPOT_MAX_FEE)} (one tap plus its fee)`); process.exit(1)
+  if (!Number.isInteger(fuel) || fuel < 1) {
+    console.error('--fuel must be an integer of at least 1 satoshi (0 is refused as dust)'); process.exit(1)
+  }
+  if (fuel < DEPOT_DRAW + DEPOT_MAX_FEE) {
+    console.log(`\n⚠ ${sat(fuel)} sat is below one tap plus its fee (${sat(DEPOT_DRAW + DEPOT_MAX_FEE)}),`
+      + ' so the pump cannot fuel a car until it is topped up.')
+    /* ⚠ AND SAY THE OTHER HALF, because it is the one that surprises: the owner may clear away a husk,
+       and a depot this small IS a husk by the covenant's own definition. */
+    if (fuel < DEPOT_BURN_BELOW) {
+      console.log(`  …and below ${sat(DEPOT_BURN_BELOW)} the owner may burn it, which is what that`
+        + ' threshold is for — an empty depot is a husk, not a tank.\n')
+    } else console.log('')
   }
   const key = importWif(wif), addr = key.toAddress()
   const owner = Hash.hash160(key.toPublicKey().encode(true) as number[])

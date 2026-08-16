@@ -45,6 +45,39 @@ check('★★ once the contributor signs, the covenant accepts it', (() => {
   } catch { return false }
 })())
 
+/* ── ★★ AND FROM A DEPOT MINTED EMPTY — one satoshi, filled only by this flow ─────────────────────
+   sun-dive, 16 Aug: *"the depot should be minted empty too."* The tool used to refuse a genesis below
+   one tap plus its fee, which confuses "cannot pump yet" with "invalid" — an empty depot filled by
+   contributions is a better first deployment, because the top-up becomes the ONLY way fuel ever gets
+   in and every satoshi in the tank has a donor.
+
+   ⚠ NOTHING IS BRICKED BY IT, and this is where that is proved rather than asserted: the value rule
+   is a FLOOR, so a spend that hands back MORE is legal at any balance, and the FUNDER's input pays
+   this transaction's fee rather than the tank. A husk can always be woken up.
+   ⚠ One satoshi and not zero — a 0-value output is refused as dust before a script is evaluated. */
+{
+  const hSrc = new Transaction(); hSrc.addOutput({ lockingScript: DEPOT, satoshis: 1 })
+  const gSrc = new Transaction(); gSrc.addOutput({ lockingScript: new P2PKH().lock(KEY.toAddress()), satoshis: 60_000 })
+  const wake = buildDepotTopUpTx({
+    depot: { sourceTransaction: hSrc, outputIndex: 0, value: 1 },
+    carScript: CAR.toBinary(), owner: OWNER, addSats: 41_682,
+    funder: { sourceTransaction: gSrc, outputIndex: 0 },
+    changeAddress: KEY.toAddress(), mark: 'first fuel 🏁',
+  })
+  wake.inputs[1].unlockingScriptTemplate = new P2PKH().unlock(KEY)
+  await wake.sign()
+  check('★★ a depot minted EMPTY — one satoshi — accepts its first contribution', (() => {
+    try {
+      return new Spend({ sourceTXID: hSrc.id('hex'), sourceOutputIndex: 0, sourceSatoshis: 1,
+        lockingScript: DEPOT, transactionVersion: 2, otherInputs: [wake.inputs[1]], outputs: wake.outputs,
+        inputIndex: 0, unlockingScript: wake.inputs[0].unlockingScript!, inputSequence: 0xfffffffe, lockTime: 0,
+      }).validate() === true
+    } catch { return false }
+  })())
+  check('  …and the tank is exactly the contribution plus the husk', wake.outputs[0].satoshis === 1 + 41_682)
+  console.log(`        1 → ${(1 + 41_682).toLocaleString()} sat · the whole tank has a donor`)
+}
+
 const size = tx.toHex().length / 2
 const fee = (984 + 60_000) - tx.outputs.reduce((a, o) => a + (o.satoshis ?? 0), 0)
 console.log(`        ${size} B · fee ${fee} sat = ${(fee * 1000 / size).toFixed(1)} sat/KB · tank 984 → ${(984 + 50_000).toLocaleString()}`)
