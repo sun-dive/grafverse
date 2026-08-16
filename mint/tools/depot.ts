@@ -55,7 +55,8 @@ import {
   DEPOT_BURN_BELOW,
 } from '../src/depot.ts'
 import {
-  buildShellLock, shellUnlockingOps, SHELL_SCOPE, SHELL_MAX_FEE, SHELL_FEE_PER_KB, SHELL_TANK_MAX,
+  buildShellLock, shellUnlockingOps, shellMaxFee, PUBLIC_CAR_REGS,
+  SHELL_SCOPE, SHELL_MAX_FEE, SHELL_FEE_PER_KB, SHELL_TANK_MAX,
 } from '../src/shell.ts'
 import { freshPublicShell } from '../src/publicShell.ts'
 import { serializeOutput } from '../src/covenant.ts'
@@ -97,9 +98,19 @@ function hasSignature(script: UnlockingScript): boolean {
   })
 }
 
-/** The two scripts, derived from one key. The car's script is what the depot is born knowing. */
+/**
+ * The two scripts, derived from one key. The car's script is what the depot is born knowing.
+ *
+ * ⚠⚠ `PUBLIC_CAR_REGS`, AND A GENESIS BUILT WITH ANY OTHER CAR IS A DEPOT THAT FUELS NOBODY. The depot
+ * pins ONE car — head, twelve push opcodes, tail hash — so the regulations chosen here are permanent
+ * and unamendable from the moment `--genesis` broadcasts. The car being raced carries the RESERVE; a
+ * depot minted against the default car would recognise nothing anybody drives.
+ * ⚠ And its FEE depends on this too: the car's script rides three times over inside a refuel, so
+ * `DEPOT_MAX_FEE` is measured against this exact variant in `depot-fee`. Change one, re-measure both.
+ */
 function scripts(ownerHash: number[]) {
-  const car = buildShellLock({ state: freshPublicShell(ownerHash), maxFee: SHELL_MAX_FEE, public: true })
+  const car = buildShellLock({ state: freshPublicShell(ownerHash), maxFee: shellMaxFee(PUBLIC_CAR_REGS),
+                               public: true, regs: PUBLIC_CAR_REGS })
   const depot = buildDepotLock({ carScript: car.toBinary(), owner: ownerHash })
   return { car, depot }
 }
@@ -118,9 +129,8 @@ function scripts(ownerHash: number[]) {
  * so this whole transaction is authorised by arithmetic. That is the point: a visitor with no wallet,
  * no key and no satoshi can fuel a car and drive it.
  *
- * ⚠ The car is RESET by this move — back to a fresh car, keeping its fuel. That is the right move for
- * a car at rest, which is what this tool fuels. A splash-and-dash MID-RACE is a racing move plus fuel
- * in one transaction, and it belongs to the page, which has the driver.
+ * ⚠ The car is RESET by this move — back to a fresh car, keeping its fuel. That is the only move the
+ * pump makes now: it refuses any car whose `s` is not zero, so fuel goes in at the line or not at all.
  *
  * ★ THE DEPOT PAYS THE WHOLE FEE. Total in − total out = MAX_FEE exactly, so the driver's fuel is not
  * touched by the cost of pumping it. That is what MAX_FEE is for.
@@ -339,9 +349,13 @@ async function genesis(): Promise<void> {
 async function mintCar(): Promise<void> {
   const wif = process.env.DEPOT_WIF
   if (!wif) { console.error('Set DEPOT_WIF=<owner WIF>.'); process.exit(1) }
+  /* ⚠ THE CEILING IS THE PUMP'S, NOT THE CAR'S. A car carries no ceiling of its own any more — an
+     owner may pay whatever they like into their own car — so this is a courtesy that keeps a
+     hand-minted car inside what the depot would ever fill it to. It was `SHELL_TANK_MAX`, which is now
+     the propellant tank ALONE and would have refused a car carrying its own reserve. */
   const fuel = Number(arg('--fuel') ?? 1)
-  if (!Number.isInteger(fuel) || fuel < 1 || fuel > SHELL_TANK_MAX) {
-    console.error(`--fuel must be an integer between 1 and ${sat(SHELL_TANK_MAX)}`); process.exit(1)
+  if (!Number.isInteger(fuel) || fuel < 1 || fuel > DEPOT_MAX_TANK) {
+    console.error(`--fuel must be an integer between 1 and ${sat(DEPOT_MAX_TANK)}`); process.exit(1)
   }
   const key = importWif(wif), addr = key.toAddress()
   const owner = Hash.hash160(key.toPublicKey().encode(true) as number[])

@@ -20,8 +20,11 @@ import {
   Utils, Transaction, UnlockingScript, LockingScript, TransactionSignature, Spend,
 } from '@bsv/sdk'
 import {
-  FIELDS, FIELD_WIDTHS, PHASE, RACER_REGS, SHELL_MAX_FEE, SHELL_SCOPE, S, buildShellLock, loadCar,
-  loadTrack, arm, refTick, shellUnlockingOps, type ShellState, type RacerRegs,
+  /* ⚠ `SHELL_MAX_FEE` is deliberately NOT imported here any more. It is the DEFAULT car's ceiling, and
+     every builder below takes regulations — reaching for the constant is how a variant car gets built
+     against the wrong number. `shellMaxFee(regs)` is the same value for a default car. */
+  FIELDS, FIELD_WIDTHS, PHASE, RACER_REGS, SHELL_SCOPE, S, buildShellLock, loadCar,
+  loadTrack, arm, refTick, shellUnlockingOps, shellMaxFee, type ShellState, type RacerRegs,
 } from './shell.ts'
 import { freshPublicShell, publicReset } from './publicShell.ts'
 import { buildDepotUnlock } from './depot.ts'
@@ -63,12 +66,20 @@ export function shellStateFromScript(script: number[] | string): ShellState | nu
   } catch { return null }
 }
 
-/** Is this script a PUBLIC car belonging to `owner`, in the state it claims? Cheap and total. */
-export function isPublicCar(script: number[] | string, owner: number[]): boolean {
+/**
+ * Is this script a PUBLIC car belonging to `owner`, in the state it claims? Cheap and total.
+ *
+ * ⚠ IT ANSWERS FOR ONE VARIANT AT A TIME. A pit-and-reserve car is a different script from a default
+ * one, so a page that recognises only the regulations it was compiled with will look straight past a
+ * car that is perfectly real. Pass the regulations the car was minted under.
+ */
+export function isPublicCar(
+  script: number[] | string, owner: number[], regs: RacerRegs = RACER_REGS,
+): boolean {
   const st = shellStateFromScript(script)
   if (!st) return false
   const hex = typeof script === 'string' ? script : Utils.toHex(script)
-  return buildShellLock({ state: st, maxFee: SHELL_MAX_FEE, public: true }).toHex() === hex &&
+  return buildShellLock({ state: st, maxFee: shellMaxFee(regs), public: true, regs }).toHex() === hex &&
          st.driver.length === 20 && st.driver.every((x, i) => x === owner[i])
 }
 
@@ -102,7 +113,7 @@ export interface RaceConfig {
  *
  * ★ IT DOES NOT REFUSE A RUN THE FUEL CANNOT FINISH. It plans as far as the fuel goes and reports
  * where the car stops. Under-fuelling is the driver's mistake to make, and stopping short of the line
- * is a racing outcome — the one a splash-and-dash exists to rescue.
+ * is a racing outcome — and now a final one, since the pump will not come out to a moving car.
  *
  * ⚠ A car that is not at EMPTY is RESET first. That is legal from any phase and costs one move, and
  * it is the only way to reconfigure a car somebody else set up.
@@ -141,11 +152,11 @@ export function planRace(
  * ★★ THE RACE ITSELF, FROM WHEREVER THE CAR IS — and the reason it is a function of its own.
  *
  * `planRace` RESETS any car that is not at EMPTY, which is right when a driver is setting a car up and
- * catastrophic when they are already halfway down the strip: a pit stop would throw the run away and
- * hand back a fresh car. So the racing loop lives here, and both callers share it:
+ * wrong for one already on the strip — it would throw the run away and hand back a fresh car. So the
+ * racing loop lives here, and anything continuing a run in progress uses it:
  *
- *   planRace          reset → configure → track → arm → raceFrom
- *   a SPLASH-AND-DASH tap the pump mid-race, then raceFrom again with the new fuel
+ *   planRace       reset → configure → track → arm → raceFrom
+ *   raceFrom       carry on from exactly where a car stands, on the fuel it holds
  *
  * ⚠ ONE IMPLEMENTATION, deliberately. A continuation that reimplemented the tick would be a second
  * opinion about the physics, and this project has already learned what a scratch model that disagrees
@@ -155,8 +166,8 @@ export function planRace(
  * The largest throttle that does not break traction — which is also the one that will not over-rev,
  * because both end the run and both are refused.
  *
- * ⚠ Module-level and shared, so `raceFrom` and `pitStep` cannot drift apart. A pit stop that chose its
- * throttle differently from the rest of the run would be a second opinion about the physics.
+ * ⚠ Module-level and shared, so every caller picks its throttle the same way. A second implementation
+ * of "how hard may I press" is a second opinion about the physics.
  */
 function safeThrottle(s: ShellState, fuelNow: number, regs: RacerRegs): number {
   let lo = 0, hi = regs.THROTTLE_MAX, best = 0
@@ -168,35 +179,15 @@ function safeThrottle(s: ShellState, fuelNow: number, regs: RacerRegs): number {
   return best
 }
 
-/**
- * ★ ONE TICK, TAKEN WHILE THE PUMP IS RUNNING — the move a splash-and-dash is made of.
- *
- * `raceFrom` stops when the next tick is unaffordable, which is exactly the moment a driver pits. This
- * returns that unaffordable tick anyway, because in a refuel the fuel arrives IN THE SAME TRANSACTION:
- * the car ends on `step.out + draw`, and the shortfall is covered by the depot.
- *
- * ⚠ `out` may be zero or negative here, and that is not a bug — it is the tick the car could not have
- * paid for alone. `buildRefuelMove` adds the draw, and the covenant judges only the final value.
- *
- * Returns null if the car is not racing, in which case a tap is an ordinary refuel-and-reset instead.
- */
-export function pitStep(
-  car: ShellState, fuel: number, draw = 0, regs: RacerRegs = RACER_REGS,
-): Step | null {
-  if (car.phase === PHASE.DONE || car.phase === PHASE.OUT) return null
-  /* ⚠ THE DRAW GOES INTO THE TICK, not just into the output value. Fuel is mass, and mass arriving at
-     speed costs velocity — so a pit stop planned without telling the reference how much is coming
-     would predict a car that does not exist. See `PIT` in shell.ts. */
-  const throttle = safeThrottle(car, fuel, regs)
-  const at = Math.max(car.green, car.last + car.gap)
-  let want
-  try { want = refTick(car, { throttle, lockTime: at, fuel, added: draw }, regs) } catch { return null }
-  return {
-    label: `splash and dash · ${(want.state.n * 0.1).toFixed(1)} s`,
-    next: want.state, throttle, reset: false,
-    out: fuel - want.burn, burn: want.burn,
-  }
-}
+/* ── ✗ `pitStep` LIVED HERE, AND THE MOVE IT PLANNED CANNOT HAPPEN (sun-dive, 16 Aug) ─────────────
+   It returned the tick a driver would take WHILE THE PUMP RAN — the one the car could not afford
+   alone, with the depot covering the shortfall in the same transaction. The depot now refuses to fuel
+   any car whose `s` is not zero, so there is no such move to plan.
+
+   ⇒ A short run has two ends now, and a planner that offered a third would be lying to the page:
+     · COAST on the reserve and hope the line comes up before the money does
+     · RESET back to the line, fill, and start the run again
+   → `depot-dry.ts` drives both. */
 
 export function raceFrom(
   car: ShellState, fuel: number, regs: RacerRegs = RACER_REGS,
@@ -217,8 +208,9 @@ export function raceFrom(
     /* ★★ RUNNING DRY IS A RESULT, NOT AN ERROR — and this used to REFUSE the run.
        A page that only lets you attempt races you are certain to win is not a race, it is a menu. If
        the driver puts in too little fuel the car stops short of the line, which is the outcome every
-       real strip has, and the reason a splash-and-dash exists at all. So the plan simply ends where
-       the fuel does, and says where that is. Nothing here judges the driver. */
+       real strip has. So the plan simply ends where the fuel does, and says where that is. Nothing
+       here judges the driver — and nothing rescues them either: the pump will not come out to a car
+       that has left the line. */
     if (f - want.burn < 1) {
       return { steps, feasible: false, outcome: 'dry',
                why: `stops at ${(st.s / S).toFixed(0)} m of ${(st.finish / S).toFixed(0)} — out of fuel`,
@@ -253,11 +245,18 @@ export function buildPublicMove(o: {
   value: number
   step: Step
   lockTime: number
+  /** ⚠ THE CAR'S OWN REGULATIONS, and `MAX_FEE` is DERIVED from them — see below. */
+  regs?: RacerRegs
 }): { tx: Transaction; ok: boolean } {
-  const lock = buildShellLock({ state: o.state, maxFee: SHELL_MAX_FEE, public: true })
+  /* ⚠⚠ `shellMaxFee(regs)`, NEVER the module constant. MAX_FEE is derived from BURN0 and BURN0 is
+     per-variant, so a pit or reserve car built against the DEFAULT ceiling is a different script from
+     the one that was minted — the rebuild then hashes to something the covenant does not recognise and
+     every move fails, for a reason nothing in the error points at. */
+  const regs = o.regs ?? RACER_REGS
+  const lock = buildShellLock({ state: o.state, maxFee: shellMaxFee(regs), public: true, regs })
   const tx = new Transaction(); tx.version = 2
   tx.addInput({ sourceTransaction: o.prevTx, sourceOutputIndex: o.vout, sequence: 0xfffffffe })
-  tx.addOutput({ lockingScript: buildShellLock({ state: o.step.next, maxFee: SHELL_MAX_FEE, public: true }), satoshis: o.step.out })
+  tx.addOutput({ lockingScript: buildShellLock({ state: o.step.next, maxFee: shellMaxFee(regs), public: true, regs }), satoshis: o.step.out })
   tx.lockTime = o.lockTime
 
   const pre = TransactionSignature.format({
@@ -268,7 +267,7 @@ export function buildPublicMove(o: {
   const n = o.step.next
   tx.inputs[0].unlockingScript = new UnlockingScript(shellUnlockingOps({
     spenderOutputs: [], newValue: u64le(o.step.out), preimage: pre,
-    sig: [], pubKey: [], throttle: o.step.throttle, retire: o.step.reset,
+    sig: [], pubKey: [], throttle: o.step.throttle, retire: o.step.reset, regs,
     load: { driver: n.driver, pool: n.pool, eng: n.eng, tyr: n.tyr,
             finish: n.finish, slip: n.slip, green: n.green, gap: n.gap },
   }))
@@ -300,7 +299,7 @@ export function buildPublicMove(o: {
  * take fuel and keep the run.
  *
  * ⚠ NO SIGNATURE AND NO FUNDING INPUT, exactly as an ordinary move. The pump costs the driver a tick
- * and the extra weight of the fuel, which is the trade a real splash-and-dash makes too.
+ * and the extra weight of the fuel it delivers, which is the trade a real fill makes too.
  *
  * ⇒ Pass the step you would have made anyway. This does not choose racing strategy; it only adds fuel
  * to the move you were already making.
@@ -318,8 +317,14 @@ export function buildRefuelMove(o: {
   draw: number
   depotMaxFee: number
   depotScope: number
+  /** ⚠ The car's own regulations — the same ones the depot was built to recognise. */
+  regs?: RacerRegs
 }): { tx: Transaction; carOk: boolean; depotOk: boolean; carOut: number; kept: number } {
-  const carLock = buildShellLock({ state: o.state, maxFee: SHELL_MAX_FEE, public: true })
+  const regs = o.regs ?? RACER_REGS
+  const carLock = buildShellLock({ state: o.state, maxFee: shellMaxFee(regs), public: true, regs })
+  /* ⚠ THE DEPOT WILL REFUSE THIS UNLESS THE CAR'S NEW `s` IS ZERO — at the line, or resetting back to
+     it. Built anyway rather than pre-checked here, because the covenant is the thing that decides and
+     both halves are run through the interpreter below before this returns. */
   const carOut = o.step.out + o.draw
   const kept = o.depot.value - o.draw - o.depotMaxFee
 
@@ -327,7 +332,7 @@ export function buildRefuelMove(o: {
   tx.addInput({ sourceTransaction: o.prevTx, sourceOutputIndex: o.vout, sequence: 0xfffffffe })
   tx.addInput({ sourceTransaction: o.depot.sourceTransaction, sourceOutputIndex: o.depot.outputIndex,
                 sequence: 0xfffffffe })
-  tx.addOutput({ lockingScript: buildShellLock({ state: o.step.next, maxFee: SHELL_MAX_FEE, public: true }),
+  tx.addOutput({ lockingScript: buildShellLock({ state: o.step.next, maxFee: shellMaxFee(regs), public: true, regs }),
                  satoshis: carOut })                                   // out0 — the car's own slot
   tx.addOutput({ lockingScript: o.depotLock, satoshis: kept })
   tx.lockTime = o.lockTime
@@ -342,7 +347,7 @@ export function buildRefuelMove(o: {
   })
   tx.inputs[0].unlockingScript = new UnlockingScript(shellUnlockingOps({
     spenderOutputs: ser(1), newValue: u64le(carOut), preimage: cPre,
-    sig: [], pubKey: [], throttle: o.step.throttle, retire: o.step.reset,
+    sig: [], pubKey: [], throttle: o.step.throttle, retire: o.step.reset, regs,
     load: { driver: n.driver, pool: n.pool, eng: n.eng, tyr: n.tyr,
             finish: n.finish, slip: n.slip, green: n.green, gap: n.gap },
   }))

@@ -46,11 +46,29 @@ Trap spread comes from the slow builds, and is untouched.
 
 | | | |
 |---|---|---|
-| `SHELL_WORST_MOVE_BYTES` | **3957** | measured by SERIALIZING a real spend, both variants |
-| `BURN0` | **397** | `ceil(worst × 100.1 / 1000)` — the burn IS the mining fee |
-| `SHELL_MAX_FEE` | **1301** | the most a move may take from the tank |
-| `SHELL_TANK_MAX` | **50,000** | five taps · public cars only |
-| lock, owned / public | 1674 / 1744 B | the public car carries the reset and the ceiling |
+| `SHELL_WORST_MOVE_BYTES` | **3909** | measured by SERIALIZING a real spend, every variant |
+| `BURN0` | **392** | `ceil(worst × 100.1 / 1000)` — the burn IS the mining fee |
+| `SHELL_MAX_FEE` | **1296** | the most a move may take from the tank |
+| `SHELL_TANK_MAX` | **50,000** | the propellant tank · the RESERVE rides on top of it |
+| `PUBLIC_CAR_REGS` | reserve 21,000 | ★ the car actually being raced · `BURN0` 397 · lock 1744 B |
+| `DEPOT_MAX_TANK` | **71,000** | 50,000 + the reserve · FOUR taps · **the depot's rule, not the car's** |
+| `DEPOT_MAX_FEE` | **841** | measured on a refuel OF THE CAR IT FUELS — 8,389 B |
+| lock, owned / public | 1674 / 1720 B | the public car carries the reset, and nothing that pays anybody |
+
+★★ **THE PUBLIC CAR IS A BATTERY** (sun-dive, 16 Aug). A battery has one branch — advance the state,
+pay the miner — and no output that can pay a person, which is why it needs no key and has nothing worth
+stealing. The public car is the same thing: *the only output it can produce is a car running down a
+track spending satoshis.* Two exceptions were found and closed in one session — the tank ceiling moved
+to the depot, and the run-ending value relaxation, which handed an unsigned stranger the whole tank.
+The owner's burn is the last one left, and it stays only while the code is being proved.
+
+⚠⚠ **THE FEE BOUND CAME DOWN ON 16 AUG, AND THAT MATTERS AS MUCH AS IT GOING UP.** The public car lost
+its tank ceiling (12 B, moved to the depot) and its pit rule (27 B, deleted), so every move shrank. A
+bound left sitting 27 bytes high means every race quietly OVERPAYS its miner on every tick, forever —
+`shell-fee` fails on drift in that direction too, deliberately, and that is what caught it. The cost is
+that a default car is no longer byte-identical to the ones on mainnet, because `MAX_FEE` is baked into
+the lock. Cars already minted are unaffected: a car is self-contained and races under the constants it
+was born with.
 
 ⚠⚠ **`BURN0` IS PERMANENT AND THERE IS NO KEY TO AMEND IT.** Below the 100 sat/KB floor, ticking is
 rejected by every node FOREVER. It has been under the floor twice during development and both times
@@ -123,9 +141,9 @@ a 14-transaction chain and mined the lot in one block.
 
 ```sh
 for t in shell-ref shell-frame shell-physics shell-load shell-fee shell-burn shell-blow \
-         public-ref public-gate public-reset public-tank \
-         depot-frame depot-value depot-arrival depot-car depot-burn depot-fee \
-         depot-topup depot-topup-tx depot-refuel depot-drain depot-car-integration; do
+         public-ref public-gate public-reset \
+         depot-frame depot-value depot-arrival depot-car depot-burn depot-fee depot-tank \
+         depot-topup depot-topup-tx depot-refuel depot-dry depot-drain depot-car-integration; do
   node --experimental-strip-types test/$t.ts
 done
 ```
@@ -136,11 +154,13 @@ done
 | `shell-fee` | **⚠ measures BOTH variants** and re-derives `BURN0`. The one that fails first |
 | `shell-blow` | the rev limit is enforced by the SCRIPT, not only the reference |
 | `public-reset` | resets from all 7 phases; a reset carrying ANY field is refused |
-| `public-tank` | the ceiling binds on the way in, and never entombs a car already over it |
+| `depot-tank` | the ceiling binds on the way in — **and it is the PUMP's rule now, not the car's** |
+| `depot-dry` | ★ a short run coasts on its reserve or stops. **The pump does not come to a moving car** |
 | `depot-*` | the depot FUELS cars — it does not make them — and pays nobody |
-| `depot-refuel` | **★★ the one the depot exists for**: two covenants, two inputs, and a mid-race tap |
-| `depot-drain` | **⚠ the threat model, measured**: anyone can EMPTY the tank; nobody can TAKE it |
-| `depot-fee` | **⚠ measures a REFUEL, not a draw.** The refuel is the worst spend, and 60% bigger |
+| `depot-refuel` | **★★ the one the depot exists for**: two covenants, two inputs, one transaction |
+| `depot-drain` | **⚠ the threat model, measured**: anyone can EMPTY the tank; nobody can TAKE it — it taps AND drives, because tapping alone once concluded that falsely |
+| `public-gate` | the signature gate both ways, **and that no branch of a public car pays a person** |
+| `depot-fee` | **⚠ measures a REFUEL OF THE CAR IT FUELS.** The car's script rides three times over inside one, so the CAR's size sets the DEPOT's fee |
 | `test/racers-page.mjs` | runs the SHIPPED page in a fresh `vm` with NO node globals |
 
 ---

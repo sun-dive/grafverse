@@ -153,12 +153,21 @@ console.log()
   check('★ a raced car is refuelled AND reset in one transaction', r.depotOk && r.carOk)
 }
 
-// ── 3. ★★ THE SPLASH-AND-DASH — fuel taken MID-RACE, without giving up the run ────────────────────
-// The promise in spec §5: "a driver about to run dry at 300 m can tap once more mid-race". It was
-// impossible while the depot pinned one hash of a car AT REST. Here it is, as a transaction.
-//
-// ⚠ AND IT GOES THROUGH `buildRefuelMove`, the SHARED builder the page will use — not through this
-// file's own helper. A test that exercises its own reimplementation proves the reimplementation.
+/* ── 3. ✗ THE SPLASH-AND-DASH, AND IT IS REFUSED (sun-dive, 16 Aug) ───────────────────────────────
+   This section used to prove the opposite, and the transaction it builds is unchanged — only the
+   answer is. Spec §5 promised "a driver about to run dry at 300 m can tap once more mid-race"; that
+   promise is withdrawn, and the reason is a measurement rather than a difficulty:
+
+     best single fill        49,000 sat  →  3.9 s
+     28,000 + one 20,000 tap at tick 9   →  3.3 s on 48,000 sat    ★ faster AND cheaper
+
+   Fuel is MASS, so starting light and topping up at speed is not a rescue, it is the OPTIMUM — and an
+   optimum that dominates every other line is not a strategy, it is a bug with good manners. The car
+   used to price it with a `PIT` rule costing 27 bytes on every tick; the depot now declines instead,
+   for about five, and there is no pit lane on a quarter mile anyway.
+
+   ⚠ AND IT GOES THROUGH `buildRefuelMove`, the SHARED builder the page uses — not through this file's
+   own helper. A test that exercises its own reimplementation proves the reimplementation. */
 console.log()
 {
   const GREEN = 1_700_000_000
@@ -181,12 +190,25 @@ console.log()
     depot: { sourceTransaction: dSrc, outputIndex: 0, value: 60_000 }, depotLock: DEPOT,
     draw: DEPOT_DRAW, depotMaxFee: DEPOT_MAX_FEE, depotScope: DEPOT_SCOPE,
   })
-  check('★★ a car MID-RACE takes fuel and KEEPS RACING — the depot accepts', r.depotOk)
-  check('★★ …and so does the car, in the same transaction', r.carOk)
-  check('  …and it really was still racing, not reset',
+  check('★★ THE DEPOT REFUSES to fuel a car that has left the line', r.depotOk, false)
+  /* ★ AND THE CAR ITSELF IS PERFECTLY HAPPY, which is the point worth keeping: the car has no opinion
+     about where its satoshis came from and carries not one byte on the subject. The refusal is one
+     covenant declining to pay, not two covenants arguing. */
+  check('  …while the CAR accepts the very same move — it costs the car nothing to be ignorant', r.carOk)
+  check('  …and the car really was still racing, not reset',
     step.next.phase === PHASE.RACING && !step.reset)
   console.log(`        at ${(before.s / S).toFixed(0)} m · tick ${before.n} → ${step.next.n} · ` +
-    `${has.toLocaleString()} → ${r.carOut.toLocaleString()} sat · ${r.tx.toHex().length / 2} B`)
+    `the pump declines · ${r.tx.toHex().length / 2} B`)
+
+  /* ⇒ AND THE RESCUE THAT REPLACES IT: reset to the line and fill up again. It costs the run, which is
+     the honest price, and it is the same transaction shape — the reset zeroes `s`, so the pump agrees. */
+  const back = buildRefuelMove({
+    prevTx: cSrc, vout: 0, state: before, value: has, step: resetStep(has), lockTime: lockTimeFor(before),
+    depot: { sourceTransaction: dSrc, outputIndex: 0, value: 60_000 }, depotLock: DEPOT,
+    draw: DEPOT_DRAW, depotMaxFee: DEPOT_MAX_FEE, depotScope: DEPOT_SCOPE,
+  })
+  check('★ …but a car RESET back to the line is fuelled — give up the run and you may fill up',
+    back.depotOk && back.carOk)
 }
 
 // ── 4. the collision that started all this — it must STAY refused ─────────────────────────────────

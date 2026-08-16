@@ -19,7 +19,7 @@
 import { Transaction, Spend, UnlockingScript, TransactionSignature, PrivateKey, P2PKH, Hash } from '@bsv/sdk'
 import {
   emptyShell, loadCar, loadTrack, buildShellLock, shellUnlockingOps, SHELL_SCOPE, SHELL_MAX_FEE,
-  RACER_REGS as R, S, PHASE, type ShellState,
+  refTick, RACER_REGS as R, S, PHASE, type ShellState,
 } from '../src/shell.ts'
 import { freshPublicShell } from '../src/publicShell.ts'
 import { serializeOutput } from '../src/covenant.ts'
@@ -155,6 +155,86 @@ console.log('THE SIGNATURE GATE — anyone may drive a public car, and only its 
     await move({ state: fresh, next: fresh, isPublic: true, signer: KEY, burn: true, sweep: true }))
 }
 
+/* ── ★★★ AND THE OTHER DOOR: A RUN-ENDING MOVE MUST NOT PAY ANYBODY EITHER ────────────────────────
+   This is the one that was OPEN, and it is the reason this section exists at all.
+
+   A move that ends a run relaxes the value floor to ONE SATOSHI so the tank is not stranded in a
+   shell nobody can spend. The source says why that is safe — *"which only they can build, because
+   only they can sign the move"* — and a PUBLIC car has no signature on a move at all. So the branch
+   that hands an owner their own tank back handed a public car's tank to whoever wrecked it first.
+
+     tap the pump · configure · track · arm     ~1,200 sat of fees, no key, no coin
+     one tick at full throttle, eng 24 / tyr 1  the engine lets go — phase OUT
+     sweep                                      ★ 39,999 of 40,000 sat, unsigned, to a stranger
+
+   ⚠ IT FALSIFIED A MEASURED CLAIM. `depot-drain` reports "griefing, not theft — 0 to the attacker",
+   which is true of TAPPING and was never driven through a run-ending move. A rule tested in one
+   variant and asserted for both, for the third time in this project.
+
+   ★★ THE PRINCIPLE IS THE BATTERY'S (sun-dive): the car IS a battery. A battery has exactly one
+   branch — advance the state, pay the miner — and no output that can pay a person, which is why it
+   needs no key and has nothing worth stealing. **The only output a public car may produce is a car
+   running down a track spending satoshis.** Nothing is stranded by that: a public car RESETS from
+   DONE and OUT, so a wrecked car's fuel is simply the next driver's. */
+console.log()
+{
+  const FUEL = 40_000
+  /* ⚠ A REAL WRECK, not a hand-written OUT state — the covenant would refuse anything else, and the
+     check would then pass for the wrong reason. Full throttle on a big engine with no tyres. */
+  const armed: ShellState = { ...freshPublicShell(OWNER), phase: PHASE.ARMED, eng: 24, tyr: 1,
+    green: 1_700_000_000, gap: 1, finish: Math.round(402 * S), slip: 1000 }
+  const w = refTick(armed, { throttle: R.THROTTLE_MAX, lockTime: 1_700_000_200, fuel: FUEL }, R)
+  check('the fixture really does wreck the car on move one', w.ended === 'blown')
+
+  /** An ending move that keeps `keep` satoshis in the car and pays the rest to `to`. */
+  const ending = async (isPublic: boolean, keep: number, signer: PrivateKey | null): Promise<boolean> => {
+    const lock = buildShellLock({ state: armed, maxFee: SHELL_MAX_FEE, public: isPublic })
+    const src = new Transaction(); src.addOutput({ lockingScript: lock, satoshis: FUEL })
+    const tx = new Transaction(); tx.version = 2
+    tx.addInput({ sourceTransaction: src, sourceOutputIndex: 0, sequence: 0xfffffffe })
+    tx.addOutput({ lockingScript: buildShellLock({ state: w.state, maxFee: SHELL_MAX_FEE, public: isPublic }),
+                   satoshis: keep })
+    tx.addOutput({ lockingScript: new P2PKH().lock(STRANGER.toAddress()), satoshis: FUEL - keep - 400 })
+    tx.lockTime = 1_700_000_200
+    const pre = TransactionSignature.format({
+      sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: FUEL, transactionVersion: 2,
+      otherInputs: [], inputIndex: 0, outputs: tx.outputs, inputSequence: 0xfffffffe,
+      subscript: lock, lockTime: tx.lockTime, scope: SHELL_SCOPE,
+    })
+    let sig: number[] = [], pubKey: number[] = []
+    if (signer) { const ch = (await new P2PKH().unlock(signer).sign(tx, 0)).chunks
+                  sig = ch[0].data ?? []; pubKey = ch[1].data ?? [] }
+    tx.inputs[0].unlockingScript = new UnlockingScript(shellUnlockingOps({
+      spenderOutputs: serializeOutput(tx.outputs[1].satoshis ?? 0, tx.outputs[1].lockingScript.toBinary()),
+      newValue: u64(keep), preimage: pre, sig, pubKey, throttle: R.THROTTLE_MAX,
+      load: { driver: w.state.driver, pool: w.state.pool, eng: w.state.eng, tyr: w.state.tyr,
+              finish: w.state.finish, slip: w.state.slip, green: w.state.green, gap: w.state.gap },
+    }))
+    try {
+      return new Spend({
+        sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: FUEL, lockingScript: lock,
+        transactionVersion: 2, otherInputs: [], outputs: tx.outputs, inputIndex: 0,
+        unlockingScript: tx.inputs[0].unlockingScript, inputSequence: 0xfffffffe, lockTime: tx.lockTime,
+      }).validate() === true
+    } catch { return false }
+  }
+
+  check('★★★ a STRANGER cannot sweep a wrecked PUBLIC car — unsigned, one satoshi kept',
+    await ending(true, 1, null), false)
+  check('★★ …nor with their own signature on it', await ending(true, 1, STRANGER), false)
+  check('★★ …nor can the OWNER, through this branch — the burn is the owner\'s door, not this',
+    await ending(true, 1, KEY), false)
+  check('  …and an ordinary ending move, keeping the tank, is fine',
+    await ending(true, FUEL - 400, null))
+
+  /* ⚠ AND THE OWNED CAR MUST KEEP IT. Deleting a rule everywhere is not the fix — an owned car's
+     driver signs every move, which is exactly what makes the relaxation safe there, and without it
+     every owned race would strand its own tank. */
+  check('★★ an OWNED car still recovers its tank on the ending move — signed by its driver',
+    await ending(false, 1, KEY))
+  check('  …and not by a stranger', await ending(false, 1, STRANGER), false)
+}
+
 console.log(`\n${pass}/${pass + fail} checks passed`)
 if (fail > 0) { console.error('PUBLIC GATE: FAIL — do not build on it'); process.exit(1) }
-console.log('PUBLIC GATE OK — driven by anyone, retired by one.')
+console.log('PUBLIC GATE OK — driven by anyone, retired by one, and paying nobody.')

@@ -34,7 +34,7 @@ import {
   pushTxVerifyOps, pushTxConstants, pushData, type PushTxConstants,
 } from './pushtx.ts'
 import { extractHashOutputsOps, extractScriptCodeFieldOps } from './covenant.ts'
-import { RACER_REGS, SHELL_TANK_MAX, FIELDS, FIELD_WIDTHS } from './shell.ts'
+import { RACER_REGS, PUBLIC_CAR_REGS, SHELL_TANK_MAX, tankMaxFor, FIELDS, FIELD_WIDTHS } from './shell.ts'
 import { op, PN } from './covenantAsm.ts'
 
 /** A byte-count for OP_SPLIT — always small, and never a script NUMBER. Kept apart from `PN` on purpose. */
@@ -92,9 +92,11 @@ export const DEPOT_SCOPE = 0x41
  * Ten thousand satoshis of insurance cost six tenths of a second. Tap too few times and you stop short
  * of the line with nothing to show; tap too many and a slower car beats you home.
  *
- * ⇒ At 20,000 a full tank is THREE taps (20k · 20k · 10k) and a quarter mile is TWO. Each tap is a
- * transaction, so the ceiling is also what fuelling COSTS — which is the right shape: pumping is not
+ * ⇒ At 20,000 a full tank is FOUR taps (20k · 20k · 20k · 11k) and a quarter mile is TWO. Each tap is
+ * a transaction, so the ceiling is also what fuelling COSTS — which is the right shape: pumping is not
  * free, it is just no longer charged five times for one fill.
+ * ⚠ It was THREE until the RESERVE was added ON TOP of the tank, taking the cap 50,000 → 71,000. A
+ * number derived from two constants has to be re-derived when either of them moves.
  *
  *   fill to the 50,000 ceiling    5 taps → 3     4,185 → 2,511 sat of fees
  *   a quarter mile (~40,000)      4 taps → 2     3,348 → 1,674 sat
@@ -106,32 +108,42 @@ export const DEPOT_SCOPE = 0x41
  * anybody, so fuel that goes in can only ever leave as mining fees. Easy to put in, impossible to get
  * out — the physical intuition and the cryptographic property turn out to be the same sentence.
  *
- * ⚠ A top-up is legal in ANY phase, because the car's value rule is a floor. So a driver about to run
- * dry at 300 m can tap once more mid-race: it costs speed exactly when they least want it, and it gets
- * them home. Nobody designed that — it falls out of rules written for other reasons, and it happens in
- * real races too. Left in deliberately.
+ * ⚠ A top-up is legal in any phase the car has not MOVED in — `s` must be zero, which covers EMPTY,
+ * CAR, TRACK and ARMED. A driver about to run dry at 300 m cannot tap: fuel is mass, so a mid-race
+ * splash was measured as the dominant line rather than a rescue, and there is no pit lane on a quarter
+ * mile. → `carRecognitionOps`, and `depot-dry.ts` drives what is left instead.
  */
 export const DEPOT_DRAW = 20_000
 
 /**
- * ★ MAX_TANK — THREE taps (20k · 20k · 10k), and the pump stops filling that car.
+ * ★ MAX_TANK — FOUR taps at DRAW 20,000 (20k · 20k · 20k · 11k), and the pump stops filling that car.
  *
  * A cap on how much fuel one car may hold, enforced where it cannot be argued with. Overfilling is
  * already punished by the physics — fuel is mass — but a cap makes the pump's behaviour a property of
  * the system rather than a courtesy of the page, and it bounds how much of the tank one car can be
  * holding at any moment.
  */
-/* ⚠⚠ IT MUST AGREE WITH THE CAR'S OWN CEILING, AND IT DID NOT. This was 10 × DRAW = 100,000 while
-   `SHELL_TANK_MAX` is 50,000, so the depot would happily build a refuel the car then refused — not a
-   hole, since the tighter rule wins, but a guaranteed confusing failure between two covenants that are
-   supposed to agree.
+/* ── ★★ AND IT IS NOW THE ONLY COPY OF THIS RULE (sun-dive, 16 Aug) ──────────────────────────────
+   The public car carried the same ceiling — `out ≤ max(V, TANK_MAX)`, eleven bytes — and it has been
+   deleted from the car and left here. Two reasons, and the first is why the second is worth having:
 
-   ★ AND THE RULE STAYS, RATHER THAN DEFERRING TO THE CAR'S. The obvious tidy-up is to delete this and
-   let the car refuse for both — and that would be wrong. The depot and the car are TWO COVENANTS,
-   neither able to read the other, each enforcing its own rules in one transaction. A depot that filled
-   any amount and left the car to object would have delegated its safety to the car: one covenant in
-   two hats. Two of them arriving at the same bound by their own reasoning is the demonstration. */
-export const DEPOT_MAX_TANK = SHELL_TANK_MAX
+     WHOSE RULE IT IS   it never protected the car. A heavy car only hurts its own driver, and fuel is
+                        MASS, which is the punishment. It protects everyone ELSE'S access to a shared
+                        tank — this covenant's business, and this is the covenant that can see it.
+     WHAT IT COST       a lock is paid for TWICE in every move, so eleven bytes in the car was
+                        twenty-two on every one of ~45 ticks, forever. Here it is eleven bytes on a
+                        spend that happens a handful of times a race.
+
+   ⇒ The earlier note said the duplication was the demonstration — "two covenants arriving at the same
+   bound by their own reasoning". It was not. When the two agreed, this copy could never bind, because
+   the car is an output of the same transaction and refused the same fill by itself; when they drifted
+   apart, the tighter one won in silence. Redundant when right, harmful when stale.
+
+   ⚠⚠ IT MUST STILL MATCH THE CAR IT FUELS, and that is a different claim from being duplicated. This
+   was `SHELL_TANK_MAX` while the car being raced holds `SHELL_TANK_MAX + RESERVE` — so the pump would
+   have refused the last 21,000 satoshis, which are the reserve, which is the rule it exists to
+   deliver. Derived from the car's own ceiling now, so the two cannot part company. */
+export const DEPOT_MAX_TANK = tankMaxFor(PUBLIC_CAR_REGS)
 
 /**
  * ★ MEASURED — `depot-fee` serializes a real spend and derives this. Was 500, then 516, and BOTH were
@@ -150,13 +162,21 @@ export const DEPOT_MAX_TANK = SHELL_TANK_MAX
  *   draw     5,452 B   →  546 sat
  *   refuel   8,344 B   →  835 sat      ◀ at 516 that is 61.8 sat/KB. Not relayed. Ever.
  *
- * ⇒ 837 = ceil(8344 × 100/1000) + 2. It is the same failure this project has now had FOUR times, and
- * the same lesson each time: **a bound must cover the worst spend the covenant can legally be asked to
- * make, not the one that happened to get measured.** Re-run `depot-fee` after ANY change to either
- * script — the car appears twice in a refuel, so the depot's fee depends on the CAR's size as much as
- * on its own.
+ * ── ⚠⚠ AND THEN 837 WAS MEASURED ON THE WRONG CAR — the FIFTH time, 16 Aug ─────────────────────────
+ * It was derived from a refuel of the DEFAULT public car. The depot's genesis pins the car actually
+ * being RACED, which carries the RESERVE and is 24 bytes longer — and a refuel carries that script
+ * THREE times over: inside the car's own preimage, inside this depot's `prefixOutputs`, and as output
+ * zero. So 24 bytes of car is 72 bytes of transaction:
+ *
+ *   refuel · default car   8,317 B  →  832 sat
+ *   refuel · the car it fuels   8,389 B  →  839 sat      ◀ at 837 that is 99.8 sat/KB. Never relayed.
+ *
+ * ⇒ 841 = ceil(8389 × 100/1000) + 2. Same lesson, fifth time, and this is the first time it was caught
+ * BEFORE the mint rather than after: **a bound must cover the worst spend the covenant can legally be
+ * asked to make, and the CAR IS AN INPUT TO THAT.** Re-run `depot-fee` after any change to either
+ * script, and make sure it is measuring the car this depot will actually be minted against.
  */
-export const DEPOT_MAX_FEE = 837
+export const DEPOT_MAX_FEE = 841
 
 /**
  * ★★ EMPTY FOR THE RACE IS NOT EMPTY FOR FUNCTIONALITY.
@@ -175,7 +195,7 @@ export const DEPOT_MAX_FEE = 837
  * 900 — a hundredth of a cent — which is the difference between "you can take a bit" and "there is
  * nothing there to take".
  */
-export const DEPOT_BURN_BELOW = RACER_REGS.BURN0 + DEPOT_MAX_FEE
+export const DEPOT_BURN_BELOW = PUBLIC_CAR_REGS.BURN0 + DEPOT_MAX_FEE
 
 /**
  * The car script's constant HEAD: three 2-byte header pushes, then the push opcode of the first field.
@@ -184,18 +204,21 @@ export const DEPOT_BURN_BELOW = RACER_REGS.BURN0 + DEPOT_MAX_FEE
 export const CAR_HEAD_BYTES = 3 * 2 + 1
 
 /**
- * ★★ A CAR IN ANY PHASE — the shape the depot recognises, and the reason a splash-and-dash is possible.
+ * ★★ A CAR IN ANY PHASE IT HAS NOT MOVED IN — the shape the depot recognises.
  *
- * The depot used to pin ONE hash of the whole car script. That recognises a car AT REST and nothing
- * else, because a car that has moved carries different state, so different script bytes, so a different
- * hash. It made refuelling and RESETTING the same act: a driver at 300 m could only take fuel by giving
- * up the run — and the spec promises the opposite (§5, "a driver about to run dry at 300 m can tap once
- * more mid-race").
+ * The depot used to pin ONE hash of the whole car script. That recognises a car in ONE state and
+ * nothing else, because any change of state is a change of script bytes and so of hash. It made
+ * fuelling and RESETTING the same act: a driver could not top up a car they had already configured
+ * without throwing the configuration away.
  *
  * ⇒ So pin what does not vary and skip what does. Measured, not assumed — across phases the ONLY bytes
- * that differ are the thirteen fields' DATA:
+ * that differ are the thirteen fields' DATA. A car at EMPTY, CAR, TRACK or ARMED is fuelled by the
+ * same walk, which is what this rewrite bought.
  *
- *   lock 1744 B  =  HEAD [0,7)  ‖  state region [7,117)  ‖  TAIL [117,1744)
+ * ⚠ ONE FIELD IS NOT SKIPPED: `s` must be zero — see the note inside. The shape work says "this is a
+ * car"; that one comparison says "and it has not left the line yet".
+ *
+ *   lock 1756 B  =  HEAD [0,7)  ‖  state region [7,117)  ‖  TAIL [117,1756)
  *   state region =  13 data slices (98 B) interleaved with 12 push opcodes
  *
  * ── ⚠⚠ AND WHY THE TWELVE OPCODES ARE PINNED TOO, WHICH LOOKS LIKE FUSSINESS AND IS NOT ─────────────
@@ -275,6 +298,45 @@ export function carRecognitionOps(shape: CarShape): ScriptChunk[] {
   ]
 
   shape.widths.forEach((w, i) => {
+    /* ── ★★ ONE FIELD IS NOT SKIPPED: `s`, AND IT MUST BE ZERO (sun-dive, 16 Aug) ─────────────────
+       THE PUMP WILL NOT FILL A CAR THAT HAS LEFT THE LINE. Four opcodes, on a spend that happens a
+       few times a race, and they delete a whole rule from the car.
+
+       ⇒ WHAT THIS REPLACES. Fuel arriving mid-race is worth having: fuel is MASS, so starting light
+       and topping up once you are already moving beats carrying it off the line. Measured, at the
+       regulations being raced —
+
+         best single fill        49,000 sat  →  3.9 s
+         28,000 + one 20,000 tap at tick 9   →  3.3 s on 48,000 sat   ★ faster AND cheaper
+
+       — which is a DOMINANT strategy, and a dominant strategy is not a strategy. The car used to
+       price it: a `PIT` rule stopped any car that took on fuel, for 27 bytes of locking script paid
+       for TWICE on every one of forty-five ticks. This is the same rule for about five bytes, paid a
+       handful of times, because the depot is the party that can simply decline.
+
+       ★ AND IT IS THE HONEST RULE, which is why it is not a compromise: there is no pit lane on a
+       quarter mile. A run that is going to fall short coasts on its RESERVE and hopes.
+
+       ⚠ IT DOES NOT MAKE MID-RACE FUELLING IMPOSSIBLE, only unfundable from HERE. A driver may still
+       pay their own satoshis into their own car at speed — it costs them real money, needs their
+       signature, and leaves a funded input sitting in the middle of a race chain forever. That is
+       visible to anyone and a leaderboard can decline to rank it, the same standard already accepted
+       for car provenance and for the pot.
+
+       ⚠ AND IT COSTS THE SHAPE WORK NOTHING. Recognising a car in ANY phase is still what makes this
+       usable: `s` is zero all through EMPTY, CAR, TRACK and ARMED, so a driver can fuel a car that is
+       already configured without resetting it. What the old one-hash depot could not do, this still
+       does; what it never should have done, it now refuses. */
+    if (FIELDS[i] === 's') {
+      /* BIN2NUM rather than a seven-byte literal comparison — the field is sign-magnitude and its own
+         covenant reads it the same way, so the two agree about what zero is. */
+      ops.push(AT(w), op(OP.OP_SPLIT), op(OP.OP_SWAP),
+        op(OP.OP_BIN2NUM), op(OP.OP_0), op(OP.OP_NUMEQUALVERIFY))
+      if (i === shape.widths.length - 1) return
+      ops.push(AT(1), op(OP.OP_SPLIT), op(OP.OP_SWAP),
+        pushData([shape.widths[i + 1]]), op(OP.OP_EQUALVERIFY))
+      return
+    }
     /* Skip this field's DATA — the bytes a car is allowed to change. */
     ops.push(AT(w), op(OP.OP_SPLIT), op(OP.OP_NIP))
     if (i === shape.widths.length - 1) return

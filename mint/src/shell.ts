@@ -75,8 +75,20 @@ export const SHELL_FEE_SLACK = 64
  * and `s` need a leading zero, so the same race measures 3,738 or 3,739 bytes on different runs with
  * different keys. Pinning it exactly made the suite oscillate between two values, each "correcting"
  * the other. Two bytes of headroom above the observed maximum costs 0.2 satoshi and cannot go under.
+ *
+ * ⚠⚠ 3,957 → 3,909 ON 16 AUG, AND A BOUND THAT FALLS IS AS IMPORTANT AS ONE THAT RISES. The public
+ * car lost three things in one session — its tank ceiling (12 B, moved to the depot), its pit rule
+ * (27 B, deleted) and the run-ending value relaxation (11 B, a hole) — so every move shrank. A bound
+ * left sitting high means every race quietly OVERPAYS its miner, forever, on every tick. `shell-fee`
+ * fails on drift in that direction too, deliberately, and that is the check that caught it each time.
+ * Re-fit rather than re-explained.
+ *
+ * ⇒ It costs the default car its byte-identity with the ones on mainnet, because `MAX_FEE` is derived
+ * from `BURN0` and is baked into the lock. That property was worth having while the RESERVE was being
+ * added — "off is invisible" — and it is not worth a permanent 0.7% overpayment. Cars already minted
+ * are unaffected: a car is self-contained and goes on racing under the constants it was born with.
  */
-export const SHELL_WORST_MOVE_BYTES = 3957
+export const SHELL_WORST_MOVE_BYTES = 3909
 
 /**
  * ★ THE RATE THE BURN IS DERIVED AT — a tenth of a satoshi above SHELL_FEE_PER_KB, and no more.
@@ -184,6 +196,37 @@ export const tankMaxFor = (regs: RacerRegs = RACER_REGS): number => SHELL_TANK_M
 export const SHELL_RESERVE_MOVE_BYTES = 48
 
 /**
+ * ★ THE WORST MOVE A GIVEN VARIANT CAN PRODUCE — one source, used by the regulations and by the sweep
+ * that checks them. Two implementations of "how big does this car get" is how a bound and the thing it
+ * bounds drift apart.
+ */
+export function worstMoveBytes(regs: Pick<RacerRegs, 'RESERVE'>): number {
+  return SHELL_WORST_MOVE_BYTES + (regs.RESERVE !== 0 ? SHELL_RESERVE_MOVE_BYTES : 0)
+}
+
+/**
+ * ★★ A VARIANT CAR'S REGULATIONS — and it MUST re-derive BURN0, which is the whole point of this being
+ * a function instead of a spread.
+ *
+ * ⚠⚠ EVERY RULE THAT EMITS OPCODES MAKES THE CHEAPEST MOVE MORE EXPENSIVE TO MINE, and BURN0 is what a
+ * move pays. A variant whose script grew and whose BURN0 did not is a car no node will relay — and it
+ * looks exactly like a healthy one until one refuses it. So the bytes each rule adds are named
+ * constants, measured, and summed here.
+ *
+ * ⇒ BURN0 lives in the REGULATIONS, so it is per-variant and this costs the default car nothing: cars
+ * built with `RACER_REGS` keep 397 and stay byte-identical to the ones on mainnet.
+ */
+export function racerRegs(
+  p: { reserve?: number; base?: RacerRegs },
+): RacerRegs {
+  const base = p.base ?? RACER_REGS
+  const RESERVE = p.reserve ?? 0
+  if (RESERVE === 0) return base
+  return { ...base, RESERVE,
+           BURN0: Math.ceil(worstMoveBytes({ RESERVE }) * SHELL_BURN_RATE_PER_KB / 1000) }
+}
+
+/**
  * ★★ A RESERVE CAR'S REGULATIONS — and it MUST re-derive BURN0, which is the whole point of this being
  * a function instead of a spread.
  *
@@ -199,11 +242,8 @@ export const SHELL_RESERVE_MOVE_BYTES = 48
  * ⚠ Never hand-write a reserve car's regs. `{ ...RACER_REGS, RESERVE: n }` compiles, races in the
  * reference, passes every physics test, and mints a car nobody can move.
  */
-export function reserveRegs(reserve: number, base: RacerRegs = RACER_REGS): RacerRegs {
-  if (reserve === 0) return base
-  const worst = SHELL_WORST_MOVE_BYTES + SHELL_RESERVE_MOVE_BYTES
-  return { ...base, RESERVE: reserve, BURN0: Math.ceil(worst * SHELL_BURN_RATE_PER_KB / 1000) }
-}
+export const reserveRegs = (reserve: number, base: RacerRegs = RACER_REGS): RacerRegs =>
+  racerRegs({ reserve, base })
 
 /** The settled value at RACER_REGS — see SHELL_MAX_FEE below, which is the same formula applied once. */
 
@@ -288,38 +328,6 @@ export interface RacerRegs {
    */
   BLOW_V: number
   /**
-   * ★★ FUEL ARRIVING IS A PIT STOP. 1 = on, 0 = off and emits no opcodes at all.
-   *
-   *   the tick is COUNTED · the car covers NO DISTANCE · and it ends STATIONARY
-   *
-   * A real drag car that takes on fuel has to stop, so a splash-and-dash costs a standing start. That
-   * is the whole rule, and it is deliberately harsh: the splash exists to RESCUE a run that would have
-   * died, never to beat a car that fuelled properly.
-   *
-   * ── ★ AND IT REPLACED A MOMENTUM TERM, WHICH IS WORTH RECORDING ────────────────────────────────
-   * The first fix conserved momentum on arrival — `v ← v·m/m′` — because fuel is up to 73% of a car's
-   * mass and taking it aboard at speed for free was the DOMINANT strategy. That worked, and only
-   * reached parity: the splash line still matched a proper fill. Stopping the car is simpler, strictly
-   * cheaper in Script (no second mass, no multiply, no divide — it writes the branch the OUT case
-   * already writes), and it puts a well-fuelled car back in front where it belongs:
-   *
-   *   34,000 in one fill   HOME 3.9 s on 34,000        ← the best line
-   *   20,000 + one pit     HOME 4.4 s on 40,000        ← slower AND dearer
-   *   16,000 + one pit     dry at 398 m of 402
-   *
-   * ⇒ With every arrival stopping the car, fuel never arrives at speed, so there is no momentum left
-   * to conserve. The term became unreachable and was removed rather than left as dead arithmetic.
-   * ⚠ The MASS penalty is untouched and still does its work — a car that pits carries the fuel it took.
-   *
-   * ⚠ ZERO IS THE MAINNET SETTING and must stay the default. At 0 the reference computes the identical
-   * number and the script omits the opcodes, so a car built today is BYTE-IDENTICAL to the ones already
-   * racing. This is not v3 superseding v2 — it is one source of which v2 is the zero case.
-   *
-   * ⇒ Turn it on for cars a DEPOT will fuel. Leave it off for owned cars that are fuelled once and
-   * never topped up: they cannot exploit what they never do, and need not carry the bytes.
-   */
-  PIT: number
-  /**
    * ★★ THE RESERVE — satoshis that pay the miner but carry NO FUEL WEIGHT, so a dry car COASTS.
    *
    *   value > RESERVE   racing. Mass counts only `value − RESERVE` as fuel.
@@ -340,8 +348,10 @@ export interface RacerRegs {
    *   26,000 + reserve          ★ HOME, the last ten ticks coasting
    *   34,000 + reserve          ★ HOME 3.9 s — a well-fuelled car barely touches it
    *
-   * ★ AND IT PAIRS WITH `PIT` INTO A REAL DECISION: a car running low may COAST home — free, slow, and
-   * it might fall short — or PIT, which costs a standing start but restores power. Neither dominates.
+   * ★★ AND IT IS THE ONLY RESCUE THERE IS, which is what makes it worth its bytes. A car cannot take
+   * on fuel once it has left the line — the depot refuses to pump into a car that has moved — so a run
+   * that is going to fall short has exactly one hope, and it is this: coast, and hope the line comes up
+   * before the money runs out. → `depot.ts`, the `s = 0` rule.
    *
    * ⚠⚠ THE RESERVE RIDES ON TOP OF THE TANK, IT IS NOT CARVED OUT OF THE CEILING — see `tankMaxFor`.
    *
@@ -440,9 +450,8 @@ export const RACER_REGS: RacerRegs = {
   /* ★ 330 mph, WRITTEN AS THE CONVERSION rather than the integer it lands on. `v` is metres per 0.1 s,
      so mph = (v/S)·22.3694 — a constant nobody can read is a constant nobody can check. */
   BLOW_V: Math.round((330 / 22.3694) * S),
-  /* ⚠ BOTH OFF BY DEFAULT, so `RACER_REGS` still builds the car that is on mainnet, byte for byte. A
-     depot's car turns them on explicitly — see `RacerRegs.PIT` and `RacerRegs.RESERVE`. */
-  PIT: 0,
+  /* ⚠ OFF BY DEFAULT, so `RACER_REGS` still builds the car that is on mainnet, byte for byte. The
+     public car being raced turns it on explicitly — see `PUBLIC_CAR_REGS`. */
   RESERVE: 0,
   SPIN_KEEP: Math.round(0.43 * S),
   LOOSE_V: Math.round(0.35 * S),
@@ -461,6 +470,26 @@ export const PROVISIONAL_REGS: RacerRegs = RACER_REGS
    is declared further down the file. Two places to change and one of them silent is exactly how a fee
    drifts under the floor, so it is now the function applied to the regulations, declared after them. */
 export const SHELL_MAX_FEE = shellMaxFee(RACER_REGS)
+
+/**
+ * ★★ THE PUBLIC CAR THAT IS ACTUALLY BEING RACED — the variant a depot is built to fuel.
+ *
+ *   RESERVE  21,000 satoshis that pay the miner and weigh nothing, so a dry car COASTS to the line
+ *
+ * It exists for the refuelled, keyless, public case and for nothing else, which is why it is OFF in
+ * `RACER_REGS`: an owned car is fuelled once by its owner and should not carry a byte it will never use.
+ *
+ * ⚠⚠ DECLARED HERE, WHERE THE CAR LIVES, AND NOT IN THE DEPOT. A depot does not mint cars and never
+ * was supposed to — a car is born by ordinary payment, and the depot's whole job is fuel. It is TOLD
+ * which car it fuels, at genesis, as `carScript`. A constant like this sitting in `depot.ts` would say
+ * the opposite, and this project has already paid once for a machine redescribed to fit its build.
+ *
+ * ⚠ Its ceilings still have to AGREE with the depot's, though, and that is not the same claim: two
+ * covenants that cannot read each other must each be given bounds that match, or the tighter one wins
+ * silently. At `RESERVE` 21,000 the car's tank ceiling is 71,000 — a depot still capped at 50,000
+ * would refuse to fill the reserve it exists to deliver.
+ */
+export const PUBLIC_CAR_REGS: RacerRegs = racerRegs({ reserve: 21_000 })
 
 // ── phases ───────────────────────────────────────────────────────────────────────────────────────────
 /**
@@ -638,13 +667,9 @@ export interface Move {
   lockTime: number
   /** The satoshis currently on the output. Read from the preimage; never a stored field. */
   fuel: number
-  /**
-   * ★ Satoshis ARRIVING in this move — a splash-and-dash. Zero for every ordinary tick.
-   *
-   * ⚠ The covenant derives it rather than being told: `added = out − V + burn`, clamped at zero. So it
-   * is not a field, not a register, and cannot be lied about — out and V both come from the preimage.
-   */
-  added?: number
+  /* ✗ `added` — satoshis ARRIVING mid-race — is gone with the pit rule it fed. Fuel cannot reach a car
+     that has left the line: the depot refuses to pump into one whose `s` is not zero. A move therefore
+     only ever spends value, and the tick has one fewer thing to know about. */
 }
 
 export interface TickResult {
@@ -695,40 +720,28 @@ export function refTick(st: ShellState, m: Move, regs: RacerRegs = PROVISIONAL_R
      `BURN0` is what a tick costs — so the reserve is, exactly, how far it can coast. */
   const throttle = propellant > 0 ? m.throttle : 0
 
-  /* ── ★★ FUEL ARRIVING IS A PIT STOP (sun-dive, 16 Aug) ──────────────────────────────────────────
-     The tick is COUNTED, the car covers NO DISTANCE, and it ends STATIONARY. A real drag car that
-     takes on fuel has to stop, so a splash-and-dash costs a standing start.
+  /* ── ✗ FUEL ARRIVING USED TO BE A PIT STOP, AND THE RULE IS GONE (sun-dive, 16 Aug) ─────────────
+     A car that took on fuel stopped: the tick counted, it covered no ground, and it restarted from
+     rest. It was built, proved in Script, and then deleted the same day — because the rule it was
+     pricing cannot happen any more.
 
-     ⚠ IT IS THE FIRST THING CHECKED, before grip, force or drag, because none of them apply: the car
-     is not racing during this tick, it is being fuelled. The state it writes is the one the OUT branch
-     writes, minus the ending — same shape, and cheap for exactly that reason.
+     ⇒ THE DEPOT WILL NOT PUMP INTO A CAR THAT HAS MOVED. `s` must be zero, checked where the depot
+     already walks the car's fields, for about five bytes on a spend that happens a few times a race.
+     With no fuel able to arrive mid-race there is nothing to price, and the car carries nothing:
+     twenty-seven bytes off a lock that is paid for twice on every one of forty-five ticks.
 
-     ★ WHY IT IS DELIBERATELY HARSH. Fuel is up to 73% of a car's mass, and a mid-race top-up that kept
-     your speed was measured to be the DOMINANT strategy — under-fuel, splash, and beat a properly
-     fuelled car on less money. Stopping the car puts the honest line back in front:
+     ★ AND IT IS THE HONEST RULE. There is no pit lane on a quarter mile. A run that is going short
+     coasts on its RESERVE and hopes, which is what a real one does.
 
-       34,000 in one fill   HOME 3.9 s on 34,000       ← the best line
-       20,000 + one pit     HOME 4.4 s on 40,000       ← slower AND dearer
-       16,000 + one pit     dry at 398 m of 402
+     ⚠⚠ THE MEASUREMENT THAT SETTLED IT, kept because it is the reason a rule is needed AT ALL. With
+     fuel able to arrive at speed and nothing stopping the car, splashing is the DOMINANT line — start
+     light, top up once you are already moving, and beat a properly fuelled car for less money:
 
-     ⇒ The splash RESCUES a run that would have died. It never wins one.
+       best single fill      49,000 sat  →  3.9 s
+       28,000 + one 20,000 tap at tick 9 →  3.3 s on 48,000 sat    ★ faster AND cheaper
 
-     ⚠ The MASS penalty is untouched and still does its work afterwards: a car that pits carries the
-     fuel it took, and pays for it all the way down the strip.
-
-     ⚠⚠ EMITTED ONLY WHEN SET, exactly as DRAG2 and BLOW_V are. At PIT = 0 no fuel can arrive mid-race
-     in the first place, so the reference computes the identical number and the script omits the
-     opcodes — a car built without it is BYTE-IDENTICAL to the ones already on mainnet. There is no v2
-     and v3, only one source of which today's cars are the zero setting. And because the depot pins the
-     car's SHAPE, a pitting car has a different tail hash: the pump fuels that variant and no other, so
-     only cars that CAN be refuelled ever pay for the opcodes. */
-  const added = Math.max(0, m.added ?? 0)
-  if (regs.PIT !== 0 && added > 0) {
-    return {
-      state: { ...st, phase: PHASE.RACING, last: m.lockTime, n: st.n + 1, v: 0 },
-      burn: regs.BURN0, spun: false,
-    }
-  }
+     ⇒ So "nobody would bother" is not a defence and never was. The rule has to exist somewhere; it is
+     now in the depot, where it costs a hundred and fiftieth of the money. → `carRecognitionOps`. */
 
   // Grip rises with speed, which is why a big engine wastes force off the line and rewards good tyres.
   // The surface scales everything the tyres and the speed were going to give you.
@@ -850,12 +863,13 @@ export const SHELL_STATE_LAYOUT =
  * value delta, visible on chain. The reserve is not measurable that way — nothing on chain says which
  * satoshis were weightless — so it has to be said.
  *
- * ⚠ WHEN `PIT` LANDS IN SCRIPT IT MUST BE ADDED HERE TOO. It changes the state a fuel-arrival move
- * writes (no distance, velocity zero), which is an equation of MOTION and not an ending rule, so a
- * rebuilder cannot recompute that move without it.
+ * ⚠ AND THE DEPOT'S `s = 0` RULE IS NOT PUBLISHED HERE, for a better reason than a byte budget: it is
+ * not this covenant's rule. A rebuilder replaying a car's moves needs the equations the CAR obeys —
+ * what a pump will or will not fill is enforced by a different script, in a different output, and
+ * anyone verifying a refuel is holding it already.
  */
 export function shellStateLayout(regs: RacerRegs = RACER_REGS): string {
-  if (regs.RESERVE === 0 && regs.PIT === 0) return SHELL_STATE_LAYOUT
+  if (regs.RESERVE === 0) return SHELL_STATE_LAYOUT
   return SHELL_STATE_LAYOUT
     .replace('BITCOIN RACER v2', 'BITCOIN RACER v3')
     .replace('slip/1e3|', 'slip/1e3|p=max(0,val-R)|')
@@ -1290,35 +1304,50 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
   ops.push(
     op(OP.OP_SWAP), op(OP.OP_DUP), op(OP.OP_BIN2NUM),
     op(OP.OP_FROMALTSTACK),                                   // V, the value this move is spending
-    /* ── ★ THE TANK CEILING, AND ONLY A PUBLIC CAR HAS ONE ──────────────────────────────────────────
-       A public car is free to fuel, so without a ceiling one visitor can tap the pump fifty times and
-       leave a barge for everybody else — fuel is MASS, and there is no way to take it out again except
-       by burning it down the strip.
+    /* ── ★★ THE TANK CEILING USED TO BE HERE, AND IT BELONGS TO THE DEPOT (sun-dive, 16 Aug) ────────
+       Eleven bytes of `out ≤ max(V, TANK_MAX)` stood at this line, on the public car, and they are now
+       in `depot.ts` instead. Recorded rather than silently deleted, because the reasoning is the
+       general rule for where a rule should live:
 
-       ★ IT BINDS ONLY ON A TOP-UP. Racing only ever DECREASES the value, so no branch is needed: the
-       rule is simply always true on the way down.
+         *"The only purpose of tankmax was to prevent abuse by a user, so they couldn't load the entire
+         depot of fuel into a car and make it unusable for other players. However that rule doesn't
+         need to be with the car, it is better with the depot. The car has to carry those bytes on
+         every tick down the track. The depot doesn't, so the rule is cheaper for the depot."*
 
-       ⚠⚠ WRITTEN AS max(V, TANK_MAX) AND NOT AS A FLAT CAP, which is the whole care in these eleven
-       bytes. A flat `out ≤ TANK_MAX` entombs any car that is somehow ALREADY above it — a depot minted
-       before the cap was tuned, a genesis built by hand — because every spend would then fail the
-       ceiling, including the reset and the retire. A rule meant to stop a barge would have built a
-       tomb, which is precisely the failure this project lost 15,000 satoshis to. With the `max`, an
-       over-filled car can still race, still reset and still burn; it simply cannot take on MORE.
+       ⇒ TWO THINGS WERE WRONG ABOUT KEEPING IT HERE, and the first is what made the second worth
+       paying for:
+       1. WHOSE RULE IT IS. It never protected the car — a heavy car only hurts its own driver, and
+          fuel is mass, which is the punishment. It protects the OTHER PLAYERS' access to a shared
+          tank. That is the depot's business, and the depot is the covenant that can see the tank.
+       2. WHAT IT COST. A lock is paid for TWICE in every move, so eleven bytes here is twenty-two on
+          every one of ~45 ticks in every race, forever. In the depot it is eleven bytes on a spend
+          that happens a handful of times a race. The same rule, for a hundred and fiftieth of the
+          money.
 
-       An owned car has no ceiling: its tank is its owner's own money, and capping what somebody may
-       put into their own car protects nobody. */
-    ...(isPublic ? [
-      /* ⚠ THE CEILING RISES WITH THE RESERVE — see `tankMaxFor`. At RESERVE 0 this is SHELL_TANK_MAX
-         and the byte is the one already on mainnet. */
-      op(OP.OP_DUP), PN(tankMaxFor(regs)), op(OP.OP_MAX),      // cap = max(V, TANK_MAX + RESERVE)
-      PN(2), op(OP.OP_PICK), op(OP.OP_SWAP),                  // …against the value being written out
-      op(OP.OP_LESSTHANOREQUAL), op(OP.OP_VERIFY),
-    ] : []),
+       ★ AND THE `max(V, …)` CARE GOES WITH IT — not by being copied, but by becoming unnecessary. It
+       existed so a car already above the cap was not ENTOMBED by its own ceiling. With no ceiling in
+       the car at all, no car can ever be entombed by one: an over-filled car races, resets and burns
+       like any other, and the only thing it cannot do is take more from the pump. One less way to
+       build a tomb, which is the failure this project has actually paid for.
+
+       ⚠ It also means a stranger may still put their OWN satoshis into a public car and make it heavy.
+       That was always true of an owned car and it costs the payer real money to do — the tank that
+       needed defending is the shared one. */
     PN(maxFee), op(OP.OP_SUB),                                // the ordinary floor: V − MAX_FEE
     /* …unless this move ended the run, when it drops to ONE SATOSHI so the driver can recover the
        tank in the same transaction. The record stays: one sat, holding the final state, unspendable
-       forever — and the chain of moves that led to it was always the real record anyway. */
-    op(OP.OP_FROMALTSTACK), op(OP.OP_IF), op(OP.OP_DROP), op(OP.OP_1), op(OP.OP_ENDIF),
+       forever — and the chain of moves that led to it was always the real record anyway.
+
+       ⚠⚠ OWNED ONLY, AND THIS WAS A REAL HOLE. The relaxation is safe because only the driver can
+       sign the move — and a PUBLIC car has no signature on a move at all, so it handed the whole tank
+       to whoever wrecked the car first, unsigned. Measured at 39,999 satoshis out of a 40,000 car on
+       move ONE. See the note in `shellPhysicsOps`, which is where the flag stops being pushed.
+       ★ A public car needs nothing here: it RESETS from DONE and OUT, so a wrecked car's fuel is the
+       next driver's rather than lost. One branch fewer, and the only thing it can now do with a
+       satoshi is give it to a miner. */
+    ...(isPublic ? [] : [
+      op(OP.OP_FROMALTSTACK), op(OP.OP_IF), op(OP.OP_DROP), op(OP.OP_1), op(OP.OP_ENDIF),
+    ]),
     op(OP.OP_GREATERTHANOREQUAL), op(OP.OP_VERIFY),
     op(OP.OP_SWAP), op(OP.OP_CAT), op(OP.OP_SWAP), op(OP.OP_CAT),
     op(OP.OP_HASH256), op(OP.OP_FROMALTSTACK), op(OP.OP_EQUAL),
@@ -1346,16 +1375,6 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
  *           is then recovered by comparing the two rather than being carried.
  */
 function shellPhysicsOps(regs: RacerRegs, isPublic = false): ScriptChunk[] {
-  /* ⚠⚠ THE PORT GUARD, AND IT IS NOT DECORATION. The reference conserves momentum when fuel arrives;
-     these opcodes do NOT yet. A lock built with PIT set would therefore promise arithmetic it does
-     not do — the reference and the chain would disagree, silently, and only on the one move that
-     matters. This project has shipped a lock that disagreed with its reference before.
-     ⇒ Refuse to build it until the ops exist. Delete this line in the commit that adds them. */
-  if (regs.PIT !== 0) {
-    throw new Error('PIT is implemented in the reference but NOT yet in Script — a lock built with it ' +
-      'would promise arithmetic it does not do, and would disagree with the reference on exactly the ' +
-      'move that matters. See test/shell-pit.ts.')
-  }
   const a = new Asm([
     /* ⚠ THE WHOLE STACK, LOADABLES INCLUDED. Leaving them out cost an evening: everything ABOVE them
        still computed correctly, because model and reality shifted by the same eight, so the model
@@ -1569,13 +1588,38 @@ function shellPhysicsOps(regs: RacerRegs, isPublic = false): ScriptChunk[] {
      they can build, because only they can sign the move. One satoshi stays behind as the permanent
      record. That is the bond, and it is the smallest a record can cost.
 
+     ── ⚠⚠ AND THAT LAST SENTENCE IS WHY IT MUST NOT EXIST IN A PUBLIC CAR (sun-dive, 16 Aug) ────────
+     "Only they can sign the move" is what makes it safe, and A PUBLIC CAR HAS NO SIGNATURE ON A MOVE
+     AT ALL. So the branch that hands an owner their own tank back hands a public car's tank to whoever
+     wrecks it first. MEASURED, through the interpreter, before it was removed:
+
+       tap the pump · configure · track · arm      ~1,200 sat of fees, no key, no coin
+       one tick at full throttle on eng 24/tyr 1   the engine lets go — phase OUT
+       sweep                                       ★ ACCEPTED, unsigned: 39,999 sat to a stranger
+
+     ⇒ It also falsified a claim on record: `depot-drain` concluded "griefing, not theft — 0 to the
+     attacker", which is true of TAPPING and was never tested through a run-ending move.
+
+     ★★ THE PRINCIPLE, AND IT IS THE BATTERY'S: *the car is a battery.* A battery has exactly one
+     branch — advance the state, pay the miner — and no output that can pay a person, which is why it
+     needs no key and has nothing to steal. A public car should be the same thing: **the only output it
+     can produce is a car running down a track spending satoshis.** This branch was the exception, so
+     it goes, and nothing is stranded by removing it — a public car RESETS from DONE and OUT, so the
+     fuel left in a wrecked one is simply the next driver's.
+
+     ⚠ THE FLAG MUST NOT BE PUSHED EITHER. `Asm` cannot see the altstack, so a `TOALTSTACK` here with
+     no matching `FROMALTSTACK` in the value rule would leave the two silently out of step and surface
+     a hundred opcodes later as a rebuild that hashes to nothing. Both ends are gated on `isPublic`.
+
      The flag rides the altstack UNDER the value, so it pops in the right order at the end. */
   a.raw(op(OP.OP_FROMALTSTACK), 0, ['SUF'])
   a.raw(op(OP.OP_FROMALTSTACK), 0, ['fuel'])
-  a.pick('np'); a.num(PHASE.DONE); a.bin(OP.OP_GREATERTHANOREQUAL, 'over')
-  a.raw(op(OP.OP_TOALTSTACK), 1, [])          // alt: [HO, over]
-  a.roll('fuel'); a.raw(op(OP.OP_TOALTSTACK), 1, [])   // alt: [HO, over, V]
-  a.roll('SUF'); a.raw(op(OP.OP_TOALTSTACK), 1, [])    // alt: [HO, over, V, SUF]
+  if (!isPublic) {
+    a.pick('np'); a.num(PHASE.DONE); a.bin(OP.OP_GREATERTHANOREQUAL, 'over')
+    a.raw(op(OP.OP_TOALTSTACK), 1, [])        // alt: [HO, over]
+  }
+  a.roll('fuel'); a.raw(op(OP.OP_TOALTSTACK), 1, [])   // alt: [HO, (over,) V]
+  a.roll('SUF'); a.raw(op(OP.OP_TOALTSTACK), 1, [])    // alt: [HO, (over,) V, SUF]
 
   /* ⚠ THE RESERVE'S TWO SLOTS DIE HERE TOO. They were pushed before the mass and picked by name ever
      since; left on the stack they would sit under the rebuild and the depths above them would all be

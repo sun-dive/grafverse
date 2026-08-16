@@ -19,7 +19,8 @@ import { Transaction, UnlockingScript, LockingScript, TransactionSignature, Priv
 import {
   emptyShell, loadCar, loadTrack, arm, refTick, buildShellLock, shellUnlockingOps, SHELL_SCOPE,
   RACER_REGS, S, PHASE, SHELL_FEE_PER_KB, SHELL_FEE_SLACK, SHELL_MAX_FEE, shellMaxFee, type ShellState,
-  type RacerRegs, SHELL_WORST_MOVE_BYTES, reserveRegs } from '../src/shell.ts'
+  SHELL_BURN_RATE_PER_KB, worstMoveBytes,
+  type RacerRegs, SHELL_WORST_MOVE_BYTES, PUBLIC_CAR_REGS } from '../src/shell.ts'
 import { serializeOutput } from '../src/covenant.ts'
 
 let pass = 0, fail = 0
@@ -81,10 +82,13 @@ let worst = 0, biggest = 0, smallest = Infinity
      because the lock is paid for twice — the sweep went on measuring the variant WITHOUT it and
      reported healthy headroom for a car that no longer existed.
      ⇒ A bound must cover the worst move ANY LEGAL VARIANT produces. `isPublic` was the first axis;
-     the regs are the second. Add PIT here in the commit that builds it. */
+     the regs are the second.
+     ⚠ AND EVERY NEW AXIS IS A NEW WAY FOR THIS SWEEP TO BE MEASURING THE WRONG CAR. There is one
+     regulation axis today; add another and it belongs in this list on the same commit, combined with
+     the ones already here rather than swept alone — the worst car is the one carrying EVERYTHING. */
   const VARIANTS: Array<{ label: string; regs: RacerRegs }> = [
     { label: 'v2', regs: RACER_REGS },
-    { label: 'v3 reserve', regs: reserveRegs(21_000) },
+    { label: 'v3 reserve', regs: PUBLIC_CAR_REGS },
   ]
   const byVariant = new Map<string, number>()
   for (const { label, regs } of VARIANTS) {
@@ -107,12 +111,26 @@ let worst = 0, biggest = 0, smallest = Infinity
   }
   /* ★★ EVERY VARIANT MUST CLEAR THE FLOOR ON ITS OWN BURN0 — the rule, stated once and applied to all.
      A variant whose script grew but whose BURN0 did not is a car that cannot be mined, and it looks
-     exactly like a healthy one until a node refuses it. */
+     exactly like a healthy one until a node refuses it.
+
+     ⚠⚠ AND CLEARING THE FLOOR IS NOT ENOUGH, WHICH COST A REAL SCARE. `PIT`'s byte constant was first
+     ESTIMATED at 42 when the truth was 54. The variant then measured 100.0 sat/KB — over the floor by
+     five hundredths, PASSING, one byte of drift from being refused by every node forever. A bound that
+     only just holds is indistinguishable from one that has already broken.
+
+     ⇒ Two checks instead of one, and the second is the real invariant:
+       1. the rate clears SHELL_BURN_RATE_PER_KB — the rate BURN0 is DERIVED at, not the bare floor
+       2. the variant's measured worst move fits inside the byte bound its BURN0 was derived FROM
+     The second cannot be satisfied by rounding: it compares the script to the constant that prices it. */
   for (const { label, regs } of VARIANTS) {
     const b = byVariant.get(label)!
     const rate = regs.BURN0 * 1000 / b
-    check(`★★ ${label}: its cheapest move clears the relay floor`, rate >= SHELL_FEE_PER_KB)
-    console.log(`        ${label.padEnd(11)} ${b} B · BURN0 ${regs.BURN0} = ${rate.toFixed(1)} sat/KB`)
+    const bound = worstMoveBytes(regs)
+    check(`★★ ${label}: its cheapest move clears the rate BURN0 is derived at`,
+      rate >= SHELL_BURN_RATE_PER_KB)
+    check(`  …and its worst move fits the bound that BURN0 was derived FROM`, b <= bound)
+    console.log(`        ${label.padEnd(11)} ${b} B of ${bound} · BURN0 ${regs.BURN0} = ` +
+      `${rate.toFixed(2)} sat/KB`)
   }
   const trueFee = Math.ceil(worst * SHELL_FEE_PER_KB / 1000)
   console.log(`        worst move serializes to ${worst} bytes → ${trueFee} sat at ${SHELL_FEE_PER_KB} sat/KB`)

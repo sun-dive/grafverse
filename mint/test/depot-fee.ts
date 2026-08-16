@@ -15,7 +15,7 @@ import {
   buildDepotLock, buildDepotUnlock, DEPOT_SCOPE, DEPOT_DRAW, DEPOT_MAX_FEE, DEPOT_MAX_TANK,
 } from '../src/depot.ts'
 import {
-  buildShellLock, shellUnlockingOps, SHELL_SCOPE, SHELL_MAX_FEE, SHELL_FEE_PER_KB,
+  buildShellLock, shellUnlockingOps, shellMaxFee, SHELL_SCOPE, SHELL_FEE_PER_KB, PUBLIC_CAR_REGS,
 } from '../src/shell.ts'
 import { freshPublicShell } from '../src/publicShell.ts'
 import { serializeOutput } from '../src/covenant.ts'
@@ -29,7 +29,18 @@ const u64 = (n: number): number[] => { const b: number[] = []; let x = n
 
 const KEY = PrivateKey.fromRandom()
 const OWNER = Hash.hash160(KEY.toPublicKey().encode(true) as number[])
-const CAR = buildShellLock({ state: freshPublicShell(OWNER), maxFee: SHELL_MAX_FEE, public: true })
+/* ⚠⚠ THE CAR THE DEPOT IS ACTUALLY BUILT TO FUEL, AND MEASURING THE WRONG ONE IS FATAL HERE.
+   This built a DEFAULT car while the depot's genesis pins the car being RACED — which carries the
+   reserve, so its script is 24 bytes longer. A refuel carries that script THREE times over (inside the
+   car's own preimage, inside the depot's prefixOutputs, and as output 0), so 24 bytes of car is ~72
+   bytes of transaction, and the fee that was "measured" came out 7 satoshis short of the relay floor.
+   Under the floor, permanently, with no key to raise it: the exact failure this file exists to stop,
+   and the fifth time this project has stood on it.
+   ⇒ THE CAR IS AN INPUT TO THE FEE. Measure the one the depot will be minted against, never a
+   convenient stand-in. */
+const REGS = PUBLIC_CAR_REGS
+const CAR = buildShellLock({ state: freshPublicShell(OWNER), maxFee: shellMaxFee(REGS),
+                             public: true, regs: REGS })
 const DEPOT = buildDepotLock({ carScript: CAR.toBinary(), owner: OWNER })
 
 console.log('DEPOT_MAX_FEE — measured, not counted\n')

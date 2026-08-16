@@ -23,9 +23,11 @@
 // check is a free car for whoever finds it first. So the refusals matter more than the acceptances.
 import { Transaction, UnlockingScript, TransactionSignature, PrivateKey, P2PKH, Spend, Hash } from '@bsv/sdk'
 import {
-  emptyShell, loadCar, loadTrack, arm, buildShellLock, shellUnlockingOps,
-  RACER_REGS as R, S, PHASE, SHELL_SCOPE, SHELL_MAX_FEE, type ShellState,
+  emptyShell, loadCar, loadTrack, arm, buildShellLock, shellUnlockingOps, shellMaxFee,
+  PUBLIC_CAR_REGS, RACER_REGS as R, S, PHASE, SHELL_SCOPE, SHELL_MAX_FEE,
+  type ShellState, type RacerRegs,
 } from '../src/shell.ts'
+import { freshPublicShell } from '../src/publicShell.ts'
 import { serializeOutput } from '../src/covenant.ts'
 
 let pass = 0, fail = 0
@@ -58,8 +60,10 @@ function shellAt (phase: number): ShellState {
  * is the whole point, so the shell's value simply leaves. `signer` is not always the driver.
  */
 async function burn (st: ShellState, value: number, signer: PrivateKey, sweepTo: PrivateKey,
-                     opts: { burn?: boolean; retire?: boolean } = {}): Promise<{ ok: boolean; why: string; swept: number }> {
-  const lock = buildShellLock({ state: st, maxFee: SHELL_MAX_FEE })
+                     opts: { burn?: boolean; retire?: boolean; public?: boolean; regs?: RacerRegs } = {}):
+                     Promise<{ ok: boolean; why: string; swept: number }> {
+  const regs = opts.regs ?? R
+  const lock = buildShellLock({ state: st, maxFee: shellMaxFee(regs), public: opts.public, regs })
   const src = new Transaction(); src.addOutput({ lockingScript: lock, satoshis: value })
 
   const tx = new Transaction(); tx.version = 2
@@ -150,6 +154,60 @@ for (const [name, phase] of [['CAR', PHASE.CAR], ['TRACK', PHASE.TRACK], ['ARMED
   const elsewhere = PrivateKey.fromRandom()
   const r = await burn(shellAt(PHASE.DONE), 1, DRIVER_KEY, elsewhere)
   check('★ the driver may sweep it ANYWHERE — the covenant enforces no output', r.ok)
+}
+
+/* ── ★★★ THE TEST CAR IS BURNABLE AT EVERY POINT — the constraint, walked rather than argued ──────
+   sun-dive, 16 Aug, as one of the two rules everything this session was judged against:
+
+     *"The cars need to be burnable at any point because if a car bricks due to a bug, the sats should
+     not be stranded in the covenant forever."*
+
+   ★ AND IT IS A PROPERTY OF THE CODE BEING PROVED, NOT OF THE DESIGN. The end state is a car that is
+   a BATTERY — one branch, advance the state and pay the miner, no output that can pay a person, no
+   key, nothing worth stealing. The burn is the one branch left that pays somebody, and it is here
+   ONLY while the code is being trusted. When it goes, `driver` goes with it and the fuel in a bricked
+   car can no longer be recovered — only raced. That is the trade being deferred, deliberately.
+
+   ⚠ IT IS ALSO STRUCTURAL, WHICH IS WHY IT IS TESTED ANYWAY. The burn branch sits ABOVE the physics
+   and its depth is computed from the field count and the loadables, neither of which the regulations
+   move — so no tuning can reach it. Everything in this session was a change to the branches BELOW it.
+   A rule whose whole value is that it holds when something else is broken is exactly the rule you do
+   not want to hold by argument. */
+console.log()
+{
+  const PUB = freshPublicShell(DRIVER)          // `DRIVER` is already the hash160 in this file
+  const REGS = PUBLIC_CAR_REGS
+  const racing: ShellState = { ...PUB, eng: 14, tyr: 10, last: 1_700_000_123, n: 12,
+    s: Math.round(300 * S), v: Math.round(4 * S), green: 1_700_000_000, gap: 1,
+    finish: Math.round(402 * S), slip: 1000 }
+
+  let ok = 0, tried = 0
+  for (const [label, st] of [
+    ['EMPTY  ', PUB],
+    ['ARMED  ', { ...racing, phase: PHASE.ARMED, s: 0, v: 0, n: 0 }],
+    ['RACING ', { ...racing, phase: PHASE.RACING }],
+    ['DONE   ', { ...racing, phase: PHASE.DONE }],
+    ['OUT    ', { ...racing, phase: PHASE.OUT }],
+  ] as Array<[string, ShellState]>) {
+    /* ⚠ AN EMPTY TANK AND A BRIM-FULL ONE. The value rule is what a burn has to get past, and it is
+       the one thing that changes with the amount — a car holding its whole 71,000 ceiling is the
+       expensive case to be wrong about. */
+    for (const value of [1_000, 71_000]) {
+      tried++
+      const r = await burn(st, value, DRIVER_KEY, DRIVER_KEY, { burn: true, public: true, regs: REGS })
+      if (r.ok) ok++
+      else console.log(`        ⚠ ${label} at ${value.toLocaleString()} sat — ${r.why}`)
+    }
+  }
+  check(`★★★ the public car being raced is burnable in all ${tried} cases — every phase, empty and full`,
+    ok === tried)
+  console.log('        EMPTY · ARMED · RACING · DONE · OUT, at 1,000 and 71,000 sat')
+  console.log('        ⇒ a bricked car costs a genesis, never a tank')
+
+  // …and it is still the OWNER's door alone, in the variant that will actually be minted
+  const thief = await burn({ ...racing, phase: PHASE.RACING }, 71_000, STRANGER, STRANGER,
+    { burn: true, public: true, regs: REGS })   // ⚠ a real signature, by the wrong key
+  check('  …and a stranger still cannot open it', thief.ok, false)
 }
 
 console.log(`\n${pass}/${pass + fail} checks passed`)

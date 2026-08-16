@@ -18,12 +18,19 @@
 // ★ The distinction that matters: this is GRIEFING, not THEFT. An attacker converts the tank into fuel
 // sitting in public cars — a form nobody but the owner can ever get value out of. They pay nothing and
 // they gain nothing. It is vandalism with a mining fee attached.
+//
+// ⚠⚠ AND THAT SENTENCE WAS FALSE FOR A WHILE, WHICH IS WHY §2 NOW DRIVES AS WELL AS TAPS. This file
+// measured TAPPING and concluded "0 to the attacker" — but the attack is tap THEN drive, and a
+// run-ending move used to relax the value floor to one satoshi in a car that needs no signature to
+// move. Measured before it was closed: wreck a 40,000 sat car on move one, take 39,999. A claim is
+// worth exactly the path the test walks.
 import { Transaction, Spend, PrivateKey, P2PKH, TransactionSignature, Hash, Utils, UnlockingScript } from '@bsv/sdk'
 import {
   buildDepotLock, buildDepotUnlock, DEPOT_SCOPE, DEPOT_DRAW, DEPOT_MAX_FEE, DEPOT_BURN_BELOW,
 } from '../src/depot.ts'
 import {
-  buildShellLock, shellUnlockingOps, SHELL_SCOPE, SHELL_MAX_FEE,
+  buildShellLock, shellUnlockingOps, SHELL_SCOPE, SHELL_MAX_FEE, refTick, RACER_REGS, PHASE, S,
+  type ShellState,
 } from '../src/shell.ts'
 import { freshPublicShell } from '../src/publicShell.ts'
 import { serializeOutput } from '../src/covenant.ts'
@@ -42,6 +49,43 @@ const ATTACKER = PrivateKey.fromRandom()
 const FRESH = freshPublicShell(OWNER)
 const CAR = buildShellLock({ state: FRESH, maxFee: SHELL_MAX_FEE, public: true })
 const DEPOT = buildDepotLock({ carScript: CAR.toBinary(), owner: OWNER })
+
+const GREEN = 1_700_000_000
+
+/**
+ * ★ A RUN-ENDING MOVE THAT TRIES TO PAY THE ATTACKER — the second door, and the one that was open.
+ *
+ * Unsigned, because a public car asks for no signature to move. `keep` is what stays in the car; the
+ * rest goes to the attacker's own address as a trailing output.
+ */
+async function endingSweep(st: ShellState, next: ShellState, value: number, keep: number): Promise<boolean> {
+  const lock = buildShellLock({ state: st, maxFee: SHELL_MAX_FEE, public: true })
+  const src = new Transaction(); src.addOutput({ lockingScript: lock, satoshis: value })
+  const tx = new Transaction(); tx.version = 2
+  tx.addInput({ sourceTransaction: src, sourceOutputIndex: 0, sequence: 0xfffffffe })
+  tx.addOutput({ lockingScript: buildShellLock({ state: next, maxFee: SHELL_MAX_FEE, public: true }),
+                 satoshis: keep })
+  tx.addOutput({ lockingScript: new P2PKH().lock(ATTACKER.toAddress()), satoshis: value - keep - 400 })
+  tx.lockTime = GREEN + 1
+  const pre = TransactionSignature.format({
+    sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: value, transactionVersion: 2,
+    otherInputs: [], inputIndex: 0, outputs: tx.outputs, inputSequence: 0xfffffffe,
+    subscript: lock, lockTime: tx.lockTime, scope: SHELL_SCOPE,
+  })
+  tx.inputs[0].unlockingScript = new UnlockingScript(shellUnlockingOps({
+    spenderOutputs: serializeOutput(tx.outputs[1].satoshis ?? 0, tx.outputs[1].lockingScript.toBinary()),
+    newValue: u64(keep), preimage: pre, sig: [], pubKey: [], throttle: 16,
+    load: { driver: next.driver, pool: next.pool, eng: next.eng, tyr: next.tyr,
+            finish: next.finish, slip: next.slip, green: next.green, gap: next.gap },
+  }))
+  try {
+    return new Spend({
+      sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: value, lockingScript: lock,
+      transactionVersion: 2, otherInputs: [], outputs: tx.outputs, inputIndex: 0,
+      unlockingScript: tx.inputs[0].unlockingScript, inputSequence: 0xfffffffe, lockTime: tx.lockTime,
+    }).validate() === true
+  } catch { return false }
+}
 
 console.log('CAN SOMEBODY DRAIN THE DEPOT?\n')
 
@@ -149,7 +193,30 @@ console.log()
 
   check('★★ and a stranger cannot sweep the cars either — the burn is the owner\'s alone',
     await sweep(cars[0].tx, 0, cars[0].value, ATTACKER), false)
+
+  /* ── ⚠⚠ AND THE SECOND DOOR, WHICH WAS OPEN AND IS THE REASON THIS BLOCK GREW ──────────────────
+     The burn is not the only branch that could pay a person. A run-ending move used to relax the
+     value floor to ONE SATOSHI so an owner could recover their tank — safe in an OWNED car, where
+     only the driver can sign the move, and wide open in a PUBLIC one, which has no signature on a
+     move at all. Measured before it was closed: configure, arm, wreck on move one, and take
+     39,999 of 40,000 satoshis, unsigned.
+
+     ⇒ SO THIS FILE'S HEADLINE WAS FALSE WHEN IT WAS WRITTEN. "Griefing, not theft · 0 to the
+     attacker" was true of TAPPING, which is all it measured. The whole attack is tap THEN drive, and
+     nothing here ever drove. A claim is only as good as the path the test actually walks. */
+  {
+    const st = { ...FRESH, phase: PHASE.ARMED, eng: 24, tyr: 1, green: GREEN, gap: 1,
+                 finish: Math.round(402 * S), slip: 1000 }
+    const value = 40_000
+    const w = refTick(st, { throttle: 16, lockTime: GREEN + 1, fuel: value }, RACER_REGS)
+    check('  a car driven flat out on no tyres really does wreck', w.ended === 'blown')
+    check('★★★ …and WRECKING one does not hand over its tank either — unsigned, one satoshi kept',
+      await endingSweep(st, w.state, value, 1), false)
+    check('  …while the honest ending move, which keeps the fuel in the car, is accepted',
+      await endingSweep(st, w.state, value, value - 400))
+  }
   console.log('        ⇒ the fuel is in a form the attacker can never get value out of')
+  console.log('        ⇒ and the only thing a public car can do with a satoshi is give it to a miner')
 }
 
 // ── 3. ★ SO WHAT DOES THE OWNER ACTUALLY LOSE? THE MINING FEES ────────────────────────────────────

@@ -18,8 +18,9 @@
 // opcodes, constant tail — so the thirteen fields' DATA may be anything and a car is a car in any
 // phase. Both halves are tested below, because each is a way of getting it wrong:
 //
-//   a car MID-RACE          must be ACCEPTED   ← the splash-and-dash the spec promises
-//   a SPLICED script        must be REFUSED    ← head and tail alike, opcodes tampered with
+//   a car in any LOADING phase   must be ACCEPTED   ← configured, tracked, armed: all at s = 0
+//   a car that has MOVED         must be REFUSED    ← ★ the pump does not fill a car on the strip
+//   a SPLICED script             must be REFUSED    ← head and tail alike, opcodes tampered with
 //
 // ⚠ And the car sits at OUTPUT 0 now, not out1. Its own covenant rebuilds itself there and cannot be
 // argued with, so the depot yields the slot and carries a PREFIX instead.
@@ -96,19 +97,41 @@ check('★★ …into an ORDINARY ADDRESS is refused — this is the whole rule'
   spend(V, V - DRAIN, [notCar(DEPOT_DRAW)]), false)
 check('  …into nothing at all is refused', spend(V, V - DRAIN, []), false)
 
-// ── ★★ ANY PHASE — the rule this rewrite exists for ───────────────────────────────────────────────
+/* ── ★★ ANY PHASE, BUT ONLY AT THE LINE — the two halves of the rule ──────────────────────────────
+   The shape walk is what lets a driver fuel a car that is already CONFIGURED — engine, tyres, track,
+   armed — instead of having to reset it back to nothing first. Every one of those phases sits at
+   `s = 0`, which is the only thing the pump insists on.
+
+   ⚠ AND THE ONE IT REFUSES IS THE ONE THIS FILE USED TO CELEBRATE. A car mid-race was accepted here,
+   deliberately, as "the splash-and-dash the spec promises". It is now refused, deliberately, and the
+   reason is a measurement rather than a change of heart: fuel is MASS, so starting light and topping
+   up at speed beat a proper fill by 0.6 s on LESS money — a dominant line, which is no line at all.
+   → `carRecognitionOps` carries the numbers. */
 console.log()
 {
+  for (const [label, st] of [
+    ['configured', { ...FRESH, phase: PHASE.CAR, eng: 14, tyr: 10 }],
+    ['tracked', { ...FRESH, phase: PHASE.TRACK, eng: 14, tyr: 10, finish: Math.round(402 * S), slip: 1000 }],
+    ['armed on the line', { ...FRESH, phase: PHASE.ARMED, eng: 14, tyr: 10, finish: Math.round(402 * S), slip: 1000 }],
+  ] as Array<[string, ShellState]>) {
+    check(`★ a car ${label} is a car — it has not moved`,
+      spend(V, V - DRAIN, [{ lockingScript: carLock(st), satoshis: DEPOT_DRAW }]))
+    check(`  …and it is a DIFFERENT script from a car at rest`, carLock(st).toHex() !== CAR.toHex())
+  }
+
   const raced: ShellState = { ...FRESH, phase: PHASE.RACING, eng: 14, tyr: 10,
     last: 1_700_000_123, n: 24, s: Math.round(300 * S), v: Math.round(4 * S) }
-  const midRace: Out = { lockingScript: carLock(raced), satoshis: DEPOT_DRAW }
-  check('★★ a car MID-RACE is a car — the splash-and-dash', spend(V, V - DRAIN, [midRace]))
-  check('  …and it is a DIFFERENT script from a car at rest',
-    carLock(raced).toHex() !== CAR.toHex())
+  check('★★ a car MID-RACE is REFUSED — the pump does not fill a car that has left the line',
+    spend(V, V - DRAIN, [{ lockingScript: carLock(raced), satoshis: DEPOT_DRAW }]), false)
+  /* ⚠ ONE METRE IS ENOUGH. The rule is `s = 0`, not "not very far" — there is no threshold to argue
+     about and none to tune, which is the whole reason it is this field and not `phase` or `v`. */
+  const crept: ShellState = { ...raced, s: 1 }
+  check('  …and one unit of travel is already too far', spend(V, V - DRAIN,
+    [{ lockingScript: carLock(crept), satoshis: DEPOT_DRAW }]), false)
 
   const done: ShellState = { ...FRESH, phase: PHASE.DONE, n: 45, s: Math.round(402 * S) }
-  check('  a car that has FINISHED is still a car',
-    spend(V, V - DRAIN, [{ lockingScript: carLock(done), satoshis: DEPOT_DRAW }]))
+  check('  a car that has FINISHED is refused too — it must be RESET first, which zeroes `s`',
+    spend(V, V - DRAIN, [{ lockingScript: carLock(done), satoshis: DEPOT_DRAW }]), false)
 }
 
 // ── ★★ AND WHAT MUST STILL BE REFUSED ─────────────────────────────────────────────────────────────
