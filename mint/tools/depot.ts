@@ -70,6 +70,17 @@ const getText = async (p: string): Promise<string> => {
   const r = await fetch(WOC + p); if (!r.ok) throw new Error(`WoC ${p} → ${r.status}`); return r.text()
 }
 const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
+/**
+ * How many cars a tank can still fuel — and it FLOORS AT ZERO, which is the whole reason it is a
+ * function rather than an expression.
+ *
+ * ⚠ It was written out twice, and only `--status` had the `max(0, …)`. So a genesis of one satoshi
+ * announced `taps : -1 car(s)`, which is not a small number, it is a false one — and it appeared in
+ * the output a person reads to decide whether to broadcast. Two copies of a formula is one copy too
+ * many; the guarded one is never the copy you are looking at.
+ */
+const tapsIn = (tank: number): number => Math.max(0, Math.floor((tank - DEPOT_MAX_FEE) / DEPOT_DRAW))
+
 const has = (n: string): boolean => process.argv.includes(n)
 const arg = (n: string): string | undefined => {
   const i = process.argv.indexOf(n); return i >= 0 ? process.argv[i + 1] : undefined
@@ -348,7 +359,7 @@ async function genesis(): Promise<void> {
   console.log('txid   :', tx.id('hex'))
   console.log('tank   :', sat(fuel), 'sat   (output 0)')
   console.log('change :', sat(tx.outputs[1].satoshis ?? 0), 'sat →', addr)
-  console.log('taps   :', Math.floor((fuel - DEPOT_MAX_FEE) / DEPOT_DRAW), 'car(s) it can fuel before it needs topping up')
+  console.log('taps   :', tapsIn(fuel), 'car(s) it can fuel before it needs topping up')
   if (has('--broadcast')) { await broadcast(tx.toHex()); console.log('        BROADCAST ✓') }
   else console.log('\n(dry build — nothing was sent. Re-run with --broadcast.)')
   console.log('\n⚠ KEEP THIS TXID. Everything else refers to it, and there is no index that will find it for you.')
@@ -491,7 +502,7 @@ async function status(): Promise<void> {
   console.log('depot        :', `${txid}:${vout}`)
   console.log('is our depot :', isDepot ? 'yes' : '⚠ NO — wrong txid/vout, or a different owner key')
   console.log('tank         :', sat(tank), 'sat')
-  console.log('taps left    :', Math.max(0, Math.floor((tank - DEPOT_MAX_FEE) / DEPOT_DRAW)))
+  console.log('taps left    :', tapsIn(tank))
   console.log('burnable     :', tank < DEPOT_BURN_BELOW
     ? `yes — a husk under ${DEPOT_BURN_BELOW}, the owner may clear it`
     : `no — holds ${sat(tank)}, and the burn refuses anything at or above ${DEPOT_BURN_BELOW}`)
