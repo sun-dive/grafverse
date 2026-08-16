@@ -299,17 +299,25 @@ function discover_spender($tipTxid, $vout) {
   $sh = bin2hex(strrev(hash('sha256', hex2bin($scriptHex), true)));
   /* ⚠⚠ THE CONFIRMED INDEX CANNOT SEE A FRESH TICK, and the follower's whole job is to be current.
      Measured: /script/{h}/history omits unconfirmed transactions entirely, while
-     /script/{h}/unconfirmed/history carries them. So a tick was undiscoverable here until a miner
-     picked it up, and every visitor who had not just pressed the button saw a stale battery.
+     /script/{h}/unconfirmed/history carries them.
 
-     ⇒ MEMPOOL FIRST — a tip is unconfirmed almost by definition, so that is where to look before
-     asking the confirmed index. Both are consulted; neither is redundant. */
-  $hist = woc_get("/script/$sh/unconfirmed/history");
-  if (!is_array($hist) || !$hist) $hist = woc_get("/script/$sh/history");
-  if (!is_array($hist)) return null;
-  foreach ($hist as $h) {
-    $txid = $h['tx_hash'] ?? ''; if ($txid === '' || $txid === $tipTxid) continue;
-    $t = get_tx($txid); if ($t && does_spend($t, $tipTxid, $vout)) return [$txid, $t];
+     ⚠ AND A NON-EMPTY LIST IS NOT AN ANSWER — the first version of this took one, which was wrong.
+     For an UNCONFIRMED tip the mempool list contains the transaction that CREATED it, which the loop
+     skips, so the list is non-empty and yields nothing. Preferring it then meant the confirmed list
+     was never consulted at all. Each list must be SCANNED for an actual spender before moving on.
+
+     ★ AND THE SECOND CALL IS SKIPPED WHEN IT CANNOT HELP. A spender of an UNCONFIRMED tip cannot
+     itself be confirmed — a child cannot be in a block while its parent is not — so for an unconfirmed
+     tip the mempool is the only place worth looking. That matters: every call spends the per-request
+     budget (90) and a 429 sets WOC_BLOCKED, which pushes the next reconcile 60 seconds out. */
+  $paths = empty($tip['blockhash']) ? ['unconfirmed/history'] : ['unconfirmed/history', 'history'];
+  foreach ($paths as $path) {
+    $hist = woc_get("/script/$sh/$path");
+    if (!is_array($hist)) continue;
+    foreach ($hist as $h) {
+      $txid = $h['tx_hash'] ?? ''; if ($txid === '' || $txid === $tipTxid) continue;
+      $t = get_tx($txid); if ($t && does_spend($t, $tipTxid, $vout)) return [$txid, $t];
+    }
   }
   return null;
 }

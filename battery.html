@@ -1127,6 +1127,12 @@
     var msg=$('lv-tickmsg'), btn=$('lv-tick');
     ticking=true; btn.disabled=true; msg.style.color='var(--faint)';
     msg.textContent='building the transaction…';
+    /* ⚠ TIMED, PHASE BY PHASE, and shown. "It feels slow" is not a measurement, and every guess made
+       from outside a browser about which call is costing the seconds has been wrong so far. The line
+       below turns one press of the button into the numbers needed to fix it. */
+    var t0=Date.now(), marks=[], lastMark=t0;
+    function mark(name){ var now=Date.now(); marks.push(name+' '+((now-lastMark)/1000).toFixed(1)+'s'); lastMark=now; }
+    function timing(){ return marks.join(' · ')+'  = '+((Date.now()-t0)/1000).toFixed(1)+'s total' }
     var G;
     return ensureGM().then(function(g){ G=g; return load(true) }).then(function(){
         var d=live;
@@ -1134,8 +1140,10 @@
         /* Ask the CHAIN where the tip is, not the cache. The board walks hop by hop to catch
            contributions and can be a long way behind; building on its idea of the tip is what
            produced "Missing inputs" against an output spent an hour earlier. */
+        mark('read cache');
         msg.textContent='finding the tip…';
         return findTip(G, d).then(function(t){
+          mark('find tip');
           if(t.moved>0) msg.textContent='the battery moved '+t.moved+' ticks — building on the real tip…';
           if(t.fuel < 314) throw Error('the battery is flat — it needs fuel before it can tick again');
           return chain().then(function(P){ return P.getSourceTransaction(t.txid) }).then(function(src){
@@ -1145,20 +1153,27 @@
         });
     }).then(function(tx){
       var raw=tx.toHex();
+      mark('build tx');
       msg.textContent='broadcasting '+fmt(raw.length/2)+' bytes — no signature…';
       return chain().then(function(P){ return P.broadcast(raw) });   // queued, both relays
     }).then(function(txid){
       /* ⚠ AWAITED, not fired and forgotten. The follower is TOLD the txid rather than having to
          discover it — its own discovery reads the confirmed index and cannot see a fresh tick either.
          Racing `load()` against this POST is how the page reloaded onto the state it had just left. */
+      mark('broadcast');
       return fetch('/battery.php',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({txid:txid})}).catch(function(){}).then(function(){ return txid });
+        body:JSON.stringify({txid:txid})}).catch(function(){}).then(function(){ mark('tell follower'); return txid });
     }).then(function(txid){
       msg.style.color='var(--lime)';
       msg.innerHTML='✓ one iteration computed on chain — '+
         '<a href="https://whatsonchain.com/tx/'+txid+'" target="_blank" rel="nofollow noopener">'+
         esc(txid.slice(0,12))+'…</a>';
-      return load(true);
+      return load(true).then(function(){
+        mark('repaint');
+        var stale = live && live.tipTxid !== txid;
+        msg.innerHTML += '<br><span class="note" style="font-size:12px">'+esc(timing())+
+          (stale ? ' · <b>follower still behind</b>' : ' · follower current')+'</span>';
+      });
     }).catch(function(err){
       /* a tip that moved under us is the ordinary case, not an error worth showing */
       if(retry && /missing inputs|already|conflict|txn-mempool/i.test(err.message||'')){
