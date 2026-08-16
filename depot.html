@@ -129,9 +129,9 @@
        out — fuel can only ever leave into a car, and a car burns it as mining fees. Not even the owner
        can take it: the burn refuses any tank holding <b id="d-burnbelow">…</b> or more.</p>
     <div class="grid" style="gap:10px">
-      <label>satoshis <b id="v-add">50,000</b><input type="range" id="add" min="1000" max="500000" step="1000" value="50000"></label>
+      <label>satoshis <b id="v-add">50,000</b><input type="range" id="add" min="1" max="500000" step="1" value="50000"></label>
       <div>
-        <label style="margin-top:10px">your address <span class="dim">— one coin must cover it all</span></label>
+        <label style="margin-top:10px">your address <span class="dim" id="a-bal">— several coins are fine</span></label>
         <input id="addr" placeholder="1..." style="width:100%;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--fg);font-family:ui-monospace,Menlo,monospace;font-size:13px">
         <label style="margin-top:10px">a mark, if you like <span class="dim">— rides in an OP_RETURN</span></label>
         <input id="mark" maxlength="60" placeholder="first fuel 🏁" style="width:100%;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--fg);font-size:13px">
@@ -443,9 +443,18 @@ async function buildTopUp(){
     }
     var pad=GM.topUpPad(picked.length||1);
     if(!picked.length || have < amt+pad){
+      /* ⚠ SAY THE SHORTFALL, NOT THE REQUIREMENT. "needs 1,320" leaves the reader doing arithmetic
+         against a balance they cannot see; "send 738 more" is the same fact as an instruction. And
+         say what the address could afford right now, because with the slider's floor at 1,000 every
+         position on it can be blocked at once and that reads as the page being broken. */
       var tot=(us||[]).reduce(function(a,x){return a+x.value},0);
-      out.innerHTML='<span class="no">that address holds '+sat(tot)+' across '+(us||[]).length+' coin(s)</span>'+
-        ' — this contribution needs '+sat(amt+pad)+' including the fee. Send it a little more, or lower the amount.';
+      var short=amt+pad-have;
+      var affordable=Math.max(0, tot-GM.topUpPad((us||[]).length||1));
+      out.innerHTML='<span class="no">'+sat(short)+' sat short</span> — that address holds '+sat(tot)+
+        ' across '+(us||[]).length+' coin(s), and '+sat(amt)+' plus its fee needs '+sat(amt+pad)+'.'+
+        (affordable>0 ? ' The most it could contribute right now is <b>'+sat(affordable)+'</b> sat.'
+                      : ' It cannot cover any contribution yet.')+
+        ' Send it '+sat(short)+' more and press again — several coins are fine now.';
       return;
     }
     out.textContent='building…';
@@ -506,6 +515,38 @@ async function findDepot(){
 var currentDepot=findDepot;               // the top-up flow's old name for it
 
 $('add').addEventListener('input',function(){ $('v-add').textContent=sat($('add').value) });
+
+/* ── ★★ THE SLIDER CANNOT ASK FOR MORE THAN THE ADDRESS HOLDS ─────────────────────────────────────
+   sun-dive, 16 Aug: *"there is no good reason to block funding the silo."* He was right, and the block
+   was ours, not the covenant's: the tank is UNBOUNDED ON THE WAY IN — its value rule is a floor, so
+   handing back more was always legal, at any amount, down to a single satoshi.
+
+   What blocked it was a slider whose floor was 1,000. An address holding 582 could satisfy no position
+   on it, so every amount refused at once and the page looked broken rather than short.
+
+   ⇒ The range now comes from the CHAIN. Read the address, subtract the fee the funding inputs will
+   cost, and that is the maximum — so every position on the slider is one the wallet can actually pay
+   for, and there is nothing left to refuse. ⚠ The minimum is ONE satoshi, because that is the smallest
+   contribution the covenant will take, and the page has no business inventing a bigger one. */
+async function rangeToBalance(){
+  var addr=$('addr').value.trim(), el=$('add'), lbl=$('a-bal');
+  if(!/^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(addr)){ lbl.textContent='— several coins are fine'; return }
+  lbl.textContent='— reading your coins…';
+  try{
+    var us=await getJSON('/address/'+addr+'/unspent');
+    var n=(us||[]).length, tot=(us||[]).reduce(function(a,x){return a+x.value},0);
+    var most=Math.max(0, tot-GM.topUpPad(n||1));
+    el.max=Math.max(1, most);
+    if(+el.value>most) el.value=Math.max(1,most);
+    $('v-add').textContent=sat(el.value);
+    lbl.innerHTML = most>0
+      ? '— '+sat(tot)+' across '+n+' coin(s) · <b>up to '+sat(most)+'</b> after the fee'
+      : '<span class="no">— '+sat(tot)+' sat, not enough to cover a fee yet</span>';
+    $('build').disabled = most<=0;
+  }catch(e){ lbl.textContent='— could not read that address' }
+}
+$('addr').addEventListener('change',rangeToBalance);
+$('addr').addEventListener('blur',rangeToBalance);
 $('build').onclick=buildTopUp;
 $('reload').onclick=readChain;
 $('go').onclick=run;
