@@ -26,6 +26,8 @@ import { Transaction, Spend, LockingScript, TransactionSignature, PrivateKey, P2
 import {
   buildDepotLock, buildDepotUnlock, DEPOT_SCOPE, DEPOT_DRAW, DEPOT_MAX_FEE, DEPOT_MAX_TANK,
 } from '../src/depot.ts'
+import { buildShellLock, SHELL_MAX_FEE } from '../src/shell.ts'
+import { freshPublicShell } from '../src/publicShell.ts'
 import { serializeOutput } from '../src/covenant.ts'
 
 let pass = 0, fail = 0
@@ -36,36 +38,51 @@ const u64 = (n: number): number[] => { const b: number[] = []; let x = n
   for (let i = 0; i < 8; i++) { b.push(x % 256); x = Math.floor(x / 256) } return b }
 
 const OWNER = Array.from({ length: 20 }, (_, i) => i + 1)
-const CAR = LockingScript.fromASM('OP_DUP OP_HASH160 ' + '11'.repeat(20) + ' OP_EQUALVERIFY OP_CHECKSIG OP_NOP')
+const CAR = buildShellLock({ state: freshPublicShell(OWNER), maxFee: SHELL_MAX_FEE, public: true })
 const LOCK = buildDepotLock({ carScript: CAR.toBinary(), owner: OWNER })
 const DRAIN = DEPOT_DRAW + DEPOT_MAX_FEE
 const V = 500_000
 const THIEF = PrivateKey.fromRandom().toAddress()
 
-function spend(keep: number, rest: { lockingScript: LockingScript; satoshis: number }[]): boolean {
-  const src = new Transaction(); src.addOutput({ lockingScript: LOCK, satoshis: V })
+type Out = { lockingScript: LockingScript; satoshis: number }
+const ser = (o: { satoshis?: number; lockingScript: LockingScript }): number[] =>
+  serializeOutput(o.satoshis ?? 0, o.lockingScript.toBinary())
+
+/**
+ * Spend the depot, keeping `keep`. `rest[0]` becomes OUT0 — where the car has to be — and anything
+ * after it follows the depot.
+ *
+ * ⚠ The car moved from out1 to out0 when the depot learned to carry a prefix, so the slot a thief has
+ * to be caught in moved with it. Every refusal below is still a refusal, and for the same reason.
+ */
+function spendWith(lock: LockingScript, keep: number, rest: Out[]): boolean {
+  const [first, ...after] = rest
+  const src = new Transaction(); src.addOutput({ lockingScript: lock, satoshis: V })
   const tx = new Transaction(); tx.version = 2
   tx.addInput({ sourceTransaction: src, sourceOutputIndex: 0, sequence: 0xfffffffe })
-  tx.addOutput({ lockingScript: LOCK, satoshis: keep })
-  for (const o of rest) tx.addOutput(o)
+  if (first) tx.addOutput(first)
+  tx.addOutput({ lockingScript: lock, satoshis: keep })
+  for (const o of after) tx.addOutput(o)
   tx.lockTime = 0
   const pre = TransactionSignature.format({
     sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: V, transactionVersion: 2,
     otherInputs: [], inputIndex: 0, outputs: tx.outputs, inputSequence: 0xfffffffe,
-    subscript: LOCK, lockTime: tx.lockTime, scope: DEPOT_SCOPE,
+    subscript: lock, lockTime: tx.lockTime, scope: DEPOT_SCOPE,
   })
   tx.inputs[0].unlockingScript = buildDepotUnlock({
-    spenderOutputs: tx.outputs.slice(1).flatMap(o => serializeOutput(o.satoshis ?? 0, o.lockingScript.toBinary())),
+    prefixOutputs: first ? ser(first) : [],
+    spenderOutputs: after.flatMap(ser),
     newValue: u64(keep), preimage: pre,
   })
   try {
     return new Spend({
-      sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: V, lockingScript: LOCK,
+      sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: V, lockingScript: lock,
       transactionVersion: 2, otherInputs: [], outputs: tx.outputs, inputIndex: 0,
       unlockingScript: tx.inputs[0].unlockingScript, inputSequence: 0xfffffffe, lockTime: tx.lockTime,
     }).validate() === true
   } catch { return false }
 }
+const spend = (keep: number, rest: Out[]): boolean => spendWith(LOCK, keep, rest)
 const car = (s: number) => ({ lockingScript: CAR, satoshis: s })
 const thief = (s: number) => ({ lockingScript: new P2PKH().lock(THIEF), satoshis: s })
 
@@ -74,8 +91,13 @@ console.log('WHAT LEAVES THE DEPOT MUST ARRIVE\n')
 // ── ★★ THE DRAIN, WHICH USED TO WORK ──────────────────────────────────────────────────────────────
 check('★★ a full draw with ONE SATOSHI to the car and the rest to a stranger',
   spend(V - DRAIN, [car(1), thief(DRAIN - 201)]), false)
-check('★ …skimming just 500 of it is refused too',
-  spend(V - DRAIN, [car(DRAIN - 700), thief(500)]), false)
+/* ⚠ DERIVED FROM MAX_FEE, NEVER A ROUND NUMBER. This read `thief(500)` against a car short by 700,
+   which refused only because MAX_FEE happened to be 516 at the time. When MAX_FEE was re-measured for
+   the refuel and rose to 837, a 500-satoshi skim became indistinguishable from a fee — and the check
+   started failing while the rule it was testing had not changed at all. The honest question is "more
+   than the fee allowance", so ask that. */
+check('★ …skimming one satoshi more than the fee allowance is refused too',
+  spend(V - DRAIN, [car(DRAIN - DEPOT_MAX_FEE - 1), thief(DEPOT_MAX_FEE + 1)]), false)
 check('  …and skimming a single satoshi',
   spend(V - DRAIN, [car(DRAIN - DEPOT_MAX_FEE - 1), thief(1)]), false)
 
@@ -86,7 +108,7 @@ check('  a partial tap arrives in full', spend(V - 2_000, [car(2_000)]))
 check('  the miner may still take MAX_FEE and no more', spend(V - DRAIN, [car(DRAIN - DEPOT_MAX_FEE)]))
 check('  …one satoshi beyond that is refused', spend(V - DRAIN, [car(DRAIN - DEPOT_MAX_FEE - 1)]), false)
 
-// ── ★ TEN TAPS AND THE PUMP STOPS ─────────────────────────────────────────────────────────────────
+// ── ★ THREE TAPS AND THE PUMP STOPS ───────────────────────────────────────────────────────────────
 // Overfilling is already punished by the physics — fuel is mass — but the cap makes it a property of
 // the system rather than a courtesy of the page.
 //
@@ -99,30 +121,7 @@ check('  …one satoshi beyond that is refused', spend(V - DRAIN, [car(DRAIN - D
 // without it would have been reporting on the wrong rule.
 {
   const BIG = buildDepotLock({ carScript: CAR.toBinary(), owner: OWNER, draw: 300_000, maxTank: DEPOT_MAX_TANK })
-  const bigSpend = (keep: number, rest: { lockingScript: LockingScript; satoshis: number }[]): boolean => {
-    const src = new Transaction(); src.addOutput({ lockingScript: BIG, satoshis: V })
-    const tx = new Transaction(); tx.version = 2
-    tx.addInput({ sourceTransaction: src, sourceOutputIndex: 0, sequence: 0xfffffffe })
-    tx.addOutput({ lockingScript: BIG, satoshis: keep })
-    for (const o of rest) tx.addOutput(o)
-    tx.lockTime = 0
-    const pre = TransactionSignature.format({
-      sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: V, transactionVersion: 2,
-      otherInputs: [], inputIndex: 0, outputs: tx.outputs, inputSequence: 0xfffffffe,
-      subscript: BIG, lockTime: tx.lockTime, scope: DEPOT_SCOPE,
-    })
-    tx.inputs[0].unlockingScript = buildDepotUnlock({
-      spenderOutputs: tx.outputs.slice(1).flatMap(o => serializeOutput(o.satoshis ?? 0, o.lockingScript.toBinary())),
-      newValue: u64(keep), preimage: pre,
-    })
-    try {
-      return new Spend({
-        sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: V, lockingScript: BIG,
-        transactionVersion: 2, otherInputs: [], outputs: tx.outputs, inputIndex: 0,
-        unlockingScript: tx.inputs[0].unlockingScript, inputSequence: 0xfffffffe, lockTime: tx.lockTime,
-      }).validate() === true
-    } catch { return false }
-  }
+  const bigSpend = (keep: number, rest: Out[]): boolean => spendWith(BIG, keep, rest)
   console.log(`\n        MAX_TANK ${DEPOT_MAX_TANK.toLocaleString()} = ${DEPOT_MAX_TANK / DEPOT_DRAW} taps of ${DEPOT_DRAW.toLocaleString()}\n`)
   check('★ a car may be filled to the cap', bigSpend(V - DEPOT_MAX_TANK, [car(DEPOT_MAX_TANK)]))
   check('★ …and ONE SATOSHI past it is refused',

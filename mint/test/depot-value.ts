@@ -17,6 +17,8 @@
 // any reason to trust.
 import { Transaction, Spend, LockingScript, TransactionSignature } from '@bsv/sdk'
 import { buildDepotLock, buildDepotUnlock, DEPOT_SCOPE, DEPOT_DRAW, DEPOT_MAX_FEE } from '../src/depot.ts'
+import { buildShellLock, SHELL_MAX_FEE } from '../src/shell.ts'
+import { freshPublicShell } from '../src/publicShell.ts'
 import { serializeOutput } from '../src/covenant.ts'
 
 let pass = 0, fail = 0
@@ -29,26 +31,35 @@ const u64 = (n: number): number[] => { const b: number[] = []; let x = n
 /* ⚠ Fuel that leaves must go into a car (step 3b), so the drawn amount goes to one here. This file is
    about HOW MUCH may leave; where it goes is depot-car's business. */
 const OWNER = Array.from({ length: 20 }, (_, i) => i + 1)
-const CAR = LockingScript.fromASM('OP_DUP OP_HASH160 ' + '11'.repeat(20) + ' OP_EQUALVERIFY OP_CHECKSIG OP_NOP')
+const CAR = buildShellLock({ state: freshPublicShell(OWNER), maxFee: SHELL_MAX_FEE, public: true })
 const LOCK = buildDepotLock({ carScript: CAR.toBinary(), owner: OWNER })
 const DRAIN = DEPOT_DRAW + DEPOT_MAX_FEE
 const V = 500_000
 
-/** Spend a depot holding `from`, leaving `keep` in the successor. Extra outputs take the difference. */
+/**
+ * Spend a depot holding `from`, leaving `keep` in the successor. Extra outputs take the difference.
+ *
+ * ⚠ The car goes in the PREFIX — before the depot — because that is where out0 is, and out0 is the
+ * only slot the car's own covenant will rebuild itself into.
+ */
 function spend(from: number, keep: number, intoCar = false): boolean {
   const src = new Transaction(); src.addOutput({ lockingScript: LOCK, satoshis: from })
   const tx = new Transaction(); tx.version = 2
   tx.addInput({ sourceTransaction: src, sourceOutputIndex: 0, sequence: 0xfffffffe })
+  const withCar = intoCar && from > keep
+  if (withCar) tx.addOutput({ lockingScript: CAR, satoshis: from - keep })
   tx.addOutput({ lockingScript: LOCK, satoshis: keep })
-  if (intoCar && from > keep) tx.addOutput({ lockingScript: CAR, satoshis: from - keep })
   tx.lockTime = 0
   const pre = TransactionSignature.format({
     sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: from, transactionVersion: 2,
     otherInputs: [], inputIndex: 0, outputs: tx.outputs, inputSequence: 0xfffffffe,
     subscript: LOCK, lockTime: tx.lockTime, scope: DEPOT_SCOPE,
   })
+  const ser = (o: { satoshis?: number; lockingScript: LockingScript }): number[] =>
+    serializeOutput(o.satoshis ?? 0, o.lockingScript.toBinary())
   tx.inputs[0].unlockingScript = buildDepotUnlock({
-    spenderOutputs: tx.outputs.slice(1).flatMap(o => serializeOutput(o.satoshis ?? 0, o.lockingScript.toBinary())),
+    prefixOutputs: withCar ? ser(tx.outputs[0]) : [],
+    spenderOutputs: tx.outputs.slice(withCar ? 2 : 1).flatMap(ser),
     newValue: u64(keep), preimage: pre,
   })
   try {

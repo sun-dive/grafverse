@@ -108,11 +108,14 @@ export { stateFits, fieldMax } from './shell.ts'
 // the chain — and the decoder in particular must never be rewritten by hand: the state is thirteen
 // separate pushes, and read at flat offsets it yields plausible nonsense rather than an error.
 export {
-  shellStateFromScript, isPublicCar, planRace, buildPublicMove, lockTimeFor, smDecode, restingCar,
+  shellStateFromScript, isPublicCar, planRace, raceFrom, pitStep,
+  buildPublicMove, buildRefuelMove, lockTimeFor, smDecode, restingCar,
 } from './publicDriver.ts'
 export type { Step, RaceConfig } from './publicDriver.ts'
 export { freshPublicShell, publicReset, isAtRest } from './publicShell.ts'
-export { buildDepotLock, DEPOT_DRAW, DEPOT_MAX_FEE, DEPOT_MAX_TANK, DEPOT_BURN_BELOW } from './depot.ts'
+export {
+  buildDepotLock, DEPOT_DRAW, DEPOT_MAX_FEE, DEPOT_MAX_TANK, DEPOT_BURN_BELOW, DEPOT_SCOPE,
+} from './depot.ts'
 export { buildDepotTopUpTx, TOPUP_FEE_PAD } from './depotTx.ts'
 export type { TopUpParams, TopUpRequest } from './depotTx.ts'
 export { SHELL_TANK_MAX, SHELL_SCOPE as SHELL_SIGHASH_SCOPE } from './shell.ts'

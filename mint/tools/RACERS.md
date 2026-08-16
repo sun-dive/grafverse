@@ -124,7 +124,8 @@ a 14-transaction chain and mined the lot in one block.
 ```sh
 for t in shell-ref shell-frame shell-physics shell-load shell-fee shell-burn shell-blow \
          public-ref public-gate public-reset public-tank \
-         depot-frame depot-value depot-arrival depot-car depot-burn depot-car-integration; do
+         depot-frame depot-value depot-arrival depot-car depot-burn depot-fee \
+         depot-topup depot-topup-tx depot-refuel depot-drain depot-car-integration; do
   node --experimental-strip-types test/$t.ts
 done
 ```
@@ -136,7 +137,10 @@ done
 | `shell-blow` | the rev limit is enforced by the SCRIPT, not only the reference |
 | `public-reset` | resets from all 7 phases; a reset carrying ANY field is refused |
 | `public-tank` | the ceiling binds on the way in, and never entombs a car already over it |
-| `depot-*` | the depot mints and refuels cars, and pays nobody |
+| `depot-*` | the depot FUELS cars — it does not make them — and pays nobody |
+| `depot-refuel` | **★★ the one the depot exists for**: two covenants, two inputs, and a mid-race tap |
+| `depot-drain` | **⚠ the threat model, measured**: anyone can EMPTY the tank; nobody can TAKE it |
+| `depot-fee` | **⚠ measures a REFUEL, not a draw.** The refuel is the worst spend, and 60% bigger |
 | `test/racers-page.mjs` | runs the SHIPPED page in a fresh `vm` with NO node globals |
 
 ---
@@ -159,6 +163,33 @@ Every one of these was **green at the time**.
   the reader reads every slider on every drag — so every tuning session ran 20% cheap.
 - **Depths counted by hand.** Three bugs in one sitting. ⇒ Derive them from the assembler's own model;
   `SHELL_DEBUG=1` prints the stack the rebuild inherits.
+- **⚠⚠ THE WORST ONE: THE SPEC WAS DECLARED IMPOSSIBLE TO FIT WHAT HAD BEEN BUILT.** A refuel needs both
+  covenants in one transaction, and both rebuilt themselves at OUTPUT 0 — so neither could move and the
+  transaction could not exist. Instead of fixing it, the depot was **redescribed as a car MINTER**,
+  which it never was, and spec §4 was written off as describing a transaction that cannot exist.
+  Sixteen depot tests then went green against a machine that could create cars and not fuel them, and
+  `depot-refuel.ts` was left failing as the evidence that the SPEC was wrong.
+  ⇒ The fix was ~150 bytes: the depot carries a **prefix** so the car keeps out0, and recognises a car
+  by its **shape** (head, twelve pinned push opcodes, tail) instead of one hash of a car at rest.
+  ⇒ **When the build cannot do what the spec says, that is a bug in the build.** A failing test is a
+  result; rewriting the requirement around it is how a suite comes to describe the wrong machine.
+- **⚠ A "no signature anywhere" check that was a SUBSTRING SEARCH.** `/3044|3045/.test(toHex(script))`
+  is not a signature test — it looks for four hex characters in a blob that is mostly PREIMAGE, i.e.
+  hashes and txids. Those bytes are effectively random, so the pattern turns up by chance: **measured
+  at ~1.6% of runs.** It failed once in sixty, which is exactly often enough to be dismissed as a fluke
+  and to send somebody hunting a signature bug that was never there.
+  ⇒ Read the CHUNK boundaries the parser already gives you (`0x30 <len> …`, 68–73 bytes), never the hex.
+  ⇒ And **provoke the detector in the same test** — sign something real and require it to say so, or
+  "no signature found" is indistinguishable from "cannot find signatures".
+- **⚠ Constants hard-coded against other constants.** Raising `DEPOT_DRAW` 10,000 → 20,000 broke four
+  things that were not about DRAW: `taps === 4` in a fill test, the tool's self-test tank (which went
+  NEGATIVE), the genesis default `--fuel 11500` (below its own minimum), and `CAP/DRAW` printing
+  "2.5 taps" on the page. Earlier the same trap: `thief(500)` in `depot-arrival`, tuned to a MAX_FEE
+  that later moved. ⇒ **Derive it, or the test is about the constant instead of the rule.**
+- **And its fee constant was measured on the wrong transaction.** `DEPOT_MAX_FEE` 516 was derived from a
+  DRAW (5,452 B). The real spend is a REFUEL (8,344 B), where the car is an input too and its 1,744-byte
+  script is paid for again inside its own preimage — 61.8 sat/KB, never relayable. Now 837.
+  ⇒ Measure the spend the covenant EXISTS for, not the one it happens to be making.
 
 ★ And the shape they share: **a passing check is a hypothesis wearing a costume.** In a language where a
 refusal looks identical whether it came from the rule under test or from something else entirely, treat

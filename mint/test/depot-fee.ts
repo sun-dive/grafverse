@@ -10,11 +10,13 @@
 //
 // ★ It has been under the floor three times elsewhere in this project, each time with a green suite,
 // and each time because somebody counted bytes instead of serializing a transaction. So: serialize.
-import { Transaction, PrivateKey, P2PKH, Hash, TransactionSignature } from '@bsv/sdk'
+import { Transaction, PrivateKey, P2PKH, Hash, TransactionSignature, UnlockingScript } from '@bsv/sdk'
 import {
   buildDepotLock, buildDepotUnlock, DEPOT_SCOPE, DEPOT_DRAW, DEPOT_MAX_FEE, DEPOT_MAX_TANK,
 } from '../src/depot.ts'
-import { buildShellLock, SHELL_MAX_FEE, SHELL_FEE_PER_KB } from '../src/shell.ts'
+import {
+  buildShellLock, shellUnlockingOps, SHELL_SCOPE, SHELL_MAX_FEE, SHELL_FEE_PER_KB,
+} from '../src/shell.ts'
 import { freshPublicShell } from '../src/publicShell.ts'
 import { serializeOutput } from '../src/covenant.ts'
 
@@ -70,6 +72,52 @@ async function burnBytes(tank: number): Promise<number> {
   return tx.toHex().length / 2
 }
 
+/**
+ * ★★ AND THE REFUEL — the spend the depot actually exists for, and the one that costs the most.
+ *
+ * Two covenants, two inputs, two outputs. It is very nearly TWICE the size of a draw, because the car
+ * is not merely an output here: it is an INPUT, so its 1,744-byte script is paid for again inside its
+ * own preimage. Measuring the depot against a draw alone is how the old constant came to be 516 —
+ * correct for a transaction the depot was never supposed to be making.
+ *
+ * ⚠ THE DEPOT MUST BE ABLE TO FUND THIS BY ITSELF. The car's value rule is a floor, so a driver COULD
+ * burn extra fuel to cover the fee — but fuel is mass and the driver just paid for it. The depot is
+ * the party that should carry the cost of pumping, which is exactly what MAX_FEE is: the allowance for
+ * satoshis that leave the tank and do not arrive in the car.
+ */
+async function refuelBytes(tank: number, draw: number, carHas: number): Promise<number> {
+  const FRESH = freshPublicShell(OWNER)
+  const cSrc = new Transaction(); cSrc.addOutput({ lockingScript: CAR, satoshis: carHas })
+  const dSrc = new Transaction(); dSrc.addOutput({ lockingScript: DEPOT, satoshis: tank })
+  const kept = tank - draw
+  const tx = new Transaction(); tx.version = 2
+  tx.addInput({ sourceTransaction: cSrc, sourceOutputIndex: 0, sequence: 0xfffffffe })
+  tx.addInput({ sourceTransaction: dSrc, sourceOutputIndex: 0, sequence: 0xfffffffe })
+  tx.addOutput({ lockingScript: CAR, satoshis: carHas + draw })   // out0 — the car's slot
+  tx.addOutput({ lockingScript: DEPOT, satoshis: kept })
+  tx.lockTime = 0
+  const ser = (i: number): number[] =>
+    serializeOutput(tx.outputs[i].satoshis ?? 0, tx.outputs[i].lockingScript.toBinary())
+
+  const cPre = TransactionSignature.format({
+    sourceTXID: cSrc.id('hex'), sourceOutputIndex: 0, sourceSatoshis: carHas, transactionVersion: 2,
+    otherInputs: [tx.inputs[1]], inputIndex: 0, outputs: tx.outputs, inputSequence: 0xfffffffe,
+    subscript: CAR, lockTime: 0, scope: SHELL_SCOPE })
+  tx.inputs[0].unlockingScript = new UnlockingScript(shellUnlockingOps({
+    spenderOutputs: ser(1), newValue: u64(carHas + draw), preimage: cPre,
+    sig: [], pubKey: [], throttle: 0, retire: true,
+    load: { driver: FRESH.driver, pool: FRESH.pool, eng: FRESH.eng, tyr: FRESH.tyr,
+            finish: FRESH.finish, slip: FRESH.slip, green: FRESH.green, gap: FRESH.gap } }))
+
+  const dPre = TransactionSignature.format({
+    sourceTXID: dSrc.id('hex'), sourceOutputIndex: 0, sourceSatoshis: tank, transactionVersion: 2,
+    otherInputs: [tx.inputs[0]], inputIndex: 1, outputs: tx.outputs, inputSequence: 0xfffffffe,
+    subscript: DEPOT, lockTime: 0, scope: DEPOT_SCOPE })
+  tx.inputs[1].unlockingScript = buildDepotUnlock({
+    prefixOutputs: ser(0), spenderOutputs: [], newValue: u64(kept), preimage: dPre })
+  return tx.toHex().length / 2
+}
+
 // ── the worst spend the depot can be asked to make ───────────────────────────────────────────────
 let worst = 0, which = ''
 for (const [tank, draw, carHas, label] of [
@@ -79,6 +127,15 @@ for (const [tank, draw, carHas, label] of [
   [16_777_216, DEPOT_DRAW, 0, 'a big tank — bigger numbers push in more bytes'],
 ] as const) {
   const b = await drawBytes(tank, draw, carHas)
+  if (b > worst) { worst = b; which = label }
+  console.log(`        ${String(b).padStart(5)} B   ${label}`)
+}
+for (const [tank, draw, carHas, label] of [
+  [500_000, DEPOT_DRAW, 2_200, '★ A REFUEL — two covenants, two inputs'],
+  [500_000, DEPOT_DRAW, DEPOT_MAX_TANK - DEPOT_DRAW, '★ a refuel to the ceiling'],
+  [16_777_216, DEPOT_DRAW, DEPOT_MAX_TANK - DEPOT_DRAW, '★ a refuel from a big tank'],
+] as const) {
+  const b = await refuelBytes(tank, draw, carHas)
   if (b > worst) { worst = b; which = label }
   console.log(`        ${String(b).padStart(5)} B   ${label}`)
 }

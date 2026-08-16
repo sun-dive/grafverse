@@ -228,6 +228,38 @@ export interface RacerRegs {
    * has to think about it, and the risk is paid for by the driver rather than imposed by a bound.
    */
   BLOW_V: number
+  /**
+   * ★★ FUEL ARRIVING IS A PIT STOP. 1 = on, 0 = off and emits no opcodes at all.
+   *
+   *   the tick is COUNTED · the car covers NO DISTANCE · and it ends STATIONARY
+   *
+   * A real drag car that takes on fuel has to stop, so a splash-and-dash costs a standing start. That
+   * is the whole rule, and it is deliberately harsh: the splash exists to RESCUE a run that would have
+   * died, never to beat a car that fuelled properly.
+   *
+   * ── ★ AND IT REPLACED A MOMENTUM TERM, WHICH IS WORTH RECORDING ────────────────────────────────
+   * The first fix conserved momentum on arrival — `v ← v·m/m′` — because fuel is up to 73% of a car's
+   * mass and taking it aboard at speed for free was the DOMINANT strategy. That worked, and only
+   * reached parity: the splash line still matched a proper fill. Stopping the car is simpler, strictly
+   * cheaper in Script (no second mass, no multiply, no divide — it writes the branch the OUT case
+   * already writes), and it puts a well-fuelled car back in front where it belongs:
+   *
+   *   34,000 in one fill   HOME 3.9 s on 34,000        ← the best line
+   *   20,000 + one pit     HOME 4.4 s on 40,000        ← slower AND dearer
+   *   16,000 + one pit     dry at 398 m of 402
+   *
+   * ⇒ With every arrival stopping the car, fuel never arrives at speed, so there is no momentum left
+   * to conserve. The term became unreachable and was removed rather than left as dead arithmetic.
+   * ⚠ The MASS penalty is untouched and still does its work — a car that pits carries the fuel it took.
+   *
+   * ⚠ ZERO IS THE MAINNET SETTING and must stay the default. At 0 the reference computes the identical
+   * number and the script omits the opcodes, so a car built today is BYTE-IDENTICAL to the ones already
+   * racing. This is not v3 superseding v2 — it is one source of which v2 is the zero case.
+   *
+   * ⇒ Turn it on for cars a DEPOT will fuel. Leave it off for owned cars that are fuelled once and
+   * never topped up: they cannot exploit what they never do, and need not carry the bytes.
+   */
+  PIT: number
   /** Satoshis burned per tick regardless of throttle. */
   BURN0: number
   /** Extra satoshis burned per unit of engine at full throttle. */
@@ -318,6 +350,9 @@ export const RACER_REGS: RacerRegs = {
   /* ★ 330 mph, WRITTEN AS THE CONVERSION rather than the integer it lands on. `v` is metres per 0.1 s,
      so mph = (v/S)·22.3694 — a constant nobody can read is a constant nobody can check. */
   BLOW_V: Math.round((330 / 22.3694) * S),
+  /* ⚠ OFF BY DEFAULT, so `RACER_REGS` still builds the car that is on mainnet, byte for byte. A depot's
+     car turns it on explicitly — see `RacerRegs.PIT`. */
+  PIT: 0,
   SPIN_KEEP: Math.round(0.43 * S),
   LOOSE_V: Math.round(0.35 * S),
   BLOW_T: 14,
@@ -512,6 +547,13 @@ export interface Move {
   lockTime: number
   /** The satoshis currently on the output. Read from the preimage; never a stored field. */
   fuel: number
+  /**
+   * ★ Satoshis ARRIVING in this move — a splash-and-dash. Zero for every ordinary tick.
+   *
+   * ⚠ The covenant derives it rather than being told: `added = out − V + burn`, clamped at zero. So it
+   * is not a field, not a register, and cannot be lied about — out and V both come from the preimage.
+   */
+  added?: number
 }
 
 export interface TickResult {
@@ -550,6 +592,41 @@ export function refTick(st: ShellState, m: Move, regs: RacerRegs = PROVISIONAL_R
   const mass = regs.M0 + st.eng * regs.WE + st.tyr * regs.WT + fmul(m.fuel * S, regs.WF)
   need(mass > 0, 'a car cannot be massless')
 
+  /* ── ★★ FUEL ARRIVING IS A PIT STOP (sun-dive, 16 Aug) ──────────────────────────────────────────
+     The tick is COUNTED, the car covers NO DISTANCE, and it ends STATIONARY. A real drag car that
+     takes on fuel has to stop, so a splash-and-dash costs a standing start.
+
+     ⚠ IT IS THE FIRST THING CHECKED, before grip, force or drag, because none of them apply: the car
+     is not racing during this tick, it is being fuelled. The state it writes is the one the OUT branch
+     writes, minus the ending — same shape, and cheap for exactly that reason.
+
+     ★ WHY IT IS DELIBERATELY HARSH. Fuel is up to 73% of a car's mass, and a mid-race top-up that kept
+     your speed was measured to be the DOMINANT strategy — under-fuel, splash, and beat a properly
+     fuelled car on less money. Stopping the car puts the honest line back in front:
+
+       34,000 in one fill   HOME 3.9 s on 34,000       ← the best line
+       20,000 + one pit     HOME 4.4 s on 40,000       ← slower AND dearer
+       16,000 + one pit     dry at 398 m of 402
+
+     ⇒ The splash RESCUES a run that would have died. It never wins one.
+
+     ⚠ The MASS penalty is untouched and still does its work afterwards: a car that pits carries the
+     fuel it took, and pays for it all the way down the strip.
+
+     ⚠⚠ EMITTED ONLY WHEN SET, exactly as DRAG2 and BLOW_V are. At PIT = 0 no fuel can arrive mid-race
+     in the first place, so the reference computes the identical number and the script omits the
+     opcodes — a car built without it is BYTE-IDENTICAL to the ones already on mainnet. There is no v2
+     and v3, only one source of which today's cars are the zero setting. And because the depot pins the
+     car's SHAPE, a pitting car has a different tail hash: the pump fuels that variant and no other, so
+     only cars that CAN be refuelled ever pay for the opcodes. */
+  const added = Math.max(0, m.added ?? 0)
+  if (regs.PIT !== 0 && added > 0) {
+    return {
+      state: { ...st, phase: PHASE.RACING, last: m.lockTime, n: st.n + 1, v: 0 },
+      burn: regs.BURN0, spun: false,
+    }
+  }
+
   // Grip rises with speed, which is why a big engine wastes force off the line and rewards good tyres.
   // The surface scales everything the tyres and the speed were going to give you.
   const grip = Math.trunc(((st.tyr * regs.G0 + fmul(st.v, regs.GV)) * st.slip) / SLIP_UNIT)
@@ -581,6 +658,7 @@ export function refTick(st: ShellState, m: Move, regs: RacerRegs = PROVISIONAL_R
   }
 
   const force = spun ? grip : demand
+
   const a = fdiv(force, mass)
 
   /* ⚠ DRAG IS THE LINEAR TERM PLUS THE QUADRATIC ONE, and the quadratic one is the honest one — real
@@ -1128,6 +1206,15 @@ export function shellLockOps(p: ShellLockParams): ScriptChunk[] {
  *           is then recovered by comparing the two rather than being carried.
  */
 function shellPhysicsOps(regs: RacerRegs, isPublic = false): ScriptChunk[] {
+  /* ⚠⚠ THE PORT GUARD, AND IT IS NOT DECORATION. The reference conserves momentum when fuel arrives;
+     these opcodes do NOT yet. A lock built with PIT set would therefore promise arithmetic it does
+     not do — the reference and the chain would disagree, silently, and only on the one move that
+     matters. This project has shipped a lock that disagreed with its reference before.
+     ⇒ Refuse to build it until the ops exist. Delete this line in the commit that adds them. */
+  if (regs.PIT !== 0) {
+    throw new Error('PIT is implemented in the reference but NOT yet in Script — a lock built ' +
+      'with it would disagree with the reference. See shell-pit.ts.')
+  }
   const a = new Asm([
     /* ⚠ THE WHOLE STACK, LOADABLES INCLUDED. Leaving them out cost an evening: everything ABOVE them
        still computed correctly, because model and reality shifted by the same eight, so the model

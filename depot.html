@@ -85,7 +85,7 @@
     <div style="flex:1;min-width:240px">
     <div class="lbl">The depot</div>
     <div class="row"><span>fuel in the tank</span><span id="d-depot" class="dim">reading…</span></div>
-    <div class="row"><span>one tap fills a car with</span><span id="d-draw" class="dim">—</span></div>
+    <div class="row"><span>one tap of the pump</span><span id="d-draw" class="dim">—</span></div>
     <div class="row"><span>a car holds at most</span><span id="d-cap" class="dim">—</span></div>
     <div class="row"><span>taps left in the tank</span><span id="d-taps" class="dim">—</span></div>
     <p class="note" id="d-note" style="margin-top:10px"></p>
@@ -127,7 +127,7 @@
     <div class="lbl">Put fuel in the tank</div>
     <p class="note" style="margin-top:0">The tank is <b>unbounded on the way in</b> and bounded on the way
        out — fuel can only ever leave into a car, and a car burns it as mining fees. Not even the owner
-       can take it: the burn refuses any tank holding 913 sat or more.</p>
+       can take it: the burn refuses any tank holding <b id="d-burnbelow">…</b> or more.</p>
     <div class="grid" style="gap:10px">
       <label>satoshis <b id="v-add">50,000</b><input type="range" id="add" min="1000" max="500000" step="1000" value="50000"></label>
       <div>
@@ -167,6 +167,9 @@ var CAR_SEED={txid:'e57b702546c87cbf457d53f7975c3bf6692cb175686cf0eee9cd33b7f8ed
 
 var $=function(i){return document.getElementById(i)};
 var car=null, carTx=null, carOut=null, plan=null;
+/* the depot as an OUTPOINT plus the pieces a refuel needs — its source transaction and its script.
+   ⚠ Refreshed by readChain, and re-read after every run, because a pit stop moves it. */
+var depot=null;
 
 function log(s,cls){ var e=$('log'); e.innerHTML+=(e.innerHTML?'\n':'')+(cls?'<span class="'+cls+'">'+s+'</span>':s); e.scrollTop=e.scrollHeight }
 function sat(n){ return Number(n).toLocaleString() }
@@ -197,18 +200,24 @@ async function findCar(){
 async function readChain(){
   $('go').disabled=true;
   try{
-    var d=await getJSON('/tx/'+DEPOT_TXID+'/0/spent').catch(function(){return null});
-    var depotAt=DEPOT_TXID, dv=0;
-    if(d&&d.txid){ depotAt=d.txid; dv=0 }
-    var dtx=await getJSON('/tx/hash/'+depotAt);
-    var dsat=Math.round((dtx.vout[dv].value||0)*1e8);
+    var dep=await findDepot();
+    var depotAt=dep.txid, dv=dep.vout, dsat=dep.sats;
+    /* ⚠ KEEP THE WHOLE TRANSACTION, not just the balance. A refuel spends the depot as an INPUT, so
+       the pit stop needs the source transaction — the same reason the car's is kept below. */
+    depot={txid:dep.txid,vout:dep.vout,sats:dep.sats,
+           tx:GM.Transaction.fromHex(await getText('/tx/'+dep.txid+'/hex')),
+           lock:GM.LockingScript.fromHex(dep.script)};
     $('d-depot').innerHTML=sat(dsat)+' sat <a class="dim" style="font-size:12px" href="https://whatsonchain.com/tx/'
       +depotAt+'" target="_blank" rel="nofollow noopener">on chain</a>';
     $('d-depot').className='';
     var DRAW=GM.DEPOT_DRAW, CAP=GM.SHELL_TANK_MAX, FEE=GM.DEPOT_MAX_FEE;
     var taps=Math.max(0,Math.floor((dsat-FEE)/DRAW));
-    $('d-draw').textContent=sat(DRAW)+' sat'; $('d-draw').className='';
-    $('d-cap').textContent=sat(CAP)+' sat  ('+(CAP/DRAW)+' taps)'; $('d-cap').className='';
+    $('d-draw').textContent='up to '+sat(DRAW)+' sat'; $('d-draw').className='';
+    /* ⚠ CEIL, not a plain division. A tap is a CEILING per spend, not a fixed increment, so a cap that
+       is not a whole number of draws still takes one more tap to reach — 50,000 at 20,000 is THREE
+       (20k · 20k · 10k), and `CAP/DRAW` would have printed "2.5 taps". */
+    $('d-cap').textContent=sat(CAP)+' sat  ('+Math.ceil(CAP/DRAW)+' taps)'; $('d-cap').className='';
+    if($('d-burnbelow')) $('d-burnbelow').textContent=sat(GM.DEPOT_BURN_BELOW)+' sat';
     $('d-taps').textContent=taps; $('d-taps').className= taps?'':'warn';
     $('d-note').innerHTML = taps
       ? 'Enough to fuel '+taps+' car'+(taps>1?'s':'')+'.'
@@ -270,16 +279,18 @@ function replan(){
      stopping short of the line is a racing outcome, so `planRace` plans as far as the fuel goes and
      reports where the car dies. That belongs in the covenant layer and it is permanent.
 
-     ⚠⚠ TEMPORARY — THE PAGE HOLDS THE BUTTON BACK ANYWAY, and this block has an expiry date.
-     A car that stops at 78 m should be rescued by a SPLASH-AND-DASH: tap the pump mid-race, lose a
-     tick, and carry on. That does not exist yet — the depot recognises a car by ONE HASH OF A CAR AT
-     REST, so it cannot fuel a car at 78 m, whose state (and therefore whose script) is arbitrary.
-     Until the depot pins the script's constant HEAD and TAIL either side of the state instead of the
-     whole thing, a dry car is a dead run and the fuel is only recoverable by the owner's burn.
+     ⚠ THE COVENANT CAN NOW DO THIS — THE PAGE CANNOT YET, AND THAT IS THE ONLY REASON IT IS FALSE.
+     The depot used to recognise a car by ONE HASH OF A CAR AT REST, so it could not fuel a car at
+     78 m whose state (and therefore whose script) is arbitrary. It now pins the script's constant HEAD
+     and TAIL — and the twelve push opcodes between the fields, so the free bytes stay payload — and a
+     refuel in ANY phase is proven in `mint/test/depot-refuel.ts`, through the shared
+     `GM.buildRefuelMove` this page would call.
 
-     ⇒ So the page declines to strand a car it cannot rescue. DELETE THIS THE DAY SPLASH-AND-DASH
-     LANDS — the honest behaviour is to let the driver run out and then pit. */
-  var rescueable = false;                       // ← splash-and-dash: not yet
+     ⇒ What is missing is the PIT STOP IN THE RUN LOOP: noticing mid-race that the fuel will not reach
+     the line, tapping the pump for one tick, and carrying on. Until that is wired, the page still
+     declines to strand a car it cannot rescue — the flag is about this page's plumbing now, not about
+     what is possible on chain. Flip it in the same commit that adds the pit stop, never before. */
+  var rescueable = false;                       // ← the covenant is ready; this page's run loop is not
   $('p-why').innerHTML =
       p.outcome==='home'    ? '<span class="ok">Crosses the line with '+sat(last.out)+' sat to spare.</span>'
     : p.outcome==='dry'     ? '<span class="warn">'+p.why+'.</span> The car would run and stop there. '
@@ -306,30 +317,88 @@ async function broadcast(hex){
   return t.replace(/"/g,'');
 }
 
+/**
+ * ★★ THE RUN, WITH PIT STOPS.
+ *
+ * A leg is driven until the plan says the fuel runs out; then the pump is tapped WITHOUT giving up the
+ * run — one transaction spending both covenants — and the race carries on from exactly where it was.
+ *
+ * ⚠⚠ THE PIT COMES ONE TICK EARLY, AND THAT IS A REGULATION RATHER THAN A CHOICE. The depot's arrival
+ * rule is `carOut ≥ (what left the tank) − MAX_FEE`, and a splash-and-dash burns the car's own tick in
+ * the same transaction, so it reduces to **`fuel ≥ burn`: the car must be able to pay for the tick it
+ * pits on.** The depot cannot cover a burn it cannot see — it has no way to read the car's state, and
+ * relaxing the rule so that it could is exactly what turns a tank into a faucet.
+ *
+ * ⇒ So the last step of a dry leg is HELD BACK. Drive it and you are stranded a couple of hundred
+ * satoshis short of the tick that would have saved you. Pit before the tank is dry, not after — which
+ * is what a real one does too. Proved in `mint/test/depot-splash.ts`.
+ */
 async function run(){
   $('go').disabled=true; $('reload').disabled=true;
-  var st=car, val=window.__fuel, prev=carTx, sent=0;
+  var st=car, val=window.__fuel, prev=carTx, v=carOut.vout, sent=0, pits=0;
+  var dTx=depot&&depot.tx, dVout=depot&&depot.vout, dVal=depot?depot.sats:0;
+  var leg=plan;
   log('\n── the run ──');
-  for(var i=0;i<plan.steps.length;i++){
-    var step=plan.steps[i];
-    var at=GM.lockTimeFor(st);
-    var m;
-    try{ m=GM.buildPublicMove({prevTx:prev,vout:(i===0?carOut.vout:0),state:st,value:val,step:step,lockTime:at}) }
-    catch(e){ log('⚠ build failed: '+e.message,'no'); break }
-    if(!m.ok){ log('⚠ the covenant refused: '+step.label,'no'); break }
+
+  /* ⚠ BOUNDED. A pit stop that does not get the car further would otherwise loop until the tank is
+     empty, spending real money to discover it. Six legs is far more than any strip needs. */
+  for(var lap=0; lap<6; lap++){
+    // ★ hold the last step of a dry leg back — see the note above
+    var steps = (leg.outcome==='dry') ? leg.steps.slice(0,-1) : leg.steps;
+    for(var i=0;i<steps.length;i++){
+      var step=steps[i], m;
+      try{ m=GM.buildPublicMove({prevTx:prev,vout:v,state:st,value:val,step:step,lockTime:GM.lockTimeFor(st)}) }
+      catch(e){ log('⚠ build failed: '+e.message,'no'); return done(st,val,sent,pits) }
+      if(!m.ok){ log('⚠ the covenant refused: '+step.label,'no'); return done(st,val,sent,pits) }
+      try{
+        var id=await broadcast(m.tx.toHex()); sent++;
+        log(String(sent).padStart(3)+'  '+step.label+'   '+id.slice(0,12)+'…  −'+step.burn+' sat','ok');
+      }catch(e){ log('⚠ '+step.label+' → '+e.message,'no'); return done(st,val,sent,pits) }
+      prev=m.tx; v=0; st=step.next; val=step.out;
+      paint(st);
+      await new Promise(function(r){setTimeout(r,350)});        // ⚠ pace it — WoC throttles bursts
+    }
+    if(st.phase===5||st.phase===6) break;                       // DONE, or the run ended on its own
+    if(leg.outcome!=='dry') break;
+
+    // ── ★★ THE PIT STOP ───────────────────────────────────────────────────────────────────────────
+    if(!dTx){ log('⚠ no depot to pit at — the run stops here','warn'); break }
+    var pit=GM.pitStep(st,val);
+    if(!pit){ log('⚠ there is no tick to take — the run stops here','warn'); break }
+    if(val<pit.burn){ log('⚠ too late to pit: the car cannot pay for the tick','warn'); break }
+    var draw=Math.min(GM.DEPOT_DRAW, dVal-GM.DEPOT_MAX_FEE, GM.SHELL_TANK_MAX-val);
+    if(draw<1){ log('⚠ the tank has nothing left to give — the run stops here','warn'); break }
+
+    var r;
     try{
-      var id=await broadcast(m.tx.toHex());
-      sent++;
-      log(String(sent).padStart(3)+'  '+step.label+'   '+id.slice(0,12)+'…  −'+step.burn+' sat','ok');
-    }catch(e){ log('⚠ '+step.label+' → '+e.message,'no'); break }
-    prev=m.tx; st=step.next; val=step.out;
+      r=GM.buildRefuelMove({prevTx:prev,vout:v,state:st,value:val,step:pit,lockTime:GM.lockTimeFor(st),
+        depot:{sourceTransaction:dTx,outputIndex:dVout,value:dVal},depotLock:depot.lock,
+        draw:draw,depotMaxFee:GM.DEPOT_MAX_FEE,depotScope:GM.DEPOT_SCOPE});
+    }catch(e){ log('⚠ pit build failed: '+e.message,'no'); break }
+    if(!r.carOk||!r.depotOk){
+      log('⚠ the pit stop was refused ('+(r.carOk?'':'car ')+(r.depotOk?'':'depot')+') — the run stops here','no');
+      break;
+    }
+    try{
+      var pid=await broadcast(r.tx.toHex()); sent++; pits++;
+      log(String(sent).padStart(3)+'  ⛽ '+pit.label+'   '+pid.slice(0,12)+'…  +'+sat(draw)+' sat','warn');
+    }catch(e){ log('⚠ the pit stop → '+e.message,'no'); break }
+
+    prev=r.tx; v=0; st=pit.next; val=r.carOut;
+    dTx=r.tx; dVout=1; dVal=r.kept;                             // ⚠ the depot is out1 of a refuel
     paint(st);
-    await new Promise(function(r){setTimeout(r,350)});          // ⚠ pace it — WoC throttles bursts
+    await new Promise(function(r2){setTimeout(r2,350)});
+    leg=GM.raceFrom(st,val);                                    // ⚠ raceFrom, NOT planRace — no reset
   }
+  return done(st,val,sent,pits);
+}
+
+function done(st,val,sent,pits){
   var names=['EMPTY','CAR','TRACK','ARMED','RACING','DONE','OUT'];
   log('\n'+(st.phase===5?'🏁 HOME in '+(st.n*0.1).toFixed(1)+' s · '+(st.s/GM.SHELL_S).toFixed(0)+' m · '
         +((st.v/GM.SHELL_S)*22.3694).toFixed(0)+' mph':'ended at '+names[st.phase])
-      +' · '+sent+' transactions · '+sat(val)+' sat left in the car', st.phase===5?'ok':'warn');
+      +' · '+sent+' transactions'+(pits?' · '+pits+' pit stop'+(pits>1?'s':''):'')
+      +' · '+sat(val)+' sat left in the car', st.phase===5?'ok':'warn');
   $('reload').disabled=false;
   setTimeout(readChain,1500);
 }
@@ -411,17 +480,35 @@ async function buildTopUp(){
   }catch(e){ out.innerHTML='<span class="no">'+e.message+'</span>' }
 }
 
-/** Where the depot is NOW — it moves every time it is tapped or topped up. */
-async function currentDepot(){
-  var txid=DEPOT_TXID, vout=0;
-  for(var i=0;i<40;i++){
+/**
+ * Where the depot is NOW.
+ *
+ * ⚠⚠ MATCHED BY SCRIPT, NEVER BY OUTPUT INDEX. This walked with `vout=0` at every hop, which was true
+ * only while the depot was the one that got output zero. It is not any more: on a REFUEL the CAR takes
+ * out0 — its covenant rebuilds itself there and will accept no other slot — and the depot follows at
+ * out1. Walking by index would have quietly started following the CAR and reported its fuel as the
+ * tank's balance.
+ *
+ * ★ A stateless covenant is the same bytes forever, which is exactly what makes matching by script
+ * reliable. The car cannot be followed this way — its script carries its state, so it changes every
+ * move — but the car never needs it, because out0 is the only slot it can ever be in.
+ */
+async function findDepot(){
+  var genesis=await getJSON('/tx/hash/'+DEPOT_TXID);
+  var script=genesis.vout[0].scriptPubKey.hex;
+  var txid=DEPOT_TXID, vout=0, tx=genesis;
+  for(var i=0;i<60;i++){
     var sp=null; try{ sp=await getJSON('/tx/'+txid+'/'+vout+'/spent') }catch(e){ sp=null }
     if(!sp||!sp.txid) break;
-    txid=sp.txid; vout=0;
+    var next=await getJSON('/tx/hash/'+sp.txid);
+    var at=-1;
+    for(var k=0;k<next.vout.length;k++){ if(next.vout[k].scriptPubKey.hex===script){ at=k; break } }
+    if(at<0) break;                       // no depot in the successor — it was retired
+    txid=sp.txid; vout=at; tx=next;
   }
-  var tx=await getJSON('/tx/hash/'+txid);
-  return {txid:txid,vout:vout,sats:Math.round((tx.vout[vout].value||0)*1e8)};
+  return {txid:txid,vout:vout,sats:Math.round((tx.vout[vout].value||0)*1e8),script:script};
 }
+var currentDepot=findDepot;               // the top-up flow's old name for it
 
 $('add').addEventListener('input',function(){ $('v-add').textContent=sat($('add').value) });
 $('build').onclick=buildTopUp;

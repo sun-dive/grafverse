@@ -34,7 +34,7 @@ import {
   pushTxVerifyOps, pushTxConstants, pushData, type PushTxConstants,
 } from './pushtx.ts'
 import { extractHashOutputsOps, extractScriptCodeFieldOps } from './covenant.ts'
-import { RACER_REGS, SHELL_TANK_MAX } from './shell.ts'
+import { RACER_REGS, SHELL_TANK_MAX, FIELDS, FIELD_WIDTHS } from './shell.ts'
 import { op, PN } from './covenantAsm.ts'
 
 /** A byte-count for OP_SPLIT — always small, and never a script NUMBER. Kept apart from `PN` on purpose. */
@@ -63,8 +63,24 @@ export const DEPOT_SCOPE = 0x41
 /**
  * ★ DRAW — the most fuel one spend may move out of the tank. ONE TAP OF THE PUMP.
  *
- * A policy, not a law of the covenant, and it does two jobs that pull the same way: it bounds how fast
- * a depot can be emptied, and it is the increment a driver fuels in. Both want it small.
+ * ⚠ A CEILING PER SPEND, NOT A FIXED INCREMENT. The value rule is a floor (`out ≥ V − DRAW − MAX_FEE`),
+ * so a spend may always take LESS. A driver who wants 6,000 takes 6,000 in one tap. That is why raising
+ * this number costs nothing in granularity — it only lowers the number of transactions a big fill needs.
+ *
+ * ── ⚠⚠ AND THE "BOTH WANT IT SMALL" ARGUMENT WAS HALF WRONG ───────────────────────────────────────
+ * This was 10,000, justified by two jobs said to pull the same way: bounding how fast a depot can be
+ * emptied, and being the increment a driver fuels in. **The first job is nearly illusory, and
+ * `depot-drain` measures it.** A small DRAW does not stop a tank being emptied — a griefer with no key
+ * and no coin simply taps more often, and pays nothing either way. All it changes is the number of
+ * transactions, and since every one of them burns MAX_FEE out of the tank, a SMALLER draw makes the
+ * griefing COST THE OWNER MORE:
+ *
+ *   DRAW 10,000   a 100,000 tank is 10 forced taps from empty   8,370 sat to miners
+ *   DRAW 20,000   …5 forced taps                                4,185 sat to miners
+ *
+ * ⇒ The anti-drain half wanted it small and bought almost nothing; the fee half wants it large and
+ * buys real satoshis. The skim bound is MAX_FEE and is untouched by this — whatever leaves must still
+ * arrive in the car, to within one fee. So the number is set by FUELLING, and nothing else.
  *
  * ── ★ WHY FUELLING IS A DECISION, NOT A FORMALITY ─────────────────────────────────────────────────
  * Fuel is MASS. Carrying more of it costs acceleration, and the extra weight burns extra fuel to move,
@@ -76,8 +92,15 @@ export const DEPOT_SCOPE = 0x41
  * Ten thousand satoshis of insurance cost six tenths of a second. Tap too few times and you stop short
  * of the line with nothing to show; tap too many and a slower car beats you home.
  *
- * ⇒ At 10,000 a quarter mile is four or five taps and a 60 m strip is one. Each tap is a transaction,
- * so the increment is also what fuelling COSTS — which is the right shape: pumping is not free.
+ * ⇒ At 20,000 a full tank is THREE taps (20k · 20k · 10k) and a quarter mile is TWO. Each tap is a
+ * transaction, so the ceiling is also what fuelling COSTS — which is the right shape: pumping is not
+ * free, it is just no longer charged five times for one fill.
+ *
+ *   fill to the 50,000 ceiling    5 taps → 3     4,185 → 2,511 sat of fees
+ *   a quarter mile (~40,000)      4 taps → 2     3,348 → 1,674 sat
+ *
+ * ★ sun-dive's call, 16 Aug, and the reasoning holds: a race burns ~28,000 sat, so 1,674 saved on the
+ * fuelling is about 6% off the cost of running one.
  *
  * ★ AND IT ONLY GOES ONE WAY. Not by rule but by construction: a public car has no branch that pays
  * anybody, so fuel that goes in can only ever leave as mining fees. Easy to put in, impossible to get
@@ -88,10 +111,10 @@ export const DEPOT_SCOPE = 0x41
  * them home. Nobody designed that — it falls out of rules written for other reasons, and it happens in
  * real races too. Left in deliberately.
  */
-export const DEPOT_DRAW = 10_000
+export const DEPOT_DRAW = 20_000
 
 /**
- * ★ MAX_TANK — FIVE taps, and the pump stops filling that car.
+ * ★ MAX_TANK — THREE taps (20k · 20k · 10k), and the pump stops filling that car.
  *
  * A cap on how much fuel one car may hold, enforced where it cannot be argued with. Overfilling is
  * already punished by the physics — fuel is mass — but a cap makes the pump's behaviour a property of
@@ -111,19 +134,29 @@ export const DEPOT_DRAW = 10_000
 export const DEPOT_MAX_TANK = SHELL_TANK_MAX
 
 /**
- * ★ MEASURED — `depot-fee` serializes a real draw and derives this. Was 500, and 500 was FATAL.
+ * ★ MEASURED — `depot-fee` serializes a real spend and derives this. Was 500, then 516, and BOTH were
+ * fatal for the transaction this depot exists to make.
  *
  * ⚠⚠ THE MOST DANGEROUS CONSTANT IN THIS FILE. The value rule lets a spend take at most
- * `DRAW + MAX_FEE` out of the tank, so MAX_FEE is a ceiling on the fee any draw can pay. A real draw
- * serializes to 5,139 bytes — the depot's own 694 plus the CAR's 1,744 as an output, plus the preimage
- * carrying the depot's script again — and at 500 sat that is 97.3 sat/KB. Under the 100 floor, no node
- * relays it, and since there is no key to raise the constant the depot would have been UNSPENDABLE
- * FROM BIRTH, with every satoshi ever donated to it locked away forever.
+ * `DRAW + MAX_FEE` out of the tank, so MAX_FEE is a ceiling on the fee any spend can pay. There is no
+ * key to raise it: set below what a real spend costs at the 100 sat/KB floor and the depot is
+ * UNSPENDABLE FROM BIRTH, with every satoshi ever donated to it locked away forever.
  *
- * ⇒ 516 = ceil(5139 × 100/1000) + 2. Re-run `depot-fee` after ANY change to either script: the car is
- * an output of every draw, so the depot's fee depends on the CAR's size as much as its own.
+ * ── ⚠⚠ AND 516 WAS MEASURED ON THE WRONG TRANSACTION, WITH EVERY TEST GREEN ────────────────────────
+ * It was derived from a DRAW — one input, the depot creating a fresh car — because that is what the
+ * depot had been built to do. The spend it is actually for is a REFUEL, where the car is an INPUT as
+ * well, so its 1,744-byte script is paid for again inside its own preimage:
+ *
+ *   draw     5,452 B   →  546 sat
+ *   refuel   8,344 B   →  835 sat      ◀ at 516 that is 61.8 sat/KB. Not relayed. Ever.
+ *
+ * ⇒ 837 = ceil(8344 × 100/1000) + 2. It is the same failure this project has now had FOUR times, and
+ * the same lesson each time: **a bound must cover the worst spend the covenant can legally be asked to
+ * make, not the one that happened to get measured.** Re-run `depot-fee` after ANY change to either
+ * script — the car appears twice in a refuel, so the depot's fee depends on the CAR's size as much as
+ * on its own.
  */
-export const DEPOT_MAX_FEE = 516
+export const DEPOT_MAX_FEE = 837
 
 /**
  * ★★ EMPTY FOR THE RACE IS NOT EMPTY FOR FUNCTIONALITY.
@@ -145,23 +178,150 @@ export const DEPOT_MAX_FEE = 516
 export const DEPOT_BURN_BELOW = RACER_REGS.BURN0 + DEPOT_MAX_FEE
 
 /**
- * ★ THE FRAME. Stack on entry, bottom to top: [ spenderOutputs, newValue, preimage ].
+ * The car script's constant HEAD: three 2-byte header pushes, then the push opcode of the first field.
+ * After it comes the first field's DATA, which is where a car stops being constant.
+ */
+export const CAR_HEAD_BYTES = 3 * 2 + 1
+
+/**
+ * ★★ A CAR IN ANY PHASE — the shape the depot recognises, and the reason a splash-and-dash is possible.
  *
- *   spenderOutputs   every output of this transaction AFTER out0, serialized as value(8) ‖ varint ‖ script
- *   newValue         the 8-byte little-endian value of out0 — the depot's successor
+ * The depot used to pin ONE hash of the whole car script. That recognises a car AT REST and nothing
+ * else, because a car that has moved carries different state, so different script bytes, so a different
+ * hash. It made refuelling and RESETTING the same act: a driver at 300 m could only take fuel by giving
+ * up the run — and the spec promises the opposite (§5, "a driver about to run dry at 300 m can tap once
+ * more mid-race").
+ *
+ * ⇒ So pin what does not vary and skip what does. Measured, not assumed — across phases the ONLY bytes
+ * that differ are the thirteen fields' DATA:
+ *
+ *   lock 1744 B  =  HEAD [0,7)  ‖  state region [7,117)  ‖  TAIL [117,1744)
+ *   state region =  13 data slices (98 B) interleaved with 12 push opcodes
+ *
+ * ── ⚠⚠ AND WHY THE TWELVE OPCODES ARE PINNED TOO, WHICH LOOKS LIKE FUSSINESS AND IS NOT ─────────────
+ * The obvious version pins HEAD and TAIL only and lets the 110 bytes between them be anything. That
+ * hands an attacker 110 free bytes AT THE START OF A SCRIPT — executable positions, not payload. A
+ * spliced `OP_0 OP_IF` there swallows the covenant's own VERIFYs up to a matching ENDIF in the tail,
+ * and what the depot pays out is then not a car but a script somebody else can spend. The depot's whole
+ * job is refusing that: "without this the depot is not a tank but a faucet".
+ *
+ * ⇒ Pinning the twelve inter-field push opcodes leaves every free byte inside a PUSH — payload, which
+ * is never executed. That is the difference between a rule that is probably safe and one that is safe
+ * by construction, and it is the only version worth having here.
+ *
+ * ★ It costs ~140 bytes, and those bytes are nearly free: the depot's script is paid for on a TAP, not
+ * on a tick. The CAR is what appears on every move of every race, and the car does not change.
+ */
+export interface CarShape {
+  /** varint(len) ‖ the head — an output's script-length prefix and the constant bytes before field 1. */
+  headField: number[]
+  /** The thirteen field widths, in `FIELDS` order. Each is also the push opcode that precedes it. */
+  widths: number[]
+  /** SHA256 of everything after the last field's data — the whole covenant body. */
+  tailHash: number[]
+  /** Offset of the first byte of the tail, for tests and tools that want to check the arithmetic. */
+  stateEnd: number
+}
+
+/**
+ * Derive the shape from a real car script — and REFUSE if the script does not have it.
+ *
+ * ⚠ The guard is the point. A layout change in the shell (a field added, a width widened, the header
+ * moved) would otherwise produce a depot that pins the wrong offsets and recognises nothing, or worse
+ * recognises the wrong thing — discovered on mainnet, with no key to fix it. Here it is a build-time
+ * throw. → the same reason `carShape` is called by the lock builder rather than trusted from a caller.
+ */
+export function carShape(carScript: number[]): CarShape {
+  const widths = FIELDS.map(k => FIELD_WIDTHS[k])
+  if (carScript.length <= CAR_HEAD_BYTES) throw new Error(`car script too short: ${carScript.length} B`)
+  if (carScript[CAR_HEAD_BYTES - 1] !== widths[0]) {
+    throw new Error(`car layout: field 1 push opcode is ${carScript[CAR_HEAD_BYTES - 1]}, expected ${widths[0]}`)
+  }
+  let off = CAR_HEAD_BYTES
+  widths.forEach((w, i) => {
+    off += w
+    if (i === widths.length - 1) return
+    if (carScript[off] !== widths[i + 1]) {
+      throw new Error(`car layout: push opcode for ${FIELDS[i + 1]} is ${carScript[off]} at ${off}, expected ${widths[i + 1]}`)
+    }
+    off += 1
+  })
+  if (off >= carScript.length) throw new Error('car layout: no tail after the state region')
+  return {
+    headField: [...varint(carScript.length), ...carScript.slice(0, CAR_HEAD_BYTES)],
+    widths,
+    tailHash: Hash.sha256(carScript.slice(off)),
+    stateEnd: off,
+  }
+}
+
+/**
+ * Op fragment: consumes ONE serialized output and leaves its value, having proved the output is a car.
+ *
+ * In:  [ .., out ]        an output as value(8) ‖ varint ‖ script
+ * Out: [ .., carValue ]   …and the script was a car, in whatever phase
+ *
+ * Nothing is parsed and nothing is trusted. It walks the script at constant offsets, and if the output
+ * is shorter than a car OP_SPLIT fails and the spend dies.
+ */
+export function carRecognitionOps(shape: CarShape): ScriptChunk[] {
+  const ops: ScriptChunk[] = [
+    AT(8), op(OP.OP_SPLIT),                                        // [ valueBytes, rest ]
+    op(OP.OP_SWAP), op(OP.OP_BIN2NUM), op(OP.OP_TOALTSTACK),       // alt:[ .., carValue ]  ·  [ rest ]
+
+    /* The length prefix and the head, as one constant — cheaper to compare outright than to hash. */
+    AT(shape.headField.length), op(OP.OP_SPLIT),
+    op(OP.OP_SWAP), pushData(shape.headField), op(OP.OP_EQUALVERIFY),
+  ]
+
+  shape.widths.forEach((w, i) => {
+    /* Skip this field's DATA — the bytes a car is allowed to change. */
+    ops.push(AT(w), op(OP.OP_SPLIT), op(OP.OP_NIP))
+    if (i === shape.widths.length - 1) return
+    /* …and pin the push opcode that introduces the next one, so the skipped bytes stay payload. */
+    ops.push(AT(1), op(OP.OP_SPLIT), op(OP.OP_SWAP),
+      pushData([shape.widths[i + 1]]), op(OP.OP_EQUALVERIFY))
+  })
+
+  /* Whatever is left is the covenant body, and it is the same in every car ever built. */
+  ops.push(op(OP.OP_SHA256), pushData(shape.tailHash), op(OP.OP_EQUALVERIFY))
+  return ops
+}
+
+/**
+ * ★ THE FRAME. Stack on entry, bottom to top:
+ * [ prefixOutputs, burn, sig, pubKey, spenderOutputs, newValue, preimage ].
+ *
+ *   prefixOutputs    every output BEFORE the depot's own, serialized as value(8) ‖ varint ‖ script
+ *   spenderOutputs   every output AFTER it, the same way
+ *   newValue         the 8-byte little-endian value of the depot's successor
  *   preimage         the BIP143 sighash preimage, which OP_PUSH_TX proves is this transaction's own
  *
  * What it enforces, and nothing more:
  *
- *   HASH256( newValue ‖ myOwnScriptCode ‖ spenderOutputs ) == hashOutputs
+ *   HASH256( prefixOutputs ‖ newValue ‖ myOwnScriptCode ‖ spenderOutputs ) == hashOutputs
  *
- * ⇒ out0 must pay a script byte-identical to the one now executing. The value is whatever the spender
- * claims — the frame does not judge it, because judging it is step 3 and mixing the two is how a frame
- * comes out green while proving nothing.
+ * ── ★★ WHY A PREFIX EXISTS AT ALL — THE BUG THIS FILE WAS BUILT AROUND ────────────────────────────
+ * The depot used to rebuild itself at OUTPUT 0 and treat everything after as the spender's. So does the
+ * car: `HASH256( newValue ‖ scriptCode ‖ spenderOutputs )` puts it first too. Each alone is fine. A
+ * REFUEL spends BOTH — two covenants, two inputs, one transaction — and then both demand slot zero and
+ * neither can move. Measured both ways, which is the only reason it was believed:
  *
- * ⚠ AND IT BINDS EVERY OTHER OUTPUT TOO. `spenderOutputs` is concatenated into the same hash, so a
- * transaction cannot quietly add an output the covenant never saw. That property is what will later
- * let the depot say "whatever I do not keep goes to the car" instead of merely "out0 is me".
+ *   depot at out0  →  the car refuses
+ *   car   at out0  →  the depot refuses
+ *
+ * ⇒ The car cannot move: it is on mainnet, its layout is published as BITCOIN RACER v2, and its script
+ * is paid for twice on every tick of every race. So the DEPOT moves, and it moves by learning to sit
+ * anywhere rather than by swapping one hard-coded slot for another:
+ *
+ *   a top-up        prefix empty        depot at out0
+ *   a refuel        prefix = the car    car at out0, depot at out1   ← the car gets the slot it needs
+ *
+ * One construction, no second branch, and the old behaviour is the case where the prefix is empty.
+ *
+ * ⚠ AND IT BINDS EVERY OTHER OUTPUT TOO. Prefix and suffix are concatenated into the same hash, so a
+ * transaction cannot quietly add an output the covenant never saw — which is what lets the depot say
+ * "whatever I do not keep goes to the car" rather than merely "out0 is me".
  */
 export function depotLockOps(
   p: { carScript: number[]; owner: number[]; draw?: number; maxFee?: number; maxTank?: number; burnBelow?: number; c?: PushTxConstants },
@@ -172,13 +332,10 @@ export function depotLockOps(
   const burnBelow = p.burnBelow ?? DEPOT_BURN_BELOW
   const c = p.c ?? pushTxConstants(DEPOT_SCOPE)
 
-  /* ★ THE CAR, AS ONE HASH. An output serializes as value(8) ‖ varint(len) ‖ script, so everything
-     after the value is a fixed blob for a script of known length — and a public car at rest IS of
-     known length and known content. That is what step 1's reset was arranged to make true: a car
-     between races is byte-identical to one freshly minted, so the depot never parses an output. It
-     splits at two fixed offsets and compares one hash. */
-  const carField = [...varint(p.carScript.length), ...p.carScript]
-  const carHash = Hash.sha256(carField)
+  /* ★ THE CAR, AS A SHAPE RATHER THAN A SNAPSHOT — head, twelve pinned push opcodes, tail. A car at
+     REST is one constant and would have been one hash; a car at 300 m is not, and fuelling one is the
+     whole point of a depot. See `carShape` for why the opcodes are pinned as well as the ends. */
+  const car = carShape(p.carScript)
   if (p.owner.length !== 20) throw new Error(`the owner must be a 20-byte hash160, got ${p.owner.length}`)
 
   /* ★ THE MOST A SINGLE SPEND MAY COST THE TANK. One number, so there is one place to be wrong and
@@ -201,8 +358,10 @@ export function depotLockOps(
        where fuel may go; the owner is the one party allowed to ignore all of it, so the branch has to
        sit outside those rules rather than inside them.
 
-       Stack, bottom to top: [ burn, sig, pubkey, SO, newValue, preimage ]. The three new pushes go
-       DEEPEST so every depth the rest of the script measures from the top stayed exactly where it was. */
+       Stack, bottom to top: [ PRE, burn, sig, pubkey, SO, newValue, preimage ]. The three burn pushes go
+       DEEPEST so every depth the rest of the script measures from the top stayed exactly where it was —
+       and `prefixOutputs` was later slid in BELOW even those, for the same reason and with the same
+       result: not one depth in this script changed when the prefix was added. */
     PN(5), op(OP.OP_PICK), op(OP.OP_IF),
       /* ★★ AND ONLY WHEN THE TANK IS EMPTY — which is what makes even the OWNER unable to run off
          with it. "Empty" means empty for FUNCTIONALITY, not empty for the race: below one move's fuel
@@ -227,7 +386,8 @@ export function depotLockOps(
       pushData(p.owner), op(OP.OP_EQUALVERIFY),          // …must be THE owner's
       PN(4), op(OP.OP_PICK), PN(4), op(OP.OP_PICK),      // the signature, and the key again
       op(OP.OP_CHECKSIG), op(OP.OP_VERIFY),
-      op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP), // nothing survives a burn
+      // nothing survives a burn — seven pushes now, since the prefix joined them
+      op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_2DROP), op(OP.OP_DROP),
       op(OP.OP_1),
     op(OP.OP_ELSE),
 
@@ -266,31 +426,38 @@ export function depotLockOps(
     PN(drain), op(OP.OP_SUB),                  // [ .., out0value, floor ]
     op(OP.OP_GREATERTHANOREQUAL), op(OP.OP_VERIFY),   // [ SO, newV, hashOutputs, scriptCodeField ]
 
-    /* ── ★ AND IF FUEL LEFT, out1 IS A CAR ────────────────────────────────────────────────────────
-       out1 is the first entry of spenderOutputs. Split off its 8-byte value, take the next
-       `carField.length` bytes, hash them, and require the constant. Nothing is parsed and nothing is
-       trusted: if the output is shorter than a car, OP_SPLIT fails and the spend dies. */
+    /* ── ★ AND IF FUEL LEFT, THE OUTPUT BEFORE THIS ONE IS A CAR ──────────────────────────────────
+       The car is the FIRST entry of prefixOutputs — out0, the slot its own covenant insists on. The
+       depot walks it at constant offsets and never parses anything: if the output is shorter than a
+       car, OP_SPLIT fails and the spend dies. See `carRecognitionOps`.
+
+       ⚠ AND IT WORKS IN ANY PHASE, which is the change this whole file exists for. The old rule pinned
+       one hash of a car AT REST, so taking fuel meant giving up the run. */
     op(OP.OP_FROMALTSTACK),                    // [ .., scField, fuelLeft ]
     op(OP.OP_IF),
-      PN(3), op(OP.OP_PICK),                   // a copy of spenderOutputs
-      AT(8), op(OP.OP_SPLIT),                  // [ .., out1value, rest ]   ← keep the value this time
-      PN(carField.length), op(OP.OP_SPLIT), op(OP.OP_DROP),   // exactly one car's worth
-      op(OP.OP_SHA256), pushData(carHash), op(OP.OP_EQUALVERIFY),          // [ .., out1value ]
-      op(OP.OP_BIN2NUM),
+      PN(7), op(OP.OP_PICK),                   // a copy of prefixOutputs
+      ...carRecognitionOps(car),               // alt:[ left, carValue ]  ·  [ .., scField ]
 
-      /* ── ★ TEN TAPS AND THE PUMP STOPS ────────────────────────────────────────────────────────
+      /* ── ★ THREE TAPS AND THE PUMP STOPS ───────────────────────────────────────────────────────
          A cap on what one car may hold. Overfilling is already punished by the physics, but a cap
          makes it a property of the system rather than a courtesy of the page. */
+      op(OP.OP_FROMALTSTACK),                  // [ .., carValue ]        alt:[ left ]
       op(OP.OP_DUP), PN(maxTank), op(OP.OP_LESSTHANOREQUAL), op(OP.OP_VERIFY),
 
       /* ── ★★ AND WHAT LEFT THE DEPOT MUST ARRIVE ───────────────────────────────────────────────
-         out1 ≥ (V − out0) − MAX_FEE. Without this the depot is not a tank but a faucet: take a full
-         DRAW, hand the car ONE SATOSHI, and send the difference to yourself. Measured, not feared —
-         the covenant accepted exactly that transaction before this line existed.
+         carValue ≥ (V − out_depot) − MAX_FEE. Without this the depot is not a tank but a faucet: take
+         a full DRAW, hand the car ONE SATOSHI, and send the difference to yourself. Measured, not
+         feared — the covenant accepted exactly that transaction before this line existed.
 
          ⚠ And it cannot be enforced at the pump. An attacker does not use the pump; they build the
-         transaction by hand, and the covenant is the only thing standing there. */
-      op(OP.OP_FROMALTSTACK),                  // [ .., out1value, left ]
+         transaction by hand, and the covenant is the only thing standing there.
+
+         ⚠⚠ NOTE WHAT THIS IS NOT. On a refuel the car ALREADY HELD fuel, and this rule reads its whole
+         new value rather than the increment — so a car arriving with more than the draw satisfies it
+         trivially. That is correct here: the depot's question is "did what I gave up land in a car",
+         and the CAR's own covenant is what stops a car being drained in the same transaction. Two
+         covenants, each answering its own half, neither able to read the other. */
+      op(OP.OP_FROMALTSTACK),                  // [ .., carValue, left ]  alt: empty
       PN(maxFee), op(OP.OP_SUB),
       op(OP.OP_GREATERTHANOREQUAL), op(OP.OP_VERIFY),
     op(OP.OP_ELSE),
@@ -303,12 +470,18 @@ export function depotLockOps(
     /* Rebuild out0 as an output serialization: value(8) ‖ varint(len) ‖ script. `scriptCodeField`
        already carries its own length varint, which is exactly what an output needs after its value —
        so no length has to be computed, and none can be got wrong. */
-    PN(2), op(OP.OP_ROLL),                  // [ SO, hashOutputs, scField, newV ]
-    op(OP.OP_SWAP), op(OP.OP_CAT),          // [ SO, hashOutputs, out0 ]
+    PN(2), op(OP.OP_ROLL),                  // [ .., SO, hashOutputs, scField, newV ]
+    op(OP.OP_SWAP), op(OP.OP_CAT),          // [ .., SO, hashOutputs, mine ]
 
-    PN(2), op(OP.OP_ROLL),                  // [ hashOutputs, out0, SO ]
-    op(OP.OP_CAT),                          // [ hashOutputs, out0 ‖ SO ]
-    op(OP.OP_HASH256),                      // [ hashOutputs, HASH256(all outputs) ]
+    /* ★ AND THE PREFIX GOES IN FRONT — the one line that lets the car have output zero. When the
+       prefix is empty this concatenation is a no-op and the depot sits at out0 exactly as before, so
+       the top-up and burn paths did not change behaviour, only notation. */
+    PN(6), op(OP.OP_ROLL),                  // [ burn, sig, pub, SO, hashOutputs, mine, PRE ]
+    op(OP.OP_SWAP), op(OP.OP_CAT),          // [ burn, sig, pub, SO, hashOutputs, PRE ‖ mine ]
+
+    PN(2), op(OP.OP_ROLL),                  // [ burn, sig, pub, hashOutputs, PRE ‖ mine, SO ]
+    op(OP.OP_CAT),                          // [ .., hashOutputs, PRE ‖ mine ‖ SO ]
+    op(OP.OP_HASH256),                      // [ .., hashOutputs, HASH256(all outputs) ]
     op(OP.OP_EQUAL),                        // [ burn, sig, pubkey, bool ]
 
     /* ⚠ AND THE THREE BURN PUSHES MUST NOT BE LEFT LYING THERE. A standard spend has to finish with a
@@ -343,6 +516,12 @@ export function varint(n: number): number[] {
  * opcodes from the cause.
  */
 export function depotUnlockingOps(p: {
+  /**
+   * Every output BEFORE the depot's own, serialized. Empty for a top-up or a mint — the depot then
+   * sits at out0, as it always did. On a REFUEL this is the car's output, because the car's covenant
+   * rebuilds itself at out0 and cannot be persuaded otherwise.
+   */
+  prefixOutputs?: number[]
   spenderOutputs: number[]
   newValue: number[]
   preimage: number[]
@@ -353,7 +532,8 @@ export function depotUnlockingOps(p: {
 }): ScriptChunk[] {
   if (p.newValue.length !== 8) throw new Error(`newValue must be 8 bytes little-endian, got ${p.newValue.length}`)
   return [
-    // deepest first — see the burn branch for why these three go below everything else
+    // deepest first — the prefix below even the burn pushes, so no existing depth moved when it arrived
+    pushData(p.prefixOutputs ?? []),
     PN(p.burn ? 1 : 0), pushData(p.sig ?? []), pushData(p.pubKey ?? []),
     pushData(p.spenderOutputs), pushData(p.newValue), pushData(p.preimage),
   ]

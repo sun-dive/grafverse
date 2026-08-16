@@ -27,6 +27,8 @@
 // no output to re-create. It is the rule PharLap's editions already use.
 import { Transaction, Spend, LockingScript, TransactionSignature, PrivateKey, P2PKH, Hash } from '@bsv/sdk'
 import { buildDepotLock, buildDepotUnlock, DEPOT_SCOPE, DEPOT_DRAW, DEPOT_MAX_FEE, DEPOT_BURN_BELOW } from '../src/depot.ts'
+import { buildShellLock, SHELL_MAX_FEE } from '../src/shell.ts'
+import { freshPublicShell } from '../src/publicShell.ts'
 import { serializeOutput } from '../src/covenant.ts'
 
 let pass = 0, fail = 0
@@ -39,7 +41,7 @@ const u64 = (n: number): number[] => { const b: number[] = []; let x = n
 const OWNER_KEY = PrivateKey.fromRandom()
 const STRANGER_KEY = PrivateKey.fromRandom()
 const OWNER = Hash.hash160(OWNER_KEY.toPublicKey().encode(true) as number[])
-const CAR = LockingScript.fromASM('OP_DUP OP_HASH160 ' + '11'.repeat(20) + ' OP_EQUALVERIFY OP_CHECKSIG OP_NOP')
+const CAR = buildShellLock({ state: freshPublicShell(OWNER), maxFee: SHELL_MAX_FEE, public: true })
 const LOCK = buildDepotLock({ carScript: CAR.toBinary(), owner: OWNER })
 /* ⚠ A BURN IS ONLY LEGAL ON AN EMPTY TANK — less than one DRAW, so the depot can no longer fill a
    car even once. These cases therefore run on a husk; the full-tank refusals are asserted below. */
@@ -147,8 +149,8 @@ check('  …across as many outputs as they like', await burn({ outputs: 3 }))
   const src = new Transaction(); src.addOutput({ lockingScript: LOCK, satoshis: FULL })
   const tx = new Transaction(); tx.version = 2
   tx.addInput({ sourceTransaction: src, sourceOutputIndex: 0, sequence: 0xfffffffe })
+  tx.addOutput({ lockingScript: CAR, satoshis: DEPOT_DRAW })          // out0 — the car's slot
   tx.addOutput({ lockingScript: LOCK, satoshis: FULL - DEPOT_DRAW - DEPOT_MAX_FEE })
-  tx.addOutput({ lockingScript: CAR, satoshis: DEPOT_DRAW })
   tx.lockTime = 0
   const pre = TransactionSignature.format({
     sourceTXID: src.id('hex'), sourceOutputIndex: 0, sourceSatoshis: FULL, transactionVersion: 2,
@@ -156,7 +158,8 @@ check('  …across as many outputs as they like', await burn({ outputs: 3 }))
     subscript: LOCK, lockTime: tx.lockTime, scope: DEPOT_SCOPE,
   })
   tx.inputs[0].unlockingScript = buildDepotUnlock({
-    spenderOutputs: tx.outputs.slice(1).flatMap(o => serializeOutput(o.satoshis ?? 0, o.lockingScript.toBinary())),
+    prefixOutputs: serializeOutput(tx.outputs[0].satoshis ?? 0, tx.outputs[0].lockingScript.toBinary()),
+    spenderOutputs: [],
     newValue: u64(FULL - DEPOT_DRAW - DEPOT_MAX_FEE), preimage: pre,   // burn omitted entirely
   })
   let ok = false

@@ -13,6 +13,8 @@
 // go green, this file is decoration.
 import { Transaction, Spend, LockingScript, TransactionSignature, PrivateKey, P2PKH, Utils, Hash } from '@bsv/sdk'
 import { buildDepotLock, buildDepotUnlock, DEPOT_SCOPE } from '../src/depot.ts'
+import { buildShellLock, SHELL_MAX_FEE } from '../src/shell.ts'
+import { freshPublicShell } from '../src/publicShell.ts'
 import { serializeOutput } from '../src/covenant.ts'
 
 let pass = 0, fail = 0
@@ -22,11 +24,12 @@ const check = (n: string, got: boolean, want = true): void => {
 const u64 = (n: number): number[] => { const b: number[] = []; let x = n
   for (let i = 0; i < 8; i++) { b.push(x % 256); x = Math.floor(x / 256) } return b }
 
-/* A stand-in car, so the depot builds. The frame is about SELF-REBUILD, so every spend below leaves
-   the balance alone — nothing leaves the tank, so step 3b's car rule never engages and cannot mask a
-   frame bug by refusing for the wrong reason. */
+/* A real public car, because the depot now recognises a car by its SHAPE and refuses to build against
+   a script that has not got one. The frame is still about SELF-REBUILD: every spend below leaves the
+   balance alone, so step 3b's car rule never engages and cannot mask a frame bug by refusing for the
+   wrong reason. */
 const OWNER = Array.from({ length: 20 }, (_, i) => i + 1)
-const CAR = LockingScript.fromASM('OP_DUP OP_HASH160 ' + '11'.repeat(20) + ' OP_EQUALVERIFY OP_CHECKSIG OP_NOP')
+const CAR = buildShellLock({ state: freshPublicShell(OWNER), maxFee: SHELL_MAX_FEE, public: true })
 const LOCK = buildDepotLock({ carScript: CAR.toBinary(), owner: OWNER })
 const V = 500_000
 const SOMEONE = PrivateKey.fromRandom().toAddress()
