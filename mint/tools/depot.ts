@@ -329,12 +329,9 @@ async function genesis(): Promise<void> {
      UTXO that covers the job, which is right for a covenant SPEND — one input is all a covenant can
      use. A genesis is an ordinary payment though, and insisting on one coin means a wallet holding
      plenty across several is told it has none. Largest first, so it takes as few as it can. */
-  const utxos = await getJson(`/address/${addr}/unspent`)
-  const all = (Array.isArray(utxos) ? utxos : []).sort((a: any, b: any) => b.value - a.value)
   const need = fuel + 500
-  const picked: any[] = []
-  let have = 0
-  for (const u of all) { if (have >= need) break; picked.push(u); have += u.value }
+  const picked = await spendable(addr, need)
+  const have = picked.reduce((a, u) => a + u.value, 0)
   if (have < need) {
     console.error(`Only ${sat(have)} sat spendable at ${addr}, and the depot needs ${sat(need)}.`)
     console.error(`Send a little BSV there, or lower --fuel (minimum ${sat(DEPOT_DRAW + DEPOT_MAX_FEE)}).`)
@@ -390,12 +387,9 @@ async function mintCar(): Promise<void> {
   const owner = Hash.hash160(key.toPublicKey().encode(true) as number[])
   const { car } = scripts(owner)
 
-  const utxos = await getJson(`/address/${addr}/unspent`)
-  const all = (Array.isArray(utxos) ? utxos : []).sort((a: any, b: any) => b.value - a.value)
   const need = fuel + 500
-  const picked: any[] = []
-  let have = 0
-  for (const u of all) { if (have >= need) break; picked.push(u); have += u.value }
+  const picked = await spendable(addr, need)
+  const have = picked.reduce((a, u) => a + u.value, 0)
   if (have < need) {
     console.error(`Only ${sat(have)} sat spendable at ${addr}; a car needs ${sat(need)}.`); process.exit(1)
   }
