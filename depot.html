@@ -442,20 +442,20 @@ async function buildTopUp(){
       picked.push(all[ci]); have+=all[ci].value;
     }
     var pad=GM.topUpPad(picked.length||1);
-    if(!picked.length || have < amt+pad){
-      /* ⚠ SAY THE SHORTFALL, NOT THE REQUIREMENT. "needs 1,320" leaves the reader doing arithmetic
-         against a balance they cannot see; "send 738 more" is the same fact as an instruction. And
-         say what the address could afford right now, because with the slider's floor at 1,000 every
-         position on it can be blocked at once and that reads as the page being broken. */
-      var tot=(us||[]).reduce(function(a,x){return a+x.value},0);
-      var short=amt+pad-have;
-      var affordable=Math.max(0, tot-GM.topUpPad((us||[]).length||1));
-      out.innerHTML='<span class="no">'+sat(short)+' sat short</span> — that address holds '+sat(tot)+
-        ' across '+(us||[]).length+' coin(s), and '+sat(amt)+' plus its fee needs '+sat(amt+pad)+'.'+
-        (affordable>0 ? ' The most it could contribute right now is <b>'+sat(affordable)+'</b> sat.'
-                      : ' It cannot cover any contribution yet.')+
-        ' Send it '+sat(short)+' more and press again — several coins are fine now.';
-      return;
+    /* ── ★★ NO REFUSAL. IF IT CANNOT AFFORD WHAT YOU ASKED, IT CONTRIBUTES WHAT IT CAN ─────────────
+       sun-dive, 16 Aug: *"There is no good reason to block funding the silo!"* — twice, because the
+       first fix only moved the block rather than removing it. The tank is UNBOUNDED ON THE WAY IN;
+       every refusal here was the page's invention, not the covenant's. So: no minimum, no "send
+       yourself one payment first", no arithmetic homework. Take every coin the address has, pay the
+       fee, and put the rest in the tank. */
+    if(have < amt+pad){
+      amt = have - pad;
+      if(amt < 1){
+        out.innerHTML='<span class="no">that address has no coins to spend</span>'+
+          ' — '+sat(have)+' sat across '+picked.length+', and the fee alone is '+sat(pad)+'.';
+        return;
+      }
+      out.textContent='that address holds '+sat(have)+' — contributing '+sat(amt)+' after the fee…';
     }
     out.textContent='building…';
     var depotAt=await currentDepot();
@@ -536,13 +536,12 @@ async function rangeToBalance(){
     var us=await getJSON('/address/'+addr+'/unspent');
     var n=(us||[]).length, tot=(us||[]).reduce(function(a,x){return a+x.value},0);
     var most=Math.max(0, tot-GM.topUpPad(n||1));
-    el.max=Math.max(1, most);
-    if(+el.value>most) el.value=Math.max(1,most);
-    $('v-add').textContent=sat(el.value);
+    /* ⚠ TELLS YOU, NEVER STOPS YOU. An earlier version clamped the slider to the balance and disabled
+       the button — which is the same block wearing a friendlier hat. Ask for more than you have and it
+       simply contributes what you have. */
     lbl.innerHTML = most>0
       ? '— '+sat(tot)+' across '+n+' coin(s) · <b>up to '+sat(most)+'</b> after the fee'
-      : '<span class="no">— '+sat(tot)+' sat, not enough to cover a fee yet</span>';
-    $('build').disabled = most<=0;
+      : '— '+sat(tot)+' sat at that address';
   }catch(e){ lbl.textContent='— could not read that address' }
 }
 $('addr').addEventListener('change',rangeToBalance);
