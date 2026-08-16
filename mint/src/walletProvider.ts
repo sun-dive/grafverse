@@ -527,12 +527,50 @@ export class WalletProvider {
    * EXISTS, and only the tip's is UNSPENT. So existence brackets the search and unspentness confirms
    * the answer, turning "walk every hop to find the tip" into a handful of lookups.
    */
+  /**
+   * ⚠⚠ AND IT MUST SEE THE MEMPOOL, or a covenant cannot find the tip it JUST CREATED.
+   *
+   * `/script/{h}/history` is CONFIRMED ONLY. Measured against a live unconfirmed transaction:
+   *
+   *   /script/<h>/history               32 rows · does NOT contain it
+   *   /script/<h>/unconfirmed/history    1 row  · CONTAINS it
+   *
+   * So a freshly broadcast tick was invisible to `findTip` until a miner confirmed it — the page
+   * would sit on the old state for ten minutes to an hour after a button press that had already
+   * succeeded. The transaction was fine; the search could not see it.
+   *
+   * ⇒ Confirmed first, because every PAST state is confirmed and that is the common case, so the
+   * extra call happens at most once per search — at the tip, which is the one that matters.
+   *
+   * ★ `getUnspentByScriptHash` needed no such fix: `/unspent` already includes mempool outputs and
+   * marks them `height: 0`. Only existence was blind.
+   */
+  /** WoC returns either a bare array or `{result: [...]}` depending on the endpoint. */
+  private static rows(data: any): any[] {
+    return Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : [])
+  }
+
   async scriptHasHistory(scriptHash: string): Promise<boolean> {
-    const resp = await fetchWithRetry(`${WOC_BASE}/script/${scriptHash}/history`)
-    if (!resp.ok) return false
-    const data: any = await resp.json()
-    const rows: any[] = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : [])
-    return rows.length > 0
+    const confirmed = await fetchWithRetry(`${WOC_BASE}/script/${scriptHash}/history`)
+    if (confirmed.ok && WalletProvider.rows(await confirmed.json()).length > 0) return true
+    return this.scriptInMempool(scriptHash)
+  }
+
+  /**
+   * ★★ IS THIS SCRIPT IN THE MEMPOOL RIGHT NOW? One call, and the fast path for finding a tip.
+   *
+   * A covenant's tip is UNCONFIRMED almost by definition — it is the transaction somebody just made.
+   * So the first place to look is the mempool, and only if that misses is a search over confirmed
+   * history worth running.
+   *
+   * ⇒ Kept separate from `scriptHasHistory` deliberately. That one asks "did this state EVER exist",
+   * which needs the confirmed index first because every PAST state is confirmed. This asks "is it
+   * happening NOW", which is a different question with a much cheaper answer.
+   */
+  async scriptInMempool(scriptHash: string): Promise<boolean> {
+    const pending = await fetchWithRetry(`${WOC_BASE}/script/${scriptHash}/unconfirmed/history`)
+    if (!pending.ok) return false
+    return WalletProvider.rows(await pending.json()).length > 0
   }
 
 

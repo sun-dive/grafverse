@@ -297,7 +297,16 @@ function discover_spender($tipTxid, $vout) {
   $tip = get_tx($tipTxid); if (!$tip) return null;
   $scriptHex = $tip['vout'][$vout]['scriptPubKey']['hex'] ?? null; if (!$scriptHex) return null;
   $sh = bin2hex(strrev(hash('sha256', hex2bin($scriptHex), true)));
-  $hist = woc_get("/script/$sh/history"); if (!is_array($hist)) return null;
+  /* ⚠⚠ THE CONFIRMED INDEX CANNOT SEE A FRESH TICK, and the follower's whole job is to be current.
+     Measured: /script/{h}/history omits unconfirmed transactions entirely, while
+     /script/{h}/unconfirmed/history carries them. So a tick was undiscoverable here until a miner
+     picked it up, and every visitor who had not just pressed the button saw a stale battery.
+
+     ⇒ MEMPOOL FIRST — a tip is unconfirmed almost by definition, so that is where to look before
+     asking the confirmed index. Both are consulted; neither is redundant. */
+  $hist = woc_get("/script/$sh/unconfirmed/history");
+  if (!is_array($hist) || !$hist) $hist = woc_get("/script/$sh/history");
+  if (!is_array($hist)) return null;
   foreach ($hist as $h) {
     $txid = $h['tx_hash'] ?? ''; if ($txid === '' || $txid === $tipTxid) continue;
     $t = get_tx($txid); if ($t && does_spend($t, $tipTxid, $vout)) return [$txid, $t];

@@ -1081,7 +1081,35 @@
       var mid=Math.floor((lo+hi)/2);
       return exists(mid).then(function(ok){ if(ok) lo=mid; else hi=mid; return narrow() });
     }
-    return grow().then(narrow).then(function(k){
+    /* ★★ THE MEMPOOL FIRST — because a tip is UNCONFIRMED almost by definition.
+       It is the transaction somebody just made, and the search below reads the CONFIRMED index only,
+       so a tick was invisible to it until a miner picked it up. The button worked, the transaction was
+       fine, and the page went on showing the old state for ten minutes to an hour.
+
+       Measured, against a live unconfirmed transaction:
+
+         /script/<h>/history               32 rows · does NOT contain it
+         /script/<h>/unconfirmed/history    1 row  · CONTAINS it
+
+       ⇒ So walk FORWARD through the mempool one state at a time. Each step is a single call, and the
+       common case — "I just ticked, where is it?" — answers on the first. Unconfirmed ticks form a
+       short chain, so this ends almost at once.
+
+       ⚠ AND IT FALLS BACK. If nothing is in the mempool the tip is confirmed, and the exponential
+       probe plus binary search below is exactly right for that. Neither path is redundant: this one is
+       fast and only sees NOW, that one is slower and sees everything. */
+    function fromMempool(k){
+      k = k || 0;
+      if(k > 256) return Promise.resolve(k);          // a burst, not a real case — let the search take it
+      return chain().then(function(P){
+        return hashOf(k+1).then(function(sh){ return P.scriptInMempool(sh) });
+      }).then(function(there){ return there ? fromMempool(k+1) : k });
+    }
+
+    return fromMempool().then(function(k){
+      if(k > 0) return k;                             // ★ found it without touching the search
+      return grow().then(narrow);
+    }).then(function(k){
       var s=stateAt(k);
       return chain().then(function(P){
         return hashOf(k).then(function(sh){ return P.getUnspentByScriptHash(sh) }).then(function(us){
@@ -1120,8 +1148,12 @@
       msg.textContent='broadcasting '+fmt(raw.length/2)+' bytes — no signature…';
       return chain().then(function(P){ return P.broadcast(raw) });   // queued, both relays
     }).then(function(txid){
-      fetch('/battery.php',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({txid:txid})}).catch(function(){});
+      /* ⚠ AWAITED, not fired and forgotten. The follower is TOLD the txid rather than having to
+         discover it — its own discovery reads the confirmed index and cannot see a fresh tick either.
+         Racing `load()` against this POST is how the page reloaded onto the state it had just left. */
+      return fetch('/battery.php',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({txid:txid})}).catch(function(){}).then(function(){ return txid });
+    }).then(function(txid){
       msg.style.color='var(--lime)';
       msg.innerHTML='✓ one iteration computed on chain — '+
         '<a href="https://whatsonchain.com/tx/'+txid+'" target="_blank" rel="nofollow noopener">'+
