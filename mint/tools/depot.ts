@@ -70,6 +70,55 @@ const getText = async (p: string): Promise<string> => {
   const r = await fetch(WOC + p); if (!r.ok) throw new Error(`WoC ${p} → ${r.status}`); return r.text()
 }
 const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
+
+/**
+ * ★★ SPENDABLE COINS — and `/unspent` is not the same question, which cost a mint.
+ *
+ * ⚠⚠ MEASURED, 16 Aug 2026. The depot genesis broadcast fine; the car mint one command later was
+ * refused by the network with `258: txn-mempool-conflict`. The address index still listed the coin the
+ * genesis had just spent:
+ *
+ *     /address/<a>/unspent    fe861da6…:1  884   ← ALREADY SPENT, in the mempool, by our own genesis
+ *                             e889c1f1…:1  775   ← the genesis change, correctly there
+ *     /tx/fe861da6…/1/spent   200 {"txid":"e889c1f1…","status":"unconfirmed"}
+ *     /tx/e889c1f1…/1/spent   404
+ *
+ * ⇒ `/unspent` is an INDEX and it lags the mempool. `/spent` answers about the outpoint itself and
+ * does not — the same endpoint the computation walk uses to find a covenant's tip, asked the other way
+ * round. Largest-first picking made it certain rather than likely: the stale coin is the biggest one,
+ * so it is always chosen first. Mint a depot, then mint a car, and it fails every time.
+ *
+ * ⚠ ONE CALL PER CANDIDATE, stopping as soon as it has enough — one extra request for a wallet with
+ * one big coin. Paced, because WoC throttles bursts.
+ */
+async function spendable(addr: string, need: number): Promise<any[]> {
+  const utxos = await getJson(`/address/${addr}/unspent`)
+  const all = (Array.isArray(utxos) ? utxos : []).sort((a: any, b: any) => b.value - a.value)
+  const picked: any[] = []
+  let have = 0
+  for (const u of all) {
+    if (have >= need) break
+    /* ⚠⚠ ONLY A 404 MEANS UNSPENT. Every other outcome — a 429, a 500, a dropped connection — must
+       STOP, not be read as "fine". Swallowing them would put the stale coin straight back in the
+       picking list and rebuild the bug this function exists to prevent, except now only under load
+       and looking like bad luck. A failure that resembles a pass is worse than an error. */
+    const r = await fetch(WOC + `/tx/${u.tx_hash}/${u.tx_pos}/spent`)
+    await sleep(250)
+    if (r.status !== 404 && !r.ok) {
+      console.error(`Cannot tell whether ${u.tx_hash.slice(0, 16)}…:${u.tx_pos} is spent ` +
+        `(WoC ${r.status}). Refusing to guess — try again in a moment.`)
+      process.exit(1)
+    }
+    if (r.ok) {
+      const spent = await r.json()
+      console.log(`  ⚠ skipping ${u.tx_hash.slice(0, 16)}…:${u.tx_pos} (${sat(u.value)} sat)` +
+        ` — already spent by ${String(spent.txid).slice(0, 16)}… (${spent.status ?? 'confirmed'})`)
+      continue
+    }
+    picked.push(u); have += u.value
+  }
+  return picked
+}
 /**
  * How many cars a tank can still fuel — and it FLOORS AT ZERO, which is the whole reason it is a
  * function rather than an expression.
