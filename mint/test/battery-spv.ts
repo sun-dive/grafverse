@@ -20,25 +20,29 @@ import {
 } from '../src/tokenProtocol.ts'
 import { WalletProvider } from '../src/walletProvider.ts'
 import {
-  buildBatteryLock, genesisState, refState, S,
-  type BatteryGeometry,
+  buildBatteryLock, genesisState, refState, BATTERY_GEOMETRY, BATTERY_MAX_FEE,
 } from '../src/battery.ts'
 
-const GENESIS = 'd9a55ddb6c52bc51425f3c9e1416033179899e76abd634deda4510eed3790146'
+const GENESIS = '18e3193687078c40ee9a069a419d00f7b2a9c4374fe66e8d2b8a59d424711edd'
 
-/* THE GEOMETRY OF THE BATTERY ON CHAIN, stated explicitly rather than taken from BATTERY_GEOMETRY.
- * This test walks the LIVE chain, and the live battery is the 256x192 one that is being replaced.
- * Replaying it with the current default (3840x2160, MX0 128, K 128) computes a different picture, so
- * every hop's script "differs" — which it should, because they are different covenants.
+/* ⚠⚠ THE LIVE BATTERY IS THE DEFAULT ONE AGAIN — and this block used to pin the OLD one.
  *
- * ⚠ When the replacement genesis is minted, GENESIS and this object move together. They describe one
- * artefact and must never be edited apart. */
-const LIVE_GEOMETRY: BatteryGeometry = {
-  W: 256, H: 192, SPAN0: 4.0,
-  TX: Math.round(-1.423288564770 * S), TY: Math.round(0.127278891029 * S),
-  MX0: 6, K: 4, MXCAP: 32767,
-}
-const LIVE_MAX_FEE = 312
+ * It read: "the live battery is the 256x192 one that is being replaced", and hard-coded that geometry
+ * plus its genesis so the test would keep passing while the replacement was pending. The replacement
+ * then HAPPENED, and nothing here moved. So the test walked the NEW battery's chain (it follows
+ * `battery.php`'s tip) and compared every hop against the RETIRED battery's reference — which differs,
+ * correctly, on every single one.
+ *
+ * ⇒ It read as "the reference has diverged from the chain", which is the most alarming thing this
+ * artefact could possibly report, and it was a stale constant. Verified before changing anything: the
+ * reference reproduces the live tip EXACTLY at the tick `battery.php` reports.
+ *
+ * ★ So the overrides are GONE and the defaults are used. A pinned copy of the live parameters is a
+ * copy that can go stale silently; the defaults cannot, because building a battery uses them too.
+ * ⚠ If a THIRD battery is ever minted, `GENESIS` moves and this comment is the reason to check nothing
+ * else needs to. */
+const LIVE_GEOMETRY = BATTERY_GEOMETRY
+const LIVE_MAX_FEE = BATTERY_MAX_FEE
 const WOC = 'https://api.whatsonchain.com/v1/bsv/main'
 
 let pass = 0, fail = 0
