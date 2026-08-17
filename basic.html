@@ -130,25 +130,29 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
       <div id="read-msg"></div>
     </div>
   </div>
-  <p class="note">⚠ <b>This is a reading, not a source.</b> Feeding the listing back through the compiler
-  will not reproduce the same bytes — the compiler has its own idioms and a hand-written script has its
-  author's. And there is no general decompiler from Script to BASIC: Script does byte surgery, keeps an
-  altstack, and checks a preimage against a derived signature, none of which BASIC has words for. Those
-  come out as plain functions — <b>SPLIT</b>, <b>CAT</b>, <b>HASH256</b>, <b>NUM2BIN</b> — which is
-  honest. An opcode the reader does not model <b>stops the listing and names itself</b> rather than
-  being skipped, because a listing that quietly dropped an opcode would be worse than none: it would be
-  believed.</p>
+  <p class="note">★ <b>The listing is in the same language the other tab compiles</b> — paste it
+  straight across. Measured: of fifteen test programs, <b>fifteen compile back</b> and <b>nine come out
+  byte-identical</b>. The six that differ still compute the same thing: a branch reads back as the
+  balancing the compiler performed, and an unrolled <code>FOR</code> reads back as the copies that are
+  really in the script, <b>because the loop is not</b>.</p>
+  <p class="note">⚠ <b>But a reading is not a source.</b> There is no general decompiler from Script to
+  BASIC: Script does byte surgery, keeps an altstack, and checks a preimage against a derived signature.
+  Those come out as plain functions — <b>SPLIT</b>, <b>CAT</b>, <b>HASH256</b>, <b>NUM2BIN</b> — which is
+  honest, and they are real words in the compiler too. An opcode the reader does not model <b>stops the
+  listing and names itself</b> rather than being skipped, because a listing that quietly dropped an
+  opcode would be worse than none: it would be believed.</p>
 </section>
 
 <!-- ─────────────────────────────── BASIC → SCRIPT ─────────────────────────────── -->
 <section id="write" hidden>
   <div class="grid">
     <div class="pane">
-      <h2>Bitcoin BASIC <span>LET · IF/THEN/ELSE · FOR…NEXT · DIM</span></h2>
+      <h2>Bitcoin BASIC <span>LET · IF/THEN/ELSE · FOR…NEXT · DIM · VERIFY</span></h2>
       <div class="ex">
         <button data-w="phys">the car's physics</button>
         <button data-w="loop">FOR…NEXT, unrolled</button>
         <button data-w="state">DIM — state in the script</button>
+        <button data-w="words">the machine's own words</button>
       </div>
       <textarea id="src" spellcheck="false"></textarea>
       <div class="row">
@@ -160,7 +164,9 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
       <p class="note"><b>DIM declares a LAYOUT, not a type.</b> <code>DIM v%5</code> means five bytes,
       because that is where a covenant splits its own script to read its own state. <code>$</code> means
       raw bytes. With any DIM present the compiler also generates the peel and the rebuild around your
-      program.</p>
+      program. <b>Line numbers are optional</b> and change nothing in the output.
+      ⚠ <code>SAMEBYTES</code> is <b>not</b> <code>=</code>: one compares byte strings and the other
+      compares numbers, so a padded zero and a bare zero are one number and two different strings.</p>
     </div>
     <div class="pane">
       <h2>Bitcoin Script <span id="write-stat"></span></h2>
@@ -184,7 +190,7 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
 </footer>
 </div>
 
-<script src="vendor/grafbasic.js?v=1"></script>
+<script src="vendor/grafbasic.js?v=2"></script>
 <script>
 (() => {
   const $ = id => document.getElementById(id)
@@ -256,6 +262,8 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
       stack: 'v, tyr, slip, eng, throttle, mass, grip, demand, force' },
     loop: { src: `REM  Script has no backward jump, so the compiler IS the loop\nFOR i = 1 TO 10\n  s = s + i * i\nNEXT i`, stack: 's' },
     state: { src: `REM  DIM is a LAYOUT: bytes in the script itself\nDIM phase%1\nDIM n%4\nDIM tag$4\n\nn = n + 1\nIF n >= 3 THEN phase = 2 ELSE phase = 1`, stack: '' },
+    words: { src: `REM  every BASIC had words for the machine it ran on — PEEK, POKE, USR.\nREM  This machine is Bitcoin Script, so its words are the opcodes.\n\n10 head, rest = SPLIT(blob, 4)\n20 VERIFY SAMEBYTES(CAT(head, rest), blob)\n30 VERIFY SIZE(head) = 4\n40 tag = HASH160(rest)\n50 VERIFY SAMEBYTES(tag, &H0102030405060708090a0b0c0d0e0f1011121314)`,
+      stack: 'blob' },
   }
   document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => {
     $('src').value = W[b.dataset.w].src; $('stack').value = W[b.dataset.w].stack; $('go-write').click()

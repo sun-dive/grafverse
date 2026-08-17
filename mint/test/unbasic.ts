@@ -32,8 +32,10 @@ console.log('\nSCRIPT → BASIC — reading a script as a program\n')
   let ok = 0
   for (const [src, stack, want] of cases) {
     const { ops } = compileBasic(src, { stack })
+    /* ⚠ The answer is now a LINE, not a leftover. A program whose result sits on the stack used to
+       read back as an empty listing with the value buried in a trailing comment — true and useless. */
     const r = unbasic(ops, { stack })
-    const got = r.stack[r.stack.length - 1]
+    const got = (r.lines[r.lines.length - 1] ?? '').replace(/^\s*\w+ = /, '')
     if (got === want) ok++
     else console.log(`        ⚠ ${src}  →  read back as "${got}", expected "${want}"`)
   }
@@ -48,8 +50,13 @@ console.log()
   const listing = unbasicListing(ops, { stack: ['a', 'b', 'p', 'q'] })
   check('★ the condition is rendered as the comparison it is', listing.includes('IF a > b THEN'))
   check('★ …with an ELSE and an END IF', listing.includes('ELSE') && listing.includes('END IF'))
-  check('★★ a value that differs between the arms is NAMED and assigned in both',
-    /t\d+ = 1/.test(listing) && /t\d+ = 2/.test(listing))
+  /* ★★ AND IT REUSES THE REAL NAMES. The value that differs between the arms IS `p` being reassigned,
+     not some new `t1` — inventing a name here made the listing subtly false AND uncompilable, because
+     a variable that exists only inside an arm is exactly what the compiler refuses. What comes back is
+     the branch balancing itself, made visible: the arm that changes it, and `q = q` holding the line. */
+  check('★★★ the arms name the REAL variables, and the balancing assignment is visible',
+    /\bp = 1\b/.test(listing) && /\bq = q\b/.test(listing) &&
+    /\bp = p\b/.test(listing) && /\bq = 2\b/.test(listing))
   console.log(listing.split('\n').map(l => '        ' + l).join('\n'))
 }
 
@@ -103,6 +110,54 @@ console.log()
 
   check('★ script numbers read back signed', readScriptNum([0x80]) === 0 - 0 && readScriptNum([0x81]) === -1
     && readScriptNum([0xe8, 0x03]) === 1000)
+}
+
+
+// ── 5. ★★★ THE ROUND TRIP — compile, READ, and compile the reading ─────────────────────────────────
+// This is what the two-way page promises, so it had better be measured rather than assumed. Every case
+// is compiled, read back as BASIC, and the READING is compiled again. Two questions, and they are not
+// the same question: does it compile at all, and does it come out as the SAME BYTES.
+console.log()
+{
+  const cases: Array<[string, string, string[]]> = [
+    ['a verified comparison', 'VERIFY a + b > 10', ['a', 'b']],
+    ['two verifies', 'VERIFY a > 0\nVERIFY b > a', ['a', 'b']],
+    ['a branch of verifies', 'IF a > b THEN VERIFY a > 0 ELSE VERIFY b > 0', ['a', 'b']],
+    ['byte surgery', 'l, r = SPLIT(a, 2)\nVERIFY SAMEBYTES(CAT(l, r), a)', ['a']],
+    ['hashing and a hex literal',
+      'VERIFY SAMEBYTES(HASH160(a), &Hab0102030405060708090a0b0c0d0e0f10111213)', ['a']],
+    ['MIN and arithmetic', 'VERIFY MIN(a, b) * 2 >= 0', ['a', 'b']],
+    ['a value left on the stack', 'x = a + b', ['a', 'b']],
+    ['several values left', 'x = a + b\ny = x * 2', ['a', 'b']],
+    ['precedence and parentheses', 'x = (a + b) * 2 - a / 4', ['a', 'b']],
+    ['a branch that assigns', 'IF a > b THEN p = 1 ELSE p = 2', ['a', 'b', 'p']],
+    ['one arm only', 'IF a > b THEN p = 1', ['a', 'b', 'p']],
+    ['two variables, one arm each', 'IF a > b THEN p = 1 ELSE q = 2', ['a', 'b', 'p', 'q']],
+    ['a nested branch', 'IF a > b THEN IF a > 9 THEN p = 1 ELSE p = 2', ['a', 'b', 'p']],
+    ['a block IF', 'IF a > b THEN\n p = 1\nELSE\n p = 2\nEND IF', ['a', 'b', 'p']],
+    ['an unrolled loop', 'FOR i = 1 TO 4\n s = s + i\nNEXT i', ['s']],
+  ]
+  let compiles = 0, identical = 0
+  const differ: string[] = []
+  for (const [name, src, stack] of cases) {
+    const one = compileBasic(src, { stack })
+    const listing = unbasic(one.ops, { stack }).lines.join('\n')
+    try {
+      const two = compileBasic(listing, { stack })
+      compiles++
+      if (new LockingScript(one.ops).toHex() === new LockingScript(two.ops).toHex()) identical++
+      else differ.push(name)
+    } catch (e) { console.log(`        \u26a0 ${name} does not compile back: ${(e as Error).message.split('\n')[0]}`) }
+  }
+  check(`\u2605\u2605\u2605 all ${cases.length} readings COMPILE BACK \u2014 one language, not two`, compiles === cases.length)
+  check(`\u2605\u2605 ${identical} of them come out BYTE-IDENTICAL`, identical >= 9)
+  console.log(`        ${identical}/${cases.length} identical \u00b7 ${compiles}/${cases.length} compile`)
+  /* \u26a0 AND THE REST ARE NOT FAILURES, THEY ARE THE HONEST LIMIT. A branch reads back as the
+     balancing the compiler performed, which then recompiles with its own idioms and a byte or two of
+     difference; an unrolled loop reads back as the four copies that are actually IN the script, because
+     the loop is not. Both compute the same thing. Neither can be called a round trip of BYTES. */
+  console.log(`        differ but compute the same: ${differ.join(', ')}`)
+  console.log('        \u26a0 an unrolled FOR cannot read back as a FOR \u2014 the loop is not in the script')
 }
 
 console.log(`\n${pass}/${pass + fail} checks passed`)

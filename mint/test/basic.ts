@@ -342,6 +342,81 @@ console.log()
   console.log(`        ${m}`)
 }
 
+
+// ── 9. ★★★ THE MACHINE'S OWN WORDS — closing the gap between the two halves of the page ─────────────
+// `unbasic` renders these opcodes with exactly these names. Without them the reader printed a dialect
+// the compiler could not parse, which is not a missing feature — it is two halves of one page that did
+// not speak the same language. Every case runs through the interpreter.
+console.log()
+{
+  const env = { stack: ['a', 'b'] }
+  const cases: Array<[string, string, number[], number]> = [
+    ['VERIFY passes and leaves nothing behind', 'VERIFY a > 0\nx = a + b', [3, 4], 7],
+    ['MOD', 'x = MOD(a, b)', [17, 5], 2],
+    ['WITHIN is [lo, hi)', 'x = WITHIN(a, 0, 10) + WITHIN(b, 0, 10)', [5, 20], 1],
+    ['NOT, which had never actually worked', 'x = NOT(a) + NOT(b)', [0, 7], 1],
+    ['ISTRUE', 'x = ISTRUE(a) + ISTRUE(b)', [0, 9], 1],
+    ['NEGATE and ABS', 'x = ABS(NEGATE(a))', [6, 0], 6],
+    /* ⚠ SPLIT WANTS A BYTE STRING, NOT A NUMBER — and the first draft of this test fed it one, which
+       the interpreter refused exactly as it should. NUM2BIN is how a number becomes bytes. */
+    ['SIZE gives back ONE value', 'f = NUM2BIN(a, 4)\nl, r = SPLIT(f, 2)\nx = SIZE(l) + SIZE(r)', [0, 0], 4],
+    ['BITAND on equal-width bytes', 'f = NUM2BIN(a, 2)\ng = NUM2BIN(b, 2)\nx = BIN2NUM(BITAND(f, g))', [12, 10], 8],
+    ['BITOR and BITXOR', 'f = NUM2BIN(a, 2)\ng = NUM2BIN(b, 2)\nx = BIN2NUM(BITXOR(f, g))', [12, 10], 6],
+  ]
+  let ok = 0
+  for (const [name, src, inp, want] of cases) {
+    const r = runs(src, env, inp, want)
+    if (r.ok) ok++
+    else console.log(`        ⚠ ${name} → expected ${want} · ${r.why ?? 'refused'}`)
+  }
+  check(`★★ ${cases.length} programs using the machine's words compute correctly`, ok === cases.length)
+
+  /* ⚠⚠ SAMEBYTES IS NOT `=`. OP_EQUAL compares BYTE STRINGS and OP_NUMEQUAL compares NUMBERS, so a
+     four-byte zero and a bare zero are ONE number and TWO different byte strings. Giving them one word
+     would erase a distinction that has already cost this project a day. */
+  const four = runs('x = 0\nf = NUM2BIN(0, 4)\nz = 0\nx = SAMEBYTES(f, z)', { stack: ['a', 'b'] }, [0, 0], 0)
+  check('★★★ SAMEBYTES is bytes, and a padded zero is NOT the bare zero', four.ok)
+  const asNum = runs('f = NUM2BIN(0, 4)\nx = BIN2NUM(f) = 0', { stack: ['a', 'b'] }, [0, 0], 1)
+  check('★★ …while as NUMBERS the same two are equal', asNum.ok)
+  console.log('        one is OP_EQUAL, the other OP_NUMEQUAL — and they answer differently')
+
+  /* ★ SPLIT and CAT are inverses — the cheapest true statement about byte surgery, and the one a
+     covenant leans on every time it rebuilds itself out of its own scriptCode. */
+  const surgery = runs('f = NUM2BIN(a, 6)\nl, r = SPLIT(f, 2)\nx = SAMEBYTES(CAT(l, r), f)',
+    { stack: ['a'] }, [123456], 1)
+  check('★★ SPLIT then CAT gives back exactly what went in', surgery.ok)
+
+  const hex = compileBasic('x = &Hdeadbeef', { stack: ['a'] })
+  check('★ a hex literal is BYTES, and &H is BASIC’s own spelling',
+    new LockingScript(hex.ops).toHex() === '04deadbeef')
+  let m = ''
+  try { compileBasic('x = &Habc', { stack: ['a'] }) } catch (e) { m = (e as Error).message }
+  check('★ an odd number of hex digits is refused — a literal is whole BYTES', m.includes('even number'))
+  let m2 = ''
+  try { compileBasic('x = SPLIT(a, 2)', { stack: ['a'] }) } catch (e) { m2 = (e as Error).message }
+  check('★★ SPLIT with one name says what it needs', m2.includes('two names'))
+  console.log(`        ${m2.slice(0, 96)}…`)
+}
+
+// ── 10. ★★ BLOCK IF — the other spelling, and it must be the SAME language ──────────────────────────
+console.log()
+{
+  const env = { stack: ['a', 'b', 'p'] }
+  check('★ a block IF computes', runs('IF a > b THEN\n p = 1\nELSE\n p = 2\nEND IF', env, [5, 3, 0], 1).ok)
+  check('★ ENDIF spelled as one word too', runs('IF a > b THEN\n p = 1\nELSE\n p = 2\nENDIF', env, [3, 5, 0], 2).ok)
+  const line = compileBasic('IF a > b THEN p = 1 ELSE p = 2', env)
+  const block = compileBasic('IF a > b THEN\n p = 1\nELSE\n p = 2\nEND IF', env)
+  check('★★★ the two spellings emit BYTE-IDENTICAL script — one language, two ways to write it',
+    new LockingScript(line.ops).toHex() === new LockingScript(block.ops).toHex())
+  /* ★ AND THE BLOCK FORM LIFTS A REAL RESTRICTION. A FOR could not live inside a line-scoped arm,
+     because the arm ends where the line does and a loop does not. In a block it can. */
+  check('★★ a FOR inside a block IF, which the line-scoped form cannot hold',
+    runs('IF a > b THEN\n FOR i = 1 TO 3\n  p = p + i\n NEXT i\nEND IF', env, [5, 3, 0], 6).ok)
+  let m = ''
+  try { compileBasic('IF a > b THEN\n p = 1', env) } catch (e) { m = (e as Error).message }
+  check('★ a block that is never closed', m.includes('END IF'))
+}
+
 console.log(`\n${pass}/${pass + fail} checks passed`)
 if (fail > 0) { console.error('BASIC: FAIL'); process.exit(1) }
 console.log('BASIC OK — a line of BASIC and the covenant compute the same number.')

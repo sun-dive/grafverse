@@ -165,7 +165,10 @@ export function unbasic(chunks: ScriptChunk[], opts: UnbasicOptions = {}): Unbas
       if (ch.data && ch.data.length) {
         /* A short push is almost always a number in this project's covenants; a long one is a hash, a
            key or a preimage, and rendering thirty-two bytes as a decimal would be unreadable. */
-        st.push(atom(ch.data.length <= 6 ? String(readScriptNum(ch.data)) : `$${HEX(ch.data)}`))
+        /* ⚠ `&H`, NOT `$` — because the compiler's `$` is already the DIM width sigil, and a reader
+           that printed a literal the writer cannot parse is the whole bug this dialect work exists to
+           close. `&H` is BASIC's own hex and it round-trips. */
+        st.push(atom(ch.data.length <= 6 ? String(readScriptNum(ch.data)) : `&H${HEX(ch.data)}`))
         continue
       }
       if (c === OP.OP_0) { st.push(atom('0')); continue }
@@ -258,7 +261,10 @@ export function unbasic(chunks: ScriptChunk[], opts: UnbasicOptions = {}): Unbas
       if (c === OP.OP_WITHIN) {
         const hi = pop(), lo = pop(), x = pop(); st.push(call('WITHIN', x, lo, hi)); continue
       }
-      if (c === (OP as Record<string, number>).OP_REVERSEBYTES) { st.push(call('REVERSE', pop())); continue }
+      /* ⚠ THE SDK'S TABLE DOES NOT CARRY OP_REVERSEBYTES, so its number is written here from the BSV
+         opcode table. It is READ ONLY — the compiler will not emit a word whose value this file cannot
+         check against the interpreter, because a wrong opcode emitted is worse than one not offered. */
+      if (c === 0xbc) { st.push(call('REVERSE', pop())); continue }
 
       if (c === OP.OP_VERIFY) { emit(`VERIFY ${pop().txt}`); continue }
       if (c === OP.OP_EQUALVERIFY) {
@@ -316,13 +322,38 @@ export function unbasic(chunks: ScriptChunk[], opts: UnbasicOptions = {}): Unbas
            thing, so give it a name and assign it in both arms — the inverse of what the compiler does
            when it balances them. */
         const merged: Val[] = []
-        const pad = '  '.repeat(depth + 1)
-        const thenIns: string[] = [], elseIns: string[] = []
+        const pad = '  '.repeat(depth + 1), pad0 = '  '.repeat(depth)
+        const thenIns: string[] = [], elseIns: string[] = [], preIns: string[] = []
+        const used = new Set<string>()
         const n = Math.min(thenArm.length, st.length)
         for (let k = 0; k < n; k++) {
           const a2 = thenArm[k], b2 = st[k]
           if (a2.txt === b2.txt) { merged.push(a2); continue }
-          const t = nextTemp()
+          /* ★★ IF THE SLOT ALREADY HAD A NAME, REUSE IT — it is that variable being reassigned, not a
+             new one. Inventing `t1` here made the listing say something subtly false AND made it
+             impossible to recompile, because the compiler rightly refuses a variable that exists only
+             inside an arm. Reusing the name turns the listing back into what was written:
+
+                 IF a > b THEN        p = 1        ← the arm that changes it
+                                      q = q        ← and the balancing assignment, made visible
+                 ELSE                 p = p
+                                      q = 2 */
+          /* ⚠ AND THE NAME IS NOT AT THIS INDEX. Balancing leaves the merged values ABOVE the slots
+             they came from, so `f.before[k]` is the wrong place to look — it was, and the reuse never
+             fired. The name is in the ARMS: where one arm assigns a constant and the other passes the
+             old value through, that pass-through IS the variable's name. */
+          const cand = [a2, b2].find(v => v.simple && !/^-?\d+$/.test(v.txt) && !v.txt.startsWith('&H')
+            && f.before.some(q => q.txt === v.txt))
+          let t: string
+          if (cand && !used.has(cand.txt)) t = cand.txt
+          else {
+            /* Nothing to reuse, so it needs a name BEFORE the branch — a value that exists only inside
+               an arm is exactly what the compiler refuses, and it is right to. Both arms assign it, so
+               whatever it starts as is never read. */
+            t = nextTemp()
+            preIns.push(`${t} = ${k < f.before.length ? f.before[k].txt : '0'}`)
+          }
+          used.add(t)
           thenIns.push(`${pad}${t} = ${a2.txt}`)
           elseIns.push(`${pad}${t} = ${b2.txt}`)
           merged.push(atom(t))
@@ -330,15 +361,22 @@ export function unbasic(chunks: ScriptChunk[], opts: UnbasicOptions = {}): Unbas
         /* ⚠ THE LATER INSERTION FIRST, or its index is invalidated by the earlier one. The else arm's
            assignments go at the very end of that arm — which is here, before END IF is written — and
            the then arm's go immediately BEFORE the ELSE line, which sits one index below `elseMark`. */
+        /* ⚠ HIGHEST INDEX FIRST, or each insertion invalidates the ones below it: the end of the else
+           arm, then just above the ELSE line, then just above the IF line. */
         if (thenIns.length) {
           lines.push(...elseIns)
-          if (f.elseMark !== undefined) lines.splice(f.elseMark - 1, 0, ...thenIns)
-          else {
+          /* ⚠⚠ A PRE-DECLARATION HOISTS TO THE OUTERMOST IF, not to this one. Declared just inside an
+             enclosing arm it would exist only on that path — the same defect one level up, and the
+             compiler refuses it with the same message. Nested branches were failing on exactly this. */
+          const hoist = (ifs.length ? ifs[0].thenMark : f.thenMark) - 1
+          if (f.elseMark !== undefined) {
+            lines.splice(f.elseMark - 1, 0, ...thenIns)
+            if (preIns.length) lines.splice(hoist, 0, ...preIns)
+          } else {
             /* An IF with no ELSE still changed something, so the other arm has to say what it leaves.
                The script did not write an ELSE; the READING needs one to be truthful. */
-            lines.push(...thenIns.map(() => ''))
-            lines.length -= thenIns.length
-            lines.splice(lines.length - elseIns.length, 0, ...thenIns, `${'  '.repeat(depth)}ELSE`)
+            lines.splice(lines.length - elseIns.length, 0, ...thenIns, `${pad0}ELSE`)
+            if (preIns.length) lines.splice(hoist, 0, ...preIns)
           }
         }
         st.length = 0; st.push(...merged)
@@ -359,6 +397,11 @@ export function unbasic(chunks: ScriptChunk[], opts: UnbasicOptions = {}): Unbas
       }
     }
   }
+  /* ★★ A PROGRAM WHOSE RESULT IS LEFT ON THE STACK STILL NEEDS A LINE FOR IT.
+     Without this, `x = a + b` reads back as an EMPTY listing with the answer buried in a trailing
+     comment — true, and useless, and impossible to recompile. Naming what is left is what the author
+     would have written, and it is what turns the reading into something that goes back the other way. */
+  for (let k = 0; k < st.length; k++) if (!st[k].simple) st[k] = materialise(st[k])
   if (ifs.length) warnings.push(`⚠ ${ifs.length} IF(s) never closed by an ENDIF`)
   for (const v of alt) warnings.push(`⚠ left on the altstack: ${v.txt}`)
   return { lines, stack: st.map(v => v.txt), warnings }

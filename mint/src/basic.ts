@@ -45,11 +45,11 @@ import { Asm, fixedField, op, PN } from './covenantAsm.ts'
 export const BASIC_S = 2 ** 32
 
 // ── tokens ───────────────────────────────────────────────────────────────────────────────────────────
-type Tok = { k: 'num' | 'name' | 'op' | 'kw' | 'eol'; v: string; n?: number }
+type Tok = { k: 'num' | 'name' | 'op' | 'kw' | 'eol' | 'hex'; v: string; n?: number; d?: number[] }
 
 const KEYWORDS = new Set([
   'LET', 'IF', 'THEN', 'ELSE', 'REM', 'AND', 'OR', 'NOT',
-  'FOR', 'TO', 'STEP', 'NEXT', 'DIM',
+  'FOR', 'TO', 'STEP', 'NEXT', 'DIM', 'VERIFY', 'END', 'ENDIF',
 ])
 
 /**
@@ -73,6 +73,21 @@ function lex(src: string): Tok[] {
     }
     if (c === ' ' || c === '\t' || c === '\r') { i++; continue }
     if (c === "'") { while (i < src.length && src[i] !== '\n') i++; continue }        // ' comment
+    /* ★ `&H` IS BASIC'S OWN HEX, and using it here rather than `$` is not decoration — `$` is already
+       the DIM sigil, so `DIM tag$20` and a hex literal would have been the same two characters and the
+       lexer would have had to guess. ⚠ It means BYTES here, not a number: Script's values ARE byte
+       strings, and a covenant's literals are hashes and keys rather than integers. */
+    if ((c === '&') && /[Hh]/.test(src[i + 1] ?? '')) {
+      let j = i + 2
+      while (j < src.length && /[0-9a-fA-F]/.test(src[j])) j++
+      const h = src.slice(i + 2, j)
+      if (!h.length || h.length % 2) {
+        throw new Error(`BASIC: &H${h} — a hex literal is whole BYTES, so it needs an even number of digits`)
+      }
+      const d: number[] = []
+      for (let k = 0; k < h.length; k += 2) d.push(parseInt(h.slice(k, k + 2), 16))
+      out.push({ k: 'hex', v: h, d }); i = j; continue
+    }
     if (/[0-9]/.test(c)) {
       let j = i; while (j < src.length && /[0-9._]/.test(src[j])) j++
       const raw = src.slice(i, j).replace(/_/g, '')
@@ -99,6 +114,7 @@ function lex(src: string): Tok[] {
 // ── the parser: precedence climbing, which IS the shunting yard in recursive form ────────────────────
 type Expr =
   | { t: 'num'; v: number }
+  | { t: 'bytes'; d: number[] }
   | { t: 'var'; v: string }
   | { t: 'bin'; op: string; l: Expr; r: Expr }
   | { t: 'call'; f: string; a: Expr[] }
@@ -148,6 +164,10 @@ class Parser {
     const t = this.next()
     if (!t) throw new Error('BASIC: expression ended early')
     if (t.k === 'num') return { t: 'num', v: t.n! }
+    if (t.k === 'hex') return { t: 'bytes', d: t.d! }
+    /* ⚠ NOT IS A KEYWORD, so it never reached the function table and `NOT(x)` had quietly never worked
+       — a latent bug found while closing this gap. It is a prefix word, as it always was in BASIC. */
+    if (t.k === 'kw' && t.v === 'NOT') return { t: 'call', f: 'NOT', a: [this.atom()] }
     if (t.v === '-') return { t: 'neg', e: this.atom() }
     if (t.v === '(') { const e = this.expr(); this.expect(')'); return e }
     if (t.k === 'name') {
@@ -171,6 +191,8 @@ type Stmt =
   | { t: 'if'; cond: Expr; then: Stmt[]; else: Stmt[] }
   | { t: 'for'; name: string; from: Expr; to: Expr; step: Expr | null; body: Stmt[] }
   | { t: 'dim'; fields: Field[] }
+  | { t: 'verify'; e: Expr }
+  | { t: 'split'; left: string; right: string; of: Expr; at: Expr }
 
 /**
  * ★★ A FIELD IS A LAYOUT, NOT A TYPE — which is the whole idea behind `DIM`.
@@ -224,6 +246,10 @@ function parseStmts(p: Parser, stopAt: string[], lineScoped = false): Stmt[] {
       p.next(); out.push(forStmt(p)); continue
     }
     if (t.k === 'kw' && t.v === 'NEXT') throw new Error('BASIC: a NEXT with no FOR to close')
+    if (t.k === 'kw' && t.v === 'VERIFY') { p.next(); out.push({ t: 'verify', e: p.expr() }); continue }
+    if (t.k === 'kw' && (t.v === 'END' || t.v === 'ENDIF')) {
+      throw new Error(`BASIC: ${t.v === 'END' ? 'END IF' : 'ENDIF'} with no open IF block to close`)
+    }
     if (t.k === 'kw' && t.v === 'DIM') {
       if (lineScoped) throw new Error('BASIC: DIM declares the script\'s layout — it cannot sit inside an IF')
       p.next(); out.push(dimStmt(p)); continue
@@ -237,13 +263,52 @@ function parseStmts(p: Parser, stopAt: string[], lineScoped = false): Stmt[] {
 function letStmt(p: Parser): Stmt {
   const n = p.next()
   if (!n || n.k !== 'name') throw new Error('BASIC: LET wants a variable name')
+  /* ★ TWO NAMES ON THE LEFT — because OP_SPLIT produces TWO values and no expression can stand for
+     both. It is the only word in this language that does, so it is the only one allowed here. */
+  if (p.eat(',')) {
+    const n2 = p.next()
+    if (!n2 || n2.k !== 'name') throw new Error('BASIC: two names on the left, and the second is missing')
+    if (n2.v === n.v) throw new Error(`BASIC: ${n.v}, ${n.v} = SPLIT(…) — the halves need different names`)
+    p.expect('=')
+    const e = p.expr()
+    if (e.t !== 'call' || e.f !== 'SPLIT' || e.a.length !== 2) {
+      throw new Error(`BASIC: ${n.v}, ${n2.v} = … needs SPLIT(bytes, at) on the right — it is the only ` +
+        'word that produces two values, a left half and a right half')
+    }
+    return { t: 'split', left: n.v, right: n2.v, of: e.a[0], at: e.a[1] }
+  }
   p.expect('=')
   return { t: 'let', name: n.v, e: p.expr() }
 }
 
+/**
+ * `IF … THEN` in both of BASIC's shapes.
+ *
+ * ```
+ *   IF c THEN x = 1 ELSE y = 2        one line, and the arms END WITH THE LINE
+ *   IF c THEN                          a BLOCK: the arms run until END IF, however many lines that is
+ *     x = 1
+ *   ELSE
+ *     y = 2
+ *   END IF
+ * ```
+ *
+ * ★ Which one it is turns on whether anything follows THEN on that line — the same rule every BASIC
+ * with block IFs has used. And the block form lifts a real restriction: a FOR could not live inside a
+ * line-scoped arm, because the arm ends where the line does and the loop does not.
+ */
 function ifStmt(p: Parser): Stmt {
   const cond = p.expr()
   p.expect('THEN')
+  if (p.peek()?.k === 'eol' || !p.peek()) {
+    const thn = parseStmts(p, ['ELSE', 'END', 'ENDIF'])
+    const els = p.eat('ELSE') ? parseStmts(p, ['END', 'ENDIF']) : []
+    if (!p.eat('ENDIF')) {
+      if (!p.eat('END')) throw new Error('BASIC: an IF written as a block has to be closed by END IF')
+      if (!p.eat('IF')) throw new Error('BASIC: END on its own — did you mean END IF?')
+    }
+    return { t: 'if', cond, then: thn, else: els }
+  }
   const thn = parseStmts(p, ['ELSE'], true)
   const els = p.eat('ELSE') ? parseStmts(p, [], true) : []
   return { t: 'if', cond, then: thn, else: els }
@@ -339,6 +404,36 @@ const ARITH: Record<string, number> = {
 }
 
 /**
+ * ★★ THE MACHINE'S OWN WORDS — and this is what BASIC always did.
+ *
+ * Every BASIC had words for the machine it ran on: PEEK, POKE, USR, CALL, SCREEN$. They were not a
+ * departure from the language, they were how the language reached the hardware it was sitting on. This
+ * machine's hardware is Bitcoin Script, so its words are the opcodes: hashing, byte surgery, the
+ * comparisons that work on strings rather than numbers.
+ *
+ * ⚠ They also close a gap that should never have opened. `unbasic` renders these opcodes with exactly
+ * these names, so without them the reader printed a dialect the compiler could not parse — two halves
+ * of one page that did not speak the same language.
+ *
+ * ⚠⚠ `SAMEBYTES` IS NOT `=`. It is OP_EQUAL, which compares BYTE STRINGS, where `=` is OP_NUMEQUAL and
+ * compares NUMBERS. `0`, `-0` and a zero padded to four bytes are one number and three different byte
+ * strings. Giving them one name would erase a distinction that has cost this project a day.
+ */
+const WORD1: Record<string, number> = {
+  ABS: OP.OP_ABS, NOT: OP.OP_NOT, NEGATE: OP.OP_NEGATE, ISTRUE: OP.OP_0NOTEQUAL,
+  BIN2NUM: OP.OP_BIN2NUM, INVERT: OP.OP_INVERT,
+  HASH256: OP.OP_HASH256, HASH160: OP.OP_HASH160,
+  SHA256: OP.OP_SHA256, SHA1: OP.OP_SHA1, RIPEMD160: OP.OP_RIPEMD160,
+}
+const WORD2: Record<string, number> = {
+  MIN: OP.OP_MIN, MAX: OP.OP_MAX,
+  CAT: OP.OP_CAT, NUM2BIN: OP.OP_NUM2BIN, MOD: OP.OP_MOD,
+  BITAND: OP.OP_AND, BITOR: OP.OP_OR, BITXOR: OP.OP_XOR,
+  LSHIFT: OP.OP_LSHIFT, RSHIFT: OP.OP_RSHIFT,
+  SAMEBYTES: OP.OP_EQUAL, CHECKSIG: OP.OP_CHECKSIG,
+}
+
+/**
  * ★ Compile a BASIC program against a stack that already exists.
  *
  * ⚠ `env.stack` is not decoration — a covenant's variables ARE stack slots, and the compiler resolves a
@@ -375,6 +470,10 @@ function emitProgram(
   function constEval(e: Expr): bigint | undefined {
     switch (e.t) {
       case 'num': return BigInt(Math.round(e.v))
+      /* ⚠ A BYTE STRING IS NEVER FOLDED. Folding means "the compiler can compute this exactly as the
+         script would", and for bytes it cannot: OP_BIN2NUM's reading of a padded value, OP_EQUAL's
+         byte comparison and OP_CAT's result all depend on width, which a number has already lost. */
+      case 'bytes': return undefined
       case 'var': {
         const lv = loopVars.get(e.v)
         if (lv !== undefined) return lv
@@ -414,6 +513,10 @@ function emitProgram(
           case 'NOT': return v.length === 1 ? (v[0] === 0n ? 1n : 0n) : undefined
           case 'FMUL': return v.length === 2 ? divz(v[0] * v[1], SB) : undefined
           case 'FDIV': return v.length === 2 ? divz(v[0] * SB, v[1]) : undefined
+          /* BigInt's % truncates toward zero and so does OP_MOD, which is the only reason this one is
+             allowed to fold. The hashing and byte words are NOT here, deliberately. */
+          case 'MOD': return v.length === 2 ? (divz(v[0], v[1]), v[0] % v[1]) : undefined
+          case 'WITHIN': return v.length === 3 ? ((v[0] >= v[1] && v[0] < v[2]) ? 1n : 0n) : undefined
         }
         return undefined
       }
@@ -450,15 +553,32 @@ function emitProgram(
         const need = (n: number): void => {
           if (e.a.length !== n) throw new Error(`BASIC: ${f} takes ${n} argument(s), got ${e.a.length}`)
         }
-        if (f === 'MIN' || f === 'MAX') {
-          need(2); emit(e.a[0]); emit(e.a[1])
-          a.bin(f === 'MIN' ? OP.OP_MIN : OP.OP_MAX, '_t'); return
-        }
-        if (f === 'ABS') { need(1); emit(e.a[0]); a.o(OP.OP_ABS, 1, ['_t']); return }
-        if (f === 'NOT') { need(1); emit(e.a[0]); a.o(OP.OP_NOT, 1, ['_t']); return }
         if (f === 'FMUL') { need(2); emit(e.a[0]); emit(e.a[1]); fmul(); a.rename('_t'); return }
         if (f === 'FDIV') { need(2); emit(e.a[0]); fdiv0(e.a[1]); return }
+        /* ⚠ OP_SIZE KEEPS ITS ARGUMENT and pushes the length on top, so as a FUNCTION returning one
+           value it is OP_SIZE followed by OP_NIP. Modelling it as a plain one-in-one-out opcode would
+           leave a stranded value under every use, and every depth above it would be one out. */
+        if (f === 'SIZE') {
+          need(1); emit(e.a[0]); a.o(OP.OP_SIZE, 0, ['_sz'])
+          a.raw(op(OP.OP_NIP), 0, []); a.st.splice(a.st.length - 2, 1); a.rename('_t'); return
+        }
+        if (WORD1[f] !== undefined) { need(1); emit(e.a[0]); a.o(WORD1[f], 1, ['_t']); return }
+        if (WORD2[f] !== undefined) { need(2); emit(e.a[0]); emit(e.a[1]); a.bin(WORD2[f], '_t'); return }
+        if (f === 'WITHIN') {
+          need(3); emit(e.a[0]); emit(e.a[1]); emit(e.a[2]); a.o(OP.OP_WITHIN, 3, ['_t']); return
+        }
+        if (f === 'SPLIT') {
+          throw new Error('BASIC: SPLIT gives back TWO values — a left half and a right half — so it ' +
+            'needs two names: left, right = SPLIT(bytes, at)')
+        }
         throw new Error(`BASIC: no such word — ${f}`)
+      }
+      case 'bytes': {
+        /* ⚠ Above 75 bytes a push needs OP_PUSHDATA1, and writing the plain form would produce a
+           script that parses as something else entirely. */
+        a.raw(e.d.length <= 75 ? { op: e.d.length, data: e.d }
+          : { op: OP.OP_PUSHDATA1, data: e.d }, 0, ['_h'])
+        return
       }
     }
   }
@@ -474,8 +594,9 @@ function emitProgram(
   function assignedBy(ss: Stmt[], into: Set<string>): void {
     for (const s of ss) {
       if (s.t === 'let') into.add(s.name)
+      else if (s.t === 'split') { into.add(s.left); into.add(s.right) }
       else if (s.t === 'for') assignedBy(s.body, into)
-      else if (s.t === 'dim') continue
+      else if (s.t === 'dim' || s.t === 'verify') continue
       else { assignedBy(s.then, into); assignedBy(s.else, into) }
     }
   }
@@ -527,6 +648,16 @@ function emitProgram(
         a.rename(s.name)                                   // the value on top now answers to this name
         coalesce(s.name)                                   // …and the previous value of that name is gone
         if (!assigned.includes(s.name)) assigned.push(s.name)
+        continue
+      }
+      if (s.t === 'verify') { emit(s.e); a.o(OP.OP_VERIFY, 1, []); continue }
+      if (s.t === 'split') {
+        /* OP_SPLIT leaves the LEFT half beneath the right, which is the order the two names are written
+           in — and the order `unbasic` prints them in, so a listing reads back the way it was cut. */
+        emit(s.of); emit(s.at)
+        a.o(OP.OP_SPLIT, 2, [s.left, s.right])
+        coalesce(s.left); coalesce(s.right)
+        for (const n of [s.left, s.right]) if (!assigned.includes(n)) assigned.push(n)
         continue
       }
       if (s.t === 'for') { unrollFor(s); continue }
