@@ -69,6 +69,54 @@ const NAMES: Record<number, string> = (() => {
   return m
 })()
 
+/**
+ * ★★ A KNOWN IDIOM — a run of opcodes that has a NAME, collapsed to that name.
+ *
+ * Every covenant here opens with the same hundred-odd opcodes: OP_PUSH_TX, which proves the preimage is
+ * genuine by deriving a signature from it and checking that. Read literally it is thirty lines of
+ * `SPLIT(x, 1)` — every one of them true, and together they bury the program underneath. Nobody reading
+ * their own covenant wants to scroll past the front door of every covenant ever written.
+ *
+ * ⚠ THIS IS NAMING, NOT HIDING. The line still appears, and it says what the run does. The rule against
+ * guessing is untouched: a run is only collapsed when it matches a known sequence opcode for opcode.
+ */
+export interface Idiom {
+  /** What the listing calls it. */
+  name: string
+  /** The exact opcode run, as the covenant's own builder produces it. */
+  chunks: ScriptChunk[]
+  /** How many values it consumes. */
+  pops: number
+  /** The result, with `$0` standing for the deepest value it consumed (or the top, when it pops none). */
+  push?: string
+  /** Emit a statement line instead of pushing — `$0` as above. Newlines make several lines. */
+  say?: string
+}
+
+/**
+ * ⚠⚠ A FOLDED LISTING IS A READING, NOT A SOURCE — and this is the one place the two-way promise does
+ * not hold. `PUSHTX` and `HASHOUTPUTS` are names this reader gives to runs of opcodes; they are not
+ * words the compiler knows, because teaching it to emit a derived-signature preamble would drag curve
+ * arithmetic into a file that compiles arithmetic. Read WITHOUT idioms and the listing still compiles
+ * back. Read with them and it is for a person, not for the compiler.
+ */
+
+/**
+ * ⚠ MATCHED ON SHAPE, NOT ON BYTES. The same primitive built for a different SIGHASH scope carries
+ * different constants, so the data VALUES differ while the opcodes and their lengths do not. Requiring
+ * the lengths to agree as well is what keeps this from matching something else by accident — a
+ * hundred-opcode run agreeing on every opcode and every push length is not a coincidence.
+ */
+function idiomAt(chunks: ScriptChunk[], i: number, id: Idiom): boolean {
+  if (i + id.chunks.length > chunks.length) return false
+  for (let k = 0; k < id.chunks.length; k++) {
+    const a = chunks[i + k], b = id.chunks[k]
+    if (a.op !== b.op) return false
+    if ((a.data?.length ?? -1) !== (b.data?.length ?? -1)) return false
+  }
+  return true
+}
+
 export interface UnbasicOptions {
   /**
    * What the stack already holds when this script starts, bottom first. ★ THIS IS THE WHOLE PRODUCT.
@@ -77,6 +125,12 @@ export interface UnbasicOptions {
    * correct listing and considerably less use.
    */
   stack?: string[]
+  /**
+   * Runs of opcodes that have a name — the OP_PUSH_TX preamble above all. Supplied by the caller rather
+   * than known here, so this file stays a plain reader and does not grow a dependency on curve
+   * arithmetic to read a script that may contain none.
+   */
+  idioms?: Idiom[]
 }
 
 export interface UnbasicResult {
@@ -104,7 +158,9 @@ export function unbasic(chunks: ScriptChunk[], opts: UnbasicOptions = {}): Unbas
   const warnings: string[] = []
   let depth = 0                                             // indentation, in IF levels
   let temps = 0
-  const emit = (s: string): void => { lines.push('  '.repeat(depth) + s) }
+  const emit = (s: string): void => {
+    for (const one of s.split('\n')) lines.push('  '.repeat(depth) + one)
+  }
   const nextTemp = (): string => `t${++temps}`
 
   /**
@@ -130,7 +186,8 @@ export function unbasic(chunks: ScriptChunk[], opts: UnbasicOptions = {}): Unbas
 
   /* Branch bookkeeping: the two arms must be reconciled at ENDIF, and where they disagree the reader
      invents the same names the compiler would have. */
-  const ifs: Array<{ before: Val[]; thenEnd?: Val[]; thenMark: number; elseMark?: number }> = []
+  const ifs: Array<{ before: Val[]; altBefore: Val[]; thenEnd?: Val[]; altEnd?: Val[]
+                    thenMark: number; elseMark?: number }> = []
 
   const ARITH: Record<number, string> = {
     [OP.OP_ADD]: '+', [OP.OP_SUB]: '-', [OP.OP_MUL]: '*', [OP.OP_DIV]: '/',
@@ -161,6 +218,18 @@ export function unbasic(chunks: ScriptChunk[], opts: UnbasicOptions = {}): Unbas
     const c = ch.op
     const name = NAMES[c] ?? `OP_${c}`
     try {
+      // ── a named run, collapsed to its name ────────────────────────────────────────────────────────
+      const id = (opts.idioms ?? []).find(x => idiomAt(chunks, i, x))
+      if (id) {
+        const taken: Val[] = []
+        for (let k = 0; k < id.pops; k++) taken.unshift(pop())
+        const subject = (id.pops ? taken[0] : st[st.length - 1]) ?? atom('?')
+        if (id.say) emit(id.say.replace('$0', subject.txt))
+        if (id.push) st.push({ txt: id.push.replace('$0', subject.txt), bp: 99, simple: false })
+        i += id.chunks.length - 1
+        continue
+      }
+
       // ── literals ──────────────────────────────────────────────────────────────────────────────────
       if (ch.data && ch.data.length) {
         /* A short push is almost always a number in this project's covenants; a long one is a hash, a
@@ -285,7 +354,7 @@ export function unbasic(chunks: ScriptChunk[], opts: UnbasicOptions = {}): Unbas
       if (c === OP.OP_IF || c === OP.OP_NOTIF) {
         const cond = pop()
         emit(`IF ${c === OP.OP_NOTIF ? `NOT(${cond.txt})` : cond.txt} THEN`)
-        ifs.push({ before: st.slice(), thenMark: lines.length })
+        ifs.push({ before: st.slice(), altBefore: alt.slice(), thenMark: lines.length })
         depth++
         continue
       }
@@ -294,6 +363,13 @@ export function unbasic(chunks: ScriptChunk[], opts: UnbasicOptions = {}): Unbas
         if (!f) throw new Error('ELSE with no IF')
         f.thenEnd = st.slice()
         st.length = 0; st.push(...f.before)
+        /* ⚠⚠ THE ALTSTACK IS RESTORED TOO, AND FORGETTING IT WAS A REAL BUG — found by pointing the
+           reader at the shipped DEPOT, which stops dead at "FROMALTSTACK on an empty altstack".
+           Both arms start from the same real machine, and that machine has TWO stacks. Restore only
+           one and an arm that POPS from the altstack has consumed the value for the other arm as well,
+           so the else path reads a stack that never existed. */
+        f.altEnd = alt.slice()
+        alt.length = 0; alt.push(...f.altBefore)
         depth--; emit('ELSE'); depth++
         f.elseMark = lines.length
         continue
@@ -313,6 +389,12 @@ export function unbasic(chunks: ScriptChunk[], opts: UnbasicOptions = {}): Unbas
            last opcode in the script and all Script asks for is a truthy top. Uneven arms are only a bug
            when a later opcode reads a depth across them. A tool that raises a false alarm on working
            mainnet code is worse than no tool, because the next real alarm gets ignored too. */
+        /* ⚠ And the arms must agree about the ALTSTACK as well. A difference here is the same class
+           of silent defect as an uneven main stack: everything after it reads the wrong slot. */
+        if (f.altEnd && f.altEnd.length !== alt.length) {
+          warnings.push(`\u26a0 the arms of the IF at line ${f.thenMark} leave DIFFERENT ALTSTACK ` +
+            `depths (then ${f.altEnd.length}, else ${alt.length}) — whatever pops from it next is wrong`)
+        }
         if (thenArm.length !== st.length && i !== chunks.length - 1) {
           warnings.push(`⚠ the arms of the IF at line ${f.thenMark} leave DIFFERENT stack depths ` +
             `(then ${thenArm.length}, else ${st.length}), and ${chunks.length - 1 - i} opcode(s) follow ` +

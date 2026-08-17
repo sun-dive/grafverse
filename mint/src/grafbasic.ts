@@ -14,3 +14,7 @@ export { LockingScript, Script, OP } from '@bsv/sdk'
    fragment standing in for one. A tool that reads a stranger's covenant should demonstrate on a real
    one — and this one is 1108 opcodes of hand-written Script that no BASIC ever generated. */
 export { buildShellLock, emptyShell } from './shell.ts'
+/* ★ The presets — every covenant in this project, with its stack already named. Derived from each
+   covenant's own unlocking builder, and checked by `test/reader-presets.ts` so a name list cannot
+   silently drift out of step with the machine it describes. */
+export { READER_PRESETS, COVENANT_IDIOMS, type ReaderPreset } from './readerPresets.ts'

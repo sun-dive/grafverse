@@ -108,15 +108,21 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
   <div class="grid">
     <div class="pane">
       <h2>A locking script <span>hex, or ASM</span></h2>
-      <div class="ex">
-        <button data-ex="tiny">a tiny one</button>
+      <div class="ex" id="presets">
+        <button data-ex="tiny">a tiny one (P2PKH)</button>
         <button data-ex="branch">a branch</button>
-        <button data-ex="shell">the racer's shell (1108 opcodes)</button>
       </div>
+      <p class="note" id="preset-note" style="margin:0 0 9px">Or read one of this project's own
+      covenants — <b>hand-written Script, already named</b>.</p>
       <textarea id="hex" spellcheck="false" placeholder="76a914…  or  OP_DUP OP_HASH160 …"></textarea>
       <div class="row">
         <label for="names">the stack when it starts</label>
         <input id="names" type="text" spellcheck="false" placeholder="bottom first, comma separated — e.g. sig, pubkey, preimage">
+      </div>
+      <div class="row">
+        <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+          <input type="checkbox" id="fold" checked> name the OP_PUSH_TX preamble
+        </label>
       </div>
       <div class="row"><button id="go-read">Read it</button>
         <button class="ghost" id="copy-basic">Copy the listing</button></div>
@@ -132,7 +138,9 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
   </div>
   <p class="note">★ <b>The listing is in the same language the other tab compiles</b> — paste it
   straight across. Measured: of fifteen test programs, <b>fifteen compile back</b> and <b>nine come out
-  byte-identical</b>. The six that differ still compute the same thing: a branch reads back as the
+  byte-identical</b>. ⚠ With the preamble named, it is a reading for a person rather than a source:
+  <b>PUSHTX</b> and <b>HASHOUTPUTS</b> are names this page gives runs of opcodes, and the compiler has
+  no such words. <b>Untick the box to get the version that compiles back.</b> The six that differ still compute the same thing: a branch reads back as the
   balancing the compiler performed, and an unrolled <code>FOR</code> reads back as the copies that are
   really in the script, <b>because the loop is not</b>.</p>
   <p class="note">⚠ <b>But a reading is not a source.</b> There is no general decompiler from Script to
@@ -190,7 +198,7 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
 </footer>
 </div>
 
-<script src="vendor/grafbasic.js?v=2"></script>
+<script src="vendor/grafbasic.js?v=4"></script>
 <script>
 (() => {
   const $ = id => document.getElementById(id)
@@ -226,8 +234,13 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
     const out = $('basic-out'), msg = $('read-msg'), stat = $('read-stat')
     try {
       const s = parseScript($('hex').value)
-      const r = G.unbasic(s.chunks, { stack: names($('names').value) })
-      out.textContent = G.unbasicListing(s.chunks, { stack: names($('names').value) })
+      /* ⚠ FOLDING IS A READING AID AND IT COSTS THE ROUND TRIP. `PUSHTX` is a name this page gives a
+         run of opcodes; the compiler has no such word. Folded, the listing is for a person — unfolded,
+         it still compiles back in the other tab. The toggle is the honest way to offer both. */
+      const opt = { stack: names($('names').value),
+                    idioms: $('fold').checked ? G.COVENANT_IDIOMS : undefined }
+      const r = G.unbasic(s.chunks, opt)
+      out.textContent = G.unbasicListing(s.chunks, opt)
       stat.textContent = `${s.chunks.length} opcodes → ${r.lines.length} lines`
       if (r.stoppedAt) say(msg, 'err', '⚠ STOPPED: ' + r.stoppedAt)
       else if (r.warnings.length) say(msg, 'warn', r.warnings.join('\n'))
@@ -235,11 +248,11 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
     } catch (e) { out.textContent = ''; stat.textContent = ''; say(msg, 'err', e.message) }
   }
   $('copy-basic').onclick = () => navigator.clipboard?.writeText($('basic-out').textContent)
+  $('fold').onchange = () => { if ($('hex').value.trim()) $('go-read').click() }
 
   const EX = {
     tiny: { hex: '76a914' + 'ab'.repeat(20) + '88ac', names: 'sig, pubkey' },
     branch: { hex: '', names: 'a, b, p, q' },
-    shell: { hex: '', names: 'burn, retire, l0, l1, l2, l3, l4, l5, l6, l7, throttle, sig, pubkey, spenderOutputs, newValue, preimage' },
   }
   document.querySelectorAll('[data-ex]').forEach(b => b.onclick = () => {
     const k = b.dataset.ex
@@ -247,14 +260,33 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
       const { ops } = G.compileBasic('IF a > b THEN p = 1 ELSE q = 2\n r = p * 10 + q', { stack: ['a','b','p','q'] })
       EX.branch.hex = new G.LockingScript(ops).toHex()
     }
-    if (k === 'shell' && !EX.shell.hex) {
-      /* ★ THE REAL ONE. Built here rather than pasted, so the example is always the CURRENT shell
-         rather than a copy of one that has since moved on — and it is hand-written Script that no
-         BASIC ever generated, which is the only demonstration that proves anything. */
-      EX.shell.hex = G.buildShellLock({ state: G.emptyShell() }).toHex()
-    }
-    $('hex').value = EX[k].hex; $('names').value = EX[k].names; $('go-read').click()
+    $('hex').value = EX[k].hex; $('names').value = EX[k].names
+    $('preset-note').textContent = ''
+    $('go-read').click()
   })
+
+  /* ★★★ THIS PROJECT'S OWN COVENANTS, each with its stack already named.
+     The lists come from each covenant's own unlocking-script builder, not from a copy — a hand-written
+     name list is correct the day it is written and silently wrong the first time a covenant gains a
+     field, and "silently wrong" means every name in the listing shifts by one and the reading becomes
+     a plausible fiction. Built here too, so a preset is always the CURRENT machine. */
+  const row = document.createElement('div')
+  row.className = 'ex'
+  for (const p of G.READER_PRESETS) {
+    const b = document.createElement('button')
+    b.textContent = p.label
+    b.title = p.note
+    b.onclick = () => {
+      const lock = p.build()
+      $('hex').value = lock.toHex()
+      $('names').value = p.stack.join(', ')
+      $('preset-note').innerHTML = '<b>' + p.label + '</b> — ' + p.note
+      $('go-read').click()
+      $('basic-out').scrollTop = 0
+    }
+    row.appendChild(b)
+  }
+  $('preset-note').after(row)
 
   // ── BASIC → SCRIPT ──────────────────────────────────────────────────────────────────────────────
   const W = {
