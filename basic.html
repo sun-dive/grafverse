@@ -162,6 +162,7 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
         <button data-w="state">DIM — state in the script</button>
         <button data-w="words">the machine's own words</button>
         <button data-w="oxo">★ noughts and crosses</button>
+        <button data-w="inv">★ space invaders</button>
       </div>
       <textarea id="src" spellcheck="false"></textarea>
       <div class="row">
@@ -196,6 +197,14 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
   location, so the square is chosen by nine comparisons each selecting a constant, and the board is
   packed base 3 into one number so that reading a square is arithmetic instead of a lookup. That is a
   1982 problem with a 1982 answer.</p>
+  <p class="note">★★★ <b>And Space Invaders is the one that proves something.</b> The arcade original
+  speeds up as you kill aliens, and <b>nobody designed that</b> — the 8080 moved one alien per frame, so
+  a sweep took as many frames as there were aliens left. Here one transaction moves one alien, and the
+  same ramp comes back: measured, a sweep costs <b>24 spends at 24 aliens and 12 at 12</b>, so the fleet
+  is twice as fast at half strength. ⚠ And it is not automatic — the <b>script</b> is byte-for-byte the
+  same size in every frame, because the twenty-four comparisons that stand in for an array are emitted
+  whatever is alive. What falls is the number of transactions. <b>The economics reproduce the accident
+  only because one spend was made to mean one alien.</b></p>
 </section>
 
 <footer>
@@ -206,7 +215,7 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
 </footer>
 </div>
 
-<script src="vendor/grafbasic.js?v=5"></script>
+<script src="vendor/grafbasic.js?v=6"></script>
 <script>
 (() => {
   const $ = id => document.getElementById(id)
@@ -307,6 +316,9 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
     /* ★★ THE WHOLE GAME. Five bytes of state, every rule a comparison, and the thing a racing car
        cannot demonstrate: two strangers playing, with neither able to cheat. */
     oxo: { src: G.OXO_SRC.trim(), stack: 'move' },
+    /* ★★ One transaction moves ONE alien, exactly as one FRAME did on the 8080 — so the 1978
+       difficulty ramp comes back out of the fee model rather than out of a design decision. */
+    inv: { src: G.INV_SRC.trim(), stack: 'shot' },
   }
   document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => {
     $('src').value = W[b.dataset.w].src; $('stack').value = W[b.dataset.w].stack; $('go-write').click()

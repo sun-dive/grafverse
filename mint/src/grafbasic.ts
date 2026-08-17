@@ -21,3 +21,5 @@ export { READER_PRESETS, COVENANT_IDIOMS, type ReaderPreset } from './readerPres
 /* ★ Noughts and crosses — the whole game in BASIC, and the demo that shows what a racing car cannot:
    turn-taking enforced by the covenant. */
 export { OXO_SRC, OXO_INPUTS, oxoNew, oxoRef, oxoShow } from './oxo.ts'
+/* ★ Space Invaders — and the 1978 difficulty ramp arriving a second time, through the fee model. */
+export { INV_SRC, INV_INPUTS, invNew, invRef, invShow } from './invaders.ts'

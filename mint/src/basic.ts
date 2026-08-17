@@ -105,7 +105,7 @@ function lex(src: string): Tok[] {
     if (two === '<=' || two === '>=' || two === '<>') { out.push({ k: 'op', v: two }); i += 2; continue }
     /* ⚠ `%` and `$` are BASIC's own sigils and they are NOT operators here — there is no modulo in this
        language yet, and adding one later must not quietly re-read every `DIM v%5` as an expression. */
-    if ('+-*/()<>=,:%$'.includes(c)) { out.push({ k: 'op', v: c }); i++; continue }
+    if ('+-*/()<>=,:%$^'.includes(c)) { out.push({ k: 'op', v: c }); i++; continue }
     throw new Error(`BASIC: what is ${JSON.stringify(c)}? (at ${i})`)
   }
   return out
@@ -126,7 +126,16 @@ const BP: Record<string, number> = {
   '=': 3, '<>': 3, '<': 3, '>': 3, '<=': 3, '>=': 3,
   '+': 4, '-': 4,
   '*': 5, '/': 5,
+  /* ★ `^` BINDS TIGHTEST AND IS COMPILE-TIME ONLY. Script has no exponentiation opcode and never will,
+     so this is not a way to compute a power — it is a way to WRITE one where the compiler can work it
+     out. That matters more than it sounds: with no arrays, the substitute for a lookup table is an
+     unrolled FOR whose body selects a constant, and the constants wanted are almost always powers.
+         FOR k = 0 TO 23 : IF slot = k THEN bit = 2 ^ k : NEXT k
+     Twenty-four comparisons, each with its constant already folded. That IS the array. */
+  '^': 6,
 }
+/** ⚠ Right-associative, as every language with a power operator has it: 2^3^2 is 2^9, not 8^2. */
+const RIGHT = new Set(['^'])
 
 /* ⚠ Plain fields, not a parameter property — this repo runs TypeScript through node's strip-only mode,
    which erases types and refuses anything that would need CODE generated for it. */
@@ -154,7 +163,7 @@ class Parser {
       const bp = BP[t.v]
       if (bp === undefined || bp < min) break
       this.next()
-      const right = this.expr(bp + 1)                    // left-associative
+      const right = this.expr(RIGHT.has(t.v) ? bp : bp + 1)
       left = { t: 'bin', op: t.v, l: left, r: right }
     }
     return left
@@ -489,6 +498,12 @@ function emitProgram(
           case '-': return l - r
           case '*': return l * r
           case '/': return divz(l, r)
+          case '^': {
+            if (r < 0n) throw new Error(`BASIC: ${l} ^ ${r} — a negative power is not a whole number`)
+            if (r > 4096n) throw new Error(`BASIC: ${l} ^ ${r} — that exponent would build a number ` +
+              'nobody can carry in a script')
+            return l ** r
+          }
           /* ⚠ These must answer exactly what the opcode answers: OP_BOOLAND is "both non-zero", not a
              bitwise and, and a comparison yields 1 or 0 — not the operands. */
           case 'AND': return (l !== 0n && r !== 0n) ? 1n : 0n
@@ -546,6 +561,14 @@ function emitProgram(
         emit(e.l); emit(e.r)
         if (ARITH[e.op] !== undefined) { a.bin(ARITH[e.op], '_t'); return }
         if (CMP[e.op] !== undefined) { a.bin(CMP[e.op], '_t'); return }
+        /* ⚠ Reaching here with `^` means the fold did not happen, so one side is only known when the
+           script RUNS — and there is no opcode to fall back on. Saying that plainly is the whole
+           difference between a compile-time word and a broken one. */
+        if (e.op === '^') {
+          throw new Error('BASIC: ^ is worked out at COMPILE time, and one side of this one is not ' +
+            'known until the script runs. Script has no power opcode, so there is nothing to emit — ' +
+            'use a FOR whose counter supplies the exponent.')
+        }
         throw new Error(`BASIC: no opcode for ${e.op}`)
       }
       case 'call': {
