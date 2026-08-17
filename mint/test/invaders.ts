@@ -141,7 +141,10 @@ console.log()
 
   const rows: Array<[number, number, number]> = []
   let allOk = true
-  for (const leave of [INV_SLOTS, 12, 6, 2]) {
+  /* ⚠ 54 AND 27, NOT 55 AND 12. The halving check below has to compare a fleet with exactly half of
+     another, and the first version of this kept the sizes from a smaller grid — so it asserted that
+     55 spends is twice 12. The claim was right and the arithmetic was not. */
+  for (const leave of [INV_SLOTS, 54, 27, 11, 2]) {
     const st = thinTo(leave)
     const r = sweep(st)
     if (!r.ok) allOk = false
@@ -156,13 +159,13 @@ console.log()
   check('★★★ a sweep costs exactly one transaction per living alien',
     rows.every(([, spends, want]) => spends === want))
 
-  const [full, half] = [rows[0], rows[1]]
+  const [full, half] = [rows[1], rows[2]]                       // 54 and 27 — an exact halving
   check('★★★ …so halving the fleet halves the cost of a sweep — the 1978 ramp, from the fee model',
     full[1] === 2 * half[1])
   console.log(`        ${full[0]} aliens: ${full[1]} spends · ${half[0]} aliens: ${half[1]} spends` +
-    `  ⇒ ${(full[1] / half[1]).toFixed(1)}× faster at half strength`)
-  console.log(`        at ${MAX_FEE} sat a frame: a full sweep ${full[1] * MAX_FEE} sat, ` +
-    `a thin one ${rows[3][1] * MAX_FEE} sat`)
+    `  ⇒ exactly ${(full[1] / half[1]).toFixed(1)}× faster at half strength`)
+  console.log(`        at ${MAX_FEE} sat a frame: a full sweep ${rows[0][1] * MAX_FEE} sat, ` +
+    `a nearly-clear one ${rows[rows.length - 1][1] * MAX_FEE} sat`)
 
   /* ⚠⚠ AND HERE IS WHY IT IS NOT AUTOMATIC, WHICH IS THE HALF THAT MATTERS. The SCRIPT does the same
      work whether one alien is alive or twenty-four — the twenty-four comparisons that stand in for an

@@ -202,9 +202,15 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
   a sweep took as many frames as there were aliens left. Here one transaction moves one alien, and the
   same ramp comes back: measured, a sweep costs <b>24 spends at 24 aliens and 12 at 12</b>, so the fleet
   is twice as fast at half strength. ⚠ And it is not automatic — the <b>script</b> is byte-for-byte the
-  same size in every frame, because the twenty-four comparisons that stand in for an array are emitted
-  whatever is alive. What falls is the number of transactions. <b>The economics reproduce the accident
-  only because one spend was made to mean one alien.</b></p>
+  same size in every frame, whatever is alive. What falls is the number of transactions. <b>The economics
+  reproduce the accident only because one spend was made to mean one alien.</b></p>
+  <p class="note">★★ <b>And it is the full 5 × 11 arcade fleet</b>, which it was not an hour ago. The
+  bit for a slot used to be picked by a table of comparisons — about fifty bytes a slot, and
+  <b>impossible past 2^53</b>, where a double stops being exact. A <b>shift</b> is what stands in for a
+  power of two, and it does not care how wide the fleet is: <b>1269 B by table at 52 aliens and refused
+  at 55, against 34 B by shift, flat</b>. ⚠ With one trap — read as a number, a mask landing on the top
+  bit of the last byte is <b>negative zero</b>, and one alien in fifty-five would quietly refuse to die.
+  It has to be <code>SAMEBYTES</code>, a byte comparison, never <code>=</code>.</p>
 </section>
 
 <footer>
@@ -215,7 +221,7 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
 </footer>
 </div>
 
-<script src="vendor/grafbasic.js?v=6"></script>
+<script src="vendor/grafbasic.js?v=7"></script>
 <script>
 (() => {
   const $ = id => document.getElementById(id)

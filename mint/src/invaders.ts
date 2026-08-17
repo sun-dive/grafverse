@@ -38,18 +38,36 @@
  * array**, and it is what a lookup table was before anyone could afford one.
  */
 
-/** 3 rows of 8 — a reduced fleet. The original is 5 × 11; the ramp does not care, and 2^23 fits. */
-export const INV_COLS = 8
-export const INV_ROWS = 3
+/**
+ * ★★ THE FULL ARCADE FLEET — 5 rows of 11, exactly as 1978.
+ *
+ * It was 3 × 8 for one sitting, because the comparison table that stands in for an array costs about
+ * fifty bytes a slot. sun-dive asked two questions that removed the ceiling entirely:
+ *
+ *   *"I wonder if bit shift is what stands in for an exponential"*  — and it is, for base two.
+ *   *"And script can extremely large integers."*                    — so the fleet need not fit a word.
+ *
+ * ```
+ *   55 aliens by TABLE   1269 B at 2^52 …and REFUSED past 2^53, where a double stops being exact
+ *   55 aliens by SHIFT     34 B, flat, and the width of the fleet stops mattering at all
+ * ```
+ * ⇒ The table was not merely expensive. **It could not reach the real fleet at all.**
+ */
+export const INV_COLS = 11
+export const INV_ROWS = 5
 export const INV_SLOTS = INV_COLS * INV_ROWS
 
 /** How far the fleet may descend before it is over the player. */
 export const INV_FLOOR = 5
+/** The fleet lives in 7 bytes — 56 bits for 55 aliens, with one spare. */
+export const INV_BYTES = 7
+const ZERO7 = '&H00000000000000'
+const ONE7 = '&H00000000000001'
 
 export const INV_SRC = `
 REM  ── space invaders ────────────────────────────────────────────────
 REM  One transaction moves ONE alien, exactly as one frame did in 1978.
-DIM alive%4      REM  24 slots, one bit each — the fleet
+DIM alive$7      REM  55 slots, one BIT each — and never read as a number
 DIM count%1      REM  how many are left, and therefore how long a sweep is
 DIM cur%1        REM  how far through this sweep
 DIM x%1          REM  the fleet's column offset
@@ -60,21 +78,20 @@ DIM over%1       REM  0 running · 1 they landed · 2 the board is clear
 
 VERIFY over = 0
 
-REM  ── the shot. 0 is no shot; 1..24 names a slot. ──
-REM  Script cannot compute a location, so the bit is chosen by comparison —
-REM  twenty-four of them, each carrying a constant the compiler worked out.
-bit = 0
-FOR k = 0 TO 23
-  IF shot = k + 1 THEN bit = 2 ^ k
-NEXT k
+REM  ── the shot. 0 is no shot; 1..55 names a slot. ──
+REM  A SHIFT is what stands in for a power of two, and it does not care how wide
+REM  the fleet is. A shift past the end quietly gives nothing, which is the
+REM  bounds check for free.
+mask = ${ZERO7}
+IF shot > 0 THEN mask = LSHIFT(${ONE7}, shot - 1)
 
-IF bit > 0 THEN
-  REM  a hit only counts if that alien is still there
-  IF MOD(alive / bit, 2) = 1 THEN
-    alive = alive - bit
-    count = count - 1
-    score = score + 10
-  END IF
+REM  ⚠ SAMEBYTES, NOT "=". This is a BYTE comparison, and it has to be: read as a
+REM  number, a mask landing on the top bit of the last byte is NEGATIVE ZERO, and
+REM  one alien in fifty-five would quietly refuse to die.
+IF NOT(SAMEBYTES(BITAND(alive, mask), ${ZERO7})) THEN
+  alive = BITXOR(alive, mask)
+  count = count - 1
+  score = score + 10
 END IF
 
 REM  ── one alien moves. That is the whole of a frame. ──
@@ -104,13 +121,20 @@ IF count = 0 THEN over = 2
 export const INV_INPUTS = ['shot']
 
 export interface InvState {
-  alive: number; count: number; cur: number
+  /** ★ RAW BYTES, never a number — see the note on SAMEBYTES in the program. */
+  alive: number[]; count: number; cur: number
   x: number; y: number; dx: number; score: number; over: number
 }
 
-/** A full fleet: every one of the 24 bits set. */
+/** Bit `k` lives in byte `6 - k/8`, because a shift walks a byte string from its END. */
+const byteOf = (k: number): number => INV_BYTES - 1 - Math.floor(k / 8)
+export const invAlive = (alive: number[], k: number): boolean =>
+  k >= 0 && k < INV_SLOTS && ((alive[byteOf(k)] >> (k % 8)) & 1) === 1
+
+/** A full fleet: all 55 bits set — 0x7f then six 0xff. */
 export const invNew = (): InvState => ({
-  alive: 2 ** INV_SLOTS - 1, count: INV_SLOTS, cur: 0, x: 0, y: 0, dx: 1, score: 0, over: 0,
+  alive: [0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+  count: INV_SLOTS, cur: 0, x: 0, y: 0, dx: 1, score: 0, over: 0,
 })
 
 /**
@@ -119,11 +143,10 @@ export const invNew = (): InvState => ({
  */
 export function invRef(st: InvState, shot: number): InvState {
   if (st.over !== 0) throw new Error('the game is over')
-  let { alive, count, cur, x, y, dx, score } = st
-  if (shot > 0 && shot <= INV_SLOTS) {
-    const bit = 2 ** (shot - 1)
-    if (Math.floor(alive / bit) % 2 === 1) { alive -= bit; count -= 1; score += 10 }
-  }
+  let { count, cur, x, y, dx, score } = st
+  const alive = st.alive.slice()
+  const k = shot - 1
+  if (invAlive(alive, k)) { alive[byteOf(k)] ^= 1 << (k % 8); count -= 1; score += 10 }
   cur += 1
   if (cur >= count) {
     cur = 0
@@ -143,7 +166,7 @@ export function invShow(st: InvState): string {
     let line = ''
     for (let c = 0; c < INV_COLS; c++) {
       const k = r * INV_COLS + c
-      line += (Math.floor(st.alive / 2 ** k) % 2 ? 'W' : '.') + ' '
+      line += (invAlive(st.alive, k) ? 'W' : '.') + ' '
     }
     rows.push(' '.repeat(st.x * 2) + line.trimEnd())
   }
