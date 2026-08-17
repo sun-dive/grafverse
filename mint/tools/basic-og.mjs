@@ -27,7 +27,10 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { r110New, r110Ref } from '../src/rule110.ts'
 
-// ── minimal PNG encoder (zlib only) ────────────────────────────────────────────────────────────────
+/* ── minimal PNG encoder (zlib only) ───────────────────────────────────────────────────────────────
+   ⚠ KEPT, THOUGH NOTHING BELOW CALLS IT ANY MORE — the card is a photograph and goes out as JPEG. It
+   stays because the next card that is FLAT COLOUR should be a PNG again, and re-deriving this is forty
+   lines nobody should have to write twice. Delete it if that day never comes. */
 const CRC = (() => {
   const t = new Int32Array(256)
   for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c }
@@ -51,7 +54,11 @@ function encodePNG(rgb, w, h) {
 }
 
 const CARD_W = 1200, CARD_H = 630
-const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'basic-og.png')
+/* ⚠ JPEG, NOT PNG, AND THE REASON IS THE PICTURE. The first version wrote a PNG and came out at
+   683 KB — fifteen times the battery's card, which is flat colour and compresses beautifully as PNG.
+   This one is a PHOTOGRAPH, and PNG is simply the wrong tool for a photograph. The repo already knew:
+   `og.jpg` has been the site's card all along. */
+const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'basic-og.jpg')
 
 // the page's own palette, so the card and the page are recognisably one thing
 const BG = [0x08, 0x0e, 0x1a], INK = [0xf3, 0xf7, 0xff], CYAN = [0x38, 0xe1, 0xff]
@@ -183,6 +190,9 @@ textS('AND WRITE ONE BACK', LX, 470, 4, DIM)
 /* ⚠ NO URL HERE. The photograph is already tagged in its bottom-right corner, and printing it twice
    reads as a mistake rather than as branding. */
 
-writeFileSync(OUT, encodePNG(buf, CARD_W, CARD_H))
+/* Straight from the composed pixels — no intermediate file, and `-strip` because a share card has no
+   business carrying EXIF. */
+execFileSync('magick', ['-size', `${CARD_W}x${CARD_H}`, '-depth', '8', 'RGB:-',
+  '-strip', '-quality', '88', '-sampling-factor', '4:2:0', OUT], { input: buf })
 console.log(`wrote ${OUT}  ${CARD_W}×${CARD_H}  · the photograph, with ${ROWS} generations of Rule 110 ` +
   'projected into it — the pattern from the same reference the covenant is tested against')
