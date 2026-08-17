@@ -161,6 +161,7 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
         <button data-w="loop">FOR…NEXT, unrolled</button>
         <button data-w="state">DIM — state in the script</button>
         <button data-w="words">the machine's own words</button>
+        <button data-w="oxo">★ noughts and crosses</button>
       </div>
       <textarea id="src" spellcheck="false"></textarea>
       <div class="row">
@@ -188,6 +189,13 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
   all of it, so a whole bug class stops being possible rather than becoming less likely.
   ★ <b>And FOR…NEXT is unrolled at compile time</b>, because Script has no backward jump: a program's
   length is its work. That pays for a fixed-cost body and barely at all for an early-exit one.</p>
+  <p class="note">★★ <b>Noughts and crosses is the one to read.</b> Five bytes of state, every rule a
+  comparison, and it shows what a racing car cannot: <b>turn-taking enforced by the covenant</b>. You
+  cannot play out of turn, take a taken square, or play on after somebody has won — and none of those
+  rules live in a page. ⚠ Note what it has to do about <b>having no arrays</b>: Script cannot compute a
+  location, so the square is chosen by nine comparisons each selecting a constant, and the board is
+  packed base 3 into one number so that reading a square is arithmetic instead of a lookup. That is a
+  1982 problem with a 1982 answer.</p>
 </section>
 
 <footer>
@@ -198,7 +206,7 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
 </footer>
 </div>
 
-<script src="vendor/grafbasic.js?v=4"></script>
+<script src="vendor/grafbasic.js?v=5"></script>
 <script>
 (() => {
   const $ = id => document.getElementById(id)
@@ -296,6 +304,9 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
     state: { src: `REM  DIM is a LAYOUT: bytes in the script itself\nDIM phase%1\nDIM n%4\nDIM tag$4\n\nn = n + 1\nIF n >= 3 THEN phase = 2 ELSE phase = 1`, stack: '' },
     words: { src: `REM  every BASIC had words for the machine it ran on — PEEK, POKE, USR.\nREM  This machine is Bitcoin Script, so its words are the opcodes.\n\n10 head, rest = SPLIT(blob, 4)\n20 VERIFY SAMEBYTES(CAT(head, rest), blob)\n30 VERIFY SIZE(head) = 4\n40 tag = HASH160(rest)\n50 VERIFY SAMEBYTES(tag, &H0102030405060708090a0b0c0d0e0f1011121314)`,
       stack: 'blob' },
+    /* ★★ THE WHOLE GAME. Five bytes of state, every rule a comparison, and the thing a racing car
+       cannot demonstrate: two strangers playing, with neither able to cheat. */
+    oxo: { src: G.OXO_SRC.trim(), stack: 'move' },
   }
   document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => {
     $('src').value = W[b.dataset.w].src; $('stack').value = W[b.dataset.w].stack; $('go-write').click()

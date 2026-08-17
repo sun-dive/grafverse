@@ -44,6 +44,13 @@ export interface FrameParams {
   maxFee: number
   consts?: Record<string, number>
   c?: PushTxConstants
+  /**
+   * ★ WHAT THE SPENDER GETS TO CHOOSE — named, and pushed DEEPEST of all.
+   *
+   * A covenant with no inputs can only advance itself; one with inputs is a machine somebody plays.
+   * They go below everything else so that adding one never moves a depth the frame already measured.
+   */
+  inputs?: string[]
   /** Internal: `buildBasicLock` resolves the circular offset with a probe. */
   fieldOffset?: number
 }
@@ -73,7 +80,7 @@ export function basicLockOps(p: FrameParams): { ops: ScriptChunk[]; state: State
      output binding both reach past the state to them, and their depth changes with every field the
      program declares — which is precisely the kind of number this project stopped writing by hand. */
   const probe = compileState(p.src, {
-    fieldOffset, consts: p.consts, stack: ['spenderOutputs', 'newValue'],
+    fieldOffset, consts: p.consts, stack: [...(p.inputs ?? []), 'spenderOutputs', 'newValue'],
   })
   head.push(...stateChunks(probe.layout, p.state))
   /* …and then they are dropped. The script does not READ its own literals; it reads its scriptCode out
@@ -144,10 +151,15 @@ export function buildBasicLock(p: FrameParams): LockingScript {
 
 /** The unlocking half, in the order the frame reads it. */
 export function basicUnlockingOps(
-  p: { spenderOutputs: number[]; newValue: number[]; preimage: number[] },
+  p: { spenderOutputs: number[]; newValue: number[]; preimage: number[]; inputs?: number[] },
 ): ScriptChunk[] {
   if (p.newValue.length !== 8) throw new Error('basicCovenant: newValue is 8 bytes, little-endian')
-  return [pushData(p.spenderOutputs), pushData(p.newValue), pushData(p.preimage)]
+  /* ⚠ IN THE SAME ORDER AS `inputs` NAMES THEM, deepest first — the compiler resolved every name
+     against that list, so a reversed argument silently reads its neighbour. */
+  return [
+    ...(p.inputs ?? []).map(n => PN(n)),
+    pushData(p.spenderOutputs), pushData(p.newValue), pushData(p.preimage),
+  ]
 }
 
 /** 8-byte little-endian satoshis, as an output serializes them. */

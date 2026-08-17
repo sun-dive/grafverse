@@ -18,3 +18,6 @@ export { buildShellLock, emptyShell } from './shell.ts'
    covenant's own unlocking builder, and checked by `test/reader-presets.ts` so a name list cannot
    silently drift out of step with the machine it describes. */
 export { READER_PRESETS, COVENANT_IDIOMS, type ReaderPreset } from './readerPresets.ts'
+/* ★ Noughts and crosses — the whole game in BASIC, and the demo that shows what a racing car cannot:
+   turn-taking enforced by the covenant. */
+export { OXO_SRC, OXO_INPUTS, oxoNew, oxoRef, oxoShow } from './oxo.ts'
