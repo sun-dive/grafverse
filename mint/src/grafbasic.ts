@@ -23,3 +23,5 @@ export { READER_PRESETS, COVENANT_IDIOMS, type ReaderPreset } from './readerPres
 export { OXO_SRC, OXO_INPUTS, oxoNew, oxoRef, oxoShow } from './oxo.ts'
 /* ★ Space Invaders — and the 1978 difficulty ramp arriving a second time, through the fee model. */
 export { INV_SRC, INV_INPUTS, invNew, invRef, invShow } from './invaders.ts'
+/* ★ The same game packed base 4 — one value wasted a square, and every access becomes a shift. */
+export { OXO4_SRC, OXO4_INPUTS, oxo4New, oxo4Ref, oxo4Show } from './oxo4.ts'

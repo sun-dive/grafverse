@@ -97,6 +97,9 @@
   .eras .when{color:var(--cyan);font-weight:700;white-space:nowrap}
   .eras .old{color:var(--mag)}
   .eras .never{color:var(--lime)}
+  .caveat{border-left:2px solid rgba(255,162,46,.45);padding-left:13px;color:var(--faint) !important;
+          font-size:13px !important;margin:-6px 0 16px !important}
+  .caveat b{color:var(--tang) !important}
   .punch{background:rgba(56,225,255,.07);border-left:2px solid rgba(56,225,255,.5);
          padding:12px 15px;border-radius:0 9px 9px 0;margin:16px 0 0}
 </style>
@@ -178,6 +181,7 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
         <button data-w="words">the machine's own words</button>
         <button data-w="oxo">★ noughts and crosses</button>
         <button data-w="inv">★ space invaders</button>
+        <button data-w="oxo4">…the same game, two bits a square</button>
       </div>
       <textarea id="src" spellcheck="false"></textarea>
       <div class="row">
@@ -211,7 +215,10 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
   rules live in a page. ⚠ Note what it has to do about <b>having no arrays</b>: Script cannot compute a
   location, so the square is chosen by nine comparisons each selecting a constant, and the board is
   packed base 3 into one number so that reading a square is arithmetic instead of a lookup. That is a
-  1982 problem with a 1982 answer.</p>
+  1982 problem with a 1982 answer. ★ <b>And there is a second version of it</b> packed <b>base 4</b> —
+  two bits a square, one value wasted — where every access becomes a shift instead of a division.
+  Measured: <b>657 bytes against 762</b>, for one extra byte of state. Waste a little space to make the
+  arithmetic cheap, which is the oldest trade in the business.</p>
   <p class="note">★★★ <b>And Space Invaders is the one that proves something.</b> The arcade original
   speeds up as you kill aliens, and <b>nobody designed that</b> — the 8080 moved one alien per frame, so
   a sweep took as many frames as there were aliens left. Here one transaction moves one alien, and the
@@ -258,6 +265,12 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
     </tbody>
   </table>
 
+  <p class="caveat">⚠ Though a shift gets close. <code>LSHIFT</code> builds a mask at runtime, so you
+  can <b>select</b> without being able to <b>address</b> — the difference between reaching a location
+  and constructing a filter for it. It is why the 55-alien fleet costs <b>34 bytes instead of 1269</b>,
+  and why it can exist at all: a table of powers stops being writable past 2<sup>53</sup>, where a
+  double stops being exact.</p>
+
   <p>So it isn't a 1982 machine. It's a machine with <b>1982's economics, control flow older than
   BASIC, and arithmetic no 8-bit micro ever had</b>.</p>
 
@@ -276,7 +289,7 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
 </footer>
 </div>
 
-<script src="vendor/grafbasic.js?v=7"></script>
+<script src="vendor/grafbasic.js?v=8"></script>
 <script>
 (() => {
   const $ = id => document.getElementById(id)
@@ -380,6 +393,9 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
     /* ★★ One transaction moves ONE alien, exactly as one FRAME did on the 8080 — so the 1978
        difficulty ramp comes back out of the fee model rather than out of a design decision. */
     inv: { src: G.INV_SRC.trim(), stack: 'shot' },
+    /* ★ The same game as `oxo`, packed base 4 instead of base 3 — one value wasted a square, and
+       every access becomes a shift. Measured: 657 B against 762 B. */
+    oxo4: { src: G.OXO4_SRC.trim(), stack: 'move' },
   }
   document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => {
     $('src').value = W[b.dataset.w].src; $('stack').value = W[b.dataset.w].stack; $('go-write').click()
