@@ -15,6 +15,8 @@ $pages = [
   ['/grafverse.html', 'grafverse.html', 'weekly',  '0.9'],   // the game itself
   ['/brc226.html',    'brc226.html',    'monthly', '0.6'],   // BRC-226 blueprint (coined-term page)
   ['/battery.html',   'battery.html',   'monthly', '0.6'],   // BRC-226 demo two — the Bitcoin battery (coined-term page)
+  ['/basic.html',     'basic.html',     'monthly', '0.7'],   // Bitcoin BASIC — the two-way workbench (coined-term page)
+  ['/green-test.html','green-test.html','monthly', '0.6'],   // "A Green Test Is Not Evidence" — the article, canonical here
 ];
 
 echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";

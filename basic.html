@@ -16,9 +16,14 @@
 <meta property="og:title" content="Bitcoin BASIC — read any Bitcoin Script as a program">
 <meta property="og:description" content="Script is what BASIC's expression evaluator looks like with the front end deleted. Paste a covenant, read it as a listing. Write BASIC, get Script.">
 <meta property="og:url" content="https://grafverse.com/basic.html">
+<meta property="og:image" content="https://grafverse.com/basic-og.png?v=1">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Bitcoin BASIC — the nested triangles of Rule 110, drawn by the automaton itself.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Bitcoin BASIC — read any Bitcoin Script as a program">
 <meta name="twitter:description" content="A two-way workbench: Script → BASIC, and BASIC → Script. It works on a stranger's covenant, not just one this compiler made.">
+<meta name="twitter:image" content="https://grafverse.com/basic-og.png?v=1">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -29,8 +34,19 @@
   "description": "A two-way workbench between Bitcoin Script and BASIC. Reads a locking script as a numbered BASIC listing by symbolic execution, and compiles BASIC — including DIM state layouts and FOR…NEXT unrolled at compile time — into Script.",
   "author": { "@type": "Person", "name": "sun-dive" },
   "url": "https://grafverse.com/basic.html",
+  "image": "https://grafverse.com/basic-og.png?v=1",
+  "inLanguage": "en",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-  "isPartOf": { "@type": "WebSite", "name": "grafverse", "url": "https://grafverse.com" }
+  "about": [
+    { "@type": "Thing", "name": "Bitcoin BASIC" },
+    { "@type": "Thing", "name": "Bitcoin Script decompiler" },
+    { "@type": "Thing", "name": "read Bitcoin Script as a program" },
+    { "@type": "Thing", "name": "BASIC to Bitcoin Script compiler" },
+    { "@type": "Thing", "name": "OP_PUSH_TX covenant" },
+    { "@type": "Thing", "name": "Rule 110 in Bitcoin Script" }
+  ],
+  "isPartOf": { "@type": "WebSite", "name": "grafverse", "url": "https://grafverse.com" },
+  "relatedLink": ["https://grafverse.com/brc226.html", "https://grafverse.com/battery.html"]
 }
 </script>
 <style>
@@ -379,8 +395,33 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
   </table>
 
   <p>Same compiler, same machine, opposite advice. <b>Where the loop should live is an economic
-  question</b>, and it has to be measured per program rather than decided once. That is the same shape
-  the computation walk had: you don't re-run the program to check it, you read the trace it left.</p>
+  question</b>, and it has to be measured per program rather than decided once.</p>
+
+  <h3>★ And you can work out the answer before writing any of it</h3>
+
+  <p>The frame is a <b>fixed cost per transaction</b>. So the most that batching can ever save is set
+  by one ratio, and you already have both numbers:</p>
+
+  <div class="punch"><p style="margin:0;font-family:var(--mono);font-size:14px">ceiling = (frame +
+  body) / body &nbsp;=&nbsp; <b>1 + frame ÷ body</b></p></div>
+
+  <table class="eras cross">
+    <thead><tr><th>program</th><th>frame ÷ body</th><th>ceiling</th><th>measured</th></tr></thead>
+    <tbody>
+      <tr><td>the racer</td><td>13.4</td><td class="win">14.4×</td>
+          <td>10.5× at 45 ticks — 73% of the way there, so there was headroom left</td></tr>
+      <tr><td>rule 110</td><td>0.23</td><td class="imp">1.23×</td>
+          <td>1.21× at 8 generations — <b>98%</b>, so it was already finished at eight</td></tr>
+    </tbody>
+  </table>
+
+  <p>Rule 110 was <i>done</i> at eight generations. Sixteen or thirty-two would have added nothing
+  worth having, and the curve says so rather than a hunch. ★ Which means the question <i>"is it worth
+  batching this?"</i> has a two-number answer available before a line is written: <b>frame ÷ body</b>.
+  Small, don't bother. Thirteen, that is where the money is.</p>
+
+  <p>That is the same shape the computation walk had: you don't re-run the program to check it, you
+  read the trace it left.</p>
 
   <h2>How to index without an index</h2>
 

@@ -34,6 +34,7 @@ deployment:
     - /bin/mkdir -p "$DEPLOYPATH/img" && /bin/cp img/green-test-*.webp "$DEPLOYPATH/img/"   # its cover + in-body image
     - /bin/cp racers.html "$DEPLOYPATH"                   # BRC-226 demo three — the TUNING BENCH for Bitcoin Racers (noindex; runs mint/src/shell.ts via grafmint)
     - /bin/cp battery.html "$DEPLOYPATH"                  # BRC-226 demo two — the Bitcoin battery: simulator, presets, fuel gauge, loop preview
+    - /bin/cp basic-og.png "$DEPLOYPATH"                  # Bitcoin BASIC's social card — Rule 110's own triangles (regen: node mint/tools/basic-og.mjs)
     - /bin/cp basic.html "$DEPLOYPATH"                    # Bitcoin BASIC — the two-way workbench: Script → BASIC (a view over ANY covenant) and BASIC → Script; needs vendor/grafbasic.js, which rides along in the vendor copy above
     - /bin/cp robots.txt "$DEPLOYPATH"                    # crawl directives (allow content, disallow the .php endpoints + /worlds/) + Sitemap: pointer
     - /bin/cp sitemap.php "$DEPLOYPATH"                   # dynamic XML sitemap of the crawlable pages (/, /grafverse.html, /brc226.html) with real lastmod
