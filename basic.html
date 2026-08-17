@@ -194,7 +194,8 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
         <button data-w="oxo">★ noughts and crosses</button>
         <button data-w="inv">★ space invaders</button>
         <button data-w="oxo4">…the same game, two bits a square</button>
-        <button data-w="r110">★ rule 110</button>
+        <button data-w="r110">★ rule 110 — the loop in the chain</button>
+        <button data-w="r110x">★ …the loop in the script</button>
       </div>
       <textarea id="src" spellcheck="false"></textarea>
       <div class="row">
@@ -349,9 +350,37 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
   the ledger.</b> A covenant iterates perfectly well — thirty-one cells, unrolled, every generation.
   What it cannot do is run an <i>unknown</i> number of times, and that is the only thing Rule 110 needs
   the chain for. The chain does not supply the looping. It supplies the <b>not knowing when to
-  stop</b> — one enforced step per transaction, for as long as somebody funds it. Which is the same
-  place the computation walk found it: you don't re-run the program to check it, you read the trace it
-  left.</p></div>
+  stop</b>.</p></div>
+
+  <h3>★ So Rule 110 can be written two ways — and both are here</h3>
+
+  <div class="halves">
+    <div class="half"><b>the loop in the script</b><span><em>BOUNDED.</em> Eight generations unrolled
+      into one transaction. You decide how many when you write it, and you pay for all of them up
+      front.</span></div>
+    <div class="half"><b>the loop in the chain</b><span><em>UNBOUNDED.</em> One generation a spend,
+      and nobody decides how many. It runs for as long as somebody funds it.</span></div>
+  </div>
+
+  <p>Both are real loops, and the test runs eight generations each way and checks they arrive at the
+  same state. <b>What separates them is not capability. It is boundedness.</b></p>
+
+  <p>★★ And which way is <i>cheaper</i> is not a matter of taste — it turns on whether the frame or the
+  body dominates, and the answer is the opposite for these two programs:</p>
+
+  <table class="eras cross">
+    <thead><tr><th>program</th><th>frame</th><th>body</th><th>what unrolling buys</th></tr></thead>
+    <tbody>
+      <tr><td>the racer (45 ticks)</td><td>1,672 B</td><td>125 B</td>
+          <td class="win">~10× — the frame is 13× the body, so there is a great deal to amortise</td></tr>
+      <tr><td>rule 110 (8 generations)</td><td>566 B</td><td>2,408 B</td>
+          <td class="imp">1.21× — the body is 4.3× the frame, so there is almost nothing</td></tr>
+    </tbody>
+  </table>
+
+  <p>Same compiler, same machine, opposite advice. <b>Where the loop should live is an economic
+  question</b>, and it has to be measured per program rather than decided once. That is the same shape
+  the computation walk had: you don't re-run the program to check it, you read the trace it left.</p>
 
   <h2>How to index without an index</h2>
 
@@ -407,7 +436,7 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
 </footer>
 </div>
 
-<script src="vendor/grafbasic.js?v=9"></script>
+<script src="vendor/grafbasic.js?v=10"></script>
 <script>
 (() => {
   const $ = id => document.getElementById(id)
@@ -517,6 +546,9 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
     /* ★★★ Turing complete, and no input at all. The 31 cells unroll at compile time because every
        neighbour is at a position the compiler knows — the one demo with no runtime index anywhere. */
     r110: { src: G.R110_SRC.trim(), stack: '' },
+    /* ★★ THE SAME AUTOMATON, BOUNDED. Eight generations unrolled into one script — the loop moved
+       out of the chain and into the code. Both are real loops; one just knows when to stop. */
+    r110x: { src: G.r110Src(8).trim(), stack: '' },
   }
   document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => {
     $('src').value = W[b.dataset.w].src; $('stack').value = W[b.dataset.w].stack; $('go-write').click()

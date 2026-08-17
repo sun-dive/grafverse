@@ -49,29 +49,50 @@ export const R110_CELLS = 31
  * The row is a CYLINDER — cell 0's right neighbour is cell 30. With every index known at compile time
  * the wrap costs nothing: it is `MOD(i + 30, 31)`, folded before a single opcode is emitted.
  */
-export const R110_SRC = `
+/**
+ * ★★★ THE SAME AUTOMATON, AND YOU CHOOSE WHERE THE LOOP LIVES.
+ *
+ * sun-dive, 17 August 2026, on being told the script iterates after all:
+ * *"So Rule 110 could be written two ways. Keep both as an example. That is the mic drop moment!"*
+ *
+ * ```
+ *   r110Src(1)    one generation per TRANSACTION — the loop is in the CHAIN
+ *   r110Src(8)    eight generations per transaction — the loop is in the SCRIPT
+ * ```
+ *
+ * **Both are real loops**, and they compute the same thing: `test/rule110.ts` runs eight generations
+ * the long way and eight the short way and compares the state. The choice between them is **economic,
+ * not a capability** — and which way is cheaper is not a matter of taste. It depends on whether the
+ * FRAME or the BODY dominates, which differs per program and is measured rather than assumed.
+ */
+export const r110Src = (generations = 1): string => `
 REM  ── rule 110 ──────────────────────────────────────────────────────
-REM  One transaction is one generation. There is no input: nobody plays
-REM  this, it simply runs. The 31 cells below DO loop — unrolled, laid out
-REM  in space instead of repeated in time. What the chain adds is not the
-REM  looping but the not knowing when to stop.
+REM  ${generations === 1
+    ? 'One transaction is one generation: the loop is in the CHAIN.'
+    : `${generations} generations in ONE transaction: the loop is in the SCRIPT.`}
+REM  There is no input — nobody plays this, it simply runs.
 DIM cells%4      REM  31 cells, one bit each, wrapped into a ring
 DIM gen%2        REM  which generation this is
 
-new = 0
-FOR i = 0 TO 30
-  REM  every neighbour is at a position the COMPILER knows, so each of these
-  REM  divisors is a folded constant and no lookup is needed at all.
-  l = MOD(cells / 2 ^ MOD(i + 1, 31), 2)
-  c = MOD(cells / 2 ^ i, 2)
-  r = MOD(cells / 2 ^ MOD(i + 30, 31), 2)
-  REM  the eight-row table, collapsed into one line of boolean algebra
-  new = new + ((c OR r) AND NOT(l AND c AND r)) * 2 ^ i
-NEXT i
-
-cells = new
-gen = gen + 1
+FOR g = 1 TO ${generations}
+  new = 0
+  FOR i = 0 TO 30
+    REM  every neighbour is at a position the COMPILER knows, so each of these
+    REM  divisors is a folded constant and no lookup is needed at all.
+    l = MOD(cells / 2 ^ MOD(i + 1, 31), 2)
+    c = MOD(cells / 2 ^ i, 2)
+    r = MOD(cells / 2 ^ MOD(i + 30, 31), 2)
+    REM  the eight-row table, collapsed into one line of boolean algebra
+    new = new + ((c OR r) AND NOT(l AND c AND r)) * 2 ^ i
+  NEXT i
+  cells = new
+  gen = gen + 1
+NEXT g
 `
+
+/** One generation per transaction — the loop in the chain. */
+export const R110_SRC = r110Src(1)
+
 
 /** Nothing. Rule 110 takes no input — that is part of the point. */
 export const R110_INPUTS: string[] = []

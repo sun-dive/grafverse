@@ -3,17 +3,19 @@
 //
 //   node --experimental-strip-types mint/test/rule110.ts
 //
-// The joke is a real one, and both halves are true at once: the script for ONE generation contains no
-// loop at all, and the CHAIN of transactions runs unboundedly. Rule 110 is Turing complete, so what is
-// being demonstrated is that the loop lives in the ledger rather than in the language.
+// The joke is a real one, and the sharp way to put it is sun-dive's: ONE IS BOUNDED, ONE IS UNBOUNDED.
+// The script loops — thirty-one cells, unrolled — but it loops a number of times decided when it was
+// written. The chain loops too, and nobody decides how many. Rule 110 is Turing complete, so what is
+// demonstrated is not that Script cannot iterate; it is where the UNBOUNDEDNESS has to live.
 //
 // ⚠ The rule is checked against its TABLE, not against the derivation that produced the one-line
 // algebra the script uses. Otherwise the test would only be confirming a rearrangement of itself.
 import { Transaction, Spend, LockingScript, UnlockingScript } from '@bsv/sdk'
 import { buildBasicLock, basicUnlockingOps, frameMaxFee, valueBytes } from '../src/basicCovenant.ts'
 import {
-  R110_SRC, R110_INPUTS, R110_CELLS, r110New, r110Ref, r110Show, r110Bit, type R110State,
+  R110_SRC, R110_INPUTS, R110_CELLS, r110Src, r110New, r110Ref, r110Show, r110Bit, type R110State,
 } from '../src/rule110.ts'
+import { compileState } from '../src/basic.ts'
 import { pushTxPreimage } from '../src/pushtx.ts'
 
 let pass = 0, fail = 0
@@ -28,10 +30,13 @@ const MAX_FEE = frameMaxFee({
 }).fee
 
 /** One generation, for real. ⚠ No inputs at all — nobody plays this; it simply advances. */
-function step(from: R110State, to: R110State): boolean {
+const step = (from: R110State, to: R110State): boolean => stepWith(R110_SRC, MAX_FEE, from, to)
+
+/** …or several generations at once, from a script that unrolled them. */
+function stepWith(src: string, maxFee: number, from: R110State, to: R110State): boolean {
   const rec = (s: R110State): Record<string, number> => ({ ...s })
-  const lock = buildBasicLock({ src: R110_SRC, state: rec(from), maxFee: MAX_FEE, inputs: R110_INPUTS })
-  const next = buildBasicLock({ src: R110_SRC, state: rec(to), maxFee: MAX_FEE, inputs: R110_INPUTS })
+  const lock = buildBasicLock({ src, state: rec(from), maxFee, inputs: R110_INPUTS })
+  const next = buildBasicLock({ src, state: rec(to), maxFee, inputs: R110_INPUTS })
   const source = new Transaction()
   source.addOutput({ lockingScript: lock, satoshis: SATS })
   const tx = new Transaction()
@@ -121,14 +126,77 @@ console.log()
   console.log()
   console.log(`        one generation      ${bytes} B of locking script · ${MAX_FEE} sat`)
   console.log(`        a hundred of them   ${100 * MAX_FEE} sat, and a hundred transactions`)
-  console.log('        the loop            NOT in the script — there is no backward jump in Bitcoin')
-  console.log('                            Script at all. It is the CHAIN that iterates.')
+  console.log()
+  console.log('        the loop in the SCRIPT    BOUNDED   — 31 cells, and you decide how many')
+  console.log('                                            generations when you write it')
+  console.log('        the loop in the CHAIN     UNBOUNDED — nobody decides. It runs while funded.')
   /* ⚠ AND THE CLAIM IS EXACTLY THAT AND NOTHING MORE. This does not make Script Turing complete: a
-     script still halts, still has no jump, and every generation is paid for in advance. What it shows
-     is where the unboundedness actually lives — in the sequence of spends, which is the same place the
-     computation walk found it. A machine that can be stepped for as long as somebody funds it. */
-  check('★★★ one generation is one bounded, prepaid, loop-free script', bytes > 0 && MAX_FEE > 0)
-  console.log('        ⚠ this does NOT make Script Turing complete — it shows where the loop went')
+     script still halts, still has no backward jump, and every generation is paid for in advance. Both
+     forms below are real loops. What separates them is not capability, it is BOUNDEDNESS — and that is
+     the same place the computation walk found the unboundedness, in the sequence of spends. */
+  check('★★★ one script is a BOUNDED loop, prepaid, with no backward jump in it', bytes > 0 && MAX_FEE > 0)
+  console.log('        ⚠ this does NOT make Script Turing complete — it says where the UNBOUNDED part goes')
+}
+
+
+// ── 5. ★★★ THE SAME AUTOMATON, WRITTEN TWO WAYS ─────────────────────────────────────────────────────
+// Script CAN loop — the thirty-one cells above are a real loop, laid out in space instead of repeated
+// in time. So the generation loop can go either way too: eight spends of a one-generation script, or
+// ONE spend of a script that unrolled eight. Both are loops. The choice is economic.
+console.log()
+{
+  const G = 8
+  const SRC8 = r110Src(G)
+  const FEE8 = frameMaxFee({
+    src: SRC8, state: r110New() as unknown as Record<string, number>, maxFee: 0,
+    inputs: R110_INPUTS, spenderOutputs: [],
+  }).fee
+
+  /* ★ THE LONG WAY — eight transactions, the loop in the chain. */
+  let a = r110New()
+  let chainOk = 0
+  for (let g = 0; g < G; g++) { const w = r110Ref(a); if (step(a, w)) chainOk++; a = w }
+
+  /* ★ THE SHORT WAY — one transaction, the loop in the script. */
+  let b = r110New()
+  for (let g = 0; g < G; g++) b = r110Ref(b)
+  const oneOk = stepWith(SRC8, FEE8, r110New(), b)
+
+  check(`★★ ${G} generations as ${G} spends, the loop in the CHAIN`, chainOk === G)
+  check(`★★ ${G} generations as ONE spend, the loop in the SCRIPT`, oneOk)
+  check('★★★ …and both arrive at exactly the same state', a.cells === b.cells && a.gen === b.gen)
+  console.log(`        ${r110Show(a)}   generation ${a.gen}`)
+
+  /* ── AND NOW THE PRICE OF THE CHOICE, WHICH IS THE HALF NOBODY EXPECTS ─────────────────────────── */
+  const lockOf = (g: number, fee: number): number => buildBasicLock({
+    src: r110Src(g), state: r110New() as unknown as Record<string, number>, maxFee: fee,
+    inputs: R110_INPUTS,
+  }).toBinary().length
+  const bodyOf = (g: number): number => new LockingScript(
+    compileState(r110Src(g), { fieldOffset: 4, stack: ['spenderOutputs', 'newValue'] }).ops).toBinary().length
+
+  const one = lockOf(1, MAX_FEE), eight = lockOf(G, FEE8)
+  const body = bodyOf(1), frame = one - body
+  console.log()
+  console.log('        generations   whole lock   per generation')
+  for (const g of [1, 2, 4, 8]) {
+    const L = lockOf(g, g === 1 ? MAX_FEE : FEE8)
+    console.log(`        ${String(g).padStart(11)}   ${String(L).padStart(10)} B   ${String(Math.round(L / g)).padStart(9)} B`)
+  }
+  console.log(`\n        the FRAME is ${frame} B · one generation's BODY is ${body} B` +
+    `  ⇒ the body is ${(body / frame).toFixed(1)}× the frame`)
+  console.log(`        ${G} the long way: ${G * one} B across ${G} locks` +
+    `   ·   ${G} in one: ${eight} B   ⇒ ${(G * one / eight).toFixed(2)}×`)
+
+  /* ⚠⚠ AND THAT IS THE OPPOSITE ADVICE THE RACER GOT, FROM THE SAME COMPILER. Unrolling amortises the
+     FRAME — verify the preimage, peel, rebuild, hash, compare — which every transaction pays whatever
+     its body does. For the racer the frame is 13× the body, so 45 ticks in one transaction saved ~10×.
+     Here the body is four times the FRAME, so there is almost nothing to amortise and unrolling buys
+     about a fifth. Same machine, same compiler, opposite answer — because the ratio is different. */
+  check('★★★ for THIS program the body dominates, so unrolling buys almost nothing',
+    (G * one) / eight < 1.5)
+  console.log('        ⇒ the racer saved ~10× by unrolling, because ITS frame is 13× ITS body.')
+  console.log('        Where the loop should live is an ECONOMIC question, and the answer differs.')
 }
 
 console.log(`\n${pass}/${pass + fail} checks passed`)
