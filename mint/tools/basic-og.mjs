@@ -21,6 +21,7 @@
    all three by accident. A module with side effects at import time is not a library, and forty lines
    of zlib is a cheaper fix than making it one. */
 import { deflateSync } from 'node:zlib'
+import { execFileSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -56,7 +57,23 @@ const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'basic-og.
 const BG = [0x08, 0x0e, 0x1a], INK = [0xf3, 0xf7, 0xff], CYAN = [0x38, 0xe1, 0xff]
 const DIM = [0x7d, 0x92, 0xb8], LIME = [0xb4, 0xff, 0x3a]
 
-const buf = Buffer.alloc(CARD_W * CARD_H * 3)
+const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'img', 'basic-eras.webp')
+
+/* ⚠ CROP FIRST, THEN RESIZE — the house rule, and it matters here twice over. The photograph is 16:9
+   and the card is 1200×630, which is wider; a straight resize would squash the room. `-extent` takes
+   the difference off losslessly, and only then does it scale.
+   ⚠ FROM THE TOP, NOT THE CENTRE. The photograph carries its own `grafverse.com` in the bottom-right
+   corner, and a centred crop clipped the underside of it — legible, but cut. Taking all forty-eight
+   rows off the ceiling loses the least interesting part of the frame and leaves the tag whole. */
+const raw = execFileSync('magick', [
+  SRC, '-gravity', 'south', '-extent', '1280x672', '+repage',
+  '-filter', 'Lanczos', '-resize', `${CARD_W}x${CARD_H}!`, '-depth', '8', 'RGB:-',
+], { maxBuffer: CARD_W * CARD_H * 3 + 1024 })
+if (raw.length !== CARD_W * CARD_H * 3) {
+  throw new Error(`basic-og: expected ${CARD_W * CARD_H * 3} bytes of RGB, got ${raw.length}`)
+}
+const buf = Buffer.from(raw)
+
 const px = (x, y, c) => {
   if (x < 0 || y < 0 || x >= CARD_W || y >= CARD_H) return
   const o = (y * CARD_W + x) * 3
@@ -64,27 +81,40 @@ const px = (x, y, c) => {
 }
 const rect = (x, y, w, h, c) => { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) px(x + i, y + j, c) }
 const mix = (a, b, t) => [0, 1, 2].map(i => Math.round(a[i] + (b[i] - a[i]) * t))
-
-// ── the ground: the page's radial wash, flattened ──────────────────────────────────────────────────
-for (let y = 0; y < CARD_H; y++) {
-  const t = Math.min(1, Math.hypot((y + 90) / CARD_H, 0) * 0.9)
-  const row = mix([0x13, 0x25, 0x42], [0x05, 0x07, 0x0d], t)
-  for (let x = 0; x < CARD_W; x++) buf.set(row, (y * CARD_W + x) * 3)
+/* ★ SCREEN, so the projection only ever ADDS light. Over the dark of the machine room the triangles
+   glow; over anything already bright they do nothing. It is how a projector behaves, and it means the
+   pattern can be laid anywhere without punching a hole in the photograph. */
+const screen = (x, y, c) => {
+  if (x < 0 || y < 0 || x >= CARD_W || y >= CARD_H) return
+  const o = (y * CARD_W + x) * 3
+  for (let i = 0; i < 3; i++) buf[o + i] = 255 - ((255 - buf[o + i]) * (255 - c[i]) / 255)
+}
+const screenRect = (x, y, w, h, c) => {
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) screen(x + i, y + j, c)
 }
 
-/* ── RULE 110 ITSELF, from the reference the covenant is tested against ────────────────────────────
-   Wide enough to show the structure: the triangles only become obvious after a few dozen rows. */
-const ROWS = 46, CELL = 12, GRID_W = 31 * CELL, GRID_H = ROWS * CELL
-const GX = CARD_W - GRID_W - 64, GY = Math.round((CARD_H - GRID_H) / 2)
+// ── a scrim, so the words have something to sit on ─────────────────────────────────────────────────
+/* Darkest at the left edge and gone by two thirds across, which is where the monitor's own glow takes
+   over. Multiply rather than a flat overlay, so the cabinets keep their shape underneath. */
+for (let y = 0; y < CARD_H; y++) {
+  for (let x = 0; x < CARD_W; x++) {
+    const t = Math.min(1, Math.max(0, x / (CARD_W * 0.66)))
+    const k = 0.20 + 0.80 * (t * t)                       // 0.20 at the left edge, 1.0 past the middle
+    const o = (y * CARD_W + x) * 3
+    for (let i = 0; i < 3; i++) buf[o + i] = Math.round(buf[o + i] * k)
+  }
+}
+
+/* ── RULE 110 ITSELF, projected into the dark of the room ──────────────────────────────────────────
+   Dimmed before it is screened on, so it reads as light falling in the room rather than a sticker. */
+const ROWS = 30, CELL = 9, GRID_W = 31 * CELL
+const GX = CARD_W - GRID_W - 52, GY = 44
 let st = r110New()
 for (let r = 0; r < ROWS; r++) {
   for (let i = 0; i < 31; i++) {
-    const on = (st.cells >> (30 - i)) & 1
-    if (on) {
-      /* Fading down the rows so the eye follows the growth, and it reads as a picture rather than a
-         QR code. The colour is the page's own cyan → lime. */
-      const c = mix(CYAN, LIME, r / ROWS)
-      rect(GX + i * CELL, GY + r * CELL, CELL - 1, CELL - 1, c)
+    if ((st.cells >> (30 - i)) & 1) {
+      const c = mix(CYAN, LIME, r / ROWS).map(v => Math.round(v * 0.42))
+      screenRect(GX + i * CELL, GY + r * CELL, CELL - 1, CELL - 1, c)
     }
   }
   st = r110Ref(st)
@@ -118,7 +148,7 @@ const FONT = {
   '.': '00000000000000000000000000000000100', '-': '00000000000000011111000000000000000',
   ' ': '00000000000000000000000000000000000',
 }
-function text(str, x, y, scale, c) {
+function text(str, x, y, scale, c, paint = rect) {
   let cx = x
   for (const ch of str.toUpperCase()) {
     const g = FONT[ch]
@@ -127,7 +157,7 @@ function text(str, x, y, scale, c) {
       `rendered ${JSON.stringify(str)} with a hole in it and said nothing`)
     if (g.length !== 35) throw new Error(`basic-og: the glyph for ${ch} is ${g.length} cells, not 35`)
     for (let r = 0; r < 7; r++) for (let i = 0; i < 5; i++) {
-      if (g[r * 5 + i] === '1') rect(cx + i * scale, y + r * scale, scale, scale, c)
+      if (g[r * 5 + i] === '1') paint(cx + i * scale, y + r * scale, scale, scale, c)
     }
     cx += 6 * scale
   }
@@ -140,14 +170,19 @@ for (const [ch, g] of Object.entries(FONT)) {
   if (g.length !== 35) throw new Error(`basic-og: glyph ${ch} is ${g.length} cells, not 35`)
 }
 
-const LX = 64
-text('BITCOIN', LX, 200, 9, INK)
-text('BASIC', LX, 275, 9, CYAN)
-rect(LX, 360, 300, 2, [0x4a, 0x6a, 0x9a])
-text('READ ANY SCRIPT', LX, 392, 4, DIM)
-text('AS A PROGRAM', LX, 424, 4, DIM)
-text('AND WRITE ONE BACK', LX, 456, 4, DIM)
-text('GRAFVERSE.COM', LX, 530, 3, [0x4a, 0x6a, 0x9a])
+/* The text is screened on too, for the same reason as the projection: it never darkens the photo, so
+   a letter that happens to fall on the desk edge stays legible instead of turning into a smudge. */
+const textS = (str, x, y, scale, c) => text(str, x, y, scale, c, screenRect)
+const LX = 62
+textS('BITCOIN', LX, 214, 9, INK)
+textS('BASIC', LX, 289, 9, CYAN)
+screenRect(LX, 374, 296, 2, [0x3a, 0x56, 0x7e])
+textS('READ ANY SCRIPT', LX, 406, 4, DIM)
+textS('AS A PROGRAM', LX, 438, 4, DIM)
+textS('AND WRITE ONE BACK', LX, 470, 4, DIM)
+/* ⚠ NO URL HERE. The photograph is already tagged in its bottom-right corner, and printing it twice
+   reads as a mistake rather than as branding. */
 
 writeFileSync(OUT, encodePNG(buf, CARD_W, CARD_H))
-console.log(`wrote ${OUT}  ${CARD_W}×${CARD_H}  · Rule 110, ${ROWS} generations, from the reference`)
+console.log(`wrote ${OUT}  ${CARD_W}×${CARD_H}  · the photograph, with ${ROWS} generations of Rule 110 ` +
+  'projected into it — the pattern from the same reference the covenant is tested against')
