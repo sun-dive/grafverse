@@ -102,6 +102,18 @@
   .caveat b{color:var(--tang) !important}
   .punch{background:rgba(56,225,255,.07);border-left:2px solid rgba(56,225,255,.5);
          padding:12px 15px;border-radius:0 9px 9px 0;margin:16px 0 0}
+  .foot h3{font-size:15px;margin:26px 0 10px;color:var(--ink);letter-spacing:-.01em}
+  .foot h2:not(:first-child){margin-top:38px}
+  .halves{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0 4px}
+  @media(max-width:760px){.halves{grid-template-columns:1fr}}
+  .half{background:rgba(8,14,26,.6);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .half b{display:block;color:var(--cyan);font-size:12px;letter-spacing:.06em;text-transform:uppercase;
+          margin-bottom:6px}
+  .half span{color:var(--dim);font-size:13.5px}
+  .half em{color:var(--ink);font-style:normal;font-weight:700}
+  .cross td:nth-child(2),.cross td:nth-child(3){font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+  .cross .win{color:var(--lime);font-weight:700}
+  .cross .imp{color:var(--mag);font-weight:700}
 </style>
 </head>
 <body>
@@ -289,6 +301,78 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
   <code>FOR…NEXT</code> had to be unrolled rather than emitted. And with no <code>GOSUB</code> either,
   the thing that made 1982 programs shorter doesn't exist, so <b>length and work are the same
   quantity</b>. That's why the racer costs what it costs.</p></div>
+
+  <h2>Where the loop went</h2>
+
+  <p>That last row has a consequence, and <b>Rule 110</b> is where it shows. A line of cells; each looks
+  at itself and its two neighbours and picks what to be next. Eight patterns, eight answers —
+  <code>01101110</code>, which is 110 — and it draws the famous nested triangles.</p>
+
+  <p>It is also <b>Turing complete</b>. Matthew Cook proved it: anything computable can be computed by
+  this rule. So it is precisely the machine that <i>"Script isn't Turing complete"</i> is usually said
+  about — and here it is, in Script. Both halves are true at the same time:</p>
+
+  <div class="halves">
+    <div class="half"><b>the script</b><span>One generation is <em>2,974 bytes</em> and contains
+      <em>not one backward jump</em>. It halts. It is paid for in advance. Thirty-one cells, unrolled
+      at compile time.</span></div>
+    <div class="half"><b>the chain</b><span>Each spend is one enforced generation, and there is no limit
+      to how many follow. The automaton runs for as long as somebody funds it.</span></div>
+  </div>
+
+  <p class="caveat">⚠ <b>This does not make Bitcoin Script Turing complete</b>, and the page would be
+  worth less if it claimed so. A script still halts, still has no jump, and every step is priced before
+  it runs. What Rule 110 shows is <b>where the unboundedness actually lives</b>.</p>
+
+  <div class="punch"><p style="margin:0">★★ <b>The loop is not in the language. It is in the
+  ledger.</b> A program's length is its work, so a covenant cannot iterate — but a <i>chain of
+  covenants</i> can, one enforced step per transaction. That is the same place the computation walk
+  found it: you don't re-run the program to check it, you read the trace it left.</p></div>
+
+  <h2>How to index without an index</h2>
+
+  <p>Script cannot compute a location. There is no pointer, no computed address, nothing to put an
+  index into — so <code>board[move]</code> cannot be written at all. Every program on this page meets
+  that wall, and each one answers it differently:</p>
+
+  <table class="eras cross">
+    <thead><tr><th>the program</th><th>how it indexes</th><th>cost</th><th>why</th></tr></thead>
+    <tbody>
+      <tr><td>noughts &amp; crosses</td><td>a table of 9 comparisons</td><td>762 B</td>
+          <td>a <b>player</b> picks the square, so it is not known until the script runs</td></tr>
+      <tr><td>…the same, base 4</td><td>a shift</td><td class="win">657 B</td>
+          <td>two bits a square, one value wasted — and every access becomes a shift</td></tr>
+      <tr><td>space invaders</td><td>a shift</td><td class="win">34 B</td>
+          <td>55 slots, and a table would have cost <b>1,269 B</b></td></tr>
+      <tr><td>rule 110</td><td><b>nothing at all</b></td><td class="win">—</td>
+          <td>every neighbour is at a position the <b>compiler</b> knows</td></tr>
+    </tbody>
+  </table>
+
+  <p>★ <b>The shift wins in proportion to how many things there are to index.</b> At nine squares a
+  table of comparisons is nearly free, so base 4 is only <b>1.16×</b> better. At fifty-five it is
+  <b>37×</b>. And past 2<sup>53</sup> a table cannot be written at <i>all</i>, because that is where a
+  double stops being exact — so the shift is not merely cheaper there, it is the only way the full
+  arcade fleet exists.</p>
+
+  <p>⚠ Base 3 is the tighter <b>packing</b> — the whole board in two bytes. Base 4 is the cheaper
+  <b>access</b>. Which is right depends entirely on the size of the index space, and at nine squares
+  either is defensible. <b>Waste a little space to make the arithmetic cheap</b> is the oldest trade in
+  the business, and it is what an 8-bit programmer did every day: a nibble per cell rather than a tight
+  base-N pack, because the shift is free and the division is not.</p>
+
+  <h3>⚠ Two traps, both found by experiment rather than by reasoning</h3>
+
+  <p><b>1. A shift is big-endian. Script numbers are little-endian.</b> So
+  <code>LSHIFT(NUM2BIN(1,4), k)</code> gives 2<sup>k</sup> only while <code>k</code> stays inside the
+  first byte — it agrees up to k=5 and then diverges <b>silently</b>. The answer is not to reconcile
+  them but to <b>never convert</b>: keep the bitmap as raw bytes, test with <code>BITAND</code>, clear
+  with <code>BITXOR</code>, and let it never be a number at all.</p>
+
+  <p><b>2. Read as a number, a mask on the top bit of the last byte is negative zero.</b> Exactly one
+  alien in fifty-five would have quietly refused to die. It has to be <code>SAMEBYTES</code> — a byte
+  comparison — never <code>=</code>, which compares numbers. That distinction is in the language for
+  this reason, and it earned its keep on real code rather than in a comment.</p>
 </section>
 
 <footer>
