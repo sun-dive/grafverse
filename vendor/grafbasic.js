@@ -160,8 +160,9 @@ IF winner = 0 AND moves = 9 THEN winner = 3
 `)}var fs=`
 REM  \u2500\u2500 rule 110 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 REM  One transaction is one generation. There is no input: nobody plays
-REM  this, it simply runs \u2014 and it is Turing complete, so the loop that
-REM  makes it so lives in the chain of spends rather than in the script.
+REM  this, it simply runs. The 31 cells below DO loop \u2014 unrolled, laid out
+REM  in space instead of repeated in time. What the chain adds is not the
+REM  looping but the not knowing when to stop.
 DIM cells%4      REM  31 cells, one bit each, wrapped into a ring
 DIM gen%2        REM  which generation this is
 

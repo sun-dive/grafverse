@@ -220,8 +220,8 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
   leave the stack identical, and getting it wrong is silent — it surfaces two hundred opcodes later as a
   size complaint. The compiler takes the union of everything either arm assigns and makes both produce
   all of it, so a whole bug class stops being possible rather than becoming less likely.
-  ★ <b>And FOR…NEXT is unrolled at compile time</b>, because Script has no backward jump: a program's
-  length is its work. That pays for a fixed-cost body and barely at all for an early-exit one.</p>
+  ★ <b>And FOR…NEXT is unrolled at compile time</b>, because Script has no backward jump — the loop
+  still happens, laid out in space rather than repeated in time, so a program's length is its work. That pays for a fixed-cost body and barely at all for an early-exit one.</p>
   <p class="note">★★ <b>Noughts and crosses is the one to read.</b> Five bytes of state, every rule a
   comparison, and it shows what a racing car cannot: <b>turn-taking enforced by the covenant</b>. You
   cannot play out of turn, take a taken square, or play on after somebody has won — and none of those
@@ -276,7 +276,7 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
           <td><span class="when">1982</span> — no FPU on an 8080 or a Z80</td></tr>
       <tr><td>no dynamic allocation</td><td>✓</td>
           <td><span class="when">1982</span></td></tr>
-      <tr><td><b>no backward jump — no loops</b></td><td>✓</td>
+      <tr><td><b>no backward jump</b></td><td>✓</td>
           <td><span class="old">pre-1964</span> — earlier than BASIC itself</td></tr>
       <tr><td><b>no GOSUB, no functions</b></td><td>✓</td>
           <td><span class="old">pre-1964</span> — a program's length <i>is</i> its work</td></tr>
@@ -296,11 +296,32 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
   <p>So it isn't a 1982 machine. It's a machine with <b>1982's economics, control flow older than
   BASIC, and arithmetic no 8-bit micro ever had</b>.</p>
 
-  <div class="punch"><p style="margin:0">★ <b>The sharp version: Script has no <code>GOTO</code>.</b>
-  BASIC's most famous instruction is the one thing that can't be compiled — which is exactly why
-  <code>FOR…NEXT</code> had to be unrolled rather than emitted. And with no <code>GOSUB</code> either,
-  the thing that made 1982 programs shorter doesn't exist, so <b>length and work are the same
+  <div class="punch"><p style="margin:0">★ <b>The sharp version: Script has no backward
+  <code>GOTO</code>.</b> BASIC's most famous instruction is the one that cannot be compiled — which is
+  why <code>FOR…NEXT</code> is <i>unrolled</i> rather than emitted. And with no <code>GOSUB</code>
+  either, the thing that made 1982 programs shorter doesn't exist, so <b>length and work are the same
   quantity</b>. That's why the racer costs what it costs.</p></div>
+
+  <p class="caveat">⚠ <b>But that is not the same as saying Script cannot loop</b>, and it is worth
+  being exact about. <code>FOR i = 0 TO 30</code> genuinely iterates thirty-one times in Script — the
+  repetition is simply laid out in <b>space</b>, as opcodes, instead of repeated in <b>time</b> by
+  re-entering the same ones. <b>The loop is still there. It has been rotated from time into space</b> —
+  and that is precisely why length and work become the same quantity: you pay for the iteration in
+  bytes rather than in cycles.</p>
+
+  <p>So the limit is narrower and more interesting than "no loops":</p>
+
+  <table class="eras">
+    <thead><tr><th>a loop whose trip count is…</th><th></th><th></th></tr></thead>
+    <tbody>
+      <tr><td>known when the script is written</td><td class="never">yes</td>
+          <td>unrolled — real iteration, paid for in bytes</td></tr>
+      <tr><td>decided by data, but bounded</td><td class="when">yes, at a price</td>
+          <td>unroll to the worst case and mask; you always pay the worst case</td></tr>
+      <tr><td><b>unbounded</b></td><td class="old">no</td>
+          <td>nothing in a single script can run an unknown number of times</td></tr>
+    </tbody>
+  </table>
 
   <h2>Where the loop went</h2>
 
@@ -321,13 +342,16 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
   </div>
 
   <p class="caveat">⚠ <b>This does not make Bitcoin Script Turing complete</b>, and the page would be
-  worth less if it claimed so. A script still halts, still has no jump, and every step is priced before
-  it runs. What Rule 110 shows is <b>where the unboundedness actually lives</b>.</p>
+  worth less if it claimed so. A script still halts, still has no backward jump, and every step is
+  priced before it runs. What Rule 110 shows is <b>where the unboundedness lives</b>.</p>
 
-  <div class="punch"><p style="margin:0">★★ <b>The loop is not in the language. It is in the
-  ledger.</b> A program's length is its work, so a covenant cannot iterate — but a <i>chain of
-  covenants</i> can, one enforced step per transaction. That is the same place the computation walk
-  found it: you don't re-run the program to check it, you read the trace it left.</p></div>
+  <div class="punch"><p style="margin:0">★★ <b>The iteration is in the script. The UNBOUNDEDNESS is in
+  the ledger.</b> A covenant iterates perfectly well — thirty-one cells, unrolled, every generation.
+  What it cannot do is run an <i>unknown</i> number of times, and that is the only thing Rule 110 needs
+  the chain for. The chain does not supply the looping. It supplies the <b>not knowing when to
+  stop</b> — one enforced step per transaction, for as long as somebody funds it. Which is the same
+  place the computation walk found it: you don't re-run the program to check it, you read the trace it
+  left.</p></div>
 
   <h2>How to index without an index</h2>
 

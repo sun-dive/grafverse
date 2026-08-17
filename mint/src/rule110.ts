@@ -16,8 +16,12 @@
  * ── ★★★ WHY IT IS WORTH BUILDING ──────────────────────────────────────────────────────────────────
  * **Rule 110 is Turing complete** — proved by Matthew Cook. Anything computable can be computed by it.
  * So it is a wink at *"Bitcoin Script isn't Turing complete"*, and the wink lands because both halves
- * are true at once: the script for ONE generation is a few hundred bytes and has no loop in it at all,
- * and the CHAIN OF TRANSACTIONS runs unboundedly. **The loop lives in the ledger, not in the language.**
+ * are true at once: ONE generation is a few thousand bytes with no backward jump in it, and the CHAIN
+ * OF TRANSACTIONS runs unboundedly.
+ *
+ * ⚠ AND SAY THAT EXACTLY. The script DOES iterate — thirty-one cells, unrolled, every generation. What
+ * it cannot do is run an UNKNOWN number of times, and that is the only thing Rule 110 needs the chain
+ * for. **The chain does not supply the looping. It supplies the not knowing when to stop.**
  * → the same shape as the computation walk: each spend is one enforced step, and the trace is the proof.
  *
  * ── ★★ AND IT IS THE CASE WHERE UNROLLING GIVES YOU EVERYTHING ────────────────────────────────────
@@ -48,8 +52,9 @@ export const R110_CELLS = 31
 export const R110_SRC = `
 REM  ── rule 110 ──────────────────────────────────────────────────────
 REM  One transaction is one generation. There is no input: nobody plays
-REM  this, it simply runs — and it is Turing complete, so the loop that
-REM  makes it so lives in the chain of spends rather than in the script.
+REM  this, it simply runs. The 31 cells below DO loop — unrolled, laid out
+REM  in space instead of repeated in time. What the chain adds is not the
+REM  looping but the not knowing when to stop.
 DIM cells%4      REM  31 cells, one bit each, wrapped into a ring
 DIM gen%2        REM  which generation this is
 

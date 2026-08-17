@@ -722,7 +722,12 @@ function emitProgram(
   /**
    * ── ★★ FOR … NEXT, UNROLLED AT COMPILE TIME ────────────────────────────────────────────────────────
    *
-   * Script has no loop and never will: there is no backward jump, so a program's length IS its work.
+   * ⚠ NOT because Script cannot loop — it can, and this genuinely iterates. What Script has no backward
+   * jump for is RE-ENTERING the same opcodes, so the repetition is laid out in SPACE instead of in
+   * TIME. The loop is rotated from time into space, which is exactly why a program's length IS its
+   * work: the iteration is paid for in bytes rather than in cycles. The only thing truly out of reach
+   * is an UNBOUNDED count — a bounded but data-dependent one can be unrolled to its worst case and
+   * masked, at the price of always paying that worst case.
    * A loop with a CONSTANT bound does not need one — the compiler is the loop, and lays the body down
    * once per trip with the counter substituted in as a literal.
    *
