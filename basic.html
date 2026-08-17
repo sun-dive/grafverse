@@ -84,6 +84,21 @@
   a{color:var(--cyan)}
   .stats{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
   .stats b{color:var(--lime);font-weight:600}
+  .foot{margin-top:34px;padding-top:22px;border-top:1px solid var(--line)}
+  .foot h2{font-size:clamp(17px,2.4vw,22px);margin:0 0 12px;letter-spacing:-.01em;color:var(--ink)}
+  .foot p{color:var(--dim);max-width:78ch;margin:0 0 12px;font-size:14px}
+  .foot p b{color:var(--ink)}
+  .eras{width:100%;border-collapse:collapse;margin:16px 0 18px;font-size:13.5px;display:block;overflow-x:auto}
+  .eras th{text-align:left;color:var(--faint);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+           padding:0 14px 8px 0;font-weight:700;border-bottom:1px solid var(--line);white-space:nowrap}
+  .eras td{padding:8px 14px 8px 0;border-bottom:1px solid rgba(120,170,255,.09);vertical-align:top}
+  .eras td:first-child{color:var(--ink);white-space:nowrap}
+  .eras td:last-child{color:var(--dim)}
+  .eras .when{color:var(--cyan);font-weight:700;white-space:nowrap}
+  .eras .old{color:var(--mag)}
+  .eras .never{color:var(--lime)}
+  .punch{background:rgba(56,225,255,.07);border-left:2px solid rgba(56,225,255,.5);
+         padding:12px 15px;border-radius:0 9px 9px 0;margin:16px 0 0}
 </style>
 </head>
 <body>
@@ -211,6 +226,46 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
   at 55, against 34 B by shift, flat</b>. ⚠ With one trap — read as a number, a mask landing on the top
   bit of the last byte is <b>negative zero</b>, and one alien in fifty-five would quietly refuse to die.
   It has to be <code>SAMEBYTES</code>, a byte comparison, never <code>=</code>.</p>
+</section>
+
+<section class="foot">
+  <h2>Where Script's constraints come from</h2>
+
+  <p><b>BASIC had arrays.</b> <code>DIM A(9)</code> is in Dartmouth BASIC from 1964. So the
+  nine-comparisons pattern isn't what 1982 did for lack of arrays; it's what <code>ON X GOTO</code> did
+  for lack of a cheap one. The technique is period-authentic. The reason isn't.</p>
+
+  <p>What's actually going on is that Script's constraints come from <b>three different eras at
+  once</b>:</p>
+
+  <table class="eras">
+    <thead><tr><th>Bitcoin Script</th><th></th><th>where that constraint is from</th></tr></thead>
+    <tbody>
+      <tr><td>every byte paid for, twice, forever</td><td>✓</td>
+          <td><span class="when">1982</span> — 16KB RAM discipline, exactly</td></tr>
+      <tr><td>fixed point, no floats</td><td>✓</td>
+          <td><span class="when">1982</span> — no FPU on an 8080 or a Z80</td></tr>
+      <tr><td>no dynamic allocation</td><td>✓</td>
+          <td><span class="when">1982</span></td></tr>
+      <tr><td><b>no backward jump — no loops</b></td><td>✓</td>
+          <td><span class="old">pre-1964</span> — earlier than BASIC itself</td></tr>
+      <tr><td><b>no GOSUB, no functions</b></td><td>✓</td>
+          <td><span class="old">pre-1964</span> — a program's length <i>is</i> its work</td></tr>
+      <tr><td>no computed address</td><td>✓</td>
+          <td>more constrained than a Spectrum, which had <code>POKE</code></td></tr>
+      <tr><td><b>arbitrary-precision integers</b></td><td>✓</td>
+          <td><span class="never">no home computer, ever</span> — a Spectrum had 16 bits</td></tr>
+    </tbody>
+  </table>
+
+  <p>So it isn't a 1982 machine. It's a machine with <b>1982's economics, control flow older than
+  BASIC, and arithmetic no 8-bit micro ever had</b>.</p>
+
+  <div class="punch"><p style="margin:0">★ <b>The sharp version: Script has no <code>GOTO</code>.</b>
+  BASIC's most famous instruction is the one thing that can't be compiled — which is exactly why
+  <code>FOR…NEXT</code> had to be unrolled rather than emitted. And with no <code>GOSUB</code> either,
+  the thing that made 1982 programs shorter doesn't exist, so <b>length and work are the same
+  quantity</b>. That's why the racer costs what it costs.</p></div>
 </section>
 
 <footer>
