@@ -113,6 +113,11 @@
   .eras .when{color:var(--cyan);font-weight:700;white-space:nowrap}
   .eras .old{color:var(--mag)}
   .eras .never{color:var(--lime)}
+  .foot figure{margin:0 0 20px}
+  .foot figure img{width:100%;max-width:820px;height:auto;display:block;border-radius:12px;
+                   border:1px solid var(--line)}
+  .foot figcaption{color:var(--faint);font-size:12.5px;margin-top:9px;max-width:78ch;font-style:italic}
+  .foot figcaption b{color:var(--dim);font-style:normal}
   .caveat{border-left:2px solid rgba(255,162,46,.45);padding-left:13px;color:var(--faint) !important;
           font-size:13px !important;margin:-6px 0 16px !important}
   .caveat b{color:var(--tang) !important}
@@ -276,6 +281,17 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
 
 <section class="foot">
   <h2>Where Script's constraints come from</h2>
+
+  <!-- ⚠ Hides itself if the file is absent, so a page deployed before the artwork shows nothing
+       rather than a broken-image icon. -->
+  <figure>
+    <img src="img/basic-eras.webp?v=1" loading="lazy"
+         alt="A 1980s home microcomputer on a desk in the foreground, with a room-sized 1960s mainframe — tape reels and panel lights — behind it."
+         onerror="this.closest('figure').remove()">
+    <figcaption>The argument in one picture: a home micro from 1982 standing in front of a mainframe
+    from before 1964. <b>The byte discipline is the little machine's. The control flow is the big
+    one's.</b> Bitcoin Script inherited both, and an arithmetic neither of them had.</figcaption>
+  </figure>
 
   <p><b>BASIC had arrays.</b> <code>DIM A(9)</code> is in Dartmouth BASIC from 1964. So the
   nine-comparisons pattern isn't what 1982 did for lack of arrays; it's what <code>ON X GOTO</code> did
