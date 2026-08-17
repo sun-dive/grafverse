@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- Bitcoin BASIC — © 2026 sun-dive — Open BSV License Version 6 (see LICENSE).
+     A workbench, free to read, test and fork. The SCRIPT is the source; BASIC is a view over it. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bitcoin BASIC — read any Bitcoin Script as a program, and write one back</title>
+<meta name="description" content="Paste a locking script and read it as BASIC. Write BASIC and get Bitcoin Script. Every infix language has a stack machine underneath — Script is what BASIC's expression evaluator looks like with the front end deleted.">
+<meta name="author" content="sun-dive">
+<link rel="canonical" href="https://grafverse.com/basic.html">
+<meta name="theme-color" content="#05070d">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><text x=%221%22 y=%2214%22 font-size=%2214%22>⌨️</text></svg>">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="grafverse">
+<meta property="og:title" content="Bitcoin BASIC — read any Bitcoin Script as a program">
+<meta property="og:description" content="Script is what BASIC's expression evaluator looks like with the front end deleted. Paste a covenant, read it as a listing. Write BASIC, get Script.">
+<meta property="og:url" content="https://grafverse.com/basic.html">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Bitcoin BASIC — read any Bitcoin Script as a program">
+<meta name="twitter:description" content="A two-way workbench: Script → BASIC, and BASIC → Script. It works on a stranger's covenant, not just one this compiler made.">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Bitcoin BASIC",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Any (browser)",
+  "description": "A two-way workbench between Bitcoin Script and BASIC. Reads a locking script as a numbered BASIC listing by symbolic execution, and compiles BASIC — including DIM state layouts and FOR…NEXT unrolled at compile time — into Script.",
+  "author": { "@type": "Person", "name": "sun-dive" },
+  "url": "https://grafverse.com/basic.html",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "isPartOf": { "@type": "WebSite", "name": "grafverse", "url": "https://grafverse.com" }
+}
+</script>
+<style>
+  :root{--ink:#f3f7ff;--dim:#aebfe0;--faint:#7d92b8;--cyan:#38e1ff;--mag:#ff4d9d;--lime:#b4ff3a;--tang:#ffa22e;
+        --line:rgba(120,170,255,.18);--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  *{box-sizing:border-box}
+  body{background:radial-gradient(ellipse at 50% -6%,#132542 0%,#0a1020 50%,#05070d 100%);color:var(--ink);
+       font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:0 16px 60px;
+       background-attachment:fixed;min-height:100vh}
+  .wrap{max-width:1180px;margin:0 auto}
+  header{padding:34px 0 18px;border-bottom:1px solid var(--line);margin-bottom:22px}
+  h1{font-size:clamp(24px,4vw,38px);line-height:1.12;margin:0 0 10px;letter-spacing:-.02em}
+  h1 .k{color:var(--cyan)}
+  .sub{color:var(--dim);max-width:70ch;margin:0 0 12px}
+  .sub b{color:var(--ink)}
+  .eq{font-family:var(--mono);font-size:12.5px;color:var(--faint);background:rgba(10,18,34,.6);
+      border:1px solid var(--line);border-radius:10px;padding:10px 12px;overflow-x:auto;white-space:pre;margin:14px 0 0}
+  .eq i{color:var(--lime);font-style:normal}
+  .tabs{display:flex;gap:8px;margin:0 0 16px;flex-wrap:wrap}
+  .tab{background:rgba(14,22,38,.8);border:1px solid var(--line);color:var(--dim);padding:9px 15px;
+       border-radius:10px;cursor:pointer;font:600 14px system-ui}
+  .tab[aria-selected=true]{background:rgba(56,225,255,.13);border-color:rgba(56,225,255,.5);color:var(--ink)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  .pane{background:rgba(8,14,26,.72);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+  .pane h2{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin:0 0 9px;
+           display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:700}
+  .pane h2 span{color:var(--cyan);text-transform:none;letter-spacing:0;font-size:11.5px;font-weight:600}
+  textarea,pre{width:100%;background:#070c17;color:var(--ink);border:1px solid var(--line);border-radius:9px;
+       padding:11px;font-family:var(--mono);font-size:12.5px;line-height:1.5;resize:vertical;margin:0}
+  textarea{min-height:290px}
+  pre{min-height:290px;max-height:60vh;overflow:auto;white-space:pre;color:var(--dim)}
+  pre b{color:var(--lime);font-weight:600}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 0}
+  input[type=text]{flex:1 1 220px;min-width:0;background:#070c17;color:var(--ink);border:1px solid var(--line);
+       border-radius:9px;padding:9px 11px;font-family:var(--mono);font-size:12.5px}
+  label{color:var(--faint);font-size:12px;font-weight:600}
+  button{background:linear-gradient(180deg,rgba(56,225,255,.22),rgba(56,225,255,.08));border:1px solid rgba(56,225,255,.45);
+       color:var(--ink);padding:9px 17px;border-radius:9px;cursor:pointer;font:700 14px system-ui}
+  button:hover{background:rgba(56,225,255,.3)}
+  button.ghost{background:rgba(14,22,38,.8);border-color:var(--line);color:var(--dim);font-weight:600}
+  .msg{margin:10px 0 0;padding:9px 11px;border-radius:9px;font-family:var(--mono);font-size:12px;white-space:pre-wrap}
+  .ok{background:rgba(180,255,58,.08);border:1px solid rgba(180,255,58,.3);color:var(--lime)}
+  .err{background:rgba(255,77,157,.09);border:1px solid rgba(255,77,157,.34);color:#ffb3d2}
+  .warn{background:rgba(255,162,46,.09);border:1px solid rgba(255,162,46,.32);color:var(--tang)}
+  .note{color:var(--faint);font-size:12.5px;margin:14px 0 0;max-width:78ch}
+  .note b{color:var(--dim)}
+  .ex{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 9px}
+  .ex button{padding:5px 10px;font:600 12px system-ui;background:rgba(14,22,38,.8);border-color:var(--line);color:var(--dim)}
+  footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);color:var(--faint);font-size:12.5px}
+  a{color:var(--cyan)}
+  .stats{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+  .stats b{color:var(--lime);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Bitcoin <span class="k">BASIC</span></h1>
+  <p class="sub">Every infix language has a stack machine underneath. <b>Script is what BASIC's expression
+  evaluator looks like with the front end deleted</b> — so this puts the front end back, and takes it off
+  again.</p>
+  <div class="eq">BASIC line     110  V = V + F/M - V*D
+under the hood      V  F  M  <i>/</i>  <i>+</i>  V  D  <i>*</i>  <i>−</i>          ← postfix, on a stack
+Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same sequence, executed by miners</div>
+</header>
+
+<div class="tabs" role="tablist">
+  <button class="tab" role="tab" aria-selected="true" data-t="read">Script → BASIC</button>
+  <button class="tab" role="tab" aria-selected="false" data-t="write">BASIC → Script</button>
+</div>
+
+<!-- ─────────────────────────────── SCRIPT → BASIC ─────────────────────────────── -->
+<section id="read">
+  <div class="grid">
+    <div class="pane">
+      <h2>A locking script <span>hex, or ASM</span></h2>
+      <div class="ex">
+        <button data-ex="tiny">a tiny one</button>
+        <button data-ex="branch">a branch</button>
+        <button data-ex="shell">the racer's shell (1108 opcodes)</button>
+      </div>
+      <textarea id="hex" spellcheck="false" placeholder="76a914…  or  OP_DUP OP_HASH160 …"></textarea>
+      <div class="row">
+        <label for="names">the stack when it starts</label>
+        <input id="names" type="text" spellcheck="false" placeholder="bottom first, comma separated — e.g. sig, pubkey, preimage">
+      </div>
+      <div class="row"><button id="go-read">Read it</button>
+        <button class="ghost" id="copy-basic">Copy the listing</button></div>
+      <p class="note"><b>Those names are the whole product.</b> The script is the source and the names are
+      annotation over it — name the slots and a covenant reads as a program; leave them out and it still
+      reads correctly, just anonymously. If it needs more, it will say exactly how many.</p>
+    </div>
+    <div class="pane">
+      <h2>read as BASIC <span id="read-stat"></span></h2>
+      <pre id="basic-out">Paste a script and press Read it.</pre>
+      <div id="read-msg"></div>
+    </div>
+  </div>
+  <p class="note">⚠ <b>This is a reading, not a source.</b> Feeding the listing back through the compiler
+  will not reproduce the same bytes — the compiler has its own idioms and a hand-written script has its
+  author's. And there is no general decompiler from Script to BASIC: Script does byte surgery, keeps an
+  altstack, and checks a preimage against a derived signature, none of which BASIC has words for. Those
+  come out as plain functions — <b>SPLIT</b>, <b>CAT</b>, <b>HASH256</b>, <b>NUM2BIN</b> — which is
+  honest. An opcode the reader does not model <b>stops the listing and names itself</b> rather than
+  being skipped, because a listing that quietly dropped an opcode would be worse than none: it would be
+  believed.</p>
+</section>
+
+<!-- ─────────────────────────────── BASIC → SCRIPT ─────────────────────────────── -->
+<section id="write" hidden>
+  <div class="grid">
+    <div class="pane">
+      <h2>Bitcoin BASIC <span>LET · IF/THEN/ELSE · FOR…NEXT · DIM</span></h2>
+      <div class="ex">
+        <button data-w="phys">the car's physics</button>
+        <button data-w="loop">FOR…NEXT, unrolled</button>
+        <button data-w="state">DIM — state in the script</button>
+      </div>
+      <textarea id="src" spellcheck="false"></textarea>
+      <div class="row">
+        <label for="stack">the stack it starts on</label>
+        <input id="stack" type="text" spellcheck="false" placeholder="bottom first — e.g. v, mass, force">
+      </div>
+      <div class="row"><button id="go-write">Compile it</button>
+        <button class="ghost" id="copy-hex">Copy the hex</button></div>
+      <p class="note"><b>DIM declares a LAYOUT, not a type.</b> <code>DIM v%5</code> means five bytes,
+      because that is where a covenant splits its own script to read its own state. <code>$</code> means
+      raw bytes. With any DIM present the compiler also generates the peel and the rebuild around your
+      program.</p>
+    </div>
+    <div class="pane">
+      <h2>Bitcoin Script <span id="write-stat"></span></h2>
+      <pre id="script-out">Write some BASIC and press Compile it.</pre>
+      <div id="write-msg"></div>
+    </div>
+  </div>
+  <p class="note">★ <b>The compiler balances the branch arms.</b> Both arms of an <code>OP_IF</code> must
+  leave the stack identical, and getting it wrong is silent — it surfaces two hundred opcodes later as a
+  size complaint. The compiler takes the union of everything either arm assigns and makes both produce
+  all of it, so a whole bug class stops being possible rather than becoming less likely.
+  ★ <b>And FOR…NEXT is unrolled at compile time</b>, because Script has no backward jump: a program's
+  length is its work. That pays for a fixed-cost body and barely at all for an early-exit one.</p>
+</section>
+
+<footer>
+  <p>© 2026 sun-dive · Open BSV License v6. Bundles <a href="https://github.com/bitcoin-sv/ts-sdk">@bsv/sdk</a>
+  © BSV Association. Part of <a href="https://grafverse.com/">grafverse</a> — see also
+  <a href="/battery.html">the Bitcoin Battery</a> and <a href="/brc226.html">BRC-226</a>.</p>
+  <p>Runs entirely in your browser. Nothing you paste leaves this page.</p>
+</footer>
+</div>
+
+<script src="vendor/grafbasic.js?v=1"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id)
+  const G = window.GrafBasic
+  const NAMES = (() => { const m = {}; for (const [k, v] of Object.entries(G.OP))
+    if (typeof v === 'number' && !(v in m)) m[v] = k; return m })()
+
+  // ── tabs ────────────────────────────────────────────────────────────────────────────────────────
+  document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+    document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', String(x === t)))
+    $('read').hidden = t.dataset.t !== 'read'
+    $('write').hidden = t.dataset.t !== 'write'
+  })
+  const say = (el, cls, txt) => { el.innerHTML = ''
+    if (!txt) return
+    const d = document.createElement('div'); d.className = 'msg ' + cls; d.textContent = txt; el.appendChild(d) }
+  const names = s => s.split(/[,\s]+/).map(x => x.trim()).filter(Boolean)
+
+  // ── SCRIPT → BASIC ──────────────────────────────────────────────────────────────────────────────
+  /* Accept hex or ASM, because a covenant arrives as either — off the chain as hex, out of a tool as
+     ASM. Anything that is not clean hex is handed to the SDK's ASM reader. */
+  function parseScript(text) {
+    const t = text.trim()
+    if (!t) throw new Error('nothing to read')
+    if (/^[0-9a-fA-F\s]+$/.test(t)) {
+      const h = t.replace(/\s+/g, '')
+      if (h.length % 2) throw new Error('an odd number of hex digits')
+      return G.Script.fromHex(h)
+    }
+    return G.Script.fromASM(t)
+  }
+  $('go-read').onclick = () => {
+    const out = $('basic-out'), msg = $('read-msg'), stat = $('read-stat')
+    try {
+      const s = parseScript($('hex').value)
+      const r = G.unbasic(s.chunks, { stack: names($('names').value) })
+      out.textContent = G.unbasicListing(s.chunks, { stack: names($('names').value) })
+      stat.textContent = `${s.chunks.length} opcodes → ${r.lines.length} lines`
+      if (r.stoppedAt) say(msg, 'err', '⚠ STOPPED: ' + r.stoppedAt)
+      else if (r.warnings.length) say(msg, 'warn', r.warnings.join('\n'))
+      else say(msg, 'ok', 'Read to the end, with nothing left unexplained.')
+    } catch (e) { out.textContent = ''; stat.textContent = ''; say(msg, 'err', e.message) }
+  }
+  $('copy-basic').onclick = () => navigator.clipboard?.writeText($('basic-out').textContent)
+
+  const EX = {
+    tiny: { hex: '76a914' + 'ab'.repeat(20) + '88ac', names: 'sig, pubkey' },
+    branch: { hex: '', names: 'a, b, p, q' },
+    shell: { hex: '', names: 'burn, retire, l0, l1, l2, l3, l4, l5, l6, l7, throttle, sig, pubkey, spenderOutputs, newValue, preimage' },
+  }
+  document.querySelectorAll('[data-ex]').forEach(b => b.onclick = () => {
+    const k = b.dataset.ex
+    if (k === 'branch') {
+      const { ops } = G.compileBasic('IF a > b THEN p = 1 ELSE q = 2\n r = p * 10 + q', { stack: ['a','b','p','q'] })
+      EX.branch.hex = new G.LockingScript(ops).toHex()
+    }
+    if (k === 'shell' && !EX.shell.hex) {
+      /* ★ THE REAL ONE. Built here rather than pasted, so the example is always the CURRENT shell
+         rather than a copy of one that has since moved on — and it is hand-written Script that no
+         BASIC ever generated, which is the only demonstration that proves anything. */
+      EX.shell.hex = G.buildShellLock({ state: G.emptyShell() }).toHex()
+    }
+    $('hex').value = EX[k].hex; $('names').value = EX[k].names; $('go-read').click()
+  })
+
+  // ── BASIC → SCRIPT ──────────────────────────────────────────────────────────────────────────────
+  const W = {
+    phys: { src: `REM  one press of the accelerator — the car's real physics\ngrip   = (tyr * G0 + FMUL(v, GV)) * slip / SLIP\ndemand = eng * FE * throttle / TM\nIF demand > grip THEN force = grip ELSE force = demand\nnv = v + FDIV(force, mass) - FMUL(v, DRAG)`,
+      stack: 'v, tyr, slip, eng, throttle, mass, grip, demand, force' },
+    loop: { src: `REM  Script has no backward jump, so the compiler IS the loop\nFOR i = 1 TO 10\n  s = s + i * i\nNEXT i`, stack: 's' },
+    state: { src: `REM  DIM is a LAYOUT: bytes in the script itself\nDIM phase%1\nDIM n%4\nDIM tag$4\n\nn = n + 1\nIF n >= 3 THEN phase = 2 ELSE phase = 1`, stack: '' },
+  }
+  document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => {
+    $('src').value = W[b.dataset.w].src; $('stack').value = W[b.dataset.w].stack; $('go-write').click()
+  })
+
+  /* The regulations the car races under, so the physics example compiles as written. */
+  const CONSTS = { G0: 40000, GV: 900000000, FE: 260000000, TM: 16, DRAG: 60000000, SLIP: 1000 }
+
+  const render = ops => {
+    const S = new G.LockingScript(ops)
+    const asm = ops.map(c => c.data && c.data.length
+      ? `<${c.data.map(b => b.toString(16).padStart(2,'0')).join('')}>`
+      : (NAMES[c.op] || 'OP_' + c.op)).join(' ')
+    return { hex: S.toHex(), bytes: S.toBinary().length, asm }
+  }
+  $('go-write').onclick = () => {
+    const out = $('script-out'), msg = $('write-msg'), stat = $('write-stat')
+    try {
+      const src = $('src').value, stack = names($('stack').value)
+      let r, extra = ''
+      if (/^\s*DIM\b/mi.test(src)) {
+        /* ⚠ A real covenant's fieldOffset depends on the finished script's own length, so it cannot be
+           known here. 4 is a workbench value — the number that matters is produced by buildBasicLock. */
+        r = G.compileState(src, { fieldOffset: 4, consts: CONSTS, stack })
+        const B = o => new G.LockingScript(o).toBinary().length
+        extra = `\n\nREM  layout: ${r.layout.map(f => f.name + (f.bytes ? '$' : '%') + f.width).join(' · ')}` +
+                `\nREM  peel ${B(r.peel)} B · your program ${B(r.body)} B · rebuild ${B(r.rebuild)} B` +
+                `\nREM  ⚠ fieldOffset here is a placeholder — a real one comes from buildBasicLock`
+      } else {
+        r = G.compileBasic(src, { stack, consts: CONSTS })
+      }
+      const v = render(r.ops)
+      out.textContent = v.asm + '\n\nREM  hex:\n' + v.hex.replace(/(.{64})/g, '$1\n') + extra
+      stat.textContent = `${v.bytes} bytes · ${r.ops.length} opcodes` + (r.unrolled ? ` · ${r.unrolled} loop bodies` : '')
+      say(msg, 'ok', `assigned: ${r.assigned.join(', ') || 'nothing'}\nstack after: ${r.stack.join(', ')}`)
+    } catch (e) { out.textContent = ''; stat.textContent = ''; say(msg, 'err', e.message) }
+  }
+  $('copy-hex').onclick = () => {
+    const m = /REM  hex:\n([0-9a-f\n]+)/.exec($('script-out').textContent)
+    if (m) navigator.clipboard?.writeText(m[1].replace(/\s+/g, ''))
+  }
+
+  // something on screen from the first second
+  $('src').value = W.phys.src; $('stack').value = W.phys.stack
+  $('hex').value = EX.tiny.hex; $('names').value = EX.tiny.names
+  $('go-read').click()
+})()
+</script>
+</body>
+</html>

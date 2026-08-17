@@ -10,7 +10,7 @@
 // the physics already on mainnet can be WRITTEN in BASIC and come out the same. Anything less is a demo.
 import { Transaction, Spend, LockingScript, UnlockingScript, OP } from '@bsv/sdk'
 import { compileBasic } from '../src/basic.ts'
-import { RACER_REGS as R, S, fmul, fdiv, SLIP_UNIT } from '../src/shell.ts'
+import { RACER_REGS as R, S, fmul, fdiv, SLIP_UNIT, buildShellLock, emptyShell } from '../src/shell.ts'
 import { op, PN } from '../src/covenantAsm.ts'
 
 let pass = 0, fail = 0
@@ -155,6 +155,166 @@ console.log()
   check('  …and a word given the wrong number of arguments', m3.includes('FMUL'))
   const m4 = bad('x = WOBBLE(1, 2)', { stack: ['a'] })
   check('  …and a word that does not exist', m4.includes('WOBBLE'))
+}
+
+// ── 5. ★★ FOR … NEXT, UNROLLED AT COMPILE TIME ──────────────────────────────────────────────────────
+// Script has no backward jump, so a program's LENGTH is its work. A constant bound does not need one:
+// the compiler is the loop. Every case here runs through `Spend` — the arithmetic is what is being
+// checked, not the opcode count.
+console.log()
+{
+  const env = { stack: ['s'] }
+  const cases: Array<[string, string, number[], number]> = [
+    ['a plain count', 'FOR i = 1 TO 5\n s = s + i\n NEXT i', [0], 15],
+    ['the counter folds into the body', 'FOR i = 1 TO 4\n s = s + i * i\n NEXT', [0], 30],
+    ['STEP', 'FOR i = 0 TO 10 STEP 2\n s = s + i\n NEXT i', [0], 2 + 4 + 6 + 8 + 10],
+    ['STEP counts down', 'FOR i = 10 TO 1 STEP -3\n s = s + i\n NEXT i', [0], 10 + 7 + 4 + 1],
+    ['nested loops multiply out', 'FOR i = 1 TO 3\n FOR j = 1 TO 3\n s = s + i * j\n NEXT j\n NEXT i', [0], 36],
+    ['an IF inside the body', 'FOR i = 1 TO 6\n IF i > 3 THEN s = s + i\n NEXT i', [0], 4 + 5 + 6],
+    ['zero trips run the body no times', 'FOR i = 1 TO 0\n s = s + 999\n NEXT i', [7], 7],
+    ['a single-line FOR', 'FOR i = 1 TO 3 : s = s + i : NEXT i', [0], 6],
+  ]
+  let ok = 0
+  for (const [name, src, inp, want] of cases) {
+    const r = runs(src, env, inp, want)
+    if (r.ok) ok++
+    else console.log(`        ⚠ ${name} → expected ${want} · ${r.why ?? 'refused'}`)
+  }
+  check(`★★ ${cases.length} unrolled loops compute the right answer`, ok === cases.length)
+  console.log('        count · fold · STEP up · STEP down · nested · IF inside · zero-trip · one-liner')
+
+  /* ⚠⚠ THE FAILURE THIS FEATURE EXISTS TO SURVIVE. `Asm.rename` shadows rather than replaces, so before
+     `coalesce` every iteration left a corpse on the stack: the depth grew without bound, every OP_PICK
+     offset grew with it, and one-byte pushes turned into two. The proof is that the stack the compiler
+     hands back is the SAME SIZE after a hundred iterations as after one — and that the per-iteration
+     cost is therefore FLAT rather than creeping upward. */
+  const growth = (n: number): { depth: number; bytes: number } => {
+    const r = compileBasic(`FOR i = 1 TO ${n}\n s = s + i\n NEXT i`, { stack: ['s'] })
+    return { depth: r.stack.length, bytes: new LockingScript(r.ops).toBinary().length }
+  }
+  const g1 = growth(1), g10 = growth(10), g100 = growth(100)
+  check('★★★ the stack does not grow with the trip count', g1.depth === 1 && g10.depth === 1 && g100.depth === 1)
+  const per10 = (g100.bytes - g10.bytes) / 90, per1 = (g10.bytes - g1.bytes) / 9
+  check('★★ …so the cost per iteration is flat, not creeping', per10 === per1)
+  console.log(`        1 trip ${g1.bytes} B · 10 trips ${g10.bytes} B · 100 trips ${g100.bytes} B` +
+    `  ⇒ ${per1} B per iteration, stack depth ${g100.depth} throughout`)
+}
+
+// ── 6. ⚠ AND THE UNROLL REFUSES WHAT CANNOT BE UNROLLED ─────────────────────────────────────────────
+// A trip count that is not known until the script runs cannot be laid down at compile time. Saying so
+// by name is the whole difference between a translator and a trap.
+console.log()
+{
+  const bad = (src: string, env: any): string => {
+    try { compileBasic(src, env); return '' } catch (e) { return (e as Error).message }
+  }
+  const m1 = bad('FOR i = 1 TO n\n s = s + i\n NEXT i', { stack: ['s', 'n'] })
+  check('★★ a bound that is a stack value is refused, and says why', m1.includes('COMPILE time'))
+  console.log(`        ${m1.slice(0, 96)}…`)
+  const m2 = bad('FOR i = 1 TO 3\n i = i + 1\n NEXT i', { stack: ['s'] })
+  check('★ the counter cannot be assigned — it is a constant in the body', m2.includes('counter'))
+  const m3 = bad('FOR i = 1 TO 3\n s = s + 1', { stack: ['s'] })
+  check('★ a FOR with no NEXT', m3.includes('NEXT'))
+  const m4 = bad('FOR i = 1 TO 3\n s = s + 1\n NEXT j', { stack: ['s'] })
+  check('★ a NEXT that closes a different loop', m4.includes('NEXT j'))
+  const m5 = bad('FOR i = 1 TO 3 STEP 0\n s = s + 1\n NEXT i', { stack: ['s'] })
+  check('★ STEP 0 has no trip count', m5.includes('STEP 0'))
+  const m6 = bad('FOR s = 1 TO 3\n x = s\n NEXT s', { stack: ['s'] })
+  check('★★ a counter that would shadow a real variable is refused', m6.includes('shadow'))
+  const m7 = bad('FOR i = 1 TO 1000000\n s = s + 1\n NEXT i', { stack: ['s'] })
+  check('★★ the fuse holds — a million trips refuses instantly', m7.includes('fuse'))
+  console.log(`        ${m7.slice(0, 96)}…`)
+  const m8 = bad('IF s > 1 THEN FOR i = 1 TO 3\n s = s + 1\n NEXT i', { stack: ['s'] })
+  check('★ a FOR inside a line-scoped IF arm is refused rather than mis-parsed', m8.includes('line-scoped'))
+  const m9 = bad('s = s + 1\n NEXT i', { stack: ['s'] })
+  check('  …and a NEXT with no FOR', m9.includes('no FOR'))
+}
+
+// ── 7. ★★★ THE CAR'S OWN PHYSICS, UNROLLED — many ticks in ONE script ───────────────────────────────
+// Section 2 proved one tick agrees with the reference. This runs the same four lines N times over, with
+// `v` carrying forward, and asks the interpreter for the velocity after all of them. It is the shape a
+// whole race in one transaction would take.
+console.log()
+{
+  const BODY = `
+    grip   = (tyr * G0 + FMUL(v, GV)) * slip / SLIP
+    demand = eng * FE * throttle / TM
+    IF demand > grip THEN force = grip ELSE force = demand
+    v = v + FDIV(force, mass) - FMUL(v, DRAG)
+  `
+  const program = (n: number): string => `FOR t = 1 TO ${n}\n${BODY}\n NEXT t`
+  const env = {
+    stack: ['v', 'tyr', 'slip', 'eng', 'throttle', 'mass', 'grip', 'demand', 'force'],
+    consts: { G0: R.G0, GV: R.GV, FE: R.FE, TM: R.THROTTLE_MAX, DRAG: R.DRAG, SLIP: SLIP_UNIT },
+  }
+
+  /** The reference, in TypeScript: the same four lines, N times, `v` carried forward. */
+  const refRun = (v0: number, tyr: number, slip: number, eng: number, th: number, mass: number, n: number): number => {
+    let v = v0
+    for (let t = 0; t < n; t++) {
+      const grip = Math.trunc(((tyr * R.G0 + fmul(v, R.GV)) * slip) / SLIP_UNIT)
+      const demand = Math.trunc((eng * R.FE * th) / R.THROTTLE_MAX)
+      const force = demand > grip ? grip : demand
+      v = v + fdiv(force, mass) - fmul(v, R.DRAG)
+    }
+    return v
+  }
+
+  let agreed = 0, tried = 0, firstBad = ''
+  for (const n of [1, 2, 5, 12]) {
+    for (const [v0, tyr, slip, eng, th] of [
+      [0, 10, 1000, 14, 8], [Math.round(2 * S), 2, 600, 20, 16], [0, 6, 1800, 8, 3],
+    ] as Array<[number, number, number, number, number]>) {
+      const mass = Math.round(R.M0 + eng * R.WE + tyr * R.WT)
+      const want = refRun(v0, tyr, slip, eng, th, mass, n)
+      tried++
+      const r = runs(program(n), env, [v0, tyr, slip, eng, th, mass, 0, 0, 0], want)
+      if (r.ok) agreed++
+      else if (!firstBad) firstBad = `${n} ticks, v0 ${v0} tyr ${tyr} → want ${want} · ${r.why ?? 'refused'}`
+    }
+  }
+  check(`★★★ the unrolled physics agrees with the reference over 1, 2, 5 and 12 ticks (${tried} cases)`, agreed === tried)
+  if (firstBad) console.log(`        first disagreement: ${firstBad}`)
+
+  /* ⚠ AND THE STACK IS THE SAME DEPTH AFTER TWELVE TICKS AS AFTER ONE. `v` is reassigned every tick and
+     `force` is reassigned inside a branch every tick; without coalescing, twelve ticks would leave
+     twenty-four corpses and every OP_PICK after them would be reaching further. */
+  const shape = (n: number): { depth: number; bytes: number } => {
+    const r = compileBasic(program(n), env)
+    return { depth: r.stack.length, bytes: new LockingScript(r.ops).toBinary().length }
+  }
+  const s1 = shape(1), s12 = shape(12), s45 = shape(45)
+  check('★★ the stack depth is unchanged by the trip count', s1.depth === s12.depth && s12.depth === s45.depth)
+  const marginal = (s45.bytes - s12.bytes) / 33
+  check('★ …and the marginal cost of a tick is flat', marginal === (s12.bytes - s1.bytes) / 11)
+  console.log(`        1 tick ${s1.bytes} B · 12 ticks ${s12.bytes} B · 45 ticks ${s45.bytes} B` +
+    `  ⇒ ${marginal} B per extra tick, depth ${s45.depth} throughout`)
+
+  /* ── ★★ WHAT THE UNROLL BUYS, IN LOCKING-SCRIPT BYTES ────────────────────────────────────────────
+     The saving is amortising the FRAME — verify the preimage, peel the twelve fields, rebuild, hash,
+     compare — which every transaction pays whatever its body does. Measured against the real shipped
+     shell lock, not an estimate of one.
+
+     ⚠ THIS IS A LOCK-BYTES RATIO AND NOTHING MORE. It is NOT a fee: a fee has to come from serializing
+     a real spend, and the unrolled spend cannot be serialized yet because forty-five per-tick throttle
+     values need array indexing (`DIM`), which is not built. Quoting a satoshi figure from this line
+     would be hand-counting, and this project has been bitten by that five times. */
+  const shipped = buildShellLock({ state: emptyShell() }).toBinary().length
+  const N = 45
+  const many = N * shipped
+  const one = shipped + (N - 1) * marginal
+  check('★★ the frame dominates the body — which is WHY unrolling pays', marginal * 10 < shipped)
+  console.log(`        shipped shell lock ${shipped} B · this body ${marginal} B ` +
+    `⇒ frame is ${Math.round(shipped / marginal)}× the body`)
+  console.log(`        ${N} ticks: ${many.toLocaleString()} B across ${N} locks  vs  ` +
+    `${Math.round(one).toLocaleString()} B in one  ★ ${(many / one).toFixed(1)}× fewer lock bytes`)
+  /* ⚠⚠ AND THIS RATIO IS AN UPPER BOUND, NOT THE RACE'S. The body measured here is the FOUR-LINE core,
+     not a whole tick — a tick also does drag², the spin collapse, the floor, the blow checks, position
+     and the counter, which is about twice this. A bigger body amortises the frame less well, so the
+     real figure is LOWER. And it is lock bytes either way: a transaction also carries an unlocking
+     script on both sides of the comparison, which pulls the ratio down again. */
+  console.log('        ⚠ upper bound: this is the 4-line core, not a whole tick — and lock bytes, not fee')
+  console.log('        ⚠ a fee has to come from serializing a real spend, and that needs DIM first')
 }
 
 console.log(`\n${pass}/${pass + fail} checks passed`)
