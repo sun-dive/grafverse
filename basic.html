@@ -182,6 +182,7 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
         <button data-w="oxo">★ noughts and crosses</button>
         <button data-w="inv">★ space invaders</button>
         <button data-w="oxo4">…the same game, two bits a square</button>
+        <button data-w="r110">★ rule 110</button>
       </div>
       <textarea id="src" spellcheck="false"></textarea>
       <div class="row">
@@ -219,6 +220,15 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
   two bits a square, one value wasted — where every access becomes a shift instead of a division.
   Measured: <b>657 bytes against 762</b>, for one extra byte of state. Waste a little space to make the
   arithmetic cheap, which is the oldest trade in the business.</p>
+  <p class="note">★★★ <b>Rule 110 is the one with the joke in it.</b> A row of cells; each looks at
+  itself and its two neighbours and decides what to be next. Eight patterns, eight answers —
+  <code>01101110</code> = 110 — and it draws the famous nested triangles. <b>It is also Turing
+  complete</b>, which Matthew Cook proved, so it is the machine that <i>"Script isn't Turing complete"</i>
+  is usually said about. Both halves are true at once: one generation is <b>2974 bytes with no backward
+  jump anywhere in it</b>, and the chain of transactions runs unboundedly. ⚠ It does not make Script
+  Turing complete — <b>it shows where the loop went</b>. Into the ledger. ★ And it is the one program
+  here with <b>no runtime index at all</b>: every neighbour sits at a position the compiler knows, so
+  the thirty-one cells unroll with every mask already folded, and no table or shift is needed.</p>
   <p class="note">★★★ <b>And Space Invaders is the one that proves something.</b> The arcade original
   speeds up as you kill aliens, and <b>nobody designed that</b> — the 8080 moved one alien per frame, so
   a sweep took as many frames as there were aliens left. Here one transaction moves one alien, and the
@@ -289,7 +299,7 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
 </footer>
 </div>
 
-<script src="vendor/grafbasic.js?v=8"></script>
+<script src="vendor/grafbasic.js?v=9"></script>
 <script>
 (() => {
   const $ = id => document.getElementById(id)
@@ -396,6 +406,9 @@ Bitcoin Script      <i>OP_DIV OP_ADD … OP_MUL OP_SUB</i>      ← the same seq
     /* ★ The same game as `oxo`, packed base 4 instead of base 3 — one value wasted a square, and
        every access becomes a shift. Measured: 657 B against 762 B. */
     oxo4: { src: G.OXO4_SRC.trim(), stack: 'move' },
+    /* ★★★ Turing complete, and no input at all. The 31 cells unroll at compile time because every
+       neighbour is at a position the compiler knows — the one demo with no runtime index anywhere. */
+    r110: { src: G.R110_SRC.trim(), stack: '' },
   }
   document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => {
     $('src').value = W[b.dataset.w].src; $('stack').value = W[b.dataset.w].stack; $('go-write').click()

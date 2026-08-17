@@ -25,3 +25,5 @@ export { OXO_SRC, OXO_INPUTS, oxoNew, oxoRef, oxoShow } from './oxo.ts'
 export { INV_SRC, INV_INPUTS, invNew, invRef, invShow } from './invaders.ts'
 /* ★ The same game packed base 4 — one value wasted a square, and every access becomes a shift. */
 export { OXO4_SRC, OXO4_INPUTS, oxo4New, oxo4Ref, oxo4Show } from './oxo4.ts'
+/* ★ Rule 110 — Turing complete, one generation per transaction, no input at all. */
+export { R110_SRC, R110_INPUTS, r110New, r110Ref, r110Show } from './rule110.ts'
