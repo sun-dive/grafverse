@@ -317,6 +317,31 @@ console.log()
   console.log('        ⚠ a fee has to come from serializing a real spend, and that needs DIM first')
 }
 
+// ── 8. ★★ LINE NUMBERS — because that is how BASIC is written ───────────────────────────────────────
+// Reported from the workbench, first time it was used: `10 x = a + 1` came back as "10 cannot start a
+// statement". It is how every machine this language was learned on wanted it typed, and the parser
+// refused it. There is no GOTO here, so the number labels nothing — but it must PARSE.
+console.log()
+{
+  const env = { stack: ['a', 'b'] }
+  const numbered = runs('10 x = a + b\n20 x = x * 2', env, [3, 4], (3 + 4) * 2)
+  check('★★ a numbered program compiles, and computes the same thing', numbered.ok)
+  const plain = compileBasic('x = a + b\nx = x * 2', env)
+  const withNums = compileBasic('10 x = a + b\n20 x = x * 2', env)
+  check('★★★ …and emits BYTE-IDENTICAL script — the numbers are labels, not code',
+    new LockingScript(plain.ops).toHex() === new LockingScript(withNums.ops).toHex())
+  console.log(`        both ${new LockingScript(plain.ops).toBinary().length} bytes`)
+  check('★ numbers on some lines and not others', runs('10 x = a + b\n x = x + 1', env, [3, 4], 8).ok)
+  check('★ a numbered FOR loop', runs('10 FOR i = 1 TO 3\n20 x = x + i\n30 NEXT i', { stack: ['x'] }, [0], 6).ok)
+
+  /* ⚠ AND IT MUST STILL REFUSE `IF x THEN 100`. That has meant GOTO 100 since 1964 and this compiler
+     cannot do it — swallowing the number as a label would silently drop a jump the author wrote. */
+  let m = ''
+  try { compileBasic('IF a > b THEN 100', env) } catch (e) { m = (e as Error).message }
+  check('★★ …but a GOTO target after THEN is still refused, not swallowed', m.length > 0)
+  console.log(`        ${m}`)
+}
+
 console.log(`\n${pass}/${pass + fail} checks passed`)
 if (fail > 0) { console.error('BASIC: FAIL'); process.exit(1) }
 console.log('BASIC OK — a line of BASIC and the covenant compute the same number.')

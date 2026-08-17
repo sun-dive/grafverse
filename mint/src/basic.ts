@@ -204,6 +204,13 @@ function parseStmts(p: Parser, stopAt: string[], lineScoped = false): Stmt[] {
     }
     if (!t) break
     if (t.k === 'kw' && stopAt.includes(t.v)) break
+    /* ★★ A LEADING NUMBER IS A LINE NUMBER, and refusing it was refusing BASIC.
+       Every machine this language was learned on wanted `10 LET V = 5`, and typing it that way is
+       muscle memory rather than a mistake — the first person to use this hit it immediately. There is
+       no GOTO here, so the number labels nothing and is discarded.
+       ⚠ NOT inside an IF arm. `IF x THEN 100` has meant GOTO 100 since 1964, and this compiler cannot
+       do that — so there it must stay an error rather than being silently swallowed. */
+    if (!lineScoped && t.k === 'num') { p.next(); continue }
     if (t.k === 'kw' && t.v === 'LET') { p.next(); out.push(letStmt(p)); continue }
     if (t.k === 'kw' && t.v === 'IF') { p.next(); out.push(ifStmt(p)); continue }
     if (t.k === 'kw' && t.v === 'FOR') {
