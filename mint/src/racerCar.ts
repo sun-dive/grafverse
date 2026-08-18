@@ -199,19 +199,82 @@ export function racerCarOps(p: CarParams): { ops: ScriptChunk[]; layout: Field[]
      the next transaction was. This race is one transaction of a size fixed at compile time, so the
      script computes the output value itself: V − FEE, exactly. There is nothing to claim and therefore
      nothing to claim wrongly. */
-  ops.push(
-    op(OP.OP_FROMALTSTACK),                                       // V
-    PN(p.fee), op(OP.OP_SUB),                                     // V − FEE
-    /* ⚠ Never zero: a 0-value output is refused as dust before the script is evaluated at all. */
+  /* ── THE TAIL — one definition, because the DEPOT pins these exact bytes ─────────────────────────
+     `carTail` is what the depot splits off the right-hand end of a car and compares. A second copy
+     written out here is how a depot comes to pin bytes no car actually carries, so there isn't one.
+     ⚠ Never zero: a 0-value output is refused as dust before the script is evaluated at all. And one
+     output only — `hashOutputs` covers the whole list, so anything appended changes it. */
+  ops.push(...carTail(p))
+
+  /* ⚠⚠ AND THE PROPERTY THE DEPOT'S SAFETY RESTS ON, checked on every car this function produces. */
+  assertNoControlFlow(ops)
+  return { ops, layout: CAR_LAYOUT as unknown as Field[], depth }
+}
+
+/**
+ * ★★★ THE TAIL THE DEPOT PINS — the bytes that answer "will these sats come back to me?"
+ *
+ * A depot cannot recognise a car by its shape: every race is a different length, so there is no shape.
+ * It does not need to. The only question it has is whether the output it is about to fund can pay
+ * anybody else, and that is decided entirely by these last bytes — the value rule and the binding to
+ * the depot's own script, which is a LITERAL in here and cannot be redirected by anything above it.
+ *
+ * ⇒ So the depot splits the car's script from the RIGHT and compares this. Length-agnostic: a 3 KB car
+ * and a 16 KB car pass the same check.
+ *
+ * ── ⚠⚠ WHY TAIL-ONLY IS SAFE HERE AND WAS NOT SAFE FOR THE CHAINED CAR ────────────────────────────
+ * `depot.ts` pins the chained car's head AND its twelve inter-field push opcodes, and says why: free
+ * bytes before the tail are EXECUTABLE positions, and a spliced `OP_0 OP_IF` there swallows the
+ * covenant's own checks up to a matching `OP_ENDIF`. *"Without this the depot is not a tank but a
+ * faucet."* That reasoning is exactly right, and it does not reach a specialised car:
+ *
+ *   MEASURED — a car contains NO OP_IF, OP_NOTIF, OP_ELSE, OP_ENDIF or OP_RETURN. Trace
+ *   specialisation turned every branch into an assertion, so there is nothing left to jump over.
+ *
+ * ⇒ An attacker needs an `OP_ENDIF` AFTER the tail to swallow it, and the tail is the end of the
+ * script. An unclosed `OP_IF` is invalid — measured, not reasoned: *"Every OP_IF, OP_NOTIF, or OP_ELSE
+ * must be terminated"*. **The tail cannot be skipped.** A balanced splice swallows only itself, and the
+ * car's own `OP_VERIFY`s still fire.
+ *
+ * ⚠ What free bytes DO buy an attacker: the altstack. A spliced `OP_TOALTSTACK` can fake the `V` the
+ * tail reads, making the output SMALLER — a larger one exceeds the inputs, and a second output changes
+ * `hashOutputs` so the binding fails. So they can burn fuel to miners and never take it, which is the
+ * conclusion `depot-drain` already measured for the depot as it stands.
+ *
+ * ⚠ THE MEASURED CLAIM IS THE ONE THAT ROTS. `assertNoControlFlow` is called on every car built here
+ * so that a future change to `specialiseRun` which reintroduces a branch fails loudly, rather than
+ * quietly turning the depot into a faucet.
+ */
+export function carTail(p: { fee: number; depotScript: number[] }): ScriptChunk[] {
+  return [
+    op(OP.OP_FROMALTSTACK),
+    PN(p.fee), op(OP.OP_SUB),
     op(OP.OP_DUP), PN(0), op(OP.OP_GREATERTHAN), op(OP.OP_VERIFY),
-    PN(8), op(OP.OP_NUM2BIN),                                     // 8-byte little-endian value
-    /* ── AND BIND IT TO THE DEPOT ────────────────────────────────────────────────────────────────
-       out0 = value(8) ‖ varint(len) ‖ depotScript. One output and no others: hashOutputs is the hash
-       of the whole outputs list, so anything appended would change it. */
+    PN(8), op(OP.OP_NUM2BIN),
     pushData([...varIntBytes(p.depotScript.length), ...p.depotScript]), op(OP.OP_CAT),
     op(OP.OP_HASH256), op(OP.OP_FROMALTSTACK), op(OP.OP_EQUAL),
-  )
-  return { ops, layout: CAR_LAYOUT as unknown as Field[], depth }
+  ]
+}
+
+/** Opcodes that would let a spliced branch swallow the tail. A car must contain none of them. */
+export const CONTROL_FLOW = [OP.OP_IF, OP.OP_NOTIF, OP.OP_ELSE, OP.OP_ENDIF, OP.OP_RETURN] as const
+
+/**
+ * ⚠⚠ THE PROPERTY THE DEPOT'S SAFETY RESTS ON, CHECKED WHERE IT IS PRODUCED.
+ *
+ * Tail-only recognition is sound only while a car has no way to close a spliced `OP_IF`. That is true
+ * today because a specialised run has no branches at all — and it is a MEASURED fact about the emitted
+ * script, not a structural one, so it must be re-checked every time a car is built rather than believed.
+ */
+export function assertNoControlFlow(ops: ScriptChunk[]): void {
+  for (const code of CONTROL_FLOW) {
+    const n = ops.filter(o => o.op === code).length
+    if (n !== 0) {
+      throw new Error(`racerCar: this car carries ${n} control-flow opcode(s) (${code}). Tail-only ` +
+        'recognition depends on a car having none — with one present, a spliced OP_IF can be closed ' +
+        'and the depot\'s binding skipped. Refusing to build a car that would make the depot a faucet.')
+    }
+  }
 }
 
 /** The varint an output serialization puts in front of a script of this length. */

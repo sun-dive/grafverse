@@ -16,6 +16,7 @@
 import { OP, Transaction, TransactionSignature, Spend, LockingScript, UnlockingScript, PrivateKey, Hash } from '@bsv/sdk'
 import {
   buildRacerCar, racerCarFee, racerCarUnlock, nameBytes, CAR_SCOPE, NAME_BYTES, CAR_LAYOUT_STRING,
+  carTail, assertNoControlFlow, CONTROL_FLOW,
 } from '../src/racerCar.ts'
 import { type TickTrace, type Ending, type RunTrace } from '../src/racerTick.ts'
 import {
@@ -23,6 +24,7 @@ import {
   SHELL_WORST_MOVE_BYTES,
 } from '../src/shell.ts'
 import { freshPublicShell } from '../src/publicShell.ts'
+import { op } from '../src/covenantAsm.ts'
 import { buildDepotLock } from '../src/depot.ts'
 
 let pass = 0, fail = 0
@@ -61,6 +63,21 @@ function simulate(cfg: Record<string, number> = {}, throttle = THROTTLE, tank = 
     if (st.phase === PHASE.DONE) { ending = 'finish'; break }
   }
   return { ticks, ending }
+}
+
+/** Simulate a run to a given finish line — for building a deliberately SHORT car. */
+function simulateTo(finish: number): RunTrace {
+  let st = { ...ST0, finish } as Record<string, number>
+  let fuel = TANK
+  const ticks: TickTrace[] = []
+  for (let i = 0; i < 400; i++) {
+    const r = refTick(st as never, { throttle: THROTTLE, fuel, lockTime: st.last + st.gap }, R)
+    fuel -= r.burn
+    ticks.push({ throttle: THROTTLE, spun: r.spun })
+    st = { ...(r.state as never as Record<string, number>), last: st.last + st.gap }
+    if (st.phase === PHASE.DONE) break
+  }
+  return { ticks, ending: 'finish' }
 }
 
 /* ── the depot this car pays home to ─────────────────────────────────────────────────────────────── */
@@ -305,6 +322,48 @@ check('★ the spender chooses nothing — the unlocking script is one push',
   console.log(`        stack left: plain ${lp} · optimised ${lo}`)
   check('★★ …and leaves exactly ONE item on the stack, like the plain car', lo === 1 && lp === 1)
   check('⚠ …and its fee is still at or above the floor', f2.fee * 1000 / f2.bytes >= 100)
+}
+
+/* ── ★★★ THE CONTRACT THE DEPOT WILL RELY ON ─────────────────────────────────────────────────────
+   A depot cannot recognise a car by shape — every race is a different length. It pins the TAIL, split
+   from the right, and asks only "will these sats come back to me?". These are the properties that
+   makes that sound, checked HERE, where cars are made, rather than asserted over in the depot. */
+{
+  const tailOps = carTail({ fee, depotScript: DEPOT })
+  const tailBytes = new LockingScript(tailOps).toBinary()
+  const carBytes = CAR.toBinary()
+  const endsWith = (script: number[], t: number[]): boolean =>
+    script.length >= t.length && t.every((b, i) => script[script.length - t.length + i] === b)
+
+  check('★★★ a car ENDS with the tail the depot pins', endsWith(carBytes, [...tailBytes]))
+
+  /* ★★ THE WHOLE POINT: length-agnostic. A short race and a long one carry the same last bytes, so one
+     comparison recognises both — and there is no shape to pin, only an ending. */
+  {
+    const shortCfg = { ...CFG, finish: Math.round(4 * S) }
+    const sf = racerCarFee({ cfg: shortCfg, run: simulateTo(shortCfg.finish), depotScript: DEPOT, consts: CONSTS })
+    const shortCar = buildRacerCar({ cfg: shortCfg, run: simulateTo(shortCfg.finish), depotScript: DEPOT, consts: CONSTS, fee: sf.fee })
+    const shortTail = new LockingScript(carTail({ fee: sf.fee, depotScript: DEPOT })).toBinary()
+    check('★★★ a much shorter car also ends with ITS tail — recognition does not depend on length',
+      endsWith([...shortCar.toBinary()], [...shortTail]) &&
+      shortCar.toBinary().length < carBytes.length / 2)
+    console.log(`        short car ${shortCar.toBinary().length.toLocaleString()} B · long car ` +
+      `${carBytes.length.toLocaleString()} B · same tail shape, ${tailBytes.length} B`)
+  }
+
+  /* ⚠⚠ THE MEASURED CLAIM THE SAFETY RESTS ON. Free bytes before the tail are executable positions, and
+     depot.ts pins the chained car's head precisely because of it — "without this the depot is not a
+     tank but a faucet". It does not reach here only because a specialised car has NO branches to
+     close a spliced OP_IF with. That is measured, so it is measured on every car built. */
+  check('★★★ a car carries NO control flow — nothing a spliced OP_IF could be closed against',
+    CONTROL_FLOW.every(code => CAR.chunks.filter(c => c.op === code).length === 0))
+
+  /* ★ And the guard is provoked, or "it found none" is indistinguishable from "it cannot find any". */
+  check('★★ …and the assertion FIRES when a car does carry one',
+    (() => {
+      try { assertNoControlFlow([...CAR.chunks, op(OP.OP_ENDIF)]); return false }
+      catch (e) { return (e as Error).message.includes('faucet') }
+    })())
 }
 
 console.log(`\n${pass}/${pass + fail} checks passed`)
