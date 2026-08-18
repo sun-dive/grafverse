@@ -84,8 +84,11 @@ function recognises(value: number, script: number[], tail = TAIL, cap = MAX_CAR_
   const out = [...u64(value), ...varint(script.length), ...script]
   const lock = new LockingScript([
     ...carTailRecognitionOps(tail, cap),
-    /* the ops leave the value on the ALTSTACK; bring it back so the script ends truthy */
-    op(OP.OP_FROMALTSTACK), PN(0), op(OP.OP_GREATERTHAN),
+    /* ⚠ The ops now leave TWO things on the altstack — the value and the car's byte length, the
+       second added so a minting depot can work out what the mint costs. Popping one and testing it
+       still passed, because both are positive: a green check measuring the wrong value. Pop both. */
+    op(OP.OP_FROMALTSTACK), PN(0), op(OP.OP_GREATERTHAN), op(OP.OP_VERIFY),   // carBytes > 0
+    op(OP.OP_FROMALTSTACK), PN(0), op(OP.OP_GREATERTHAN),                     // carValue > 0
   ])
   const spend = new Spend({
     sourceTXID: '00'.repeat(32), sourceOutputIndex: 0, sourceSatoshis: 1,

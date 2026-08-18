@@ -142,6 +142,7 @@ export function racerDepotLockOps(p: RacerDepotParams): ScriptChunk[] {
     op(OP.OP_DUP), ...extractHashOutputsOps(), op(OP.OP_SWAP),   // [ .., hashOutputs, preimage ]
     ...extractScriptCodeFieldOps(),                              // [ .., hashOutputs, scriptCodeField ]
 
+
     /* ── ★ THE VALUE FLOOR — out0 ≥ V − (DRAW + MAX_FEE) ─────────────────────────────────────────
        A FLOOR and not an equality, which is what makes a top-up free: anyone may hand back MORE than
        they took and the covenant is satisfied. The battery's funding mechanism, inherited for nothing. */
@@ -185,7 +186,8 @@ export function racerDepotLockOps(p: RacerDepotParams): ScriptChunk[] {
 
       /* ★ A CEILING ON WHAT ONE CAR MAY HOLD. A car needs its own race fee and one satoshi; anything
          beyond that is satoshis walking out of the tank in a shape the depot cannot follow. */
-      op(OP.OP_FROMALTSTACK),                             // [ .., carValue ]   alt:[ left ]
+      op(OP.OP_FROMALTSTACK),                             // [ .., carBytes ]
+      op(OP.OP_FROMALTSTACK),                             // [ .., carBytes, carValue ]
       op(OP.OP_DUP), PN(draw), op(OP.OP_LESSTHANOREQUAL), op(OP.OP_VERIFY),
 
       /* ── ★★ AND WHAT LEFT THE DEPOT MUST ARRIVE ───────────────────────────────────────────────
@@ -196,9 +198,35 @@ export function racerDepotLockOps(p: RacerDepotParams): ScriptChunk[] {
 
          ⚠ It cannot be enforced at the page. An attacker does not use the page; they build the
          transaction by hand, and the covenant is the only thing standing there. */
-      op(OP.OP_FROMALTSTACK),                             // [ .., carValue, left ]  alt empty
-      PN(maxFee), op(OP.OP_SUB),
-      op(OP.OP_GREATERTHANOREQUAL), op(OP.OP_VERIFY),
+      op(OP.OP_FROMALTSTACK),                             // [ .., scField, carBytes, carValue, left ]
+
+      /* ⚠⚠ ITS OWN SIZE IS READ FROM THE MAIN STACK, NOT THE ALTSTACK. The first version stashed it
+         with `OP_TOALTSTACK` — on top of the `V` that was already there — so the read meant to fetch
+         the depot's BALANCE fetched the script size instead, and every comparison below ran on
+         nonsense and passed. `scriptCodeField` is still sitting right here; there was never a reason
+         to move it. ⇒ An altstack is a place to lose track of what you put on it. */
+      PN(3), op(OP.OP_PICK), op(OP.OP_SIZE), op(OP.OP_NIP),   // [ .., carValue, left, scSize ]
+
+      /* ── ★★★ IT WORKS OUT WHAT THE MINT COSTS AND DEMANDS THE REST BACK ─────────────────────────
+         `left ≤ carValue + fee`, where **fee is COMPUTED, not allowed**:
+
+             mint bytes = 2·carBytes + 2·depotBytes + 264     measured, exactly linear
+             fee        = ceil(bytes / 10)                    at the 100 sat/KB floor
+
+         ⚠⚠ WHY THIS REPLACED A CONSTANT. With `left ≤ carValue + MAX_FEE`, a spender may burn the
+         whole allowance on a miner: keep V − MAX_FEE, hand the car a satoshi, and the difference is
+         gone. Forbidding a third output stopped them POCKETING it — it did not stop them DESTROYING
+         it. **An extraction attempt should not even pay a miner; it should repay the depot**
+         (sun-dive, 18 Aug). Now it does: anything above the true cost has nowhere to go but out0.
+
+         ⚠ `scSize` is depotBytes + 3, so 2·scSize carries a surplus 6, and +9 rounds the division up
+         — hence 267 rather than 264. `OP_DIV` truncates toward zero, and a fee that rounds DOWN is a
+         mint nobody can broadcast. */
+      PN(2), op(OP.OP_MUL), PN(267), op(OP.OP_ADD),       // [ .., carValue, left, 2·scSize + 267 ]
+      PN(3), op(OP.OP_ROLL), PN(2), op(OP.OP_MUL),        // [ carValue, left, …, 2·carBytes ]
+      op(OP.OP_ADD), PN(10), op(OP.OP_DIV),               // [ carValue, left, fee ]
+      PN(2), op(OP.OP_ROLL), op(OP.OP_ADD),               // [ left, carValue + fee ]
+      op(OP.OP_LESSTHANOREQUAL), op(OP.OP_VERIFY),
     op(OP.OP_ELSE),
       /* ⚠ THE ALTSTACK MUST COME OUT EVEN. `left` was pushed before the branch, so an arm that does not
          take it back leaves the two paths silently out of step. */

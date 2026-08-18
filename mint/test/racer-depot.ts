@@ -170,8 +170,18 @@ check('★★ …paying the mint fee out of the tank, within MAX_FEE',
 /* ── ⚠ THE FLOOR ─────────────────────────────────────────────────────────────────────────────────── */
 check('★★★ taking more than DRAW + MAX_FEE is refused',
   mint({ tank: TANK, paid: PAID, kept: TANK - RACER_DRAW - RACER_DEPOT_MAX_FEE - 1 }), false)
-check('★★ …and taking exactly the limit IS allowed, when the car actually receives the draw',
-  mint({ tank: TANK, paid: RACER_DRAW, kept: TANK - RACER_DRAW - RACER_DEPOT_MAX_FEE }))
+/* ★★★ AND THE REAL LIMIT IS NOW THE COMPUTED FEE, NOT THE CEILING. `MAX_FEE` survives only as a coarse
+   floor; what actually binds is `left ≤ carValue + fee` with the fee worked out from the sizes. So the
+   most a mint may cost the tank is the car's funding plus what the transaction genuinely costs. */
+{
+  const MINT_FEE = Math.ceil((2 * CAR.script.length + 2 * depotScript.length + 264) / 10)
+  console.log(`        computed mint fee ${MINT_FEE} sat against a ${RACER_DEPOT_MAX_FEE} ceiling` +
+    `  ⇒ ${RACER_DEPOT_MAX_FEE - MINT_FEE} sat no longer reachable`)
+  check('★★★ taking the car\'s funding plus the TRUE cost is allowed',
+    mint({ tank: TANK, paid: RACER_DRAW, kept: TANK - RACER_DRAW - MINT_FEE }))
+  check('★★★ …and one satoshi more is REFUSED — it would have to go somewhere, and there is nowhere',
+    mint({ tank: TANK, paid: RACER_DRAW, kept: TANK - RACER_DRAW - MINT_FEE - 1 }), false)
+}
 check('★★★ handing a car MORE than DRAW is refused',
   mint({ tank: TANK, paid: RACER_DRAW + 1, kept: TANK - RACER_DRAW - 1 }), false)
 

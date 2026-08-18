@@ -375,6 +375,11 @@ export function carTailRecognitionOps(tail: number[], maxCarBytes: number): Scri
        design already self-selects, because a slower car is a longer script and a bigger fee. */
     op(OP.OP_DUP), PN(maxCarBytes), op(OP.OP_LESSTHANOREQUAL), op(OP.OP_VERIFY),
 
+    /* ★ AND THE LENGTH IS KEPT, because a depot that mints must know what the mint COSTS. The mint's
+       size is exactly `2·carBytes + 2·depotBytes + 264` — measured, linear across the whole range — so
+       a caller can compute the true fee instead of allowing a generous ceiling somebody can pocket. */
+    op(OP.OP_DUP), op(OP.OP_TOALTSTACK),                           // alt:[ .., carValue, carBytes ]
+
     /* ⚠ AND THE DECLARED LENGTH MUST BE THE REAL ONE. Without this the bound is checked against a
        number the spender wrote rather than the script they supplied. */
     op(OP.OP_OVER), op(OP.OP_SIZE), op(OP.OP_NIP),                 // [ script, len, size ]
