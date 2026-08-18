@@ -114,16 +114,22 @@ export const COVENANT_IDIOMS: Idiom[] = [
     say: 'REM  OP_PUSH_TX — the preimage is proved to be THIS transaction\'s, with no key anywhere\n' +
       'VERIFY PUSHTX($0)',
   },
+  /* ⚠ BOTH ARE `exact`. Their bytes do not vary with the SIGHASH scope — they are fixed offsets into
+     the preimage — and they are short enough that another eight-opcode run of the same shape is not
+     merely possible but has already happened: reading the spent output's VALUE is the same shape with
+     52 and 8 where these carry 40 and 32. See `idiomAt`. */
   {
     name: 'HASHOUTPUTS',
     chunks: extractHashOutputsOps(),
     pops: 1,
     push: 'HASHOUTPUTS($0)',
+    exact: true,
   },
   {
     name: 'SCRIPTCODE',
     chunks: extractScriptCodeFieldOps(),
     pops: 1,
     push: 'SCRIPTCODE($0)',
+    exact: true,
   },
 ]

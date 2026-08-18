@@ -91,6 +91,14 @@ export interface Idiom {
   push?: string
   /** Emit a statement line instead of pushing — `$0` as above. Newlines make several lines. */
   say?: string
+  /**
+   * ⚠ Require the push DATA to match too, not only the opcodes and their lengths.
+   *
+   * Set it on any idiom whose bytes are FIXED. Shape-matching exists for the primitives whose
+   * constants vary with the SIGHASH scope — `PUSHTX` above all — and it is wrong for everything else:
+   * see the note on `idiomAt` for the collision that made this necessary.
+   */
+  exact?: boolean
 }
 
 /**
@@ -102,10 +110,24 @@ export interface Idiom {
  */
 
 /**
- * ⚠ MATCHED ON SHAPE, NOT ON BYTES. The same primitive built for a different SIGHASH scope carries
- * different constants, so the data VALUES differ while the opcodes and their lengths do not. Requiring
- * the lengths to agree as well is what keeps this from matching something else by accident — a
- * hundred-opcode run agreeing on every opcode and every push length is not a coincidence.
+ * ⚠ MATCHED ON SHAPE, NOT ON BYTES — but only where that is safe, and it was not safe by default.
+ *
+ * The same primitive built for a different SIGHASH scope carries different constants, so the data
+ * VALUES differ while the opcodes and their lengths do not. That is why shape-matching exists, and for
+ * `PUSHTX` the argument holds: a hundred-opcode run agreeing on every opcode and every push length is
+ * not a coincidence.
+ *
+ * ⚠⚠ IT DOES NOT HOLD FOR A SHORT RUN, AND THE FIRST NEW COVENANT WRITTEN AFTER THIS SHIPPED PROVED IT.
+ * Reading the value of the output being spent is
+ *     `SIZE push[52] SUB SPLIT NIP push[8]  SPLIT DROP`
+ * and `HASHOUTPUTS` is
+ *     `SIZE push[40] SUB SPLIT NIP push[32] SPLIT DROP`
+ * — eight opcodes, identical shape, different numbers. The reader confidently labelled a value read as
+ * a hashOutputs read, in a listing whose entire purpose is to let a person CHECK the script. A reader
+ * that mislabels is worse than one that stops, because a stop is visible and a wrong name is not.
+ *
+ * ⇒ Idioms whose bytes are fixed now set `exact` and are matched on the data as well. Shape-matching
+ * is reserved for the ones that genuinely vary.
  */
 function idiomAt(chunks: ScriptChunk[], i: number, id: Idiom): boolean {
   if (i + id.chunks.length > chunks.length) return false
@@ -113,6 +135,7 @@ function idiomAt(chunks: ScriptChunk[], i: number, id: Idiom): boolean {
     const a = chunks[i + k], b = id.chunks[k]
     if (a.op !== b.op) return false
     if ((a.data?.length ?? -1) !== (b.data?.length ?? -1)) return false
+    if (id.exact && a.data && b.data && a.data.some((x, j) => x !== b.data![j])) return false
   }
   return true
 }

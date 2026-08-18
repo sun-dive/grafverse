@@ -11,6 +11,8 @@ import { OP, LockingScript } from '@bsv/sdk'
 import { unbasic, unbasicListing, readScriptNum } from '../src/unbasic.ts'
 import { compileBasic } from '../src/basic.ts'
 import { op, PN, Asm } from '../src/covenantAsm.ts'
+import { COVENANT_IDIOMS } from '../src/readerPresets.ts'
+import { extractHashOutputsOps } from '../src/covenant.ts'
 
 let pass = 0, fail = 0
 const check = (n: string, got: boolean, want = true): void => {
@@ -158,6 +160,44 @@ console.log()
      the loop is not. Both compute the same thing. Neither can be called a round trip of BYTES. */
   console.log(`        differ but compute the same: ${differ.join(', ')}`)
   console.log('        \u26a0 an unrolled FOR cannot read back as a FOR \u2014 the loop is not in the script')
+}
+
+/* ── ⚠⚠ THE IDIOM COLLISION — a reader that MISLABELS is worse than one that stops ────────────────
+   `idiomAt` matched on shape (opcodes and push LENGTHS) and ignored the push values, on the argument
+   that a long run agreeing everywhere is not a coincidence. True of the hundred-opcode PUSHTX preamble;
+   false of an eight-opcode one, and the first new covenant written after the reader shipped collided
+   on its first read. Reading the spent output's VALUE is byte-for-byte the same SHAPE as HASHOUTPUTS:
+
+     value        SIZE push[52] SUB SPLIT NIP push[8]  SPLIT DROP
+     HASHOUTPUTS  SIZE push[40] SUB SPLIT NIP push[32] SPLIT DROP
+
+   ⇒ The listing said the script read hashOutputs where it read the value — in a document whose whole
+   purpose is to let a person CHECK the script. A stop is visible; a wrong name is not. */
+{
+  const valueOfSpentOutput = [
+    op(OP.OP_SIZE), PN(52), op(OP.OP_SUB), op(OP.OP_SPLIT), op(OP.OP_NIP),
+    PN(8), op(OP.OP_SPLIT), op(OP.OP_DROP),
+  ]
+  const readAs = (chunks: typeof valueOfSpentOutput): string =>
+    unbasic(chunks, { stack: ['preimage'], idioms: COVENANT_IDIOMS }).lines.join('\n')
+
+  const value = readAs(valueOfSpentOutput)
+  check('★★★ reading the spent output\'s VALUE is not labelled HASHOUTPUTS',
+    !value.includes('HASHOUTPUTS'))
+  check('★★ …and it is read as what it is — a split of the preimage',
+    value.includes('SPLIT') && value.includes('preimage'))
+
+  /* ★ The control: the real idiom must still be recognised, or "no false positive" would be
+     trivially satisfiable by never matching anything at all. */
+  const real = readAs(extractHashOutputsOps() as typeof valueOfSpentOutput)
+  check('★★ …while the REAL hashOutputs read is still folded to HASHOUTPUTS',
+    real.includes('HASHOUTPUTS'))
+
+  /* ⚠ And PUSHTX must stay SHAPE-matched: its constants vary with the SIGHASH scope, so requiring the
+     bytes would stop it being recognised at all on any covenant not signing under SIGHASH_ALL. */
+  const other = COVENANT_IDIOMS.find(i => i.name === 'PUSHTX')
+  check('⚠ PUSHTX is still matched on shape, because its constants vary with the scope',
+    other !== undefined && other.exact !== true)
 }
 
 console.log(`\n${pass}/${pass + fail} checks passed`)
