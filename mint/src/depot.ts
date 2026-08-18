@@ -318,6 +318,75 @@ export function carShape(carScript: number[]): CarShape {
  * Nothing is parsed and nothing is trusted. It walks the script at constant offsets, and if the output
  * is shorter than a car OP_SPLIT fails and the spend dies.
  */
+/**
+ * ★★★ THE OTHER WAY TO RECOGNISE A CAR — by its ENDING, for a car that has no shape.
+ *
+ * `carRecognitionOps` above pins a chained car's head, its twelve inter-field push opcodes and its
+ * tail, and it is right to: a chained car is one length forever, and free bytes before the tail are
+ * EXECUTABLE positions where a spliced `OP_0 OP_IF` swallows the covenant's own checks. *"Without this
+ * the depot is not a tank but a faucet."*
+ *
+ * ⚠ A ONE-RACE CAR HAS NO SHAPE TO PIN. Its script IS the race — sixty ticks unrolled — so its length
+ * is its time and no two cars are alike. There is nothing constant to compare but the ending.
+ *
+ * ⇒ And the ending is all the depot ever needed, because its only question is **"will these sats come
+ * back to me?"**, and that is decided entirely by the last bytes: the value rule and the binding to
+ * THIS depot's script, which is a literal in there and cannot be redirected by anything above it.
+ *
+ * ── ⚠⚠ WHY THE FREE BYTES ARE SAFE HERE AND ARE NOT SAFE ABOVE ────────────────────────────────────
+ * MEASURED, in `racer-car.ts`: a specialised car contains NO `OP_IF`, `OP_NOTIF`, `OP_ELSE`,
+ * `OP_ENDIF` or `OP_RETURN` — trace specialisation turned every branch into an assertion, so there is
+ * nothing left to jump over. An attacker needs an `OP_ENDIF` AFTER the tail to swallow it, and the tail
+ * is the end of the script; an unclosed `OP_IF` is invalid. **The tail cannot be skipped.**
+ * ⚠ `assertNoControlFlow` re-checks that on every car built, because it is a measured claim and
+ * measured claims rot. If it ever fails, THIS function stops being safe.
+ *
+ * ⚠ What free bytes DO buy an attacker: the altstack. A spliced `OP_TOALTSTACK` fakes the `V` the tail
+ * reads, making the car's output SMALLER — larger exceeds the inputs, a second output changes
+ * `hashOutputs`. So they burn to miners and take nothing: the conclusion `depot-drain` already measured.
+ *
+ * In:  [ .., out ]        an output as value(8) ‖ varint ‖ script
+ * Out: [ .. ]             alt: [ .., carValue ]  — the same contract as `carRecognitionOps`
+ */
+export function carTailRecognitionOps(tail: number[], maxCarBytes: number): ScriptChunk[] {
+  if (maxCarBytes >= 65536) {
+    throw new Error(`racer depot: MAX_CAR_BYTES ${maxCarBytes} needs a 5-byte varint; this reads the ` +
+      '3-byte form, so the bound must stay under 65,536')
+  }
+  if (tail.length < 32) throw new Error(`racer depot: a ${tail.length}-byte tail is too little to pin`)
+  return [
+    AT(8), op(OP.OP_SPLIT),                                        // [ valueBytes, rest ]
+    op(OP.OP_SWAP), op(OP.OP_BIN2NUM), op(OP.OP_TOALTSTACK),       // alt:[ .., carValue ]  ·  [ rest ]
+
+    /* ── THE LENGTH VARINT, PINNED TO ITS 3-BYTE FORM ────────────────────────────────────────────
+       A car is thousands of bytes, so its output's script length always serializes as 0xfd ‖ uint16.
+       Pinning the marker means the two bytes after it ARE the length and nothing has to be parsed —
+       and a "car" small enough to use the 1-byte form is refused here rather than measured wrongly. */
+    AT(1), op(OP.OP_SPLIT),
+    op(OP.OP_SWAP), pushData([0xfd]), op(OP.OP_EQUALVERIFY),       // [ rest2 ]
+    AT(2), op(OP.OP_SPLIT),
+    op(OP.OP_SWAP), op(OP.OP_BIN2NUM),                             // [ script, len ]
+
+    /* ── ★★ THE BOUND — AND IT IS A CHOSEN PARAMETER, NOT A MEASUREMENT ──────────────────────────
+       The depot mints the car, so it decides how long a car it is willing to mint. That is what keeps
+       `DEPOT_MAX_FEE` derivable: the mint carries the car's script, so the fee scales with it, and a
+       bound is what makes the worst case a number instead of a hope.
+       ⇒ It does NOT have to cover every extreme configuration. It has to cover normal play — and the
+       design already self-selects, because a slower car is a longer script and a bigger fee. */
+    op(OP.OP_DUP), PN(maxCarBytes), op(OP.OP_LESSTHANOREQUAL), op(OP.OP_VERIFY),
+
+    /* ⚠ AND THE DECLARED LENGTH MUST BE THE REAL ONE. Without this the bound is checked against a
+       number the spender wrote rather than the script they supplied. */
+    op(OP.OP_OVER), op(OP.OP_SIZE), op(OP.OP_NIP),                 // [ script, len, size ]
+    op(OP.OP_NUMEQUALVERIFY),                                      // [ script ]
+
+    /* ── ★★★ AND IT ENDS WITH THE TAIL — split from the RIGHT, so length is irrelevant ──────────── */
+    op(OP.OP_SIZE), PN(tail.length), op(OP.OP_SUB), op(OP.OP_SPLIT),
+    op(OP.OP_NIP),                                                 // [ theLastBytes ]
+    pushData(tail), op(OP.OP_EQUALVERIFY),                         // [ ]
+  ]
+}
+
 export function carRecognitionOps(shape: CarShape): ScriptChunk[] {
   const ops: ScriptChunk[] = [
     AT(8), op(OP.OP_SPLIT),                                        // [ valueBytes, rest ]

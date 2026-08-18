@@ -195,6 +195,12 @@ Every one of these was **green at the time**.
   by its **shape** (head, twelve pinned push opcodes, tail) instead of one hash of a car at rest.
   ⇒ **When the build cannot do what the spec says, that is a bug in the build.** A failing test is a
   result; rewriting the requirement around it is how a suite comes to describe the wrong machine.
+  ★ **18 Aug — AND NOW THE DEPOT DOES MINT CARS, which is not this failure repeating.** A one-race car
+  is born, races once and dies, so there is no refuelling and "fuel a car" and "mint a car" became the
+  same act. The rule above was about a car that PERSISTS; the lifecycle changed, so the constraint it
+  produced is retired. ⇒ The difference worth keeping: back then the SPEC was rewritten to fit a build
+  that could not do what it said. Here the design premise changed and the spec followed. One is a
+  bug being hidden; the other is a decision being made.
 - **⚠ A "no signature anywhere" check that was a SUBSTRING SEARCH.** `/3044|3045/.test(toHex(script))`
   is not a signature test — it looks for four hex characters in a blob that is mostly PREIMAGE, i.e.
   hashes and txids. Those bytes are effectively random, so the pattern turns up by chance: **measured
