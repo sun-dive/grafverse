@@ -17,7 +17,7 @@
 // standard `depot-drain` set — measure the threat, do not reason about it.
 import { LockingScript, UnlockingScript, Spend, OP, PrivateKey, Hash } from '@bsv/sdk'
 import { carTailRecognitionOps, varint } from '../src/depot.ts'
-import { carTail, buildRacerCar, racerCarFee, CONTROL_FLOW } from '../src/racerCar.ts'
+import { carBlockOps, buildRacerCar, racerCarFee, CONTROL_FLOW } from '../src/racerCar.ts'
 import { type TickTrace, type RunTrace } from '../src/racerTick.ts'
 import { RACER_REGS as R, S, SLIP_UNIT, PHASE, refTick, buildShellLock, shellMaxFee, PUBLIC_CAR_REGS } from '../src/shell.ts'
 import { freshPublicShell } from '../src/publicShell.ts'
@@ -73,7 +73,7 @@ function car(metres: number): { script: number[]; fee: number } {
 }
 
 const SHORT = car(4), LONG = car(220)
-const TAIL = new LockingScript(carTail({ fee: SHORT.fee, depotScript: DEPOT })).toBinary()
+const TAIL = new LockingScript(carBlockOps({ depotScript: DEPOT })).toBinary()
 
 console.log('RECOGNISING A CAR BY ITS ENDING — and trying to get past it\n')
 console.log(`        tail ${TAIL.length} B · MAX_CAR_BYTES ${MAX_CAR_BYTES.toLocaleString()}`)
@@ -104,7 +104,7 @@ function u64(n: number): number[] {
 /* ── ★★★ IT RECOGNISES CARS OF ANY LENGTH ───────────────────────────────────────────────────────── */
 check('★★★ a short car is recognised', recognises(5000, SHORT.script))
 {
-  const longTail = new LockingScript(carTail({ fee: LONG.fee, depotScript: DEPOT })).toBinary()
+  const longTail = TAIL   // ★ constant now
   check(`★★★ a car ${(LONG.script.length / SHORT.script.length).toFixed(1)}x longer is recognised by the SAME rule`,
     recognises(5000, LONG.script, longTail))
   console.log('        ⇒ that is the whole point: one comparison, any length')
@@ -141,7 +141,7 @@ check('★★★ a short car is recognised', recognises(5000, SHORT.script))
 /* ── ⚠ THE BOUND ─────────────────────────────────────────────────────────────────────────────────── */
 {
   const tooLong = [...LONG.script, ...new Array(MAX_CAR_BYTES).fill(OP.OP_NOP)]
-  const longTail = new LockingScript(carTail({ fee: LONG.fee, depotScript: DEPOT })).toBinary()
+  const longTail = TAIL   // ★ constant now
   check('★★★ a car over MAX_CAR_BYTES is refused', recognises(5000, tooLong, longTail), false)
   check('★★ a car at exactly the bound is accepted',
     recognises(5000, SHORT.script, TAIL, SHORT.script.length))
@@ -185,7 +185,7 @@ check('★★★ a short car is recognised', recognises(5000, SHORT.script))
      payee is a literal inside it. */
   const thief = Hash.hash160(PrivateKey.fromRandom().toPublicKey().encode(true) as number[])
   const theirs = [0x76, 0xa9, 0x14, ...thief, 0x88, 0xac]
-  const theirTail = new LockingScript(carTail({ fee: SHORT.fee, depotScript: theirs })).toBinary()
+  const theirTail = new LockingScript(carBlockOps({ depotScript: theirs })).toBinary()
   const theirCar = [...SHORT.script.slice(0, SHORT.script.length - TAIL.length), ...theirTail]
   check('★★★ a car that pays A STRANGER instead of the depot is refused',
     recognises(5000, theirCar), false)

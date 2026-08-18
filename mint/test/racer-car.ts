@@ -16,7 +16,7 @@
 import { OP, Transaction, TransactionSignature, Spend, LockingScript, UnlockingScript, PrivateKey, Hash } from '@bsv/sdk'
 import {
   buildRacerCar, racerCarFee, racerCarUnlock, nameBytes, CAR_SCOPE, NAME_BYTES, CAR_LAYOUT_STRING,
-  carTail, assertNoControlFlow, CONTROL_FLOW,
+  carBlockOps, assertNoControlFlow, CONTROL_FLOW, feeConstant,
 } from '../src/racerCar.ts'
 import { type TickTrace, type Ending, type RunTrace } from '../src/racerTick.ts'
 import {
@@ -329,7 +329,7 @@ check('★ the spender chooses nothing — the unlocking script is one push',
    from the right, and asks only "will these sats come back to me?". These are the properties that
    makes that sound, checked HERE, where cars are made, rather than asserted over in the depot. */
 {
-  const tailOps = carTail({ fee, depotScript: DEPOT })
+  const tailOps = carBlockOps({ depotScript: DEPOT })
   const tailBytes = new LockingScript(tailOps).toBinary()
   const carBytes = CAR.toBinary()
   const endsWith = (script: number[], t: number[]): boolean =>
@@ -343,12 +343,12 @@ check('★ the spender chooses nothing — the unlocking script is one push',
     const shortCfg = { ...CFG, finish: Math.round(4 * S) }
     const sf = racerCarFee({ cfg: shortCfg, run: simulateTo(shortCfg.finish), depotScript: DEPOT, consts: CONSTS })
     const shortCar = buildRacerCar({ cfg: shortCfg, run: simulateTo(shortCfg.finish), depotScript: DEPOT, consts: CONSTS, fee: sf.fee })
-    const shortTail = new LockingScript(carTail({ fee: sf.fee, depotScript: DEPOT })).toBinary()
+    const shortTail = tailBytes   // ★ THE SAME BYTES — the block is constant now
     check('★★★ a much shorter car also ends with ITS tail — recognition does not depend on length',
       endsWith([...shortCar.toBinary()], [...shortTail]) &&
       shortCar.toBinary().length < carBytes.length / 2)
     console.log(`        short car ${shortCar.toBinary().length.toLocaleString()} B · long car ` +
-      `${carBytes.length.toLocaleString()} B · same tail shape, ${tailBytes.length} B`)
+      `${carBytes.length.toLocaleString()} B · THE SAME ${tailBytes.length} B block, byte for byte`)
   }
 
   /* ⚠⚠ THE MEASURED CLAIM THE SAFETY RESTS ON. Free bytes before the tail are executable positions, and
@@ -364,6 +364,48 @@ check('★ the spender chooses nothing — the unlocking script is one push',
       try { assertNoControlFlow([...CAR.chunks, op(OP.OP_ENDIF)]); return false }
       catch (e) { return (e as Error).message.includes('faucet') }
     })())
+}
+
+/* ── ⚠⚠ THE FEE THE SCRIPT COMPUTES MUST BE THE FEE THE TRANSACTION COSTS ────────────────────────
+   The block reads its own scriptCode's size and works the fee out from it, which is what makes it
+   constant and therefore pinnable. So `feeConstant` has to be exactly right — and the first version
+   of it was assembled out of parts, double-counted two, and landed ONE SATOSHI UNDER on two car sizes
+   out of five. Under the relay floor is permanent, unamendable, and this project has stood on it five
+   times. ⇒ Sweep the range; agreeing on a few sizes is precisely what being wrong looked like. */
+{
+  const K = feeConstant(DEPOT.length)
+  let checked = 0, agree = 0, under = 0
+  for (const metres of [2, 4, 10, 25, 40, 70, 120, 180, 220, 300, 402]) {
+    const finish = Math.round(metres * S)
+    const run = simulateTo(finish)
+    const cfg = { ...CFG, finish }
+    const serialized = racerCarFee({ cfg, run, depotScript: DEPOT, consts: CONSTS }).fee
+    const car = buildRacerCar({ cfg, run, depotScript: DEPOT, consts: CONSTS })
+    const inScript = Math.floor((3 + car.toBinary().length + K) / 10)
+    checked++
+    if (inScript === serialized) agree++
+    if (inScript < serialized) under++
+  }
+  console.log(`\n        fee agreement swept over ${checked} car sizes · feeConstant ${K}`)
+  check(`★★★ the in-script fee equals the serialized fee on all ${checked} sizes`, agree === checked)
+  check('⚠⚠ …and is NEVER under it — under the relay floor is permanent and unamendable', under === 0)
+}
+
+/* ── ★★★ ONE BLOCK, EVERY CAR — the property the depot's recognition depends on ─────────────────── */
+{
+  const block = new LockingScript(carBlockOps({ depotScript: DEPOT })).toHex()
+  const built = [4, 40, 220].map(m => {
+    const finish = Math.round(m * S)
+    return buildRacerCar({ cfg: { ...CFG, finish }, run: simulateTo(finish), depotScript: DEPOT, consts: CONSTS })
+  })
+  const b = new LockingScript(carBlockOps({ depotScript: DEPOT })).toBinary()
+  check('★★★ cars of three different lengths all end with the SAME block, byte for byte',
+    built.every(car => {
+      const s2 = car.toBinary()
+      return b.every((x, i) => s2[s2.length - b.length + i] === x)
+    }) && new Set(built.map(c => c.toBinary().length)).size === 3)
+  check('★★ …and the block contains no per-car number at all — it computes its fee',
+    block === new LockingScript(carBlockOps({ depotScript: DEPOT })).toHex())
 }
 
 console.log(`\n${pass}/${pass + fail} checks passed`)

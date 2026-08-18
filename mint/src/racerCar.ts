@@ -42,7 +42,7 @@
 import { OP, LockingScript, type ScriptChunk } from '@bsv/sdk'
 import { op, PN, fixedField } from './covenantAsm.ts'
 import { compileBasic, scriptCodeVarIntSize, type Field } from './basic.ts'
-import { extractHashOutputsOps } from './covenant.ts'
+import { extractHashOutputsOps, extractScriptCodeFieldOps } from './covenant.ts'
 import { pushTxVerifyOps, pushTxConstants, pushData, type PushTxConstants } from './pushtx.ts'
 import { type RunTrace } from './racerTick.ts'
 import { carPrograms, optimizeCarCompile } from './optimizeCarCompile.ts'
@@ -101,11 +101,12 @@ export interface CarParams {
   /** The depot's locking script, as bytes. The only place this car's satoshis can go. */
   depotScript: number[]
   /**
-   * The exact fee this race pays, in satoshis. ⚠ NO DEFAULT — derive it with `racerCarFee`, which
-   * serializes the spend. A car whose FEE is below what its own transaction costs cannot be raced by
-   * anybody, ever, and there is no key to amend it.
+   * ⚠ NO LONGER AN INPUT. The car COMPUTES its fee from its own scriptCode's size — see `carBlockOps`
+   * — which is what lets one pinned block recognise cars of every length. Kept optional so callers
+   * that used to pass it still type-check; it is ignored. `racerCarFee` remains the way to know what a
+   * given car will pay, and the test requires the two to agree.
    */
-  fee: number
+  fee?: number
   /** The physics constants the specialised source refers to. */
   consts: Record<string, number>
   /**
@@ -168,43 +169,30 @@ export function racerCarOps(p: CarParams): { ops: ScriptChunk[]; layout: Field[]
   for (let i = 0; i < pairs; i++) head.push(op(OP.OP_2DROP))
   if (CAR_LAYOUT.length % 2) head.push(op(OP.OP_DROP))
 
+  /* ── ★★★ THE RACE RUNS FIRST, AND THAT ORDER IS THE SECURITY ────────────────────────────────────
+     It reads no `hashOutputs` and no `V` — everything it needs was known before the car existed — so
+     it has no reason to sit after them, and every reason to sit before. In front of the block its
+     bytes are free space where NO security state exists yet; behind it, they are free space between
+     a verified preimage and the output it binds, which is where a drain lives. See `carBlockOps`. */
   const ops: ScriptChunk[] = [
     ...head,
-    ...pushTxVerifyOps(c),                                        // [preimage], now genuine
-
-    op(OP.OP_DUP), ...extractHashOutputsOps(), op(OP.OP_TOALTSTACK),          // alt: [HO]
-    /* The value of the output being spent sits 52 bytes from the end of the preimage — the car's own
-       balance, and the only place it can be read from honestly. */
-    op(OP.OP_DUP),
-    op(OP.OP_SIZE), pushData([52]), op(OP.OP_SUB), op(OP.OP_SPLIT), op(OP.OP_NIP),
-    pushData([8]), op(OP.OP_SPLIT), op(OP.OP_DROP), op(OP.OP_BIN2NUM), op(OP.OP_TOALTSTACK),  // alt: [HO, V]
-    /* ⚠ AND THE PREIMAGE IS DONE WITH. Both things this car needs from it are on the altstack, and
-       unlike every other covenant here it never reads its own scriptCode — everything it needs was
-       known before it existed. Leaving it would strand it under the whole program and under the
-       result: measured at two items on the stack where one is correct. */
-    op(OP.OP_DROP),                                               // []
-
     ...probe.ops,                                                 // ← THE RACE
   ]
 
   /* ── the race left its working on the stack, and none of it is needed again ──────────────────────
      ⚠ The depth comes from the compiler's own model, never from counting. `coalesce` moves a
-     re-assigned name to the top, so the stack after the body is not in any order a human would guess. */
+     re-assigned name to the top, so the stack after the body is not in any order a human would guess.
+     ⚠⚠ AND IT MUST REACH ZERO. The block that follows is pinned by the depot and pushes nothing it
+     does not consume, so anything the race leaves behind is still there at the end — and a locking
+     script must finish with exactly one true value. */
   const depth = probe.stack.length
   for (let i = 0; i < Math.floor(depth / 2); i++) ops.push(op(OP.OP_2DROP))
   if (depth % 2) ops.push(op(OP.OP_DROP))
 
-  /* ── THE VALUE, AND THE SPENDER GETS NO SAY IN IT ────────────────────────────────────────────────
-     A chained car had to be told what its successor would carry, because only the spender knew how big
-     the next transaction was. This race is one transaction of a size fixed at compile time, so the
-     script computes the output value itself: V − FEE, exactly. There is nothing to claim and therefore
-     nothing to claim wrongly. */
-  /* ── THE TAIL — one definition, because the DEPOT pins these exact bytes ─────────────────────────
-     `carTail` is what the depot splits off the right-hand end of a car and compares. A second copy
-     written out here is how a depot comes to pin bytes no car actually carries, so there isn't one.
-     ⚠ Never zero: a 0-value output is refused as dust before the script is evaluated at all. And one
-     output only — `hashOutputs` covers the whole list, so anything appended changes it. */
-  ops.push(...carTail(p))
+  /* ── THE PINNED BLOCK — verification and binding, one unbroken constant run ──────────────────────
+     One definition, because the DEPOT pins these exact bytes. A second copy written out here is how a
+     depot comes to pin bytes no car actually carries, so there isn't one. */
+  ops.push(...carBlockOps(p))
 
   /* ⚠⚠ AND THE PROPERTY THE DEPOT'S SAFETY RESTS ON, checked on every car this function produces. */
   assertNoControlFlow(ops)
@@ -212,49 +200,104 @@ export function racerCarOps(p: CarParams): { ops: ScriptChunk[]; layout: Field[]
 }
 
 /**
- * ★★★ THE TAIL THE DEPOT PINS — the bytes that answer "will these sats come back to me?"
+ * ★★★ THE PINNED BLOCK — verification and binding, adjacent, and IDENTICAL IN EVERY CAR.
  *
- * A depot cannot recognise a car by its shape: every race is a different length, so there is no shape.
- * It does not need to. The only question it has is whether the output it is about to fund can pay
- * anybody else, and that is decided entirely by these last bytes — the value rule and the binding to
- * the depot's own script, which is a LITERAL in here and cannot be redirected by anything above it.
+ * This is what the depot pins, and it is the whole of the car's security. Three properties, and the
+ * design went through two wrong versions before it had all three:
  *
- * ⇒ So the depot splits the car's script from the RIGHT and compares this. Length-agnostic: a 3 KB car
- * and a 16 KB car pass the same check.
+ *   1. IT IS ONE UNBROKEN RUN. Nothing attacker-controlled executes between the preimage being proved
+ *      genuine and the output being bound.
+ *   2. IT USES NO ALTSTACK. It does not need one — everything stays on the main stack — and that is
+ *      not tidiness: an altstack carries security state ACROSS whatever sits between the two halves.
+ *   3. IT IS CONSTANT. It contains no per-car number at all, because it COMPUTES the fee from its own
+ *      scriptCode's size. So one pinned block recognises a 2 KB car and a 16 KB car alike.
  *
- * ── ⚠⚠ WHY TAIL-ONLY IS SAFE HERE AND WAS NOT SAFE FOR THE CHAINED CAR ────────────────────────────
- * `depot.ts` pins the chained car's head AND its twelve inter-field push opcodes, and says why: free
- * bytes before the tail are EXECUTABLE positions, and a spliced `OP_0 OP_IF` there swallows the
- * covenant's own checks up to a matching `OP_ENDIF`. *"Without this the depot is not a tank but a
- * faucet."* That reasoning is exactly right, and it does not reach a specialised car:
+ * ── ⚠⚠ THE TWO VERSIONS THAT WERE WRONG, so neither is rebuilt ────────────────────────────────────
+ * **v1 — frame at the start, binding at the end, values carried on the altstack.** MEASURED: the four
+ * cars below have four DIFFERENT tails, because the fee is a literal and the fee scales with the car.
+ * A depot pinning one tail would recognise exactly one size.
  *
- *   MEASURED — a car contains NO OP_IF, OP_NOTIF, OP_ELSE, OP_ENDIF or OP_RETURN. Trace
- *   specialisation turned every branch into an assertion, so there is nothing left to jump over.
+ *     4 m · 2,752 B · fee 386      120 m · 9,016 B · fee 1,012
+ *    40 m · 5,623 B · fee 673      220 m · 12,451 B · fee 1,356
  *
- * ⇒ An attacker needs an `OP_ENDIF` AFTER the tail to swallow it, and the tail is the end of the
- * script. An unclosed `OP_IF` is invalid — measured, not reasoned: *"Every OP_IF, OP_NOTIF, or OP_ELSE
- * must be terminated"*. **The tail cannot be skipped.** A balanced splice swallows only itself, and the
- * car's own `OP_VERIFY`s still fire.
+ * **v2 — pin only the constant suffix, leave the fee free.** Worse, and the reason is the altstack.
+ * The binding ends `HASH256, FROMALTSTACK, EQUAL`, and that `FROMALTSTACK` is supposed to yield the
+ * REAL `hashOutputs` the frame put there. With attacker code in between, they pop it and push a hash
+ * they computed themselves — and `EQUAL` then compares a hash they chose against a hash they supplied,
+ * with no relation to this transaction's outputs. ⇒ **That is a drain, not a burn.** The depot would
+ * fund an output paying whoever they like.
  *
- * ⚠ What free bytes DO buy an attacker: the altstack. A spliced `OP_TOALTSTACK` can fake the `V` the
- * tail reads, making the output SMALLER — a larger one exceeds the inputs, and a second output changes
- * `hashOutputs` so the binding fails. So they can burn fuel to miners and never take it, which is the
- * conclusion `depot-drain` already measured for the depot as it stands.
+ * ⇒ Which is why the RACE now runs FIRST. It reads no `hashOutputs` and no `V`, so it has no reason to
+ * sit after them, and in front of them its bytes are free space where no security state exists yet.
  *
- * ⚠ THE MEASURED CLAIM IS THE ONE THAT ROTS. `assertNoControlFlow` is called on every car built here
- * so that a future change to `specialiseRun` which reintroduces a branch fails loudly, rather than
- * quietly turning the depot into a faucet.
+ * ── ★ COMPUTING ITS OWN FEE, which is what makes it constant ──────────────────────────────────────
+ * The race transaction is the simplest shape here: one input whose unlocking script is the preimage,
+ * one output paying the depot. So its size is the car's own length plus a constant, and the car can
+ * read that length out of the scriptCode the miner has already verified.
+ * ⚠ `OP_DIV` truncates toward zero, so the rounding is done by ADDING 9 before dividing by 10. A fee
+ * that rounds DOWN sits under the relay floor, permanently, with no key to raise it.
  */
-export function carTail(p: { fee: number; depotScript: number[] }): ScriptChunk[] {
+export function carBlockOps(p: { depotScript: number[]; c?: PushTxConstants }): ScriptChunk[] {
+  const c = p.c ?? pushTxConstants(CAR_SCOPE)
+  const depotField = [...varIntBytes(p.depotScript.length), ...p.depotScript]
   return [
-    op(OP.OP_FROMALTSTACK),
-    PN(p.fee), op(OP.OP_SUB),
+    ...pushTxVerifyOps(c),                                        // [pre]            ← proved genuine
+    op(OP.OP_DUP), ...extractHashOutputsOps(),                    // [pre, HO]
+    op(OP.OP_SWAP),                                               // [HO, pre]
+
+    /* ── THE FEE, FROM ITS OWN SIZE ───────────────────────────────────────────────────────────── */
+    op(OP.OP_DUP), ...extractScriptCodeFieldOps(),                // [HO, pre, varint‖script]
+    op(OP.OP_SIZE), op(OP.OP_NIP),                                // [HO, pre, size]
+    PN(feeConstant(p.depotScript.length)), op(OP.OP_ADD),
+    PN(10), op(OP.OP_DIV),                                        // [HO, pre, fee]
+    op(OP.OP_SWAP),                                               // [HO, fee, pre]
+
+    /* ── THE BALANCE, 52 bytes from the end of the preimage ───────────────────────────────────── */
+    op(OP.OP_SIZE), pushData([52]), op(OP.OP_SUB), op(OP.OP_SPLIT), op(OP.OP_NIP),
+    pushData([8]), op(OP.OP_SPLIT), op(OP.OP_DROP), op(OP.OP_BIN2NUM),   // [HO, fee, V]
+    op(OP.OP_SWAP), op(OP.OP_SUB),                                // [HO, V − fee]
+
+    /* ⚠ Never zero: a 0-value output is refused as dust before the script is evaluated at all. */
     op(OP.OP_DUP), PN(0), op(OP.OP_GREATERTHAN), op(OP.OP_VERIFY),
-    PN(8), op(OP.OP_NUM2BIN),
-    pushData([...varIntBytes(p.depotScript.length), ...p.depotScript]), op(OP.OP_CAT),
-    op(OP.OP_HASH256), op(OP.OP_FROMALTSTACK), op(OP.OP_EQUAL),
+    PN(8), op(OP.OP_NUM2BIN),                                     // [HO, valueBytes]
+
+    /* ── AND BIND IT. One output and no others: `hashOutputs` covers the whole list. ───────────── */
+    pushData(depotField), op(OP.OP_CAT),                          // [HO, out0]
+    op(OP.OP_HASH256), op(OP.OP_EQUAL),                           // [bool]
   ]
 }
+
+/**
+ * The constant added before dividing by 10 — everything in the race transaction that is NOT the car's
+ * own script, plus 9 to round the fee UP and 3 for the scriptCode's own length varint.
+ *
+ * ⚠ DERIVED, not chosen. `racerCarFee` serializes a real spend and this must agree with it; the test
+ * requires them equal across the whole range of car sizes, because a car whose script computes a fee
+ * its own transaction cannot pay is a car nobody can ever race.
+ */
+export function feeConstant(depotBytes: number): number {
+  /* Everything in the race transaction that is NOT the scriptCode field the block measures:
+       transaction   version 4 · in-count 1 · outpoint 36 · unlock varint 3 · sequence 4
+                     · out-count 1 · value 8 · script varint 3 · locktime 4          =  64
+       unlocking     the push opcode in front of the preimage (OP_PUSHDATA2)          =   3
+       preimage      4+32+32+36 + 8+4+32+4+4, i.e. everything but the scriptCode      = 156
+       output        the depot's own script                                           = depotBytes
+     …and +9, because `OP_DIV` truncates and the fee must round UP.
+
+     ⚠⚠ THE FIRST VERSION OF THIS ASSEMBLED THE SAME NUMBER OUT OF PARTS AND DOUBLE-COUNTED TWO OF
+     THEM, landing ONE SATOSHI UNDER on two car sizes out of five. Under the relay floor is permanent
+     and unamendable, and this project has stood on that five times. ⇒ The test requires the in-script
+     fee to EQUAL `racerCarFee`'s serialized answer across the whole range of car sizes, because
+     agreeing on three sizes out of five is exactly what this looked like. */
+  return 64 + 3 + 156 + depotBytes + 9
+}
+
+/**
+ * ⚠ The range `feeConstant` is arithmetic for. Outside it the varints change width and the constant is
+ * silently wrong — so a car outside it is refused rather than mispriced.
+ */
+export const CAR_BYTES_MIN = 253
+export const CAR_BYTES_MAX = 65_000
 
 /** Opcodes that would let a spliced branch swallow the tail. A car must contain none of them. */
 export const CONTROL_FLOW = [OP.OP_IF, OP.OP_NOTIF, OP.OP_ELSE, OP.OP_ENDIF, OP.OP_RETURN] as const
