@@ -34,12 +34,54 @@
  *
  * ── ★★ AND THE SECOND ONE: THE COMPILER IS THE LOOP ───────────────────────────────────────────────
  * Script has no backward jump, so a program's LENGTH is its work. `FOR … NEXT` with a constant bound
- * does not need one — the body is laid down once per trip with the counter folded in as a literal, and
- * forty-five ticks that would have been forty-five transactions become one. See `unrollFor`, and see
- * `coalesce` for the thing that had to be fixed before any of it was possible.
+ * does not need one — the body is laid down once per trip with the counter SUBSTITUTED as a literal,
+ * and forty-five ticks that would have been forty-five transactions become one. See `unrollFor`, and
+ * see `coalesce` for the thing that had to be fixed before any of it was possible.
+ *
+ * ══ ⚠⚠⚠ THE HARD RULE — READ THIS BEFORE CHANGING ONE LINE OF THIS FILE ═══════════════════════════
+ *
+ *   1. THE COMPILED SCRIPT MUST SAY WHAT THE PROGRAM SAYS.
+ *      `x = 2 * 3 + 4` emits a multiply and an add. It does NOT emit the number 10. A compiler that
+ *      quietly rewrites the arithmetic is not a compiler — it is an optimiser wearing the name, and
+ *      what ends up on chain is no longer the thing that was written and reviewed.
+ *
+ *   2. FOLD ONLY WHAT SCRIPT CANNOT EXPRESS.
+ *      There is exactly one such case today: `^`, because there is no power opcode, so the choice is
+ *      a literal or nothing at all. It is not an optimisation; it is the only possible emission.
+ *      ⚠ A FOR counter is SUBSTITUTED, not folded — the unroll lays down a copy per trip and the
+ *      counter is a literal in each. The arithmetic around it still emits.
+ *
+ *   3. NEVER "IMPROVE" THIS FILE IN PLACE.
+ *      An optimisation goes into a NEW BETA VERSION under a written, narrow scope — never into the
+ *      live compiler, and never as a tidy-up alongside another change. Bump `BASIC_VERSION`, keep the
+ *      live one exactly as it is, and prove the beta against it before anything is minted with it.
+ *
+ * ── ⚠ WHY THIS RULE EXISTS, MEASURED, 18 AUGUST 2026 ──────────────────────────────────────────────
+ * v0 (`ceecb88`, 16 Aug) had no folding and was faithful. `c89dea7` the next day added `FOR … NEXT`
+ * unrolling and, to make the substituted counter collapse, put a blanket `constEval` at the top of
+ * `emit()`. It was written for the counter and it applied to EVERYTHING. The damage measured on a
+ * racing car:
+ *
+ *   written    demand = eng * FE * 8 / TM
+ *   emitted    9620726745                       ← the engine, the force and the throttle, all gone
+ *
+ * ⇒ The decompiler could no longer show the car's setup, because the setup was not in the script.
+ * ⇒ And the round trip stopped closing: a one-tick car read back and recompiled to 78 B from 205 B.
+ * The reader is how this project CHECKS its own work, so a compiler that erases the program defeats
+ * the thing it was built to serve. **Scope creep from a real need is still scope creep.**
  */
 import { OP, type ScriptChunk } from '@bsv/sdk'
 import { Asm, fixedField, op, PN } from './covenantAsm.ts'
+
+/**
+ * ⚠ THE LIVE COMPILER'S VERSION. A script's bytes are a function of this, and a covenant cannot be
+ * amended — so a car minted under 1.0 races under 1.0 forever, whatever this file later becomes.
+ *
+ * ⇒ Changing the emitted bytes means a NEW VERSION, and per THE HARD RULE above, an optimisation goes
+ * to a beta that runs alongside this one. It does not edit this one. `1.0` is v0's faithful behaviour,
+ * restored 18 Aug after a day of folding: what the program says is what the script does.
+ */
+export const BASIC_VERSION = '1.0'
 
 /** 1.0 in this project's fixed point — 2^32, the battery's convention and the shell's. */
 export const BASIC_S = 2 ** 32
@@ -539,18 +581,23 @@ function emitProgram(
   }
 
   function emit(e: Expr): void {
-    /* ★ CONSTANT FOLDING, and in an unrolled loop it is not decoration. The counter is substituted into
-       every copy of the body, so `i * 3 + 1` is a whole subtree that is known at compile time on each of
-       the forty-five copies — three opcodes each, or one push. ⚠ Only inside the safe-integer range:
-       past it `snum` counts in doubles, so beyond that the ops are emitted and Script does it exactly. */
-    const k = constEval(e)
-    if (k !== undefined && k <= SAFE && k >= -SAFE) { a.num(Number(k)); return }
+    /* ⚠⚠ THERE IS NO CONSTANT FOLDING HERE, AND THERE MUST NOT BE — see THE HARD RULE at the top of
+       this file. `x = 2 * 3 + 4` emits a multiply and an add, not the number 10. What the program says
+       is what the script does; a compiler that quietly rewrites the arithmetic is not a compiler. */
     switch (e.t) {
       case 'num': a.num(Math.round(e.v)); return
       case 'var': {
-        if (loopVars.has(e.v)) {
-          throw new Error(`BASIC: the FOR counter ${e.v} has reached ${loopVars.get(e.v)}, which is past ` +
-            'what this compiler will push as a literal')
+        /* ★ A FOR COUNTER IS SUBSTITUTED, NOT FOLDED, and the difference is not pedantry. Script has no
+           backward jump, so an unrolled loop lays down one copy of the body per trip and the counter is
+           a different literal in each — that substitution IS what the loop means. The arithmetic AROUND
+           it still emits: `i * 3 + 1` is a push, a multiply, a push and an add, on every copy. */
+        const lv = loopVars.get(e.v)
+        if (lv !== undefined) {
+          if (lv > SAFE || lv < -SAFE) {
+            throw new Error(`BASIC: the FOR counter ${e.v} has reached ${lv}, which is past what this ` +
+              'compiler will push as a literal')
+          }
+          a.num(Number(lv)); return
         }
         if (Object.prototype.hasOwnProperty.call(consts, e.v)) { a.num(Math.round(consts[e.v])); return }
         a.pick(e.v, '_t')                                  // ⚠ throws by NAME if it is not on the stack
@@ -558,17 +605,28 @@ function emitProgram(
       }
       case 'neg': a.num(0); emit(e.e); a.bin(OP.OP_SUB, '_t'); return
       case 'bin': {
+        /* ⚠⚠ `^` IS THE ONE EXPRESSION THIS COMPILER MAY WORK OUT ITSELF, and the exception is forced
+           rather than chosen: SCRIPT HAS NO POWER OPCODE. There is no faithful emission to prefer — the
+           alternatives are a literal or nothing at all. Every other operator here has an opcode, so
+           every other operator emits. ⇒ The rule that governs this file in one line: FOLD ONLY WHAT
+           SCRIPT CANNOT EXPRESS. */
+        if (e.op === '^') {
+          const k = constEval(e)
+          if (k === undefined) {
+            throw new Error('BASIC: ^ is worked out at COMPILE time, and one side of this one is not ' +
+              'known until the script runs. Script has no power opcode, so there is nothing to emit — ' +
+              'use a FOR whose counter supplies the exponent.')
+          }
+          if (k > SAFE || k < -SAFE) {
+            throw new Error(`BASIC: ${k} is past what this compiler will push as a literal — beyond ` +
+              'the safe-integer range `snum` counts in doubles, and the script would carry a number ' +
+              'that is close to the answer rather than the answer')
+          }
+          a.num(Number(k)); return
+        }
         emit(e.l); emit(e.r)
         if (ARITH[e.op] !== undefined) { a.bin(ARITH[e.op], '_t'); return }
         if (CMP[e.op] !== undefined) { a.bin(CMP[e.op], '_t'); return }
-        /* ⚠ Reaching here with `^` means the fold did not happen, so one side is only known when the
-           script RUNS — and there is no opcode to fall back on. Saying that plainly is the whole
-           difference between a compile-time word and a broken one. */
-        if (e.op === '^') {
-          throw new Error('BASIC: ^ is worked out at COMPILE time, and one side of this one is not ' +
-            'known until the script runs. Script has no power opcode, so there is nothing to emit — ' +
-            'use a FOR whose counter supplies the exponent.')
-        }
         throw new Error(`BASIC: no opcode for ${e.op}`)
       }
       case 'call': {

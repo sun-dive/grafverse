@@ -417,6 +417,48 @@ console.log()
   check('★ a block that is never closed', m.includes('END IF'))
 }
 
+/* ══ ⚠⚠⚠ THE HARD RULE, ENFORCED — a comment is not a guard ═══════════════════════════════════════
+   THE COMPILED SCRIPT MUST SAY WHAT THE PROGRAM SAYS. A blanket constant fold was added on 17 Aug to
+   collapse the substituted FOR counter and was applied to every expression instead; the damage was
+   invisible until a racing car's `demand = eng * FE * 8 / TM` was found on chain as `9620726745` —
+   the engine, the force and the throttle all erased, so the decompiler could no longer show what the
+   car was. Restored 18 Aug. These checks exist so it cannot come back quietly. */
+console.log('\n══ THE HARD RULE — the script says what the program says ══\n')
+{
+  const arith = (src: string, env: Record<string, unknown> = { stack: [] }): number =>
+    compileBasic(src, env as never).ops
+      .filter(o => [OP.OP_ADD, OP.OP_SUB, OP.OP_MUL, OP.OP_DIV].includes(o.op as number)).length
+
+  check('★★★ `x = 2 * 3 + 4` emits a MULTIPLY and an ADD — not the number 10',
+    arith('x = 2 * 3 + 4') === 2)
+  check('★★★ a named constant is substituted, but the arithmetic around it still emits',
+    arith('x = K * 3 + 4', { stack: [], consts: { K: 2 } }) === 2)
+  check('★★ …and through a chain of assignments, every step emits',
+    arith('a = 2\nb = a * 2\nc = b * 2\nd = c * 2') === 3)
+  check('★★ a comparison of two known values is still CHECKED by the network',
+    compileBasic('a = 15\nVERIFY a > 10', { stack: [] }).ops.some(o => o.op === OP.OP_GREATERTHAN))
+
+  /* ⚠ THE ONE FORCED EXCEPTION, and it is forced rather than chosen: Script has no power opcode, so
+     for `^` the choice is a literal or no emission at all. Invaders' `2 ^ k` array depends on it. */
+  check('⚠ `^` is still worked out at COMPILE time — there is no power opcode to emit',
+    arith('x = 2 ^ 8') === 0)
+  {
+    let m = ''
+    try { compileBasic('x = 2 ^ r', { stack: ['r'] }) } catch (e) { m = (e as Error).message }
+    check('⚠ …and a runtime exponent is REFUSED, not silently approximated',
+      m.includes('no power opcode'))
+  }
+
+  /* ★ A FOR counter is SUBSTITUTED, not folded — one copy of the body per trip, the counter a literal
+     in each, and the arithmetic around it emitted every time. That is what the unroll means. */
+  check('★★★ an unrolled FOR substitutes the counter and EMITS the arithmetic around it',
+    arith('x = 0\nFOR i = 1 TO 4\nx = x + i * 3\nNEXT i') === 8)   // 4 trips x (one MUL, one ADD)
+  check('★ `2 ^ i` inside an unrolled FOR still folds — it is the array Script has no opcode for',
+    arith('x = 0\nFOR i = 0 TO 3\nx = x + 2 ^ i\nNEXT i') === 4)   // 4 ADDs, no MULs
+
+  console.log('        ⇒ fold only what Script CANNOT express. Optimisations go to a BETA version.')
+}
+
 console.log(`\n${pass}/${pass + fail} checks passed`)
 if (fail > 0) { console.error('BASIC: FAIL'); process.exit(1) }
 console.log('BASIC OK — a line of BASIC and the covenant compute the same number.')

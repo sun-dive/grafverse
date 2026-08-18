@@ -5,7 +5,13 @@
  * ⚠ SEPARATE FROM `grafmint.js` ON PURPOSE. grafmint is loaded by the game; this is a developer tool,
  * and a tool has no business adding bytes to a page a player downloads.
  */
-export { compileBasic, compileState, stateChunks, fieldMax, scriptCodeVarIntSize, BASIC_S } from './basic.ts'
+export {
+  compileBasic, compileState, stateChunks, fieldMax, scriptCodeVarIntSize, BASIC_S,
+  /* ⚠ EXPORTED SO THE LIVE PAGE CAN SAY WHICH COMPILER IT IS. A bundle is a build artefact and goes
+     stale silently: on 18 Aug the live one still folded `2 * 3 + 4` into `10` for a day after the
+     source was fixed, and nothing on the page could have told you. */
+  BASIC_VERSION,
+} from './basic.ts'
 export { unbasic, unbasicListing, readScriptNum } from './unbasic.ts'
 export { buildBasicLock, basicLockOps, basicUnlockingOps, frameMaxFee, valueBytes } from './basicCovenant.ts'
 export { Asm, op, PN, snum, fixedField } from './covenantAsm.ts'
