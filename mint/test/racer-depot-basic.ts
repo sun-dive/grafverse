@@ -64,13 +64,13 @@ function simulate(metres: number, tank: number): { run: RunTrace; finish: number
   let done = false
   for (let i = 0; i < 400; i++) {
     const r = refTick(st as never, { throttle: 8, fuel, lockTime: st.last + st.gap }, R)
-    /* ⚠⚠ A CAR CANNOT BUY A TICK IT CANNOT AFFORD. Without this the loop drives on with NEGATIVE
-       fuel; mass includes fuel, so a few ticks later the car weighs nothing and `refTick` refuses with
-       "a car cannot be massless" — true of the arithmetic and useless as an explanation, because the
-       real answer is that it ran dry. Measured 19 Aug on the live page: eng 14 · tyr 10 · 5,000 fuel
-       reported a missing mass when it had simply run out after seven ticks. */
-    if (r.burn > fuel) break
-    fuel -= r.burn
+    /* ⚠⚠ CLAMP AT EMPTY — DO NOT STOP. A dry car COASTS: with no propellant the throttle is forced
+       shut and it rolls on, slowing on drag. `shell.ts` says so, and since the fee left the loop the
+       fuel is a GAME quantity rather than a balance.
+       ⚠ Breaking out here is a rule from the CHAINED design, where a tick really was bought, and it
+       forbids the best strategy in this one: 30,000 fuel finishes 402 m in 5.40 s where 40,000 takes
+       6.00 s, because less fuel is less mass. Under-fuelling is a DECISION. */
+    fuel = Math.max(0, fuel - r.burn)
     ticks.push({ throttle: 8, spun: r.spun })
     st = { ...(r.state as never as Record<string, number>), last: st.last + st.gap }
     if (st.phase === PHASE.DONE) { done = true; break }

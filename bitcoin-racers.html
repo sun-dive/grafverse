@@ -442,12 +442,16 @@
     var fuel = s.fuel, ticks = [], done = false, ending = 'finish', trace = [];
     for(var i=0;i<400;i++){
       var r = M.refTick(st, { throttle:s.throttle, fuel:fuel, lockTime:st.last+st.gap }, R);
-      /* ⚠⚠ A CAR CANNOT BUY A TICK IT CANNOT AFFORD. Without this the loop drives on with NEGATIVE
-         fuel, mass goes to zero a few ticks later, and `refTick` refuses with "a car cannot be
-         massless" — which is true of the arithmetic and useless as an explanation. The honest answer
-         is that it ran dry, and that is a different sentence with a different fix. */
-      if(r.burn > fuel) break;
-      fuel -= r.burn; ticks.push({ throttle:s.throttle, spun:r.spun });
+      /* ⚠⚠ CLAMP AT EMPTY — DO NOT STOP. A dry car COASTS: with no propellant the throttle is forced
+         shut and it rolls on, slowing on drag, which is what a real one does. `shell.ts` says so
+         directly, and `racerCar.ts` adds that since the fee left the loop the fuel is a GAME quantity
+         rather than a balance.
+         ⚠ An earlier version broke out of the loop when the tank could not pay for a tick — a rule
+         imported from the CHAINED design, where a tick really was bought. Here it forbade the best
+         strategy in the game: measured 19 Aug, 30,000 fuel finishes 402 m in 5.40 s where 40,000
+         takes 6.00 s, because less fuel is less mass. Under-fuelling is a DECISION, not an error. */
+      fuel = Math.max(0, fuel - r.burn);
+      ticks.push({ throttle:s.throttle, spun:r.spun });
       st = Object.assign({}, r.state, { last: st.last + st.gap });
       trace.push({ s: st.s, v: st.v });
       if(r.ended === 'off'){ ending='off'; done=true; break }
