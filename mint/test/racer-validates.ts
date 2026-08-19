@@ -14,7 +14,11 @@ import { LockingScript, PrivateKey, Hash, P2PKH } from '@bsv/sdk'
 import { raceValidates, assertRaceable, buildRaceTx } from '../src/racerTx.ts'
 import { buildRacerCar, racerCarFee, carBlockOps, feeConstant, CAR_BYTES_MIN } from '../src/racerCar.ts'
 import { type TickTrace, type RunTrace } from '../src/racerTick.ts'
-import { RACER_REGS as R, S, SLIP_UNIT, PHASE, refTick } from '../src/shell.ts'
+/* ⚠ THE ONE-RACE CAR'S PHYSICS LIVES IN ITS OWN FILE. `shell.ts` is bundled into BOTH live
+   bundles — grafmint.js (six pages) and, via grafbasic.ts, grafbasic.js (basic.html) — so the
+   racers must not put anything in it. → src/racerPhysics.ts, and §6j. */
+import { S, SLIP_UNIT, PHASE } from '../src/shell.ts'
+import { ONE_RACE_REGS as R, racerRefTick as refTick, RACER_PHASE } from '../src/racerPhysics.ts'
 
 let pass = 0, fail = 0
 const check = (n: string, got: boolean, want = true): void => {
@@ -43,8 +47,10 @@ function simulate(metres: number, eng = 14, tyr = 10, tank = 40000): { run: RunT
   for (let i = 0; i < 400; i++) {
     const r = refTick(st as never, { throttle: 8, fuel, lockTime: st.last + st.gap }, R)
     fuel -= r.burn
-    ticks.push({ throttle: 8, spun: r.spun })
+    ticks.push({ throttle: r.throttle, spun: r.spun })
     st = { ...(r.state as never as Record<string, number>), last: st.last + st.gap }
+    /* ★ the fifth ending — dry and provably short of the line. Legal; no time, no leaderboard row. */
+    if (r.ended === 'stopped') { ending = 'stopped'; break }
     if (r.ended === 'off') { ending = 'off'; break }
     if (r.ended === 'blown') { ending = r.spun ? 'blown-throttle' : 'blown-speed'; break }
     if (st.phase === PHASE.DONE) break
@@ -88,10 +94,33 @@ console.log('THE GATE — every check provoked, because a gate that has only eve
 {
   const OLD_CONSTANT = 64 + 3 + 156 + PAYEE.length + 9        // what it used to compute: 257
   const NEW_CONSTANT = feeConstant(PAYEE.length)              // what it computes now:    255
-  const fee = racerCarFee(CAR).fee
-  const car = buildRacerCar({ ...CAR, fee }).toBinary()
-  const oldFee = Math.floor((3 + car.length + OLD_CONSTANT) / 10)
-  const newFee = Math.floor((3 + car.length + NEW_CONSTANT) / 10)
+
+  /* ⚠⚠ SWEEP FOR THE CAR THAT EXPOSES IT — DO NOT SAMPLE ONE AND HOPE. The two constants differ by
+     TWO, so they produce different fees only when the car's length lands in the right residue class
+     mod 10 — two sizes in ten. This block used to use the default 402 m car and passed only because
+     THAT car happened to land there; model C moved the per-tick emission and the demonstration
+     silently stopped demonstrating anything (both fees came out 1,291, and the check went red).
+     ⇒ A test that rests on an accident of size will lie again the next time a car changes shape.
+
+     ⚠ AND SWEEPING THE DISTANCE ALONE DOES NOT WORK, measured: one more metre is one more TICK, a tick
+     is ~230 B, and 230 ≡ 0 mod 10 — so the residue never moves however far you walk. The ENGINE is what
+     moves it, because it changes both the tick count and which ticks spin. All ten residues are
+     reachable across eng; 23 of 105 swept shapes expose the difference. */
+  let probe = CAR, oldFee = 0, newFee = 0, found = ''
+  outer: for (const eng of [8, 10, 12, 14, 16, 18, 20]) {
+    for (const metres of [402, 300, 200, 100]) {
+      const { run, finish } = simulate(metres, eng)
+      const c = { ...CAR, run, cfg: { ...CFG, eng, finish } }
+      const bytes = buildRacerCar({ ...c, fee: racerCarFee(c).fee }).toBinary().length
+      const o = Math.floor((3 + bytes + OLD_CONSTANT) / 10)
+      const w = Math.floor((3 + bytes + NEW_CONSTANT) / 10)
+      if (o === w + 1) { probe = c; oldFee = o; newFee = w; found = `${metres} m · eng ${eng} · ${bytes} B`; break outer }
+    }
+  }
+  check('⚠ the sweep found a car shape that exposes the old constant at all', found !== '')
+  const fee = racerCarFee(probe).fee
+  const car = buildRacerCar({ ...probe, fee }).toBinary()
+  console.log(`        (swept eng × distance; ${found} is a car whose length exposes it)`)
 
   console.log(`\n        feeConstant was ${OLD_CONSTANT}, is now ${NEW_CONSTANT} for a ${PAYEE.length} B payee`)
   console.log(`        ⇒ the car would have demanded ${oldFee}; it is funded ${newFee}`)

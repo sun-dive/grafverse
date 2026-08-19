@@ -19,10 +19,12 @@ import {
 } from '../src/racerCar.ts'
 import { optimizeCarCompile } from '../src/optimizeCarCompile.ts'
 import { type TickTrace, type Ending, type RunTrace } from '../src/racerTick.ts'
+/* ⚠ The one-race car's physics lives in its own file — `shell.ts` is bundled into BOTH live bundles
+   and the racers must not put anything in it. → src/racerPhysics.ts, and §6j. */
 import {
-  RACER_REGS as R, S, SLIP_UNIT, PHASE, refTick, buildShellLock, shellMaxFee, PUBLIC_CAR_REGS,
-  SHELL_WORST_MOVE_BYTES,
+  S, SLIP_UNIT, PHASE, buildShellLock, shellMaxFee, PUBLIC_CAR_REGS, SHELL_WORST_MOVE_BYTES,
 } from '../src/shell.ts'
+import { ONE_RACE_REGS as R, racerRefTick as refTick, RACER_PHASE } from '../src/racerPhysics.ts'
 import { freshPublicShell } from '../src/publicShell.ts'
 import { buildDepotLock } from '../src/depot.ts'
 import { unbasicListing } from '../src/unbasic.ts'
@@ -72,8 +74,10 @@ for (let i = 0; i < 400; i++) {
      forbids the best strategy in this one: 30,000 fuel finishes 402 m in 5.40 s where 40,000 takes
      6.00 s, because less fuel is less mass. Under-fuelling is a DECISION. */
   fuel = Math.max(0, fuel - r.burn)
-  ticks.push({ throttle: THROTTLE, spun: r.spun })
+  ticks.push({ throttle: r.throttle, spun: r.spun })
   st = { ...(r.state as never as Record<string, number>), last: st.last + st.gap }
+  /* ★ the fifth ending — dry and provably short of the line. Legal; no time, no leaderboard row. */
+  if (r.ended === 'stopped') { ending = 'stopped'; break }
   if (r.ended === 'off') { ending = 'off'; break }
   if (r.ended === 'blown') { ending = r.spun ? 'blown-throttle' : 'blown-speed'; break }
   if (st.phase === PHASE.DONE) { ending = 'finish'; break }

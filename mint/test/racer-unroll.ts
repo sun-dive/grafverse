@@ -17,7 +17,12 @@
 import { Spend, LockingScript, UnlockingScript, OP } from '@bsv/sdk'
 import { compileBasic } from '../src/basic.ts'
 import { tickLoopSrc, TICK_STACK } from '../src/racerTick.ts'
-import { RACER_REGS as R, S, SLIP_UNIT, PHASE, refTick } from '../src/shell.ts'
+/* ⚠ ONE_RACE_REGS, not RACER_REGS — the unrolled program is the ONE-RACE car's and carries model C. */
+/* ⚠ THE ONE-RACE CAR'S PHYSICS LIVES IN ITS OWN FILE. `shell.ts` is bundled into BOTH live
+   bundles — grafmint.js (six pages) and, via grafbasic.ts, grafbasic.js (basic.html) — so the
+   racers must not put anything in it. → src/racerPhysics.ts, and §6j. */
+import { S, SLIP_UNIT, PHASE } from '../src/shell.ts'
+import { ONE_RACE_REGS as R, racerRefTick as refTick, RACER_PHASE } from '../src/racerPhysics.ts'
 import { op, PN } from '../src/covenantAsm.ts'
 
 let pass = 0, fail = 0
@@ -30,6 +35,7 @@ const CONSTS = {
   DRAG: R.DRAG, DRAG2: R.DRAG2, BLOW_V: R.BLOW_V, RESERVE: R.RESERVE, SPIN_KEEP: R.SPIN_KEEP,
   LOOSE_V: R.LOOSE_V, BLOW_T: R.BLOW_T, TM: R.THROTTLE_MAX, BURN0: R.BURN0, BURN_E: R.BURN_E,
   SLIP: SLIP_UNIT, S, P_RACING: PHASE.RACING, P_DONE: PHASE.DONE, P_OUT: PHASE.OUT,
+  P_STOPPED: RACER_PHASE.STOPPED, COAST_STOP: R.COAST_STOP,
 }
 
 const ST0 = {

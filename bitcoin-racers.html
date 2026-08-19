@@ -10,7 +10,8 @@
      © 2026 sun-dive · Open BSV License v6.
 
      ⚠ IT RUNS THE EXACT CODE THE COVENANT IS VALIDATED AGAINST — mint/src/racerCar.ts and
-     mint/src/racerDepotFrame.ts through vendor/grafmint.js. Nothing here reimplements the physics, and
+     mint/src/racerDepotFrame.ts through vendor/grafracers.js — THIS PAGE'S OWN BUNDLE, so racers work
+     never rebuilds one another page loads. Nothing here reimplements the physics, and
      nothing here holds a key.
 
      ⚠⚠ THIS PAGE REPLACED A MOCKUP OF THE CHAINED DESIGN. That one raced a car that persisted and was
@@ -253,11 +254,25 @@
 
   function gm(){
     if(GM) return Promise.resolve(GM);
-    if(window.GrafMint){ GM = window.GrafMint; return Promise.resolve(GM) }
+    if(window.GrafRacers){ GM = window.GrafRacers; return Promise.resolve(GM) }
     return new Promise(function(res, rej){
-      var s = document.createElement('script'); s.src = '/vendor/grafmint.js';
-      s.onload = function(){ GM = window.GrafMint; res(GM) };
-      s.onerror = function(){ rej(Error('could not load grafmint.js — serve this page, do not open the file')) };
+      /* ⚠ CACHE-BUST. Every other page loads this bare, and that was survivable while the bundle only
+         ever gained things. It is not now: a visitor holding a bundle from before 20 Aug has no
+         `ONE_RACE_REGS`, and this page's physics would come out `undefined` rather than wrong-but-
+         plausible. Bump this whenever the physics moves. */
+      var s = document.createElement('script'); s.src = '/vendor/grafracers.js?v=20260820';
+      s.onload = function(){
+        GM = window.GrafRacers;
+        /* ⚠⚠ SAY IT PLAINLY RATHER THAN FAIL OBSCURELY. A stale bundle is a cached file, not a bug in
+           this page, and "cannot read AERO_BY_MASS of undefined" sends the reader somewhere useless.
+           A wrong name is worse than a stop, because a stop is visible. */
+        if(!GM || !GM.ONE_RACE_REGS){
+          rej(Error('grafracers.js is STALE — it has no ONE_RACE_REGS, so it predates the model C physics. Hard-reload this page.'));
+          return;
+        }
+        res(GM);
+      };
+      s.onerror = function(){ rej(Error('could not load grafracers.js — serve this page, do not open the file')) };
       document.head.appendChild(s);
     });
   }
@@ -415,7 +430,11 @@
      provisional numbers would disagree with the covenant about how fast it is, and the covenant is the
      one that decides. */
   function physics(M){
-    var R = M.RACER_REGS;
+    /* ⚠ ONE_RACE_REGS, not RACER_REGS. This page builds ONE-RACE cars, which carry model C — the
+       aerodynamic term divides by mass, so a heavy car coasts further — and the closed-form `stopped`
+       ending. RACER_REGS still describes the deployed CHAINED car, whose physics is hand-emitted
+       Script and cannot change. → §6j */
+    var R = M.ONE_RACE_REGS;
     return { M0:R.M0, WE:R.WE, WT:R.WT, WF:R.WF, FE:R.FE, G0:R.G0, GV:R.GV, DRAG:R.DRAG, DRAG2:R.DRAG2,
              BLOW_V:R.BLOW_V, SPIN_KEEP:R.SPIN_KEEP, LOOSE_V:R.LOOSE_V, TM:R.THROTTLE_MAX,
              BURN0:R.BURN0, BURN_E:R.BURN_E, SLIP:M.SLIP_UNIT, S:M.S };
@@ -425,7 +444,7 @@
              metres:+$('fin').value, fuel:+$('tank').value, throttle:8 };
   }
   /**
-   * ⚠ `refTick` REFUSES rather than returning nonsense — "a car cannot be massless" for an engine and
+   * ⚠ `racerRefTick` REFUSES rather than returning nonsense — "a car cannot be massless" for an engine and
    * tyre combination that has no mass to push. That is the reference being honest, and the page must
    * catch it: an uncaught throw here kills `replan()`, and the panel then shows the LAST valid setup
    * while the sliders say something else. A stale number that looks live is worse than an error.
@@ -433,15 +452,18 @@
   function simulate(M, s){
     try { return simulateUnsafe(M, s) }
     catch(e){ return { refused: (e && e.message) || 'the reference refuses this car',
-                       run:{ ticks:[], ending:'finish' }, finish:0, dry:true, secs:0, mph:0, trace:[] } }
+                       run:{ ticks:[], ending:'finish' }, finish:0, unfinished:true, secs:0, mph:0, trace:[] } }
   }
   function simulateUnsafe(M, s){
-    var R = M.RACER_REGS, S = M.S, finish = Math.round(s.metres * S);
+    var R = M.ONE_RACE_REGS, S = M.S, finish = Math.round(s.metres * S);
     var st = { phase:M.PHASE.RACING, driver:new Array(20).fill(0), pool:new Array(36).fill(0),
                eng:s.eng, tyr:s.tyr, finish:finish, slip:s.slip, green:0, gap:1, last:100, s:0, v:0, n:0 };
     var fuel = s.fuel, ticks = [], done = false, ending = 'finish', trace = [];
     for(var i=0;i<400;i++){
-      var r = M.refTick(st, { throttle:s.throttle, fuel:fuel, lockTime:st.last+st.gap }, R);
+      /* ⚠ racerRefTick, NOT refTick. The shell's tick is model A and describes the DEPLOYED chained
+         car; this page races ONE-RACE cars, which carry model C and the closed-form `stopped`
+         ending. → src/racerPhysics.ts */
+      var r = M.racerRefTick(st, { throttle:s.throttle, fuel:fuel, lockTime:st.last+st.gap }, R);
       /* ⚠⚠ CLAMP AT EMPTY — DO NOT STOP. A dry car COASTS: with no propellant the throttle is forced
          shut and it rolls on, slowing on drag, which is what a real one does. `shell.ts` says so
          directly, and `racerCar.ts` adds that since the fee left the loop the fuel is a GAME quantity
@@ -451,16 +473,26 @@
          strategy in the game: measured 19 Aug, 30,000 fuel finishes 402 m in 5.40 s where 40,000
          takes 6.00 s, because less fuel is less mass. Under-fuelling is a DECISION, not an error. */
       fuel = Math.max(0, fuel - r.burn);
-      ticks.push({ throttle:s.throttle, spun:r.spun });
+      /* ⚠ r.throttle, NOT s.throttle — the EFFECTIVE throttle. A dry tick applies zero however
+         hard the pedal was pressed, and a trace recording the REQUEST compiles a car that keeps
+         accelerating where the simulated one coasted. That is what made dry cars unraceable. */
+      ticks.push({ throttle:r.throttle, spun:r.spun });
       st = Object.assign({}, r.state, { last: st.last + st.gap });
       trace.push({ s: st.s, v: st.v });
+      /* ★ the fifth ending: dry, and provably short of the line. Legal — but no time and no row. */
+      if(r.ended === 'stopped'){ ending='stopped'; done=true; break }
       if(r.ended === 'off'){ ending='off'; done=true; break }
       if(r.ended === 'blown'){ ending = r.spun ? 'blown-throttle' : 'blown-speed'; done=true; break }
       if(st.phase === M.PHASE.DONE){ done=true; break }
     }
     /* ⚠ THE ENDING IS REPORTED, NOT ASSUMED. A run that goes dry described as a finish is a lie to the
        compiler, and the optimiser refuses to certify it — correctly. */
-    return { run:{ ticks:ticks, ending:ending }, finish:finish, dry:!done,
+    /* ⚠ `unfinished` is the 400-tick fuse blowing, NOT the tank emptying — three different things
+       were once called "dry" here and it cost an hour: a dry RUN (fuel hits zero and the car coasts,
+       which is legal and often the fast setup), UNFINISHED (below), and a dry BUILD in the CLI sense.
+       ★ With COAST_STOP this should now be unreachable: a car that cannot cross proves itself
+       `stopped` instead, so this is a safety net rather than an outcome. → §6j */
+    return { run:{ ticks:ticks, ending:ending }, finish:finish, unfinished:!done,
              secs:ticks.length/10, mph:(st.v/S)*2.23694*10, trace:trace };
   }
 
@@ -470,7 +502,7 @@
     $('v-eng').textContent = s.eng; $('v-tyr').textContent = s.tyr;
     $('v-tank').textContent = n(s.fuel); $('v-fin').textContent = s.metres + ' m';
     $('v-slip').textContent = s.slip;
-    if(sim.dry){
+    if(sim.unfinished){
       PLAN = null;
       $('p-ticks').textContent = '—'; $('p-mph').textContent = '—';
       $('p-bytes').textContent = '—'; $('p-fee').textContent = '—';
@@ -511,7 +543,8 @@
       '<b>a faster setup is a cheaper transaction</b>.';
     /* ★ Say the ending in the panel too, so a wreck is visible BEFORE it is minted rather than after. */
     $('p-et').textContent = sim.secs.toFixed(2) + ' s · ' +
-      ({ 'off':'goes off the track', 'blown-throttle':'blows the engine', 'blown-speed':'blows the engine' }[sim.run.ending] || 'gets home');
+      ({ 'off':'goes off the track', 'blown-throttle':'blows the engine', 'blown-speed':'blows the engine',
+         'stopped':'runs dry and rolls to a halt' }[sim.run.ending] || 'gets home');
     $('p-mph').textContent = sim.run.ending === 'finish' ? Math.round(sim.mph) + ' mph' : '—';
     $('p-bytes').textContent = rep ? (n(rep.lockBytes) + ' B' + (faithful ? ' · unoptimised' : '')) : '—';
     $('p-fee').textContent = rep ? n(rep.fee + 1) + ' sat' : '—';
@@ -570,6 +603,9 @@
       case 'off':            return ['💨 OFF THE TRACK after ' + t + ' s — it broke traction and was gone', 'no'];
       case 'blown-throttle': return ['💥 ENGINE LET GO after ' + t + ' s — too much throttle for the grip', 'no'];
       case 'blown-speed':    return ['💥 ENGINE LET GO after ' + t + ' s — past what the machinery takes', 'no'];
+      /* ★ Not a wreck and not a win. The car ran out of fuel and coasted to a halt short of the line —
+         a legal outcome with no time and no leaderboard row. Say what happened, not "failed". */
+      case 'stopped':        return ['⛽ OUT OF FUEL — rolled to a halt short of the line. No time recorded', 'warn'];
       default:               return ['🏁 HOME in ' + t + ' s over ' + metres + ' m · 1 sat home', 'ok'];
     }
   }

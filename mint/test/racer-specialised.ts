@@ -12,7 +12,11 @@
 import { Spend, LockingScript, UnlockingScript, OP } from '@bsv/sdk'
 import { compileBasic } from '../src/basic.ts'
 import { specialiseRun, type TickTrace, type Ending, type RunTrace } from '../src/racerTick.ts'
-import { RACER_REGS as R, S, SLIP_UNIT, PHASE, refTick } from '../src/shell.ts'
+/* ⚠ THE ONE-RACE CAR'S PHYSICS LIVES IN ITS OWN FILE. `shell.ts` is bundled into BOTH live
+   bundles — grafmint.js (six pages) and, via grafbasic.ts, grafbasic.js (basic.html) — so the
+   racers must not put anything in it. → src/racerPhysics.ts, and §6j. */
+import { S, SLIP_UNIT, PHASE } from '../src/shell.ts'
+import { ONE_RACE_REGS as R, racerRefTick as refTick, RACER_PHASE } from '../src/racerPhysics.ts'
 import { op, PN } from '../src/covenantAsm.ts'
 
 let pass = 0, fail = 0
@@ -44,8 +48,10 @@ function simulate(cfg: Partial<typeof ST0> = {}, throttle = THROTTLE):
   for (let i = 0; i < 400; i++) {
     const r = refTick(st as never, { throttle, fuel, lockTime: st.last + st.gap }, R)
     fuel -= r.burn
-    ticks.push({ throttle, spun: r.spun })
+    ticks.push({ throttle: r.throttle, spun: r.spun })
     st = { ...(r.state as never as typeof ST0), last: st.last + st.gap }
+    /* ★ the fifth ending — dry and provably short of the line. Legal; no time, no leaderboard row. */
+    if (r.ended === 'stopped') { ending = 'stopped'; break }
     if (r.ended === 'off') { ending = 'off'; break }
     if (r.ended === 'blown') { ending = r.spun ? 'blown-throttle' : 'blown-speed'; break }
     if (st.phase === PHASE.DONE) { ending = 'finish'; break }
@@ -117,7 +123,7 @@ check('★★ it crossed the line', sim.s >= FINISH)
     for (let i = 0; i < 400; i++) {
       const r = refTick(st as never, { throttle, fuel, lockTime: st.last + st.gap }, R)
       fuel -= r.burn
-      ticks.push({ throttle, spun: r.spun })
+      ticks.push({ throttle: r.throttle, spun: r.spun })
       st = { ...(r.state as never as typeof st), last: st.last + st.gap }
       if (r.ended === 'off') { ending = 'off'; break }
       if (r.ended === 'blown') { ending = r.spun ? 'blown-throttle' : 'blown-speed'; break }

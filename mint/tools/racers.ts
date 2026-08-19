@@ -33,10 +33,14 @@ import {
 import { buildRacerDepotBasicLock, racerDepotMaxFee, RACER_WINDOW_SECONDS, RACER_MINTS_PER_WINDOW } from '../src/racerDepotFrame.ts'
 import { RACER_DRAW, RACER_MAX_CAR_BYTES } from '../src/racerDepot.ts'
 import { buildRacerCar, racerCarFee, carBlockOps } from '../src/racerCar.ts'
-import { buildRaceTx, assertRaceable } from '../src/racerTx.ts'
+import { buildRaceTx, assertRaceable, type RaceReport } from '../src/racerTx.ts'
 import { buildDepotUnlock, DEPOT_SCOPE } from '../src/depot.ts'
 import { derivedSigIsLowS } from '../src/pushtx.ts'
-import { RACER_REGS as R, S, SLIP_UNIT, PHASE, refTick } from '../src/shell.ts'
+/* ⚠ THE ONE-RACE CAR'S PHYSICS LIVES IN ITS OWN FILE. `shell.ts` is bundled into BOTH live
+   bundles — grafmint.js (six pages) and, via grafbasic.ts, grafbasic.js (basic.html) — so the
+   racers must not put anything in it. → src/racerPhysics.ts, and §6j. */
+import { S, SLIP_UNIT, PHASE } from '../src/shell.ts'
+import { ONE_RACE_REGS as R, racerRefTick as refTick, RACER_PHASE } from '../src/racerPhysics.ts'
 import { type TickTrace, type RunTrace } from '../src/racerTick.ts'
 
 const WOC = 'https://api.whatsonchain.com/v1/bsv/main'
@@ -76,9 +80,19 @@ const serOut = (v: number, s: number[]): number[] => [...u64(v), ...varint(s.len
 const bar = (s: string): void => console.log(`\n\x1b[1m${s}\x1b[0m`)
 
 /* ── THE RUN, SIMULATED BEFORE ANYTHING EXISTS ───────────────────────────────────────────────────
-   ⚠ The ending is REPORTED, never assumed. A run that goes dry and is described as a finish is a lie
-   to the compiler, and `optimizeCarCompile` refuses to certify it — correctly. */
-function simulate(metres: number, tank: number): { run: RunTrace; finish: number; dry: boolean; secs: number } {
+   ⚠ The ending is REPORTED, never assumed. The script IS the run, so a trace that says `finish` and
+   does not reach the line compiles into a car the covenant will refuse — and there is no key to
+   rescue it with.
+
+   ⚠⚠ "DRY" MEANT THREE THINGS IN THIS FILE AND THAT COST AN HOUR. They are separated now:
+     · a dry RUN   — the fuel reaches zero and the car COASTS. Common, legal, often the fast setup,
+                     and the only thing `optimizeCarCompile` refuses (see the fallback in `buildMint`).
+     · UNFINISHED  — the field below: neither crossed nor wrecked before the tick fuse. Still rolling.
+     · a dry BUILD — the CLI sense: `--run` without `--broadcast`, which sends nothing. */
+const TICK_FUSE = 400
+
+function simulate(metres: number, tank: number):
+  { run: RunTrace; finish: number; unfinished: boolean; secs: number } {
   const finish = Math.round(metres * S)
   let st: Record<string, number> = {
     phase: PHASE.RACING, driver: new Array(20).fill(0) as never, pool: new Array(36).fill(0) as never,
@@ -88,7 +102,7 @@ function simulate(metres: number, tank: number): { run: RunTrace; finish: number
   const ticks: TickTrace[] = []
   let ending: RunTrace['ending'] = 'finish'
   let done = false
-  for (let i = 0; i < 400; i++) {
+  for (let i = 0; i < TICK_FUSE; i++) {
     const r = refTick(st as never, { throttle: 8, fuel, lockTime: st.last + st.gap }, R)
     /* ⚠⚠ CLAMP AT EMPTY — DO NOT STOP. A dry car COASTS: with no propellant the throttle is forced
        shut and it rolls on, slowing on drag. `shell.ts` says so, and since the fee left the loop the
@@ -97,13 +111,17 @@ function simulate(metres: number, tank: number): { run: RunTrace; finish: number
        forbids the best strategy in this one: 30,000 fuel finishes 402 m in 5.40 s where 40,000 takes
        6.00 s, because less fuel is less mass. Under-fuelling is a DECISION. */
     fuel = Math.max(0, fuel - r.burn)
-    ticks.push({ throttle: 8, spun: r.spun })
+    ticks.push({ throttle: r.throttle, spun: r.spun })
     st = { ...(r.state as never as Record<string, number>), last: st.last + st.gap }
+    /* ★ the fifth ending — dry and provably short of the line. Legal; no time, no leaderboard row. */
+    if (r.ended === 'stopped') { ending = 'stopped'; done = true; break }
     if (r.ended === 'off') { ending = 'off'; done = true; break }
     if (r.ended === 'blown') { ending = r.spun ? 'blown-throttle' : 'blown-speed'; done = true; break }
     if (st.phase === PHASE.DONE) { done = true; break }
   }
-  return { run: { ticks, ending }, finish, dry: !done, secs: ticks.length / 10 }
+  /* ⚠ `unfinished` is the fuse blowing, not the tank emptying. Drag is proportional to v and v², so a
+     coasting car approaches zero and never reaches it — it is STILL ROLLING when the fuse blows. */
+  return { run: { ticks, ending }, finish, unfinished: !done, secs: ticks.length / 10 }
 }
 
 /** The scripts a depot and its cars are built from — all of them from ONE key. */
@@ -139,7 +157,11 @@ function pastWindow(nowSecs: number): number {
 }
 
 /* ── THE MINT ─────────────────────────────────────────────────────────────────────────────────── */
-interface MintBuild { tx: Transaction; spend: Spend; car: number[]; carFee: number; ground: number }
+interface MintBuild {
+  tx: Transaction; spend: Spend; car: number[]; carFee: number; ground: number
+  /** ★ Which build was minted. A dry run falls back to the faithful one, and that must be VISIBLE. */
+  optimised: boolean
+}
 
 function buildMint(o: {
   key: PrivateKey; depotTx: Transaction; depotVout: number; depotValue: number
@@ -147,14 +169,55 @@ function buildMint(o: {
 }): MintBuild {
   const { owner, payee, block } = scriptsFor(o.key)
   const sim = simulate(TRACK, FUEL)
-  if (sim.dry) throw new Error(`racers: a ${TRACK} m run on ${n(FUEL)} fuel never crosses the line — raise --fuel`)
+  if (sim.unfinished) {
+    throw new Error(`racers: a ${TRACK} m run on ${n(FUEL)} fuel is still rolling after ${TICK_FUSE} ` +
+      'ticks — it neither crosses the line nor wrecks, and there is no `stopped` ending to compile it ' +
+      'as. Raise --fuel.')
+  }
   const cfg = { name: NAME, fuel: FUEL, eng: ENG, tyr: TYR, slip: SLIP, finish: sim.finish }
-  const carParams = { cfg, run: sim.run, depotScript: payee, consts: PHYS, optimise: true }
+  const carParams = { cfg, run: sim.run, depotScript: payee, consts: PHYS }
 
   /* ⚠⚠ THE GATE. A car the covenant refuses is unrecoverable, because there is no key to rescue it
-     with. This throws rather than returning, so it cannot be ignored by accident. */
-  const report = assertRaceable(carParams, HOME)
-  const car = buildRacerCar({ ...carParams, fee: report.fee }).toBinary()
+     with. This throws rather than returning, so it cannot be ignored by accident.
+
+     ★★ A REFUSAL FROM THE OPTIMISER MEANS "DO NOT OPTIMISE", NOT "DO NOT RACE."
+     `optimizeCarCompile` proves its hoisting against the faithful build before emitting anything, and
+     on a run whose fuel reaches zero it cannot read `v` back out — so it refuses rather than certify
+     an optimisation nobody has checked. That is the self-proof doing exactly its job, and the honest
+     response is to try the FAITHFUL build rather than give up on the car.
+     ⚠⚠ THE FALLBACK DOES NOT WEAKEN THE GATE. The faithful car goes through the SAME `assertRaceable`
+     — interpreter and all — and a car that fails BOTH builds still throws, carrying both refusals so
+     neither is hidden behind the other.
+
+     ⚠⚠⚠ AND TODAY IT FAILS BOTH, WHICH IS WHY THE DOUBLE REFUSAL IS WORTH PRINTING. MEASURED
+     20 Aug by sweeping fuel at 402 m (eng 14 · tyr 10 · slip 1000): EVERY car whose tank reaches zero
+     is refused on BOTH builds — optimised throws, faithful is refused by the interpreter with
+     `OP_VERIFY requires the top stack value to be truthy`. Every car that never goes dry races on
+     both. The boundary is the DRY TICK, not the optimiser.
+     ⇒ The cause is structural and is in `specialiseRun` (`racerTick.ts:158`), which was written for a
+     run whose fuel never reaches zero and encodes that in three places:
+       · `VERIFY fuel > 0` on EVERY tick — a rule from the CHAINED design, where a tick was bought
+       · `demand`/`burn` use the trace's LITERAL throttle, where the reference forces `th = 0` when
+         `prop <= 0` (`TICK_SRC` lines 30/39) — so the compiled car keeps accelerating where the
+         simulated one coasts
+       · `fuel = fuel - burn` unclamped, where the harness clamps at `MAX(0, …)`
+     ⇒ So the fallback is the right SHAPE and is not yet the fix. Until the specialiser can express a
+     dry tick, this turns one misleading refusal into two honest ones. → `~/Documents/TODO.md`. */
+  let optimised = true
+  let report: RaceReport
+  try {
+    report = assertRaceable({ ...carParams, optimise: true }, HOME)
+  } catch (eOpt) {
+    optimised = false
+    try {
+      report = assertRaceable({ ...carParams, optimise: false }, HOME)
+    } catch (eFaithful) {
+      throw new Error('racers: NEITHER BUILD OF THIS CAR CAN BE RACED — nothing was funded.\n' +
+        `  · optimised: ${(eOpt as Error).message}\n` +
+        `  · faithful:  ${(eFaithful as Error).message}`)
+    }
+  }
+  const car = buildRacerCar({ ...carParams, optimise: optimised, fee: report.fee }).toBinary()
   const paid = report.fee + HOME
   if (paid > RACER_DRAW) throw new Error(`racers: a car needs ${n(paid)} sat, over DRAW ${n(RACER_DRAW)}`)
   if (car.length > RACER_MAX_CAR_BYTES) {
@@ -203,7 +266,7 @@ function buildMint(o: {
       lockingScript: DEPOT, transactionVersion: 2, otherInputs: [], outputs: tx.outputs,
       unlockingScript: unlock, inputSequence: 0xfffffffe, inputIndex: 0, lockTime,
     })
-    return { tx, spend, car, carFee: report.fee, ground }
+    return { tx, spend, car, carFee: report.fee, ground, optimised }
   }
   throw new Error(`racers: no canonical signature in ${RACER_WINDOW_SECONDS} nLockTime candidates — ` +
     'that should be impossible at a 50% base rate, so something is wrong with the grind')
@@ -308,7 +371,9 @@ async function selftest(): Promise<never> {
 
   bar('3 · THE MINT')
   const m = buildMint({ key, depotTx: genesis, depotVout: 0, depotValue: TANK, window: win, lowS: true })
-  console.log(`     car ${n(m.car.length)} B · funded ${n(m.carFee + HOME)} sat · mint tx ${n(m.tx.toBinary().length)} B`)
+  console.log(`     car ${n(m.car.length)} B${m.optimised ? '' : ' · UNOPTIMISED (the run goes dry, so ' +
+    'the optimiser will not certify it — built faithfully: bigger and dearer, and it races)'} · ` +
+    `funded ${n(m.carFee + HOME)} sat · mint tx ${n(m.tx.toBinary().length)} B`)
   console.log(`     LOW_S grind: ${m.ground} nLockTime candidates skipped`)
   let ok = false, err = ''
   try { ok = m.spend.validate() } catch (e) { err = (e as Error).message.split('\n')[0] }
@@ -408,7 +473,8 @@ async function run(): Promise<void> {
   const m = buildMint({ key, depotTx: g, depotVout: 0, depotValue: TANK, window: win, lowS: true })
   const sim = simulate(TRACK, FUEL)
   console.log(`     ${TRACK} m · ${sim.run.ticks.length} ticks · ${sim.secs.toFixed(2)} s · ends '${sim.run.ending}'`)
-  console.log(`     car ${n(m.car.length)} B · funded ${n(m.carFee + HOME)} sat`)
+  console.log(`     car ${n(m.car.length)} B · ${m.optimised ? 'optimised' : 'UNOPTIMISED — the run ' +
+    'goes dry, so the optimiser will not certify it'} · funded ${n(m.carFee + HOME)} sat`)
   console.log(`     txid  ${m.tx.id('hex')}  ·  ${n(m.tx.toBinary().length)} B · grind ${m.ground}`)
   if (!m.spend.validate()) { console.error('the depot refuses this mint — not sending'); process.exit(1) }
   console.log('     \x1b[32m★ the depot accepts it\x1b[0m')

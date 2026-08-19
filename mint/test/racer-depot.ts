@@ -12,7 +12,11 @@ import { buildRacerDepotLock, RACER_DRAW, RACER_DEPOT_MAX_FEE, RACER_MAX_CAR_BYT
 import { buildDepotUnlock, DEPOT_SCOPE } from '../src/depot.ts'
 import { carBlockOps, buildRacerCar, racerCarFee } from '../src/racerCar.ts'
 import { type TickTrace, type RunTrace } from '../src/racerTick.ts'
-import { RACER_REGS as R, S, SLIP_UNIT, PHASE, refTick } from '../src/shell.ts'
+/* ⚠ THE ONE-RACE CAR'S PHYSICS LIVES IN ITS OWN FILE. `shell.ts` is bundled into BOTH live
+   bundles — grafmint.js (six pages) and, via grafbasic.ts, grafbasic.js (basic.html) — so the
+   racers must not put anything in it. → src/racerPhysics.ts, and §6j. */
+import { S, SLIP_UNIT, PHASE } from '../src/shell.ts'
+import { ONE_RACE_REGS as R, racerRefTick as refTick, RACER_PHASE } from '../src/racerPhysics.ts'
 import { serializeOutput } from '../src/covenant.ts'
 import { P2PKH } from '@bsv/sdk'
 import { pushData } from '../src/pushtx.ts'
@@ -61,7 +65,7 @@ function simulateTo(finish: number): RunTrace {
   for (let i = 0; i < 400; i++) {
     const r = refTick(st as never, { throttle: 8, fuel, lockTime: st.last + st.gap }, R)
     fuel -= r.burn
-    ticks.push({ throttle: 8, spun: r.spun })
+    ticks.push({ throttle: r.throttle, spun: r.spun })
     st = { ...(r.state as never as Record<string, number>), last: st.last + st.gap }
     if (st.phase === PHASE.DONE) break
   }

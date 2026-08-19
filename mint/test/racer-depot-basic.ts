@@ -18,7 +18,11 @@ import { buildRacerDepotBasicLock, RACER_WINDOW_SECONDS, RACER_MINTS_PER_WINDOW 
 import { RACER_DRAW, RACER_DEPOT_MAX_FEE, RACER_MAX_CAR_BYTES } from '../src/racerDepot.ts'
 import { buildRacerCar, racerCarFee, carBlockOps } from '../src/racerCar.ts'
 import { buildDepotUnlock, DEPOT_SCOPE } from '../src/depot.ts'
-import { RACER_REGS as R, S, SLIP_UNIT, PHASE, refTick } from '../src/shell.ts'
+/* ⚠ THE ONE-RACE CAR'S PHYSICS LIVES IN ITS OWN FILE. `shell.ts` is bundled into BOTH live
+   bundles — grafmint.js (six pages) and, via grafbasic.ts, grafbasic.js (basic.html) — so the
+   racers must not put anything in it. → src/racerPhysics.ts, and §6j. */
+import { S, SLIP_UNIT, PHASE } from '../src/shell.ts'
+import { ONE_RACE_REGS as R, racerRefTick as refTick, RACER_PHASE } from '../src/racerPhysics.ts'
 import { type TickTrace, type RunTrace } from '../src/racerTick.ts'
 
 let pass = 0, fail = 0
@@ -71,7 +75,7 @@ function simulate(metres: number, tank: number): { run: RunTrace; finish: number
        forbids the best strategy in this one: 30,000 fuel finishes 402 m in 5.40 s where 40,000 takes
        6.00 s, because less fuel is less mass. Under-fuelling is a DECISION. */
     fuel = Math.max(0, fuel - r.burn)
-    ticks.push({ throttle: 8, spun: r.spun })
+    ticks.push({ throttle: r.throttle, spun: r.spun })
     st = { ...(r.state as never as Record<string, number>), last: st.last + st.gap }
     if (st.phase === PHASE.DONE) { done = true; break }
   }

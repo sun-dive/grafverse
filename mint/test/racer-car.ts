@@ -19,10 +19,12 @@ import {
   carBlockOps, assertNoControlFlow, CONTROL_FLOW, feeConstant,
 } from '../src/racerCar.ts'
 import { type TickTrace, type Ending, type RunTrace } from '../src/racerTick.ts'
+/* ⚠ The one-race car's physics lives in its own file — `shell.ts` is bundled into BOTH live bundles
+   and the racers must not put anything in it. → src/racerPhysics.ts, and §6j. */
 import {
-  RACER_REGS as R, S, SLIP_UNIT, PHASE, refTick, buildShellLock, shellMaxFee, PUBLIC_CAR_REGS,
-  SHELL_WORST_MOVE_BYTES,
+  S, SLIP_UNIT, PHASE, buildShellLock, shellMaxFee, PUBLIC_CAR_REGS, SHELL_WORST_MOVE_BYTES,
 } from '../src/shell.ts'
+import { ONE_RACE_REGS as R, racerRefTick as refTick, RACER_PHASE } from '../src/racerPhysics.ts'
 import { freshPublicShell } from '../src/publicShell.ts'
 import { op } from '../src/covenantAsm.ts'
 import { buildDepotLock } from '../src/depot.ts'
@@ -56,8 +58,10 @@ function simulate(cfg: Record<string, number> = {}, throttle = THROTTLE, tank = 
   for (let i = 0; i < 400; i++) {
     const r = refTick(st as never, { throttle, fuel, lockTime: st.last + st.gap }, R)
     fuel -= r.burn
-    ticks.push({ throttle, spun: r.spun })
+    ticks.push({ throttle: r.throttle, spun: r.spun })
     st = { ...(r.state as never as Record<string, number>), last: st.last + st.gap }
+    /* ★ the fifth ending — dry and provably short of the line. Legal; no time, no leaderboard row. */
+    if (r.ended === 'stopped') { ending = 'stopped'; break }
     if (r.ended === 'off') { ending = 'off'; break }
     if (r.ended === 'blown') { ending = r.spun ? 'blown-throttle' : 'blown-speed'; break }
     if (st.phase === PHASE.DONE) { ending = 'finish'; break }
@@ -73,7 +77,7 @@ function simulateTo(finish: number): RunTrace {
   for (let i = 0; i < 400; i++) {
     const r = refTick(st as never, { throttle: THROTTLE, fuel, lockTime: st.last + st.gap }, R)
     fuel -= r.burn
-    ticks.push({ throttle: THROTTLE, spun: r.spun })
+    ticks.push({ throttle: r.throttle, spun: r.spun })
     st = { ...(r.state as never as Record<string, number>), last: st.last + st.gap }
     if (st.phase === PHASE.DONE) break
   }
