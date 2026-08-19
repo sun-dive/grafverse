@@ -120,3 +120,49 @@ export { buildDepotTopUpTx, TOPUP_FEE_PAD, TOPUP_INPUT_PAD, topUpPad } from './d
 export type { TopUpParams, TopUpRequest } from './depotTx.ts'
 export { SHELL_TANK_MAX, PUBLIC_CAR_REGS, racerRegs, reserveRegs, tankMaxFor,
          SHELL_SCOPE as SHELL_SIGHASH_SCOPE } from './shell.ts'
+
+// ── ★★★ THE ONE-RACE CAR — a car is born, races once, and dies ──────────────────────────────────
+// ⚠ A DIFFERENT DESIGN FROM EVERYTHING ABOVE, not a revision of it. Above, a car persists and is
+// refuelled and each tick is its own transaction; here the whole run is simulated first and compiled
+// into ONE locking script, so the script length IS the predicted race. The two share the physics
+// (`refTick`) and nothing else. → `mint/tools/RACERS.md`, and do not read a constant from one design
+// and apply it to the other.
+export {
+  buildRacerCar, racerCarOps, racerCarFee, racerCarUnlock, carBlockOps, feeConstant,
+  nameBytes, assertNoControlFlow, CONTROL_FLOW, varIntBytes,
+  CAR_SCOPE, CAR_LAYOUT, CAR_LAYOUT_STRING, NAME_BYTES, CAR_BYTES_MIN, CAR_BYTES_MAX,
+} from './racerCar.ts'
+export type { CarConfig, CarParams } from './racerCar.ts'
+
+// ⚠⚠ THE GATE. A one-race car has NO KEY — no owner, no burn branch, nothing but the preimage. So a
+// car the covenant refuses can never be spent by anybody, and the satoshis in it are gone. Any page
+// that funds a car MUST call `assertRaceable` first; it throws rather than returning, because a
+// returned boolean can be ignored by accident and this one cannot be un-ignored.
+export { buildRaceTx, raceValidates, assertRaceable } from './racerTx.ts'
+export type { RaceTxParams, RaceReport } from './racerTx.ts'
+
+// The minting depot, compiled from Bitcoin BASIC, with the window rate limit in it.
+// ★ `racerDepotMaxFee` DERIVES the fee ceiling from `maxCarBytes` — never write that number down.
+export {
+  buildRacerDepotBasicLock, racerDepotBasicOps, racerDepotMaxFee,
+  RACER_WINDOW_SECONDS, RACER_MINTS_PER_WINDOW,
+} from './racerDepotFrame.ts'
+export type { RacerDepotBasicParams } from './racerDepotFrame.ts'
+export { RACER_DRAW, RACER_MAX_CAR_BYTES } from './racerDepot.ts'
+/* ⚠⚠ `buildDepotUnlock` LIVES IN `depot.ts`, and the one-race depot reuses it deliberately — its
+   unlocking stack is identical, so nothing downstream has to learn a second shape.
+   ⚠ It was first re-exported from `racerDepot.ts`, where it does not exist. **esbuild built that
+   without an error** and the symbol came out `undefined` at runtime, which the page would have hit as
+   "not a function" while every test still passed. ⇒ A green build is not evidence a bundle is
+   complete; load it and read the symbols back. */
+export { buildDepotUnlock } from './depot.ts'
+export { DEPOT_SRC, DEPOT_STACK } from './racerDepotSrc.ts'
+export { specialiseRun } from './racerTick.ts'
+export type { TickTrace, RunTrace, Ending } from './racerTick.ts'
+export { optimizeCarCompile } from './optimizeCarCompile.ts'
+
+// ⚠ ARC refuses a high-S signature (error 461) even though it is valid and minable, so a page that
+// broadcasts must grind. The race's lever is FREE — measured: the car reads hashOutputs, its own
+// scriptCode and its own value, and never nSequence or nLocktime. The mint's lever is the six hundred
+// nLockTime values inside its own window.
+export { derivedSigIsLowS } from './pushtx.ts'

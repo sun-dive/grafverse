@@ -14,7 +14,7 @@ covenant, so a result is not reported by a tool — it is *settled* by miners. T
 > | a race | one transaction per tick | **ONE transaction, the whole run** |
 > | the depot | fuels cars | **mints them** — fuelling and minting are one act |
 > | code | `shell.ts` · `depot.ts` · `publicShell.ts` | `racerCar.ts` · `racerDepot.ts` · `racerTick.ts` |
-> | status | 🅇 **DEPRECATED — but DEPLOYED on mainnet** | **current build · nothing on chain yet** |
+> | status | 🅇 **DEPRECATED — but DEPLOYED on mainnet** | 🏁 **CURRENT — and ON MAINNET since 19 Aug, block 962,950** |
 >
 > **Everything from *The regulations* to *What has gone wrong* describes the CHAINED car**, which is
 > what is live today (`e889c1f1…` · `e918fa43…`). It is kept, not deleted: the physics are shared, the
@@ -245,7 +245,24 @@ anything that stays green after a change with suspicion rather than relief.
 
 # The ONE-RACE car — the current build 🏁
 
-*(18–19 Aug. Nothing here is on chain. The chained design above is DEPRECATED but still deployed.)*
+*(18–19 Aug. **IT IS ON CHAIN** — see below. The chained design above is DEPRECATED but still deployed.)*
+
+## 🏁 ON MAINNET — 19 Aug 2026, block 962,950
+
+```
+depot genesis   607272d1…    1,965 B · tank 1,200 sat · lock 1,762 B
+mint            cad9e46c…    7,248 B · car 1,730 B
+race            6cb71ef6…    1,979 B · 5 ticks · 0.50 s · 1 sat home
+```
+
+★★★ **All three in ONE block.** A miner took a three-deep unconfirmed chain containing a **7,248 B
+covenant mint**; the largest this project had broadcast before was 1,428 B.
+
+★★★ **The rate limit advanced on chain** — `mark 0 → 2978504`, `n 0 → 1`, read straight off the
+successor's own script, with `nSequence fffffffe` so nLockTime actually binds.
+
+⚠ **The ~30 KB quarter-mile mint is still untested.** 7 KB relaying cleanly is encouraging; it is not
+the same question.
 
 A car is compiled for **one run and no other**: the race is simulated to the last tick before anything
 is minted, and the whole run is unrolled into a single locking script. So the script length *is* the

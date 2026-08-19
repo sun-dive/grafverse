@@ -28,6 +28,7 @@
  */
 import {
   Transaction, TransactionSignature, Spend, LockingScript, UnlockingScript, PrivateKey, P2PKH, Hash, OP,
+  SatoshisPerKilobyte,
 } from '@bsv/sdk'
 import { buildRacerDepotBasicLock, racerDepotMaxFee, RACER_WINDOW_SECONDS, RACER_MINTS_PER_WINDOW } from '../src/racerDepotFrame.ts'
 import { RACER_DRAW, RACER_MAX_CAR_BYTES } from '../src/racerDepot.ts'
@@ -266,10 +267,40 @@ async function selftest(): Promise<never> {
   console.log(`     lock ${n(DEPOT.toBinary().length)} B · MAX_FEE ${n(maxFee)} (derived) · window ` +
     `${RACER_WINDOW_SECONDS}s × ${RACER_MINTS_PER_WINDOW}`)
 
+  /* ── ⚠⚠ THE FUNDED GENESIS — the path that used to be untested ────────────────────────────────
+     This step exists because it was missing. The self-test built a genesis as a bare output with no
+     input, so reading a coin, signing a real P2PKH input and computing change never ran offline — and
+     the first live dry run died instantly on `unlockingScript is undefined`, from pricing an unsigned
+     transaction by serializing it. Everything that runs against a real wallet is built HERE now, with
+     a synthetic coin, so a WIF is never needed to find out whether it works. */
+  bar('2 · A FUNDED GENESIS, FROM A SYNTHETIC COIN')
+  const coin = new Transaction()
+  coin.addOutput({ lockingScript: new P2PKH().lock(address), satoshis: 210_000 })
   const genesis = new Transaction()
+  genesis.version = 2
+  genesis.addInput({ sourceTransaction: coin, sourceOutputIndex: 0,
+    unlockingScriptTemplate: new P2PKH().unlock(key), sequence: 0xffffffff })
   genesis.addOutput({ lockingScript: DEPOT, satoshis: TANK })
+  genesis.addOutput({ lockingScript: new P2PKH().lock(address), change: true })
+  await genesis.fee(new SatoshisPerKilobyte(100))
+  await genesis.sign()
+  const gBytes = genesis.toBinary().length
+  const gFee = 210_000 - genesis.outputs.reduce((a, o) => a + (o.satoshis ?? 0), 0)
+  console.log(`     ${gBytes} B · fee ${gFee} sat = ${(gFee * 1000 / gBytes).toFixed(1)} sat/KB · ` +
+    `change ${n(genesis.outputs[1].satoshis ?? 0)} sat`)
+  let gOK = false
+  try {
+    gOK = new Spend({
+      sourceTXID: coin.id('hex'), sourceOutputIndex: 0, sourceSatoshis: 210_000,
+      lockingScript: coin.outputs[0].lockingScript, transactionVersion: 2, otherInputs: [],
+      outputs: genesis.outputs, unlockingScript: genesis.inputs[0].unlockingScript!,
+      inputSequence: 0xffffffff, inputIndex: 0, lockTime: 0,
+    }).validate()
+  } catch { gOK = false }
+  console.log(`     ${gOK ? '\x1b[32m★ the funding signature validates\x1b[0m' : '\x1b[31mthe funding input is REFUSED\x1b[0m'}`)
+  if (gFee * 1000 / gBytes < 100) console.log('     \x1b[31m⚠ under the 100 sat/KB floor\x1b[0m')
 
-  bar('2 · THE MINT')
+  bar('3 · THE MINT')
   const m = buildMint({ key, depotTx: genesis, depotVout: 0, depotValue: TANK, window: win, lowS: true })
   console.log(`     car ${n(m.car.length)} B · funded ${n(m.carFee + HOME)} sat · mint tx ${n(m.tx.toBinary().length)} B`)
   console.log(`     LOW_S grind: ${m.ground} nLockTime candidates skipped`)
@@ -277,7 +308,7 @@ async function selftest(): Promise<never> {
   try { ok = m.spend.validate() } catch (e) { err = (e as Error).message.split('\n')[0] }
   console.log(`     ${ok ? '\x1b[32m★ the depot accepts the mint\x1b[0m' : '\x1b[31mREFUSED: ' + err + '\x1b[0m'}`)
 
-  bar('3 · THE RACE')
+  bar('4 · THE RACE')
   const r = buildRace({ key, carTx: m.tx, carVout: 0, carValue: m.carFee + HOME, fee: m.carFee, lowS: true })
   let ok2 = false, err2 = ''
   try { ok2 = r.spend.validate() } catch (e) { err2 = (e as Error).message.split('\n')[0] }
@@ -288,7 +319,7 @@ async function selftest(): Promise<never> {
   /* ⚠⚠ AND THE SIGNATURES MUST ACTUALLY BE CANONICAL. A grind that quietly gave up looks exactly
      like a grind that worked, and the difference only shows when ARC returns 461 on the first real
      broadcast — with a car already funded and a depot already spent. So it is CHECKED, not counted. */
-  bar('4 · IS THE GRIND REAL?')
+  bar('5 · IS THE GRIND REAL?')
   const mintPre = (m.tx.inputs[0].unlockingScript as UnlockingScript).chunks.slice(-1)[0].data as number[]
   const racePre = (r.tx.inputs[0].unlockingScript as UnlockingScript).chunks[0].data as number[]
   const mLow = derivedSigIsLowS(mintPre), rLow = derivedSigIsLowS(racePre)
@@ -311,7 +342,7 @@ async function selftest(): Promise<never> {
   }
   console.log(`     with the grind OFF, a high-S spend ${sawHigh ? 'IS reachable ✓ — so the check is live' : '⚠ was not reached in 12 tries'}`)
 
-  const good = ok && ok2 && mLow && rLow && sawHigh
+  const good = gOK && ok && ok2 && mLow && rLow && sawHigh
   console.log(`\n${good ? 'SELFTEST OK — depot mints, car races, satoshis come home, signatures are canonical.' : '⚠ SELFTEST FAILED'}`)
   process.exit(good ? 0 : 1)
 }
@@ -353,13 +384,20 @@ async function run(): Promise<void> {
     unlockingScriptTemplate: new P2PKH().unlock(key), sequence: 0xffffffff })
   g.addOutput({ lockingScript: DEPOT, satoshis: TANK })
   g.addOutput({ lockingScript: new P2PKH().lock(address), change: true })
-  await g.fee({ computeFee: async (tx) => Math.ceil((tx.toBinary().length + 110) * 100 / 1000) })
+  /* ⚠⚠ NEVER SERIALIZE AN UNSIGNED TRANSACTION TO PRICE IT. `tx.toBinary()` throws
+     `unlockingScript is undefined` at fee time, because the input has not been signed yet — and the
+     fee is what decides the change, which is what gets signed. The first version of this line did
+     exactly that and died on the first real funding input, having passed every offline test because
+     `--selftest` built a genesis with NO input at all.
+     ⇒ `SatoshisPerKilobyte` asks the unlocking TEMPLATE for its estimated length instead, which is
+     the whole reason templates carry one. 100 sat/KB, the official rate — never inflated. */
+  await g.fee(new SatoshisPerKilobyte(100))
   await g.sign()
   console.log(`     txid  ${g.id('hex')}`)
   console.log(`     tank  ${n(TANK)} sat  ·  tx ${n(g.toBinary().length)} B`)
   if (live) { await broadcast(g, 'the depot'); await awaitSeen(g.id('hex')) }
 
-  bar('2 · THE MINT')
+  bar('3 · THE MINT')
   const win = pastWindow(Math.floor(Date.now() / 1000))
   const m = buildMint({ key, depotTx: g, depotVout: 0, depotValue: TANK, window: win, lowS: true })
   const sim = simulate(TRACK, FUEL)
@@ -370,7 +408,7 @@ async function run(): Promise<void> {
   console.log('     \x1b[32m★ the depot accepts it\x1b[0m')
   if (live) { await broadcast(m.tx, 'the car'); await awaitSeen(m.tx.id('hex')) }
 
-  bar('3 · THE RACE')
+  bar('4 · THE RACE')
   const r = buildRace({ key, carTx: m.tx, carVout: 0, carValue: m.carFee + HOME, fee: m.carFee, lowS: true })
   console.log(`     txid  ${r.tx.id('hex')}  ·  ${n(r.tx.toBinary().length)} B · grind ${r.ground}`)
   if (!r.spend.validate()) { console.error('the car refuses this race — not sending'); process.exit(1) }
