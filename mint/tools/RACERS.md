@@ -6,6 +6,24 @@ covenant, so a result is not reported by a tool — it is *settled* by miners. T
 > ⚠ **A covenant cannot be amended.** Every number below is minted permanently into a car that has no
 > key to change it. They are DERIVED and MEASURED, never chosen — and where one was chosen, it says so.
 
+> ## ⚠⚠ THERE ARE NOW TWO DESIGNS. KNOW WHICH ONE YOU ARE READING.
+>
+> | | the CHAINED car | the ONE-RACE car |
+> |---|---|---|
+> | a car | persists, is refuelled, races many times | is born, races once, dies |
+> | a race | one transaction per tick | **ONE transaction, the whole run** |
+> | the depot | fuels cars | **mints them** — fuelling and minting are one act |
+> | code | `shell.ts` · `depot.ts` · `publicShell.ts` | `racerCar.ts` · `racerDepot.ts` · `racerTick.ts` |
+> | status | 🅇 **DEPRECATED — but DEPLOYED on mainnet** | **current build · nothing on chain yet** |
+>
+> **Everything from *The regulations* to *What has gone wrong* describes the CHAINED car**, which is
+> what is live today (`e889c1f1…` · `e918fa43…`). It is kept, not deleted: the physics are shared, the
+> deployed cars still race under it, and if the one-race model is ever wound back the constants and the
+> reasoning are here rather than needing to be re-derived.
+>
+> **The one-race design has its own section at the bottom** — *The ONE-RACE car*. Its constants are
+> different and its failure modes are different. Do not read a number from one and apply it to the other.
+
 ---
 
 ## The regulations
@@ -222,3 +240,77 @@ Every one of these was **green at the time**.
 ★ And the shape they share: **a passing check is a hypothesis wearing a costume.** In a language where a
 refusal looks identical whether it came from the rule under test or from something else entirely, treat
 anything that stays green after a change with suspicion rather than relief.
+
+---
+
+# The ONE-RACE car — the current build 🏁
+
+*(18–19 Aug. Nothing here is on chain. The chained design above is DEPRECATED but still deployed.)*
+
+A car is compiled for **one run and no other**: the race is simulated to the last tick before anything
+is minted, and the whole run is unrolled into a single locking script. So the script length *is* the
+predicted race, and a mint is a COMMITMENT — the covenant refuses the car if its physics disagree.
+
+```
+depot MINTS the car   →   ONE-transaction race   →   the last satoshi goes home
+racerDepot.ts 17/17       racerCar.ts 33/33          no key anywhere in the car
+```
+
+## The derived constants — do not hand-edit any of these
+
+| | | |
+|---|---|---|
+| `RACER_DRAW` | **2,000** | the most one mint may hand a car |
+| `RACER_DEPOT_MAX_FEE` | **3,500** | ⚠ the most one spend may cost the tank · PERMANENT |
+| `RACER_MAX_CAR_BYTES` | **16,000** | the longest car this depot will mint · CHOSEN, not measured |
+| `CAR_BYTES_MIN / MAX` | 253 / 65,000 | the range `feeConstant`'s varint arithmetic is valid for |
+| mint size | `2·carBytes + 2·depotBytes + 264` | exactly linear — measured across the range |
+
+**Measured at the quarter mile with an address as the payee:** car 13,450 B · 60 ticks · mint 2,975 sat
+· race 1,371 sat · **4,346 sat all-in**, 525 sat of headroom under `MAX_FEE`.
+
+★★ **THE CAR COMPUTES ITS OWN FEE FROM ITS OWN SIZE**, so the block a depot pins is CONSTANT (582 B
+with an address payee) across cars of every length. That is what lets a depot recognise a car with no
+fixed shape: it splits from the RIGHT and asks only *"will these satoshis come back to me?"*
+
+## ★★ THE PAYEE IS AN ADDRESS, and it is fixed at genesis — 19 Aug
+
+The car's payee is arbitrary bytes: `carBlockOps` takes `depotScript: number[]`, length-prefixes it and
+hashes it. Nothing requires it to be a covenant. **Point it at the same address that mints the depot.**
+
+⚠⚠ **A DEPOT CANNOT BE ITS OWN PAYEE, and that is structural.** The depot pins the car's tail literally
+and the car's tail carries the payee literally, so D contains B and B contains D — no solution.
+Iterating `D(n+1) = depot(block(D(n)))` diverges by exactly **1,271 B every round** and never converges;
+no cycle of any length works either. ⇒ "The leftover goes back to the depot" always meant back to a
+*second* depot, whose 1-satoshi outputs never join up and cost **≥430 sat to recover 1 sat**.
+
+★ Trading 2 KB of covenant for 25 B of address took ~2,100 B out of every car and ~4,200 B out of every
+mint. Before it, `RACER_DEPOT_MAX_FEE` **refused a quarter mile outright** — the depot could mint no
+further than ~310 m, and there is no key to raise that ceiling.
+
+🅿 **OPEN: one satoshi, or a spendable amount above dust?** Free to decide later — the car computes
+`V − fee` and binds the result to the payee, so what comes home is whatever the mint funds it with. No
+covenant change either way. `RACER_DRAW` leaves **629 sat of headroom** at quarter-mile length.
+
+## ★ What has gone wrong here, so it does not go wrong again
+
+- **⚠⚠ `feeConstant` ASSUMED THE PAYEE WAS BIG — 19 Aug.** It wrote the payee output's length varint as
+  a constant **3**, which is true only for a payee of 253 B or more. Point a car at a 25-byte P2PKH
+  address and it over-counts by two bytes, the `+9` round-up tips the division, and **the car demands
+  one satoshi more than `racerCarFee` funds it with — an unspendable car, and nobody holds a key to
+  rescue it.**
+  ```
+  64 + 3 + 156 + depotBytes + 9                                    ← assumed
+  61 + varIntBytes(depotBytes).length + 3 + 156 + depotBytes + 9   ← derived
+  ```
+  ⚠ The direction was SAFE — over the relay floor, never under — so this was **not** the unmineable-bound
+  failure this project has stood on five times. It was the *other* one.
+  ★★ **AND THE TEST COULD NOT HAVE CAUGHT IT.** The fee sweep ran 11 car sizes and required the
+  in-script fee to equal the serialized fee — but every car it built paid a multi-kilobyte depot, so it
+  never left the range where the assumption held. ⇒ **A green test on a path the change cannot reach is
+  not evidence.** The sweep now runs BOTH payee shapes, 22 sizes, and fails against the old constant.
+  ⇒ And the general rule, which is the one worth carrying: **a range the code can be POINTED at is a
+  range the test must SWEEP.** `CAR_BYTES_MIN/MAX` bounds the car; nothing bounded the payee.
+- **⚠ `raceValidates()` IS STILL A DOCSTRING.** It is named in `racerCar.ts` as the thing to run before
+  any mint is broadcast, and it does not exist. It is exactly what would have caught the bug above.
+  **Nothing should be broadcast until it does.**
