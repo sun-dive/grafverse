@@ -159,11 +159,35 @@
        races. This builds the top-up <b>here, unsigned</b>, and hands it to <b>Phar Lap</b> to sign — this page
        never sees a key. ★ A gift buys no minting slot: the covenant refuses a top-up that tries to take one.</p>
     <label>satoshis <b id="v-add">20,000</b><input type="range" id="add" min="1000" max="500000" step="1000" value="20000"></label>
+    <label>your address <span class="dim" id="a-bal">— one coin must cover the fuel and the fee</span></label>
+    <input id="addr" placeholder="1..." style="width:100%;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--fg);font-family:ui-monospace,Menlo,monospace;font-size:13px">
     <label>a mark for the board · optional</label>
-    <input id="mark" maxlength="75" placeholder="first fuel 🏁" style="width:100%;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--fg);font-size:13px">
-    <div style="margin-top:12px"><button id="build" class="ghost">⛽ Build it for Phar Lap</button></div>
-    <p class="note" id="f-out" style="margin-top:10px"></p>
-    <textarea id="f-req" style="display:none" readonly></textarea>
+    <input id="mark" maxlength="75" placeholder="first fuel" style="width:100%;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--fg);font-size:13px">
+    <div style="margin-top:12px"><button id="build" class="ghost">⛽ Build the top-up</button></div>
+    <p class="note no" id="f-err" style="margin-top:8px"></p>
+
+    <div id="f-panel" style="display:none;margin-top:12px">
+      <div class="row"><span>fuel added</span><span id="b-add">—</span></div>
+      <div class="row"><span>mark</span><span id="b-mark">—</span></div>
+      <div class="row"><span>change back to you</span><span id="b-change">—</span></div>
+      <div class="row"><span>miner's fee</span><span id="b-fee">—</span></div>
+      <!-- ★★ THE TRANSACTION IS WHAT YOU GET, AND THE REQUEST IS THE ALTERNATE — that order matters.
+           The JSON is a document describing what to build, and the only thing that reads it is a signer
+           written for it. Handing a visitor a format one bespoke tool understands, and burying the
+           transaction behind a toggle, is a page serving its own architecture rather than the person
+           using it. So the default is the transaction: input #1 is the covenant and is already
+           COMPLETE — OP_PUSH_TX needs no key — and input #2 is yours and is deliberately BLANK.
+           ⚠ There is no BSV standard for this. Electrum's extended format describes which KEYS to
+           derive, which is not our problem; PSBT is the real format for it and nothing on BSV reads
+           PSBT. This matches battery.html because that is what Phar Lap already reads, and a third
+           bespoke format would be worse than either. -->
+      <p class="note" style="margin:10px 0 4px" id="b-fmt">(unsigned transaction — sign input #2, the only blank in it)</p>
+      <textarea id="b-hex" readonly></textarea>
+      <div style="margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <button id="b-copy" class="ghost">⧉ Copy</button>
+        <a href="#" id="b-raw" class="note">signing request instead</a>
+      </div>
+    </div>
   </div>
 
   <!-- ═══ WHAT JUST HAPPENED ══════════════════════════════════════════════════════════════════════ -->
@@ -576,27 +600,79 @@
      The page assembles it, leaves the contributor's inputs BLANK, and stops. What crosses to Phar Lap
      is a REQUEST rather than a transaction: enough to REBUILD and CHECK the spend, so the other side
      never has to trust this page. There is no signature in it and no key. */
-  function buildTopUp(){
-    gm().then(function(M){
-      if(!DEPOT) throw Error('find the depot first');
-      var add = +$('add').value;
-      var sc = scripts(M);
-      var req = {
-        v:1, action:'racer-depot-topup',
-        depot:{ txId: DEPOT.txid, outputIndex: DEPOT.vout, satoshis: DEPOT.value, sourceTxHex: DEPOT.sourceTxHex },
-        funding: [],                                  // ⚠ Phar Lap picks the coins; this page must not
-        carBlockHex: hex(sc.block), ownerHex: hex(sc.owner),
-        addSats: add, mark: $('mark').value || null, changeAddress: OWNER_AD,
-        state:{ mark: DEPOT.mark, count: DEPOT.count }
-      };
-      var json = JSON.stringify(req, null, 2);
-      $('f-req').style.display = 'block'; $('f-req').value = json;
-      $('f-out').innerHTML = 'Paste this into <b>Phar Lap</b> to sign. It holds no key and no signature.';
-      if(navigator.clipboard) navigator.clipboard.writeText(json).then(function(){
-        $('f-out').innerHTML = '<span class="ok">✓ copied</span> — paste it into <b>Phar Lap</b> to sign.';
-      }, function(){});
-    }).catch(function(e){ $('f-out').innerHTML = '<span class="no">⚠ ' + e.message + '</span>' });
+  var BUILT = null, REQUEST = null;
+
+  /** ⚠ NORMALISE BOTH SPELLINGS. `getUtxos` maps WoC's rows, but a raw row uses tx_hash/tx_pos and a
+      mapped one uses txId/outputIndex — reading only one set is what produced "Invalid hex string"
+      earlier today, three steps downstream of the mistake. */
+  function coins(addr){
+    return gm().then(function(M){ return new M.WalletProvider(addr).getUtxos() }).then(function(us){
+      return (us||[]).map(function(u){
+        return { txId: u.txId || u.tx_hash,
+                 outputIndex: (u.outputIndex != null ? u.outputIndex : u.tx_pos),
+                 satoshis: (u.satoshis != null ? u.satoshis : u.value) };
+      }).filter(function(u){ return typeof u.txId === 'string' && typeof u.outputIndex === 'number' });
+    }).catch(function(){ return [] });
   }
+
+  function buildTopUp(){
+    $('f-err').textContent = ''; $('f-panel').style.display = 'none';
+    var add = +$('add').value, addr = ($('addr').value || '').trim(), note = $('mark').value || null;
+    var M, sc, u, depotTx, fundTx;
+    gm().then(function(g){
+      M = g;
+      if(!DEPOT) throw Error('find the depot first — press Re-read the chain');
+      if(!addr) throw Error('put your address in, so the change has somewhere to go');
+      sc = scripts(M);
+      return coins(addr);
+    }).then(function(us){
+      /* ONE coin must cover the fuel AND the fee. The smallest that does keeps the change tidy. */
+      var pad = M.RACER_TOPUP_FEE_PAD;
+      u = us.filter(function(x){ return x.satoshis >= add + pad })
+            .sort(function(a,b){ return a.satoshis - b.satoshis })[0];
+      if(!u) throw Error('no single coin at ' + addr + ' holds ' + n(add + pad) +
+                         ' sat — one input must cover the fuel and the fee');
+      $('a-bal').textContent = '— using ' + n(u.satoshis) + ' sat';
+      var prov = new M.WalletProvider(addr);
+      return Promise.all([prov.getSourceTransaction(DEPOT.txid), prov.getSourceTransaction(u.txId)]);
+    }).then(function(txs){
+      depotTx = txs[0]; fundTx = txs[1];
+      return M.buildRacerTopUpTx({
+        depot: { sourceTransaction: depotTx, outputIndex: DEPOT.vout, value: DEPOT.value },
+        carBlock: sc.block, owner: sc.owner, addSats: add,
+        funder: [{ sourceTransaction: fundTx, outputIndex: u.outputIndex }],
+        changeAddress: addr, mark: note
+      });
+    }).then(function(tx){
+      BUILT = tx;
+      /* The request is the alternate, not the default — see the note in the markup above. */
+      REQUEST = { v:1, action:'racer-depot-topup',
+        depot:{ txId: DEPOT.txid, outputIndex: DEPOT.vout, satoshis: DEPOT.value, sourceTxHex: depotTx.toHex() },
+        funding:{ txId: u.txId, outputIndex: u.outputIndex, satoshis: u.satoshis, sourceTxHex: fundTx.toHex() },
+        carBlockHex: hex(sc.block), ownerHex: hex(sc.owner),
+        state:{ mark: DEPOT.mark, count: DEPOT.count },
+        addSats: add, mark: note, changeAddress: addr };
+      var outs = tx.outputs.map(function(o){ return o.satoshis || 0 });
+      var change = outs[outs.length-1];
+      var fee = (DEPOT.value + u.satoshis) - outs.reduce(function(a,b){ return a+b }, 0);
+      $('b-add').textContent = n(add) + ' sat';
+      $('b-mark').textContent = note || '(no mark)';
+      $('b-change').textContent = n(change) + ' sat → ' + addr;
+      $('b-fee').textContent = n(fee) + ' sat';
+      $('f-panel').style.display = 'block';
+      showHex(false);
+    }).catch(function(e){ $('f-err').textContent = '⚠ ' + e.message });
+  }
+
+  function showHex(req){
+    if(!BUILT || !REQUEST) return;
+    $('b-hex').value = req ? JSON.stringify(REQUEST, null, 1) : BUILT.toHex();
+    $('b-fmt').textContent = req ? '(signing request — for a signer that rebuilds it from scratch)'
+                                 : '(unsigned transaction — sign input #2, the only blank in it)';
+    $('b-raw').textContent = req ? 'unsigned transaction instead' : 'signing request instead';
+    $('b-raw').onclick = function(ev){ ev.preventDefault(); showHex(!req) };
+  }
+
   function hex(b){ return Array.prototype.map.call(b, function(x){ return ('0'+x.toString(16)).slice(-2) }).join('') }
 
   ['eng','tyr','tank','fin','slip'].forEach(function(id){ $(id).addEventListener('input', replan) });
@@ -604,6 +680,12 @@
   $('reload').addEventListener('click', reload);
   $('go').addEventListener('click', race);
   $('build').addEventListener('click', buildTopUp);
+  $('b-copy').addEventListener('click', function(){
+    var t = $('b-hex'); t.select();
+    try { navigator.clipboard.writeText(t.value) } catch(e){ try { document.execCommand('copy') } catch(e2){} }
+    var b = $('b-copy'), was = b.textContent; b.textContent = '✓ copied';
+    setTimeout(function(){ b.textContent = was }, 1400);
+  });
 
   gm().then(function(){ replan(); return reload() }).catch(function(e){
     $('d-note').innerHTML = '<span class="no">⚠ ' + e.message + '</span>';
