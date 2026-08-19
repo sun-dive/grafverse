@@ -424,13 +424,29 @@
     return { eng:+$('eng').value, tyr:+$('tyr').value, slip:+$('slip').value,
              metres:+$('fin').value, fuel:+$('tank').value, throttle:8 };
   }
+  /**
+   * ⚠ `refTick` REFUSES rather than returning nonsense — "a car cannot be massless" for an engine and
+   * tyre combination that has no mass to push. That is the reference being honest, and the page must
+   * catch it: an uncaught throw here kills `replan()`, and the panel then shows the LAST valid setup
+   * while the sliders say something else. A stale number that looks live is worse than an error.
+   */
   function simulate(M, s){
+    try { return simulateUnsafe(M, s) }
+    catch(e){ return { refused: (e && e.message) || 'the reference refuses this car',
+                       run:{ ticks:[], ending:'finish' }, finish:0, dry:true, secs:0, mph:0, trace:[] } }
+  }
+  function simulateUnsafe(M, s){
     var R = M.RACER_REGS, S = M.S, finish = Math.round(s.metres * S);
     var st = { phase:M.PHASE.RACING, driver:new Array(20).fill(0), pool:new Array(36).fill(0),
                eng:s.eng, tyr:s.tyr, finish:finish, slip:s.slip, green:0, gap:1, last:100, s:0, v:0, n:0 };
     var fuel = s.fuel, ticks = [], done = false, ending = 'finish', trace = [];
     for(var i=0;i<400;i++){
       var r = M.refTick(st, { throttle:s.throttle, fuel:fuel, lockTime:st.last+st.gap }, R);
+      /* ⚠⚠ A CAR CANNOT BUY A TICK IT CANNOT AFFORD. Without this the loop drives on with NEGATIVE
+         fuel, mass goes to zero a few ticks later, and `refTick` refuses with "a car cannot be
+         massless" — which is true of the arithmetic and useless as an explanation. The honest answer
+         is that it ran dry, and that is a different sentence with a different fix. */
+      if(r.burn > fuel) break;
       fuel -= r.burn; ticks.push({ throttle:s.throttle, spun:r.spun });
       st = Object.assign({}, r.state, { last: st.last + st.gap });
       trace.push({ s: st.s, v: st.v });
@@ -452,9 +468,14 @@
     $('v-slip').textContent = s.slip;
     if(sim.dry){
       PLAN = null;
-      $('p-ticks').textContent = '—'; $('p-et').textContent = 'never crosses'; $('p-mph').textContent = '—';
+      $('p-ticks').textContent = '—'; $('p-mph').textContent = '—';
       $('p-bytes').textContent = '—'; $('p-fee').textContent = '—';
-      $('go').disabled = true; $('go-note').textContent = 'more fuel, or a shorter strip';
+      /* ⚠ A REFUSAL AND A DRY TANK ARE DIFFERENT THINGS, and telling somebody to add fuel when the
+         reference will not build the car at all sends them the wrong way entirely. */
+      $('p-et').textContent = sim.refused ? 'the car cannot be built' : 'never crosses';
+      $('go').disabled = true;
+      $('go-note').textContent = sim.refused ? '⚠ ' + sim.refused : 'more fuel, or a shorter strip';
+      place(0);
       return;
     }
     var cfg = { name:'SUN-DIVE', fuel:s.fuel, eng:s.eng, tyr:s.tyr, slip:s.slip, finish:sim.finish };
@@ -463,7 +484,9 @@
     try { rep = M.raceValidates(params, 1) } catch(e){ rep = null }
     PLAN = rep && rep.raceable ? { s:s, sim:sim, params:params, rep:rep } : null;
     $('p-ticks').textContent = sim.run.ticks.length;
-    $('p-et').textContent = sim.secs.toFixed(2) + ' s · ' + sim.run.ending;
+    /* ★ Say the ending in the panel too, so a wreck is visible BEFORE it is minted rather than after. */
+    $('p-et').textContent = sim.secs.toFixed(2) + ' s · ' +
+      ({ 'off':'goes off the track', 'blown-throttle':'blows the engine', 'blown-speed':'blows the engine' }[sim.run.ending] || 'gets home');
     $('p-mph').textContent = sim.run.ending === 'finish' ? Math.round(sim.mph) + ' mph' : '—';
     $('p-bytes').textContent = rep ? n(rep.lockBytes) + ' B' : '—';
     $('p-fee').textContent = rep ? n(rep.fee + 1) + ' sat' : '—';
@@ -490,13 +513,40 @@
     var st = document.querySelector('.strip');
     $('carEl').style.left = (Math.max(0,Math.min(1,frac)) * (st.clientWidth - 44)) + 'px';
   }
-  /** Run the 🏎 down the strip at the elapsed time the chain has already settled. */
-  function animate(sim){
-    var i = 0, end = sim.trace[sim.trace.length-1].s || 1;
+  /**
+   * Run the 🏎 down the strip at the elapsed time the chain has already settled.
+   *
+   * ⚠⚠ SCALED AGAINST THE FINISH LINE, NOT AGAINST WHERE IT STOPPED. The first version divided by the
+   * last position in the trace, so EVERY run — including one that went off the track after four ticks
+   * — walked the car all the way to the flag. A car that travelled forty metres of a quarter mile
+   * belongs a tenth of the way along, and looking like it got home is the page telling a lie the chain
+   * did not.
+   */
+  function animate(sim, finish){
+    var i = 0;
     var t = setInterval(function(){
       if(i >= sim.trace.length){ clearInterval(t); return }
-      place(sim.trace[i].s / end); i++;
+      place(sim.trace[i].s / finish); i++;
     }, 90);
+  }
+
+  /**
+   * ★ WHAT ACTUALLY HAPPENED, named by cause.
+   * ⚠ The first version printed "🏁 0.40 s over 402 m" for a car that went OFF THE TRACK at tick four.
+   * It did not do 402 m in 0.40 s; it lost grip and was gone. The covenant settled the wreck correctly
+   * and the page reported a victory — which is the page disagreeing with the chain, and the chain is
+   * the thing that decides.
+   * ⇒ A wreck is not an error path. The four-tick script IS a car getting away from its driver, and
+   * that is a result worth reading, not a failure worth hiding.
+   */
+  function verdict(sim, metres){
+    var t = sim.secs.toFixed(2);
+    switch(sim.run.ending){
+      case 'off':            return ['💨 OFF THE TRACK after ' + t + ' s — it broke traction and was gone', 'no'];
+      case 'blown-throttle': return ['💥 ENGINE LET GO after ' + t + ' s — too much throttle for the grip', 'no'];
+      case 'blown-speed':    return ['💥 ENGINE LET GO after ' + t + ' s — past what the machinery takes', 'no'];
+      default:               return ['🏁 HOME in ' + t + ' s over ' + metres + ' m · 1 sat home', 'ok'];
+    }
   }
 
   /* ── BROADCAST ────────────────────────────────────────────────────────────────────────────────
@@ -585,8 +635,12 @@
         return broadcast(r.tx.toHex(), 'the race').then(function(){
           say('   ' + r.tx.id('hex'), 'dim');
           say('');
-          say('🏁 ' + sim.secs.toFixed(2) + ' s over ' + PLAN.s.metres + ' m · 1 sat home', 'ok');
-          animate(sim);
+          var v = verdict(sim, PLAN.s.metres);
+          say(v[0], v[1]);
+          if(sim.run.ending !== 'finish'){
+            say('   the covenant settled the wreck — a car that ends badly still races, and still pays', 'dim');
+          }
+          animate(sim, PLAN.sim.finish);
           return reload();
         });
       });
