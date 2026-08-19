@@ -242,3 +242,26 @@ export function buildRacerDepotBasicLock(p: RacerDepotBasicParams): LockingScrip
 
 /** What `scriptCodeVarIntSize` says about a script of this length — exported so tests can pin it. */
 export const depotVarIntSize = scriptCodeVarIntSize
+
+/**
+ * ★★ THE DEPOT'S STATE, READ OFF ITS OWN SCRIPT — the only honest source.
+ *
+ * The head is `04 mark(4) 01 n(1)`, all fixed width, so this is two slices and no parsing. A page must
+ * read the state from the script it is about to spend, never from something it remembers: the depot is
+ * a chain, and anybody may have advanced it since the page loaded.
+ *
+ * ⚠ Read at flat offsets a state layout yields plausible nonsense rather than an error, which is why
+ * the two marker bytes are checked rather than assumed.
+ */
+export function readDepotState(script: number[]): { mark: number; count: number } {
+  if (script[0] !== MARK_BYTES || script[1 + MARK_BYTES] !== COUNT_BYTES) {
+    throw new Error('racerDepot: that output does not carry a one-race depot state head ' +
+      `(expected ${MARK_BYTES} … ${COUNT_BYTES}, got ${script[0]} … ${script[1 + MARK_BYTES]})`)
+  }
+  const mark = script[1] | (script[2] << 8) | (script[3] << 16) | (script[4] << 24)
+  return { mark, count: script[1 + MARK_BYTES + 1] }
+}
+
+/** `mark` is four bytes; `n` is one. Kept here so the reader and the writer cannot drift apart. */
+export const MARK_BYTES = 4
+export const COUNT_BYTES = 1

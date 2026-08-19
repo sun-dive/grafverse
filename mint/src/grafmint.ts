@@ -144,9 +144,12 @@ export type { RaceTxParams, RaceReport } from './racerTx.ts'
 // The minting depot, compiled from Bitcoin BASIC, with the window rate limit in it.
 // ★ `racerDepotMaxFee` DERIVES the fee ceiling from `maxCarBytes` — never write that number down.
 export {
-  buildRacerDepotBasicLock, racerDepotBasicOps, racerDepotMaxFee,
-  RACER_WINDOW_SECONDS, RACER_MINTS_PER_WINDOW,
+  buildRacerDepotBasicLock, racerDepotBasicOps, racerDepotMaxFee, readDepotState,
+  RACER_WINDOW_SECONDS, RACER_MINTS_PER_WINDOW, MARK_BYTES, COUNT_BYTES,
 } from './racerDepotFrame.ts'
+// the contribute button: the page builds it unsigned, Phar Lap signs it. The page holds no key.
+export { buildRacerTopUpTx, racerTopUpPad, RACER_TOPUP_FEE_PAD, RACER_TOPUP_INPUT_PAD } from './racerDepotTopUp.ts'
+export type { RacerTopUpParams, RacerTopUpRequest } from './racerDepotTopUp.ts'
 export type { RacerDepotBasicParams } from './racerDepotFrame.ts'
 export { RACER_DRAW, RACER_MAX_CAR_BYTES } from './racerDepot.ts'
 /* ⚠⚠ `buildDepotUnlock` LIVES IN `depot.ts`, and the one-race depot reuses it deliberately — its
