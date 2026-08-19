@@ -483,16 +483,37 @@
       return;
     }
     var cfg = { name:'SUN-DIVE', fuel:s.fuel, eng:s.eng, tyr:s.tyr, slip:s.slip, finish:sim.finish };
+    /* ⚠⚠ THE OPTIMISER REFUSES A CAR THAT RUNS DRY, AND A REFUSAL MEANS "DO NOT OPTIMISE", NOT
+       "DO NOT RACE". `optimizeCarCompile` proves its hoisting against the faithful build before
+       emitting, and on a run where the fuel reaches zero it cannot read `v` back — so it refuses
+       rather than mint a car whose optimisation has not been checked. That is the self-proof doing
+       exactly its job.
+       ⇒ Falling back to the FAITHFUL build is the honest response: the car is bigger and costs more,
+       and it races. Measured 19 Aug: 402 m on 30,000 fuel is 14,754 B faithful where an optimised one
+       would have been ~12,200.
+       ⚠ It was invisible until tonight, because until the tank started clamping at empty a dry car was
+       never compiled at all. A branch nothing has taken is a branch nothing has tested. */
     var params = { cfg:cfg, run:sim.run, depotScript:sc.payee, consts:physics(M), optimise:true };
-    var rep;
-    try { rep = M.raceValidates(params, 1) } catch(e){ rep = null }
+    var rep = null, faithful = false;
+    try { rep = M.raceValidates(params, 1) }
+    catch(e){
+      params = { cfg:cfg, run:sim.run, depotScript:sc.payee, consts:physics(M), optimise:false };
+      faithful = true;
+      try { rep = M.raceValidates(params, 1) } catch(e2){ rep = null; faithful = false }
+    }
     PLAN = rep && rep.raceable ? { s:s, sim:sim, params:params, rep:rep } : null;
     $('p-ticks').textContent = sim.run.ticks.length;
+    /* ★ A dry run costs more, and saying so is the other half of letting somebody choose it. */
+    if(faithful) $('p-why').innerHTML = '⛽ This car <b>runs dry</b> before the line and coasts in. ' +
+      'The optimiser will not certify a dry run, so the car is built faithfully — <b>bigger, and dearer</b>. ' +
+      'Still the right trade if it is quicker.';
+    else $('p-why').innerHTML = 'The car\'s script <i>is</i> the race, so its length is its time — ' +
+      '<b>a faster setup is a cheaper transaction</b>.';
     /* ★ Say the ending in the panel too, so a wreck is visible BEFORE it is minted rather than after. */
     $('p-et').textContent = sim.secs.toFixed(2) + ' s · ' +
       ({ 'off':'goes off the track', 'blown-throttle':'blows the engine', 'blown-speed':'blows the engine' }[sim.run.ending] || 'gets home');
     $('p-mph').textContent = sim.run.ending === 'finish' ? Math.round(sim.mph) + ' mph' : '—';
-    $('p-bytes').textContent = rep ? n(rep.lockBytes) + ' B' : '—';
+    $('p-bytes').textContent = rep ? (n(rep.lockBytes) + ' B' + (faithful ? ' · unoptimised' : '')) : '—';
     $('p-fee').textContent = rep ? n(rep.fee + 1) + ' sat' : '—';
 
     if(DEPOT && rep){
@@ -587,7 +608,7 @@
     Promise.resolve().then(function(){
       /* ⚠⚠ THE GATE. A one-race car has no key — a car the covenant refuses can never be spent by
          ANYBODY. It is proved raceable before it is funded, and this throws rather than returning. */
-      M.assertRaceable(PLAN.params, 1);
+      M.assertRaceable(PLAN.params, 1);   /* the same params the panel priced — optimised or faithful */
       var car = M.buildRacerCar(Object.assign({}, PLAN.params, { fee: rep.fee })).toBinary();
       say('car ' + n(car.length) + ' B · proved raceable ✓', 'ok');
 
