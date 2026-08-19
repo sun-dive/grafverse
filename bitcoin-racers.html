@@ -1,436 +1,548 @@
-<!doctype html>
-<!-- BRC-226 demo three · BITCOIN RACERS — the covenant, run through the real interpreter.
-     © 2026 sun-dive — Open BSV License Version 6 (see LICENSE). -->
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bitcoin Racers · the covenant, running</title>
-<meta name="description" content="A whole drag race driven by a Bitcoin covenant — every move a real transaction, every move validated by the same script interpreter a node runs. Nothing is broadcast.">
+<!-- BRC-226 · BITCOIN RACERS — a whole drag race in ONE transaction, on mainnet.
+     © 2026 sun-dive · Open BSV License v6.
+
+     ⚠ IT RUNS THE EXACT CODE THE COVENANT IS VALIDATED AGAINST — mint/src/racerCar.ts and
+     mint/src/racerDepotFrame.ts through vendor/grafmint.js. Nothing here reimplements the physics, and
+     nothing here holds a key.
+
+     ⚠⚠ THIS PAGE REPLACED A MOCKUP OF THE CHAINED DESIGN. That one raced a car that persisted and was
+     refuelled, one transaction per tick, and broadcast nothing. This is the other machine: the run is
+     simulated first and compiled into a SINGLE locking script, so the script's length IS the predicted
+     race — and it spends real satoshis. The two share the physics and nothing else.
+     → mint/tools/RACERS.md, and do not read a number from one design and apply it to the other. -->
+<title>Bitcoin Racers · a whole drag race in one transaction</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="A drag race compiled into a single Bitcoin transaction. The car is a covenant with no key at all: it is minted for one run, races once, and pays the last satoshi home. Every assertion is checked by miners, not by a simulator.">
 <link rel="canonical" href="https://grafverse.com/bitcoin-racers.html">
+<meta property="og:title" content="Bitcoin Racers · a whole drag race in one transaction">
+<meta property="og:description" content="The car has no key. Its script IS the race, so its length is its time — and a faster setup is a cheaper transaction.">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Bitcoin Racers — a drag race driven by a covenant">
-<meta property="og:description" content="Every press of the accelerator is a real transaction, checked by the same script interpreter a node runs. The physics are computed in Bitcoin Script itself.">
 <meta property="og:url" content="https://grafverse.com/bitcoin-racers.html">
-<!-- ⚠ STOPGAP: borrowed from the article. This page wants its OWN card — a shot of the strip mid-run. -->
-<meta property="og:image" content="https://grafverse.com/img/green-test-thumb-04.webp">
-<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><text x=%221%22 y=%2214%22 font-size=%2214%22>🏁</text></svg>">
 <style>
-  :root{
-    --bg:#070b12; --panel:#0d1523; --line:#1d2b42; --ink:#dbe6f5; --dim:#8ba3c4; --faint:#5b7a9e;
-    --cyan:#5ad6ff; --lime:#b4ff3a; --tang:#ffab3d; --mag:#ff5d8f;
-    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-  }
+  :root{--bg:#0b0f14;--fg:#dfe7ef;--dim:#8fa3b8;--acc:#31c8ff;--warm:#ffb454;--good:#5ee08a;--bad:#ff6b6b;
+        --panel:#111823;--line:#1d2836}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-  .wrap{max-width:1080px;margin:0 auto;padding:26px 18px 80px}
-  h1{font-size:clamp(22px,3.6vw,32px);margin:0 0 6px;letter-spacing:-.015em}
-  .lede{color:var(--dim);font-size:15px;margin:0 0 6px;max-width:74ch}
-  .lede b{color:var(--ink)}
-  .sim{color:var(--tang);font-size:13px;margin:10px 0 22px;max-width:74ch}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:15px 17px;margin-top:14px}
-  .card h2{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--cyan);margin:0 0 13px}
-  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-  @media(max-width:760px){.grid3{grid-template-columns:1fr}}
-  label{display:block;font-size:11.5px;color:var(--dim);margin:9px 0 3px;font-family:var(--mono)}
-  input[type=range]{width:100%;accent-color:var(--cyan)}
-  .val{float:right;color:var(--ink);font-family:var(--mono);font-size:11.5px}
-  button{background:var(--cyan);color:#04131c;border:0;border-radius:22px;padding:11px 22px;font-weight:700;cursor:pointer;font:inherit;font-weight:700}
-  button:disabled{opacity:.45;cursor:default}
-  canvas{width:100%;display:block;border-radius:9px;background:#050a11;border:1px solid var(--line)}
-  .log{font:11.5px/1.65 var(--mono);max-height:340px;overflow:auto;background:#050a11;
-       border:1px solid var(--line);border-radius:9px;padding:11px}
-  .log div{white-space:pre;border-bottom:1px solid #101a2a;padding:1px 0}
-  .ok{color:var(--lime)} .no{color:var(--mag)} .hi{color:var(--tang)} .d{color:var(--faint)}
-  table{border-collapse:collapse;font:12px/1.6 var(--mono);width:100%}
-  td{padding:2px 6px} td.k{color:var(--dim)} td.v{text-align:right}
-  .big{font:700 30px/1 var(--mono);letter-spacing:-.02em}
-  .note{color:var(--dim);font-size:12.5px;margin:10px 0 0}
-  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:14px}
-  .foot{margin-top:38px;padding-top:22px;border-top:1px solid var(--line);color:var(--faint);
-        font-size:13px;line-height:1.65;max-width:76ch}
-  .foot b{color:var(--dim)} .foot a{color:var(--cyan);text-decoration:none}
-  .foot a:hover{text-decoration:underline}
-  .foot code{font-family:var(--mono);font-size:12px;color:var(--dim)}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:980px;margin:0 auto;padding:28px 18px 80px}
+  h1{font-size:1.7rem;margin:0 0 6px;letter-spacing:-.02em}
+  .sub{color:var(--dim);margin:0 0 10px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0}
+  .lbl{font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;color:var(--acc);
+       text-transform:uppercase;margin-bottom:12px}
+  .row{display:flex;justify-content:space-between;gap:12px;align-items:baseline;padding:3px 0}
+  .row span:last-child{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:700px){.grid{grid-template-columns:1fr}}
+  label{display:block;font-size:13px;color:var(--dim);margin:10px 0 2px}
+  label b{color:var(--fg);float:right;font-family:ui-monospace,Menlo,monospace}
+  input[type=range]{width:100%;accent-color:var(--acc)}
+  button{background:var(--acc);color:#04141c;border:0;border-radius:8px;padding:11px 18px;font:600 15px/1 inherit;cursor:pointer}
+  button:disabled{background:#25333f;color:#5d6f80;cursor:not-allowed}
+  button.ghost{background:transparent;color:var(--acc);border:1px solid var(--line)}
+  .strip{height:64px;background:#080c11;border:1px solid var(--line);border-radius:8px;position:relative;overflow:hidden;margin:12px 0}
+  .car{position:absolute;top:16px;left:0;width:30px;height:30px;display:grid;place-items:center;
+       font-size:22px;transition:left .09s linear}
+  .fin{position:absolute;top:0;bottom:0;right:8px;width:3px;background:repeating-linear-gradient(0deg,#fff 0 6px,#333 6px 12px)}
+  .log{font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;background:#080c11;border:1px solid var(--line);
+       border-radius:8px;padding:12px;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+  .ok{color:var(--good)} .no{color:var(--bad)} .warn{color:var(--warm)} .dim{color:var(--dim)}
+  a{color:var(--acc)}
+  .note{color:var(--dim);font-size:13px}
+  .big{font:600 22px/1.2 ui-monospace,Menlo,monospace}
+  .sim{background:#1a1206;border:1px solid #4a3410;color:var(--warm);border-radius:9px;padding:10px 13px;font-size:13.5px}
+  .foot{color:var(--dim);font-size:13px;border-top:1px solid var(--line);margin-top:34px;padding-top:18px}
+  code{font-family:ui-monospace,Menlo,monospace;color:var(--fg)}
+  textarea{width:100%;height:120px;padding:9px;border-radius:7px;border:1px solid var(--line);
+           background:#080c11;color:var(--dim);font-family:ui-monospace,Menlo,monospace;font-size:11px}
 </style>
-</head>
-<body>
+
 <div class="wrap">
   <h1>Bitcoin Racers 🏁</h1>
-  <p class="lede">A whole drag race, driven by a <b>Bitcoin covenant</b>. Every press of the accelerator is
-     a real transaction, and every one is checked by <b>the same script interpreter a node runs</b> — not by
-     a simulation of it, and not by the reference implementation the covenant was written against.</p>
-  <p class="sim">⚠ Nothing here is broadcast and nothing costs anything. The transactions are real and
-     valid; they are simply never sent. The key is generated in your browser for this page alone.</p>
+  <p class="sub">A whole drag race compiled into <b>one Bitcoin transaction</b>. The car is a covenant with
+     <b>no key at all</b> — no owner, no signature, nothing but the proof of its own transaction. It is minted
+     for one run, it races once, and the last satoshi goes home.</p>
 
-  <div class="card">
-    <h2>Build a car</h2>
-    <div class="grid3">
-      <div>
-        <label>engine <span class="val" id="v-eng"></span></label>
-        <input type="range" id="eng" min="1" step="1">
+  <!-- ⚠ THIS REPLACED A PAGE THAT PROMISED IT SPENT NOTHING. Saying so plainly matters more than the
+       feature: a visitor who read the old page has been told the opposite of what is now true. -->
+  <p class="sim">⚠ <b>This page spends real satoshis</b> — the depot's, never yours. Racing needs no wallet,
+     no key and no coins from you: the depot pays, and the car has no key for anyone to hold. The only thing
+     that ever asks you to sign is the fuel button at the bottom, and that one is signed in Phar Lap, not here.</p>
+
+  <!-- ═══ THE DEPOT ═══════════════════════════════════════════════════════════════════════════════ -->
+  <div class="panel">
+    <div class="lbl">The depot</div>
+    <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start">
+      <svg id="silo" viewBox="0 0 120 200" width="112" height="186" role="img"
+           aria-label="the fuel depot, and how full it is">
+        <defs>
+          <linearGradient id="fuel" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#ffd479"/><stop offset="100%" stop-color="#ff9b2f"/>
+          </linearGradient>
+          <clipPath id="tankClip"><path d="M20 42 h80 v120 a10 10 0 0 1 -10 10 h-60 a10 10 0 0 1 -10 -10 z"/></clipPath>
+        </defs>
+        <path d="M20 42 a40 22 0 0 1 80 0" fill="#1b2634" stroke="#2c3d52" stroke-width="2"/>
+        <path d="M20 42 h80 v120 a10 10 0 0 1 -10 10 h-60 a10 10 0 0 1 -10 -10 z"
+              fill="#131c27" stroke="#2c3d52" stroke-width="2"/>
+        <g clip-path="url(#tankClip)"><rect id="fuelLvl" x="20" y="172" width="80" height="0" fill="url(#fuel)"/></g>
+        <path d="M20 42 h80 v120 a10 10 0 0 1 -10 10 h-60 a10 10 0 0 1 -10 -10 z"
+              fill="none" stroke="#2c3d52" stroke-width="2"/>
+        <g stroke="#22303f" stroke-width="1.5" opacity=".8">
+          <line x1="20" y1="78" x2="100" y2="78"/><line x1="20" y1="114" x2="100" y2="114"/>
+          <line x1="20" y1="150" x2="100" y2="150"/>
+        </g>
+        <path d="M100 160 q22 0 22 -22" fill="none" stroke="#2c3d52" stroke-width="3"/>
+        <rect x="34" y="176" width="10" height="16" fill="#1b2634"/><rect x="76" y="176" width="10" height="16" fill="#1b2634"/>
+        <text id="siloTxt" x="60" y="112" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
+              font-size="13" fill="#dfe7ef">—</text>
+      </svg>
+      <div style="flex:1;min-width:250px">
+        <div class="row"><span>fuel in the tank</span><span id="d-tank" class="dim">reading…</span></div>
+        <div class="row"><span>this car will cost</span><span id="d-cost" class="dim">—</span></div>
+        <div class="row"><span>minting window</span><span id="d-window" class="dim">—</span></div>
+        <div class="row"><span>races left in it</span><span id="d-left" class="dim">—</span></div>
+        <p class="note" id="d-note" style="margin-top:10px">press <b>Re-read the chain</b> to find the depot.</p>
+        <button class="ghost" id="reload">↺ Re-read the chain</button>
       </div>
-      <div>
-        <label>tyres <span class="val" id="v-tyr"></span></label>
-        <input type="range" id="tyr" min="1" step="1">
-      </div>
-      <div>
-        <label>tank · satoshis <span class="val" id="v-tank"></span></label>
-        <input type="range" id="tank" min="2000" max="120000" step="1000" value="40000">
-      </div>
-    </div>
-    <div class="grid3">
-      <div>
-        <label>the strip <span class="val" id="v-fin"></span></label>
-        <input type="range" id="fin" min="60" max="800" step="1" value="402">
-      </div>
-      <div>
-        <label>surface <span class="val" id="v-slip"></span></label>
-        <input type="range" id="slip" min="400" max="2000" step="25" value="1000">
-      </div>
-      <div>
-        <label>minimum gap · K <span class="val" id="v-gap"></span></label>
-        <input type="range" id="gap" min="0" max="10" step="1" value="1">
-      </div>
-    </div>
-    <div class="row">
-      <button id="run">▶ Run the race on chain rules</button>
-      <span class="note" id="status">the covenant is built fresh for every run</span>
     </div>
   </div>
 
-  <div class="card">
-    <h2>The strip</h2>
-    <canvas id="strip" width="1040" height="96"></canvas>
+  <!-- ═══ THE CAR ═════════════════════════════════════════════════════════════════════════════════ -->
+  <div class="grid">
+    <div class="panel">
+      <div class="lbl">Build a car</div>
+      <label>engine <b id="v-eng">14</b><input type="range" id="eng" min="1" max="24" step="1" value="14"></label>
+      <label>tyres <b id="v-tyr">10</b><input type="range" id="tyr" min="1" max="10" step="1" value="10"></label>
+      <label>fuel · a game quantity, and it is MASS <b id="v-tank">40,000</b><input type="range" id="tank" min="4000" max="120000" step="1000" value="40000"></label>
+      <label>the strip <b id="v-fin">60 m</b><input type="range" id="fin" min="4" max="420" step="1" value="60"></label>
+      <label>surface · grip <b id="v-slip">1000</b><input type="range" id="slip" min="400" max="2000" step="25" value="1000"></label>
+    </div>
+    <div class="panel">
+      <div class="lbl">What the chain will settle</div>
+      <div class="row"><span>ticks</span><span id="p-ticks">—</span></div>
+      <div class="row"><span>elapsed</span><span id="p-et">—</span></div>
+      <div class="row"><span>trap speed</span><span id="p-mph">—</span></div>
+      <div class="row"><span>the car, as Script</span><span id="p-bytes">—</span></div>
+      <div class="row"><span>the race costs</span><span id="p-fee">—</span></div>
+      <!-- ★★ THE CONSEQUENCE NOBODY DESIGNED. The script length IS the predicted race, so a faster
+           setup is a shorter script and a smaller fee. You pay less to win. -->
+      <p class="note" id="p-why" style="margin-top:10px">The car's script <i>is</i> the race, so its length
+         is its time — <b>a faster setup is a cheaper transaction</b>.</p>
+    </div>
   </div>
 
-  <div class="grid3">
-    <div class="card">
-      <h2>Result</h2>
-      <div class="big" id="verdict">—</div>
-      <table id="result"></table>
+  <div class="strip"><div class="fin"></div><div class="car" id="carEl">🏎</div></div>
+
+  <div class="panel">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <button id="go" disabled>▶ Race it on mainnet</button>
+      <span class="note" id="go-note">find the depot first</span>
     </div>
-    <div class="card" style="grid-column:span 2">
-      <h2>Every transaction, validated</h2>
-      <div class="log" id="log"><div class="d">press Run…</div></div>
-    </div>
+    <div class="log" id="log" style="margin-top:12px"><span class="dim">nothing yet.</span></div>
   </div>
 
-  <div class="card">
-    <h2>What just happened</h2>
-    <p class="note" style="margin-top:0">Each line above is a transaction whose input was executed by
-      <code>Spend</code>, the interpreter from <code>@bsv/sdk</code> — the same one a node uses to decide
-      whether a spend is valid. A <span class="ok">✓</span> means the covenant <i>accepted</i> that move:
-      the phase advanced legally, the driver's signature checked out, <code>nLockTime</code> cleared the
-      tree, and the state written into the next output is <b>exactly</b> the one the script computed for
-      itself. Anything else and the line would be red and the race would stop there.</p>
-    <p class="note">The covenant is <b id="locksize">—</b> of Bitcoin Script. It carries its own state in
-      its own locking script, so each transaction is that script twice over — once in the output and once
-      inside the preimage that authorises the spend. That is what a move costs.</p>
+  <!-- ═══ FUEL ════════════════════════════════════════════════════════════════════════════════════ -->
+  <div class="panel">
+    <div class="lbl">⛽ Put satoshis in the tank</div>
+    <p class="note" style="margin:0 0 4px">Every race costs the depot a little, and when it runs dry nobody
+       races. This builds the top-up <b>here, unsigned</b>, and hands it to <b>Phar Lap</b> to sign — this page
+       never sees a key. ★ A gift buys no minting slot: the covenant refuses a top-up that tries to take one.</p>
+    <label>satoshis <b id="v-add">20,000</b><input type="range" id="add" min="1000" max="500000" step="1000" value="20000"></label>
+    <label>a mark for the board · optional</label>
+    <input id="mark" maxlength="75" placeholder="first fuel 🏁" style="width:100%;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--fg);font-size:13px">
+    <div style="margin-top:12px"><button id="build" class="ghost">⛽ Build it for Phar Lap</button></div>
+    <p class="note" id="f-out" style="margin-top:10px"></p>
+    <textarea id="f-req" style="display:none" readonly></textarea>
+  </div>
+
+  <!-- ═══ WHAT JUST HAPPENED ══════════════════════════════════════════════════════════════════════ -->
+  <div class="panel">
+    <div class="lbl">What just happened</div>
+    <p class="note" style="margin-top:0">The run is simulated before anything exists, and the car is
+      compiled <b>for that run and no other</b> — the physics, the distance, the finish test and the way it
+      ends are all unrolled into one locking script. Minting it is a <b>commitment</b>: the transaction
+      asserts <i>this car finishes in N ticks</i>, and the covenant refuses it if the arithmetic disagrees.</p>
+    <p class="note">So a wrong prediction produces <b>no race</b>, never a wrong one. Claiming a spin that did
+      not happen, or a time one tick shorter, both simply fail to validate.</p>
+    <p class="note">The depot mints at most <b>ten cars per window</b>, and the reset costs nothing: a
+      transaction cannot be mined until <i>median time past</i> passes its <code>nLockTime</code>, and that only
+      moves when a block is found. The script never has to know what a block is.</p>
+    <p class="note">⚠ It only works because the depot also checks its own <code>nSequence</code>. A transaction
+      whose inputs are all final ignores <code>nLockTime</code> entirely — so without that one line, the whole
+      scheme would be decoration.</p>
   </div>
 
   <div class="foot">
-    <b>Colophon.</b> The covenant is <code>mint/src/shell.ts</code>. It was designed and written on
-    <b>14 August 2026</b> by <b>sun-dive</b>, who made every design decision on this page — the drag race
-    that deleted the track problem, the finish line as a UTXO so winning and being paid are one act, the
-    three ways to lose grip told apart by cause, and the regulations themselves, felt out on the
-    <a href="/racers.html">bench</a> rather than chosen on paper — with <b>Claude (Opus 5)</b>, who wrote
-    the Script and the tests.
+    <b>Colophon.</b> The covenant is <code>mint/src/racerCar.ts</code> and <code>mint/src/racerDepotSrc.ts</code>
+    — the depot's rules are written in <a href="/basic.html">Bitcoin BASIC</a> and compiled to Script, so they
+    can be read back rather than re-derived. Designed by <b>sun-dive</b>, who made every decision here: the
+    drag race that deleted the track problem, one race per car because the number of unrolls depends on the
+    setup, the depot's window rate limit, and the address the last satoshi comes home to. <b>Claude (Opus 5)</b>
+    wrote the Script and the tests.
     <br><br>
     <b>★ <a href="/green-test.html">A Green Test Is Not Evidence</a></b> — Claude's own account of building
     this: five failures, what each one taught, and the day it raced on mainnet.
     <br><br>
-    Built in six steps, each proved through the same interpreter a node runs before the next began. The
-    mistakes are in the commit history deliberately: a fee that would have been unmineable, a covenant
-    that enforced a sequence and loaded nothing, a test comparing a thing to itself, and depths written
-    down instead of derived. Every one was found by measuring something rather than by reasoning about
-    it, which is the only method here that has ever worked.
+    The mistakes are in the commit history deliberately: a fee that would have been unmineable, a constant
+    fold that erased a car's whole setup, a bound that refused the very race it was sized for, and a suite
+    where only the refusals passed — which is what a covenant that always fails looks like from outside.
+    Every one was found by measuring something rather than by reasoning about it.
     <br><br>
     © 2026 sun-dive · Open BSV License Version 6 · <a href="/brc226.html">demo one</a> ·
-    <a href="/battery.html">demo two</a> · <b>in the covenant we trust</b>
+    <a href="/battery.html">demo two</a> · <a href="/racers.html">the tuning bench</a> ·
+    <b>in the covenant we trust</b>
   </div>
 </div>
 
 <script>
 (function(){
   "use strict";
-  var $=function(i){return document.getElementById(i)};
-  var GM=null, R=null, S=1, KEY=null, DRIVER=null;
 
-  function ensureGM(){
+  /* ⚠⚠ THE DEPOT. Minted 19 Aug 2026, block 962,950. There is no index that will find it — a covenant
+     has no address to look up, so the genesis txid IS its identity and it is written down here. */
+  var GENESIS  = '607272d1b35d6f0c4f1179fef2e4556d41f9bfb4bbed394de1f83e300ee0d1d7';
+  var OWNER_AD = '12tMiZzdMUGdR2me8Y6H7VjQkFTekrz141';
+  var WOC = 'https://api.whatsonchain.com/v1/bsv/main';
+  var LAST_KEY = 'racers.depot.tip.v1';
+
+  var $ = function(i){ return document.getElementById(i) };
+  var n = function(x){ return Number(x).toLocaleString() };
+  var GM = null, DEPOT = null, PLAN = null;
+
+  function say(s, cls){
+    var d = document.createElement('div');
+    if(cls) d.className = cls;
+    d.textContent = s; $('log').appendChild(d); $('log').scrollTop = 1e6;
+  }
+  function clearLog(){ $('log').innerHTML = '' }
+
+  function gm(){
     if(GM) return Promise.resolve(GM);
-    if(window.GrafMint){ GM=window.GrafMint; return Promise.resolve(GM) }
-    return new Promise(function(res,rej){
-      var s=document.createElement('script'); s.src='/vendor/grafmint.js';
-      s.onload=function(){ GM=window.GrafMint; res(GM) };
-      s.onerror=function(){ rej(Error('could not load grafmint.js — serve this page, do not open the file')) };
+    if(window.GrafMint){ GM = window.GrafMint; return Promise.resolve(GM) }
+    return new Promise(function(res, rej){
+      var s = document.createElement('script'); s.src = '/vendor/grafmint.js';
+      s.onload = function(){ GM = window.GrafMint; res(GM) };
+      s.onerror = function(){ rej(Error('could not load grafmint.js — serve this page, do not open the file')) };
       document.head.appendChild(s);
     });
   }
 
-  var SEC=0.1;
-  var u64=function(n){ var b=[],x=n; for(var i=0;i<8;i++){ b.push(x%256); x=Math.floor(x/256) } return b };
-  var mph=function(v){ return (v/S)/SEC*2.23694 };
-  var log=function(html,cls){ var d=document.createElement('div'); if(cls)d.className=cls; d.innerHTML=html;
-                              $('log').appendChild(d); $('log').scrollTop=$('log').scrollHeight };
-
-  /* ── ONE MOVE, THE WAY A NODE WOULD SEE IT ───────────────────────────────────────────────────────
-     Build the transaction, sign the driver's input, then hand the whole thing to `Spend` — the real
-     interpreter — and let it decide. Nothing here trusts the reference implementation; the reference
-     only says what state we EXPECT, and the covenant is free to disagree, in which case the move is
-     rejected and the race stops. That disagreement is the only thing worth testing. */
-  function move(state, next, opts){
-    var MF=GM.SHELL_MAX_FEE;
-    var prev=GM.buildShellLock({state:state,maxFee:MF});
-    var src=new GM.Transaction(); src.addOutput({lockingScript:prev,satoshis:opts.fuel});
-    var tx=new GM.Transaction(); tx.version=2;
-    tx.addInput({sourceTransaction:src,sourceOutputIndex:0,sequence:0xfffffffe});
-    if(opts.pot) tx.addInput({sourceTransaction:opts.pot.tx,sourceOutputIndex:0,sequence:0xfffffffe,
-                              unlockingScript:new GM.UnlockingScript([])});
-    tx.addOutput({lockingScript:GM.buildShellLock({state:next,maxFee:MF}),satoshis:opts.out});
-    /* ★ THE MONEY LEAVES HERE. On any move that ENDS the run the covenant drops its value floor to a
-       single satoshi, so everything above that satoshi can be paid out to the driver. This second
-       output is the difference between a race and a very expensive way to lock coins up forever. */
-    if(opts.payout>0) tx.addOutput({lockingScript:new GM.P2PKH().lock(KEY.toAddress()),satoshis:opts.payout});
-    tx.lockTime=opts.at;
-
-    var pre=GM.TransactionSignature.format({
-      sourceTXID:src.id('hex'), sourceOutputIndex:0, sourceSatoshis:opts.fuel,
-      transactionVersion:2, otherInputs:tx.inputs.slice(1), inputIndex:0, outputs:tx.outputs,
-      inputSequence:0xfffffffe, subscript:prev, lockTime:tx.lockTime, scope:GM.SHELL_SCOPE });
-
-    return new GM.P2PKH().unlock(KEY).sign(tx,0).then(function(us){
-      var ch=us.chunks;
-      tx.inputs[0].unlockingScript=new GM.UnlockingScript(GM.shellUnlockingOps({
-        spenderOutputs:tx.outputs.slice(1).flatMap(function(o){
-          return GM.serializeOutput(o.satoshis||0,o.lockingScript.toBinary()) }),
-        newValue:u64(opts.out), preimage:pre,
-        sig:ch[0].data||[], pubKey:ch[1].data||[], throttle:opts.throttle||0, retire:!!opts.retire,
-        /* Every loadable, on every move. The covenant reads each only in the transition that OWNS it,
-           so supplying them always is both harmless and what a real builder does — the script counts
-           positions, not arguments. */
-        load:{ driver:next.driver, pool:next.pool, eng:next.eng, tyr:next.tyr,
-               finish:next.finish, slip:next.slip, green:next.green, gap:next.gap } }));
-      var ok=false, why='';
-      try{
-        ok = new GM.Spend({
-          sourceTXID:src.id('hex'), sourceOutputIndex:0, sourceSatoshis:opts.fuel, lockingScript:prev,
-          transactionVersion:2, otherInputs:tx.inputs.slice(1), outputs:tx.outputs, inputIndex:0,
-          unlockingScript:tx.inputs[0].unlockingScript, inputSequence:0xfffffffe, lockTime:tx.lockTime
-        }).validate()===true;
-      }catch(e){ why=(e.message||'').split('\n')[0].replace('Script evaluation error: ',''); }
-      return { ok:ok, why:why, bytes:tx.toHex().length/2, tx:tx };
-    });
+  /* ── THE SCRIPTS, ALL FROM ONE ADDRESS ────────────────────────────────────────────────────────
+     ★ The address that owns the depot is the address a finished race pays back to. Because a 25-byte
+     address contains no depot, nothing is self-referential and there is exactly ONE depot. */
+  function scripts(M){
+    var payee = new M.P2PKH().lock(OWNER_AD).toBinary();
+    var owner = new M.P2PKH().lock(OWNER_AD).chunks[2].data;
+    return { payee: payee, owner: owner,
+             block: new M.LockingScript(M.carBlockOps({ depotScript: payee })).toBinary() };
+  }
+  function depotAt(M, mark, count){
+    var s = scripts(M);
+    return M.buildRacerDepotBasicLock({ carBlock: s.block, owner: s.owner, mark: mark, count: count });
   }
 
-  /** The largest throttle that does not break traction — asked of the reference, never of the chain. */
-  function safe(st,fuel){
-    var lo=0,hi=R.THROTTLE_MAX,best=0;
-    while(lo<=hi){ var m=(lo+hi)>>1, r;
-      try{ r=GM.refTick(st,{throttle:m,lockTime:Math.max(st.green,st.last+st.gap),fuel:fuel},R) }catch(e){ break }
-      if(r.spun||r.ended) hi=m-1; else { best=m; lo=m+1 } }
-    return best;
+  /* ── FINDING THE TIP ──────────────────────────────────────────────────────────────────────────
+     ⚠⚠ THE BATTERY'S SEARCH DOES NOT TRANSFER, and knowing why matters more than the code.
+     `battery.html` brackets its tip with an exponential probe and a binary search — 2·log2(k) lookups
+     instead of k hops — because the battery's state sequence is FORCED: state n is `refState` applied
+     n times, so existence walks an ordered line.
+
+     This depot's state is (mark, count), and `mark` is the WINDOW somebody raced in — which depends on
+     WHEN, not on how many. There is no sequence to bracket. Copying the shape without the property
+     would be a search over states that never existed.
+
+     ⇒ What DOES transfer: ask the SCRIPT-HASH index rather than the chain hop by hop, and ★★ ask the
+     MEMPOOL FIRST, because a tip is unconfirmed almost by definition. Measured on the battery,
+     `/history` did not contain a live tick that `/unconfirmed/history` did, and the page showed a
+     stale state for up to an hour.
+     ⚠ `wocScriptHash` REVERSES the sha256. The non-reversed form 404s silently — which here would read
+     as "unspent, this is the tip" and hand back the wrong output entirely. */
+  function unspentAt(M, prov, mark, count){
+    var sh = M.wocScriptHash(depotAt(M, mark, count).toBinary());
+    return prov.getUnspentByScriptHash(sh).then(function(u){
+      return (u && u.length) ? u[0] : null;
+    }).catch(function(){ return null });
+  }
+  /** ⚠ Only a 404 means unspent. A 429 or a 500 must STOP rather than be read as "we have arrived". */
+  function walkTip(txid, vout){
+    var hops = 0;
+    function step(t, v){
+      if(++hops > 400) throw Error('the depot chain is more than 400 deep — something is wrong');
+      return fetch(WOC + '/tx/' + t + '/' + v + '/spent').then(function(r){
+        if(r.status === 404) return { txid:t, vout:v, hops:hops-1 };
+        if(!r.ok) throw Error('cannot tell whether ' + t.slice(0,12) + '… is spent (WoC ' + r.status + ') — refusing to guess');
+        return r.json().then(function(s){ return step(s.txid, 0) });
+      });
+    }
+    return step(txid, vout);
+  }
+  function findTip(M){
+    var prov = new M.WalletProvider(OWNER_AD), remembered = null;
+    try { remembered = JSON.parse(localStorage.getItem(LAST_KEY) || 'null') } catch(e){}
+    var tries = [];
+    if(remembered){
+      var W = M.RACER_WINDOW_SECONDS, now = Math.floor((Date.now()/1000 - 3*3600) / W);
+      tries.push([remembered.mark, remembered.count]);
+      if(remembered.count < M.RACER_MINTS_PER_WINDOW) tries.push([remembered.mark, remembered.count + 1]);
+      if(now > remembered.mark) tries.push([now, 1]);
+    }
+    function attempt(i){
+      if(i >= tries.length) return Promise.resolve(null);
+      return unspentAt(M, prov, tries[i][0], tries[i][1]).then(function(u){
+        return u ? { txid: u.tx_hash || u.txid, vout: (u.tx_pos != null ? u.tx_pos : u.vout), viaIndex: true } : attempt(i+1);
+      });
+    }
+    return attempt(0).then(function(hit){ return hit || walkTip(GENESIS, 0) });
   }
 
-  var trace=[], FIN=0, OUTCOME=null;   // OUTCOME: null while running, then home | off | blown | retired
-  function run(){
-    $('run').disabled=true; $('log').innerHTML=''; trace=[]; OUTCOME=null; $('verdict').textContent='…';
-    var eng=+$('eng').value, tyr=+$('tyr').value, tank=+$('tank').value;
-    var finM=+$('fin').value, slip=+$('slip').value, gap=+$('gap').value;
-    FIN=finM;
-    var GREEN=1_700_000_000;
+  function reload(){
+    $('d-note').textContent = 'reading the chain…';
+    return gm().then(function(M){
+      return findTip(M).then(function(tip){
+        return fetch(WOC + '/tx/' + tip.txid + '/hex').then(function(r){ return r.text() }).then(function(hex){
+          var tx = M.Transaction.fromHex(hex.trim()), out = tx.outputs[tip.vout];
+          /* ★ THE STATE COMES OFF THE SCRIPT, never from anything this page remembers. The depot is a
+             chain, and anybody may have advanced it since the page loaded. */
+          var st = M.readDepotState(out.lockingScript.toBinary());
+          DEPOT = { txid: tip.txid, vout: tip.vout, sourceTxHex: hex.trim(), sourceTransaction: tx,
+                    value: out.satoshis, mark: st.mark, count: st.count };
+          try { localStorage.setItem(LAST_KEY, JSON.stringify({ mark: st.mark, count: st.count })) } catch(e){}
 
-    // the pot: a real output whose outpoint the covenant is told about before the flag drops
-    var pot=new GM.Transaction();
-    var potSats=Math.round(tank/2);
-    pot.addOutput({lockingScript:GM.LockingScript.fromASM('OP_TRUE'),satoshis:potSats});
-    var idLE=GM.Utils.toArray(pot.id('hex'),'hex').slice().reverse();
-    var poolOutpoint=idLE.concat([0,0,0,0]);
-
-    var st=GM.emptyShell(), fuel=tank, at=GREEN, bytes=0, txs=0, sat=0, took=0, retired=false;
-    var steps=[
-      ['claim it and load the car', function(s){ return GM.loadCar(s,{driver:DRIVER,eng:eng,tyr:tyr},R) }],
-      ['load the track and the tree', function(s){ return GM.loadTrack(s,{finish:Math.round(finM*S),slip:slip,
-          green:GREEN,gap:gap,pool:poolOutpoint}) }],
-      ['fuel it — the specs freeze here', function(s){ return GM.arm(s) }]
-    ];
-
-    var chain=Promise.resolve(), unfit=GM.stateFits(GM.loadTrack(GM.loadCar(GM.emptyShell(),
-      {driver:DRIVER,eng:eng,tyr:tyr},R),{finish:Math.round(finM*S),slip:slip,green:GREEN,gap:gap,pool:poolOutpoint}));
-    if(unfit){ log('⚠ '+unfit+' does not fit its field — these settings cannot be minted','no');
-               $('run').disabled=false; return }
-
-    steps.forEach(function(step){
-      chain=chain.then(function(){
-        var next=step[1](st);
-        return move(st,next,{fuel:fuel,out:fuel,at:0,throttle:0}).then(function(r){
-          txs++; bytes+=r.bytes;
-          log((r.ok?'<span class="ok">✓</span>':'<span class="no">✗</span>')+' tx '+String(txs).padStart(3)+
-              '  '+String(r.bytes).padStart(5)+' B   '+step[0]+(r.ok?'':'  — '+r.why),r.ok?'':'no');
-          if(!r.ok) throw Error('rejected');
-          st=next;
+          var W = M.RACER_WINDOW_SECONDS, per = M.RACER_MINTS_PER_WINDOW;
+          var nowWin = Math.floor((Date.now()/1000 - 3*3600) / W);
+          var left = nowWin > st.mark ? per : per - st.count;
+          $('d-tank').textContent = n(out.satoshis) + ' sat';
+          $('d-window').textContent = st.mark + (nowWin > st.mark ? ' · a new one has opened' : '');
+          $('d-left').textContent = left + ' of ' + per;
+          $('d-note').innerHTML = 'tip <code>' + tip.txid.slice(0,18) + '…:' + tip.vout + '</code> · ' +
+            (tip.viaIndex ? 'one lookup, by script hash' : 'walked from the genesis');
+          /* the silo fills against a nominal full tank — it is a gauge, not a measurement */
+          var frac = Math.max(0.02, Math.min(1, out.satoshis / 200000));
+          $('fuelLvl').setAttribute('height', (130*frac).toFixed(1));
+          $('fuelLvl').setAttribute('y', (172 - 130*frac).toFixed(1));
+          $('siloTxt').textContent = n(out.satoshis);
+          replan();
         });
       });
-    });
+    }).catch(function(e){ $('d-note').innerHTML = '<span class="no">⚠ ' + e.message + '</span>' });
+  }
 
-    /* ★ THE TRAILER RESERVE. Retiring is itself a move, and a move costs its fee plus the one satoshi
-       the covenant always keeps. So a driver cannot spend the tank to the last drop: the moment the
-       next tick would leave less than it costs to stop, the run has to end voluntarily — or the tank
-       is locked in an output nothing can spend. Holding back enough to get the car home is not an
-       implementation detail here, it is a decision the driver makes on every single move. */
-    var RESERVE=R.BURN0+1;
-
-    /* ★ RETIREMENT — the reason a tank is never stranded. One flag in the unlocking script sends the
-       shell straight to OUT from wherever it stands: the car stops where it is, nothing loads, the
-       clock is left alone, and the floor drops to a single satoshi so the remaining fuel comes home.
-       It costs one ordinary move's fee. The car's record stands at whatever it had reached. */
-    function retire(){
-      var payout=fuel-R.BURN0-1;
-      at=Math.max(st.green, st.last+st.gap);
-      return move(st,{...st,phase:GM.PHASE.OUT},{fuel:fuel,out:1,at:at,retire:true,payout:payout})
-        .then(function(r){
-          txs++; bytes+=r.bytes; sat+=R.BURN0;
-          if(!r.ok){ log('<span class="no">✗</span> tx '+String(txs).padStart(3)+'  retire — '+r.why,'no');
-                     throw Error('rejected') }
-          st={...st,phase:GM.PHASE.OUT}; fuel=1; took=payout; retired=true; OUTCOME='retired';
-          log('<span class="ok">✓</span> tx '+String(txs).padStart(3)+'  '+String(r.bytes).padStart(5)+' B   '+
-              '<span class="hi">RETIRED</span> — too low to run and still afford to stop; '+
-              payout.toLocaleString()+' sat recovered','hi');
-        });
+  /* ── THE PREDICTION ───────────────────────────────────────────────────────────────────────────
+     ⚠ The car is compiled against the DEPLOYED constants, never a tuned bench value. A car minted from
+     provisional numbers would disagree with the covenant about how fast it is, and the covenant is the
+     one that decides. */
+  function physics(M){
+    var R = M.RACER_REGS;
+    return { M0:R.M0, WE:R.WE, WT:R.WT, WF:R.WF, FE:R.FE, G0:R.G0, GV:R.GV, DRAG:R.DRAG, DRAG2:R.DRAG2,
+             BLOW_V:R.BLOW_V, SPIN_KEEP:R.SPIN_KEEP, LOOSE_V:R.LOOSE_V, TM:R.THROTTLE_MAX,
+             BURN0:R.BURN0, BURN_E:R.BURN_E, SLIP:M.SLIP_UNIT, S:M.S };
+  }
+  function setup(){
+    return { eng:+$('eng').value, tyr:+$('tyr').value, slip:+$('slip').value,
+             metres:+$('fin').value, fuel:+$('tank').value, throttle:8 };
+  }
+  function simulate(M, s){
+    var R = M.RACER_REGS, S = M.S, finish = Math.round(s.metres * S);
+    var st = { phase:M.PHASE.RACING, driver:new Array(20).fill(0), pool:new Array(36).fill(0),
+               eng:s.eng, tyr:s.tyr, finish:finish, slip:s.slip, green:0, gap:1, last:100, s:0, v:0, n:0 };
+    var fuel = s.fuel, ticks = [], done = false, ending = 'finish', trace = [];
+    for(var i=0;i<400;i++){
+      var r = M.refTick(st, { throttle:s.throttle, fuel:fuel, lockTime:st.last+st.gap }, R);
+      fuel -= r.burn; ticks.push({ throttle:s.throttle, spun:r.spun });
+      st = Object.assign({}, r.state, { last: st.last + st.gap });
+      trace.push({ s: st.s, v: st.v });
+      if(r.ended === 'off'){ ending='off'; done=true; break }
+      if(r.ended === 'blown'){ ending = r.spun ? 'blown-throttle' : 'blown-speed'; done=true; break }
+      if(st.phase === M.PHASE.DONE){ done=true; break }
     }
+    /* ⚠ THE ENDING IS REPORTED, NOT ASSUMED. A run that goes dry described as a finish is a lie to the
+       compiler, and the optimiser refuses to certify it — correctly. */
+    return { run:{ ticks:ticks, ending:ending }, finish:finish, dry:!done,
+             secs:ticks.length/10, mph:(st.v/S)*2.23694*10, trace:trace };
+  }
 
-    // the race itself
-    chain=chain.then(function loop(){
-      if(st.phase===GM.PHASE.DONE||st.phase===GM.PHASE.OUT) return;
-      if(st.n>900){ log('  stopped at 900 moves','hi'); return }
-      var th=safe(st,fuel);
-      at=Math.max(st.green, st.last+st.gap);
-      var want;
-      try{ want=GM.refTick(st,{throttle:th,lockTime:at,fuel:fuel},R) }catch(e){ log('  '+e.message,'no'); return }
-      var crossing = want.state.phase===GM.PHASE.DONE;
-      var ending = crossing || want.state.phase===GM.PHASE.OUT;
+  function replan(){
+    if(!GM) return;
+    var M = GM, s = setup(), sim = simulate(M, s), sc = scripts(M);
+    $('v-eng').textContent = s.eng; $('v-tyr').textContent = s.tyr;
+    $('v-tank').textContent = n(s.fuel); $('v-fin').textContent = s.metres + ' m';
+    $('v-slip').textContent = s.slip;
+    if(sim.dry){
+      PLAN = null;
+      $('p-ticks').textContent = '—'; $('p-et').textContent = 'never crosses'; $('p-mph').textContent = '—';
+      $('p-bytes').textContent = '—'; $('p-fee').textContent = '—';
+      $('go').disabled = true; $('go-note').textContent = 'more fuel, or a shorter strip';
+      return;
+    }
+    var cfg = { name:'SUN-DIVE', fuel:s.fuel, eng:s.eng, tyr:s.tyr, slip:s.slip, finish:sim.finish };
+    var params = { cfg:cfg, run:sim.run, depotScript:sc.payee, consts:physics(M), optimise:true };
+    var rep;
+    try { rep = M.raceValidates(params, 1) } catch(e){ rep = null }
+    PLAN = rep && rep.raceable ? { s:s, sim:sim, params:params, rep:rep } : null;
+    $('p-ticks').textContent = sim.run.ticks.length;
+    $('p-et').textContent = sim.secs.toFixed(2) + ' s · ' + sim.run.ending;
+    $('p-mph').textContent = sim.run.ending === 'finish' ? Math.round(sim.mph) + ' mph' : '—';
+    $('p-bytes').textContent = rep ? n(rep.lockBytes) + ' B' : '—';
+    $('p-fee').textContent = rep ? n(rep.fee + 1) + ' sat' : '—';
 
-      // Can't afford this tick and still afford to stop? Then stop, and take what's left.
-      if(!ending && fuel-want.burn<RESERVE) return retire();
+    if(DEPOT && rep){
+      var cost = rep.fee + 1 + Math.floor((2*rep.lockBytes + 2*(depotAt(M, DEPOT.mark, DEPOT.count).toBinary().length + 3) + 267)/10);
+      $('d-cost').textContent = n(cost) + ' sat';
+      var W = M.RACER_WINDOW_SECONDS, nowWin = Math.floor((Date.now()/1000 - 3*3600)/W);
+      var full = !(nowWin > DEPOT.mark) && DEPOT.count >= M.RACER_MINTS_PER_WINDOW;
+      var poor = DEPOT.value < cost + 1;
+      $('go').disabled = !PLAN || full || poor;
+      $('go-note').textContent = full ? 'this window is full — it reopens when a block moves the clock on'
+                              : poor ? 'the tank holds ' + n(DEPOT.value) + ' sat; this car needs ' + n(cost + 1)
+                              : 'the depot pays — you need no wallet';
+    }
+    place(0);
+  }
+  function place(frac){
+    var st = document.querySelector('.strip');
+    $('carEl').style.left = (Math.max(0,Math.min(1,frac)) * (st.clientWidth - 44)) + 'px';
+  }
+  /** Run the 🏎 down the strip at the elapsed time the chain has already settled. */
+  function animate(sim){
+    var i = 0, end = sim.trace[sim.trace.length-1].s || 1;
+    var t = setInterval(function(){
+      if(i >= sim.trace.length){ clearInterval(t); return }
+      place(sim.trace[i].s / end); i++;
+    }, 90);
+  }
 
-      /* On the last move the floor drops to one satoshi and the rest — plus the pot, if the line was
-         crossed — goes to the driver's own key. */
-      var payout = ending ? (fuel-want.burn-1)+(crossing?potSats:0) : 0;
-      /* ★ RUN AT THE RACE'S OWN CLOCK. Building and validating a move takes about 20 ms, but a move IS
-         a tenth of a second of race time — so left alone the car crosses the line nearly five times
-         too fast and appears to teleport to the flag. Waiting out the difference makes the strip agree
-         with the seconds counter beside it. The chain does not care; the eye does. */
-      return Promise.all([
-        move(st,want.state,{fuel:fuel,out:ending?1:fuel-want.burn,at:at,throttle:th,
-                            payout:payout, pot:crossing?{tx:pot}:null}),
-        new Promise(function(res){ setTimeout(res, SEC*1000) })
-      ]).then(function(both){ var r=both[0];
-        txs++; bytes+=r.bytes; sat+=want.burn;
-        if(!r.ok){ log('<span class="no">✗</span> tx '+String(txs).padStart(3)+'  move '+st.n+' — '+r.why,'no');
-                   throw Error('rejected') }
-        st=want.state; fuel-=want.burn;
-        if(ending){ took=payout; OUTCOME=want.ended||'home' }
-        trace.push({s:st.s,v:st.v,spun:want.spun});
-        if(st.n<=3 || st.n%10===0 || crossing || want.ended){
-          log('<span class="ok">✓</span> tx '+String(txs).padStart(3)+'  '+String(r.bytes).padStart(5)+' B   '+
-              'move '+String(st.n).padStart(3)+'  '+(st.n*SEC).toFixed(1)+' s  '+
-              String(Math.round(mph(st.v))).padStart(3)+' mph  '+(st.s/S).toFixed(0).padStart(4)+' m'+
-              (want.ended==='off'?'  <span class="no">OFF THE TRACK</span>':
-               want.ended==='blown'?'  <span class="no">ENGINE LET GO</span>':
-               crossing?'  <span class="ok">◀ CROSSED THE LINE, with the pot</span>':
-               want.spun?'  <span class="hi">smoke</span>':''));
+  /* ── BROADCAST ────────────────────────────────────────────────────────────────────────────────
+     ⚠ If CORS or a throttle refuses, the raw transaction is PRINTED rather than lost. One that was
+     built and then dropped on the floor is the worst outcome available here. */
+  function broadcast(hex, label){
+    return fetch(WOC + '/tx/raw', { method:'POST', headers:{'Content-Type':'application/json'},
+                                    body: JSON.stringify({ txhex: hex }) })
+      .then(function(r){ return r.text().then(function(t){
+        if(!r.ok) throw Error('WoC ' + r.status + ' ' + t.slice(0,140));
+        say('   ' + label + ' broadcast ✓', 'ok');
+      })})
+      .catch(function(e){
+        say('   ⚠ ' + label + ' was NOT sent: ' + e.message, 'no');
+        say('   the raw transaction, so nothing is lost — send it yourself:', 'warn');
+        say('   ' + hex, 'dim');
+        throw e;
+      });
+  }
+
+  var u64 = function(v){ var b=[],x=BigInt(v); for(var i=0;i<8;i++){ b.push(Number(x & 0xffn)); x >>= 8n } return b };
+  function serOut(v, s){
+    var L = s.length;
+    var vi = L < 0xfd ? [L] : L <= 0xffff ? [0xfd, L & 0xff, L >> 8]
+           : [0xfe, L & 0xff, (L>>8)&0xff, (L>>16)&0xff, (L>>24)&0xff];
+    return u64(v).concat(vi).concat(s);
+  }
+
+  function race(){
+    if(!PLAN || !DEPOT) return;
+    clearLog(); $('go').disabled = true;
+    var M = GM, sc = scripts(M), rep = PLAN.rep, sim = PLAN.sim;
+    say(PLAN.s.metres + ' m · ' + sim.run.ticks.length + ' ticks · ' + sim.secs.toFixed(2) + ' s · ends "' + sim.run.ending + '"');
+    Promise.resolve().then(function(){
+      /* ⚠⚠ THE GATE. A one-race car has no key — a car the covenant refuses can never be spent by
+         ANYBODY. It is proved raceable before it is funded, and this throws rather than returning. */
+      M.assertRaceable(PLAN.params, 1);
+      var car = M.buildRacerCar(Object.assign({}, PLAN.params, { fee: rep.fee })).toBinary();
+      say('car ' + n(car.length) + ' B · proved raceable ✓', 'ok');
+
+      var W = M.RACER_WINDOW_SECONDS, win = Math.floor((Date.now()/1000 - 3*3600) / W);
+      var nextCount = (win === DEPOT.mark) ? DEPOT.count + 1 : 1;
+      if(nextCount > M.RACER_MINTS_PER_WINDOW) throw Error('this window is full — it reopens on the next block');
+      var cur = depotAt(M, DEPOT.mark, DEPOT.count), nxt = depotAt(M, win, nextCount);
+      var paid = rep.fee + 1;
+      var mintFee = Math.floor((2*car.length + 2*(cur.toBinary().length + 3) + 267) / 10);
+      var kept = DEPOT.value - paid - mintFee;
+      if(kept < 1) throw Error('the tank holds ' + n(DEPOT.value) + ' sat; this car needs ' + n(paid + mintFee + 1));
+
+      /* ★ THE GRIND. ARC refuses a high-S signature even though it is valid and minable. The lever is
+         the six hundred nLockTime values inside this window — the bucketing that makes the rate limit
+         un-gameable, paying for itself a second time. */
+      var mint = null;
+      for(var i=0;i<W;i++){
+        var lt = win*W + i;
+        var tx = new M.Transaction(); tx.version = 2;
+        tx.addInput({ sourceTransaction: DEPOT.sourceTransaction, sourceOutputIndex: DEPOT.vout, sequence: 0xfffffffe });
+        tx.addOutput({ lockingScript: new M.LockingScript(M.LockingScript.fromBinary(car).chunks), satoshis: paid });
+        tx.addOutput({ lockingScript: nxt, satoshis: kept });
+        tx.lockTime = lt;
+        var pre = M.TransactionSignature.format({
+          sourceTXID: DEPOT.sourceTransaction.id('hex'), sourceOutputIndex: DEPOT.vout, sourceSatoshis: DEPOT.value,
+          transactionVersion: 2, otherInputs: [], inputIndex: 0, outputs: tx.outputs,
+          inputSequence: 0xfffffffe, subscript: cur, lockTime: lt, scope: M.DEPOT_SCOPE });
+        if(!M.derivedSigIsLowS(pre)) continue;
+        tx.inputs[0].unlockingScript = M.buildDepotUnlock({
+          prefixOutputs: serOut(paid, car), spenderOutputs: [], newValue: u64(kept), preimage: pre });
+        mint = { tx:tx, ground:i }; break;
+      }
+      if(!mint) throw Error('no canonical signature in ' + W + ' candidates — that should be impossible');
+      say('mint ' + n(mint.tx.toBinary().length) + ' B · fee ' + n(mintFee) + ' sat · grind ' + mint.ground);
+
+      return broadcast(mint.tx.toHex(), 'the car').then(function(){
+        say('   ' + mint.tx.id('hex'), 'dim');
+        /* ★ nLockTime is entirely free on the race: the car reads hashOutputs, its own scriptCode and
+           its own value, and never nSequence or nLocktime. The grind costs nothing at all. */
+        var r = null;
+        for(var k=0;k<512;k++){
+          var b = M.buildRaceTx({ car:car, payeeScript:sc.payee, sourceSatoshis:paid, fee:rep.fee,
+                                  sourceTXID:mint.tx.id('hex'), sourceOutputIndex:0, lockTime:k });
+          if(!M.derivedSigIsLowS(b.tx.inputs[0].unlockingScript.chunks[0].data)) continue;
+          r = b; break;
         }
-        draw();
-        return loop();
+        if(!r) throw Error('no canonical signature for the race in 512 candidates');
+        say('race ' + n(r.tx.toBinary().length) + ' B · fee ' + n(rep.fee) + ' sat');
+        return broadcast(r.tx.toHex(), 'the race').then(function(){
+          say('   ' + r.tx.id('hex'), 'dim');
+          say('');
+          say('🏁 ' + sim.secs.toFixed(2) + ' s over ' + PLAN.s.metres + ' m · 1 sat home', 'ok');
+          animate(sim);
+          return reload();
+        });
       });
-    });
-
-    chain.then(function(){
-      var rows='';
-      var row=function(k,v){ rows+='<tr><td class="k">'+k+'</td><td class="v">'+v+'</td></tr>' };
-      var done=st.phase===GM.PHASE.DONE;
-      $('verdict').innerHTML = done ? '<span class="ok">'+(st.n*SEC).toFixed(2)+' s</span>'
-        : retired ? '<span class="hi">retired</span>' : '<span class="no">DNF</span>';
-      row('moves · ET', st.n+' ticks');
-      row('speed at the flag', Math.round(mph(st.v))+' mph');
-      row('reached', (st.s/S).toFixed(0)+' of '+finM+' m');
-      row('transactions', txs);
-      row('total size', (bytes/1024).toFixed(1)+' KB');
-      row('fuel burned', sat.toLocaleString()+' sat');
-      /* ★ The line that proves nothing was stranded: whatever the tank started with either burned as
-         mining fees or came back out, less the single satoshi the covenant keeps as its headstone. */
-      row(done?'won and recovered':retired?'recovered':'recovered from the wreck',
-          '<span class="'+(done?'ok':'hi')+'">'+took.toLocaleString()+' sat</span>');
-      row('left in the shell', '1 sat');
-      row('covenant', GM.buildShellLock({state:st,maxFee:GM.SHELL_MAX_FEE}).toBinary().length+' B');
-      $('result').innerHTML=rows;
-      $('status').innerHTML='every one of the '+txs+' transactions was accepted by the interpreter';
-      $('run').disabled=false;
-      draw();
     }).catch(function(e){
-      $('verdict').innerHTML='<span class="no">rejected</span>';
-      /* Clear the table rather than leave it: stale numbers beside the word "rejected" read as though
-         the refused run produced them, which is the one thing this page must never imply. */
-      $('result').innerHTML='';
-      $('status').textContent='the covenant refused a move — the race stops there';
-      $('run').disabled=false;
+      say('⚠ ' + e.message, 'no');
+      $('go').disabled = false;
     });
   }
 
-  function draw(){
-    var cv=$('strip'), x=cv.getContext('2d'), W=cv.width, H=cv.height, pad=24;
-    x.fillStyle='#050a11'; x.fillRect(0,0,W,H);
-    var y=H/2;
-    x.strokeStyle='#1d2b42'; x.beginPath(); x.moveTo(pad,y); x.lineTo(W-pad,y); x.stroke();
-    for(var i=0;i<10;i++){ x.fillStyle=(i%2?'#dbe6f5':'#0d1523'); x.fillRect(W-pad,y-24+i*4.8,6,4.8) }
-    x.fillStyle='#5b7a9e'; x.font='10px ui-monospace,monospace'; x.fillText(FIN+' m',W-pad-40,y-30);
-    if(!trace.length) return;
-    var last=trace[trace.length-1];
-    trace.forEach(function(p,i){
-      if(!p.spun) return;
-      var sx=pad+Math.min(1,p.s/(FIN*S))*(W-2*pad-8);
-      x.fillStyle='rgba(190,205,225,.13)'; x.beginPath(); x.arc(sx-4,y+(i%3)-1,4,0,6.284); x.fill();
-    });
-    var px=pad+Math.min(1,last.s/(FIN*S))*(W-2*pad-8);
-    /* ★ A STOPPED CAR MUST NOT READ AS A HUNG PAGE. Once the run is over the car simply stops moving,
-       which looks identical to nothing happening — so the finished car is coloured by CAUSE and
-       labelled. Green got home, red broke, amber walked away with the tank. */
-    var END={ home:['#b4ff3a','HOME'], off:['#ff5470','OFF THE TRACK'],
-              blown:['#ff5470','ENGINE LET GO'], retired:['#ffb547','RETIRED'] }[OUTCOME];
-    x.strokeStyle=(END?END[0]:'#b4ff3a')+'44'; x.lineWidth=3;
-    x.beginPath(); x.moveTo(pad,y); x.lineTo(px,y); x.stroke();
-    x.fillStyle=END?END[0]:'#b4ff3a'; x.fillRect(px-9,y-7,18,14);
-    if(END){
-      x.fillStyle=END[0]; x.font='11px ui-monospace,monospace'; x.textAlign=px>W*0.7?'right':'left';
-      x.fillText(END[1]+(OUTCOME==='home'?'  '+(trace.length*SEC).toFixed(2)+' s':''),
-                 px>W*0.7?px-14:px+14, y+4);
-      x.textAlign='left';
-    }
+  /* ── ⛽ THE CONTRIBUTE BUTTON ─────────────────────────────────────────────────────────────────
+     The page assembles it, leaves the contributor's inputs BLANK, and stops. What crosses to Phar Lap
+     is a REQUEST rather than a transaction: enough to REBUILD and CHECK the spend, so the other side
+     never has to trust this page. There is no signature in it and no key. */
+  function buildTopUp(){
+    gm().then(function(M){
+      if(!DEPOT) throw Error('find the depot first');
+      var add = +$('add').value;
+      var sc = scripts(M);
+      var req = {
+        v:1, action:'racer-depot-topup',
+        depot:{ txId: DEPOT.txid, outputIndex: DEPOT.vout, satoshis: DEPOT.value, sourceTxHex: DEPOT.sourceTxHex },
+        funding: [],                                  // ⚠ Phar Lap picks the coins; this page must not
+        carBlockHex: hex(sc.block), ownerHex: hex(sc.owner),
+        addSats: add, mark: $('mark').value || null, changeAddress: OWNER_AD,
+        state:{ mark: DEPOT.mark, count: DEPOT.count }
+      };
+      var json = JSON.stringify(req, null, 2);
+      $('f-req').style.display = 'block'; $('f-req').value = json;
+      $('f-out').innerHTML = 'Paste this into <b>Phar Lap</b> to sign. It holds no key and no signature.';
+      if(navigator.clipboard) navigator.clipboard.writeText(json).then(function(){
+        $('f-out').innerHTML = '<span class="ok">✓ copied</span> — paste it into <b>Phar Lap</b> to sign.';
+      }, function(){});
+    }).catch(function(e){ $('f-out').innerHTML = '<span class="no">⚠ ' + e.message + '</span>' });
   }
+  function hex(b){ return Array.prototype.map.call(b, function(x){ return ('0'+x.toString(16)).slice(-2) }).join('') }
 
-  ensureGM().then(function(){
-    S=GM.SHELL_S; R=GM.RACER_REGS;
-    KEY=GM.PrivateKey.fromRandom();
-    DRIVER=GM.Hash.hash160(KEY.toPublicKey().encode(true));
-    $('eng').max=R.ENG_MAX; $('eng').value=Math.round(R.ENG_MAX*0.7);
-    $('tyr').max=R.TYR_MAX; $('tyr').value=R.TYR_MAX;
-    var sync=function(){
-      $('v-eng').textContent=$('eng').value+' of '+R.ENG_MAX;
-      $('v-tyr').textContent=$('tyr').value+' of '+R.TYR_MAX;
-      $('v-tank').textContent=(+$('tank').value).toLocaleString();
-      $('v-fin').textContent=$('fin').value+' m'+(+$('fin').value===402?' · the quarter mile':'');
-      $('v-slip').textContent=(+$('slip').value/1000).toFixed(2)+'×';
-      $('v-gap').textContent=$('gap').value+' s';
-    };
-    ['eng','tyr','tank','fin','slip','gap'].forEach(function(id){ $(id).addEventListener('input',sync) });
-    sync();
-    $('locksize').textContent=GM.buildShellLock({state:GM.emptyShell(),maxFee:GM.SHELL_MAX_FEE}).toBinary().length+' bytes';
-    $('run').onclick=run;
-    draw();
-  }).catch(function(e){
-    document.querySelector('.wrap').insertAdjacentHTML('beforeend',
-      '<div class="card" style="border-color:var(--mag)"><b>'+e.message+'</b></div>');
+  ['eng','tyr','tank','fin','slip'].forEach(function(id){ $(id).addEventListener('input', replan) });
+  $('add').addEventListener('input', function(){ $('v-add').textContent = n(+this.value) });
+  $('reload').addEventListener('click', reload);
+  $('go').addEventListener('click', race);
+  $('build').addEventListener('click', buildTopUp);
+
+  gm().then(function(){ replan(); return reload() }).catch(function(e){
+    $('d-note').innerHTML = '<span class="no">⚠ ' + e.message + '</span>';
   });
 })();
 </script>
