@@ -5,6 +5,12 @@
  *   node --experimental-strip-types mint/tools/racers.ts --selftest      no key, no network
  *    RACERS_WIF=<wif> node mint/tools/racers.ts --run                    dry: builds, sends nothing
  *    RACERS_WIF=<wif> node mint/tools/racers.ts --run --broadcast        for real
+ *    …            --run --depot <txid>:<vout>                            spend an EXISTING depot
+ *
+ * ⚠⚠ WITHOUT `--depot` THIS BUILDS A BRAND NEW DEPOT and funds it from your wallet. Right for the
+ * first one, wrong every time after: pointed at a live setup it stands up a SECOND depot with another
+ * tankful rather than spending the one already holding money. Found 20 Aug while planning a mint
+ * against `d2066101…` — the tool simply had no way to say "use that one".
  *
  * ⚠ WIF VIA ENV ONLY, never a flag and never a file. The leading space keeps it out of shell history.
  * In fish: `read -s -P 'WIF: ' w; set -x RACERS_WIF $w`
@@ -432,45 +438,90 @@ async function run(): Promise<void> {
   console.log(`depot lock : ${n(DEPOT.toBinary().length)} B · MAX_FEE ${n(maxFee)} derived · ` +
     `window ${RACER_WINDOW_SECONDS}s × ${RACER_MINTS_PER_WINDOW}`)
 
-  /* ⚠ /unspent is an INDEX and it lags the mempool; only a 404 from /spent means unspent. */
-  const utxos = await getJson(`/address/${address}/unspent`)
-  const sorted = (Array.isArray(utxos) ? utxos : []).sort((a: any, b: any) => b.value - a.value)
-  let coin: any = null
-  for (const u of sorted) {
-    const r = await fetch(`${WOC}/tx/${u.tx_hash}/${u.tx_pos}/spent`)
-    await sleep(250)
-    if (r.status !== 404 && !r.ok) { console.error(`Cannot tell whether ${u.tx_hash.slice(0,16)}… is spent (WoC ${r.status}). Refusing to guess.`); process.exit(1) }
-    if (r.ok) { console.log(`  ⚠ skipping ${u.tx_hash.slice(0,16)}…:${u.tx_pos} — already spent`); continue }
-    if (u.value >= TANK + 500) { coin = u; break }
+  /* ── ★★ SPEND AN EXISTING DEPOT, OR STAND A NEW ONE UP ─────────────────────────────────────────
+     A mint takes the covenant branch, so it needs no signature from anybody — the owner's escape hatch
+     is the other arm and is never touched here. The KEY is still needed, but only to derive the owner
+     hash and payee the depot's script pins, never to authorise the spend. */
+  const DEPOT_AT = argS('depot', '')
+  let depotTx: Transaction, depotVout: number, depotValue: number, genesisTxid = ''
+
+  if (DEPOT_AT) {
+    bar('1 · THE LIVE DEPOT — spending one that already exists')
+    const [dtxid, dvoutRaw] = DEPOT_AT.split(':')
+    const dvout = Number(dvoutRaw)
+    if (!/^[0-9a-fA-F]{64}$/.test(dtxid ?? '') || !Number.isInteger(dvout)) {
+      console.error('racers: --depot wants <txid>:<vout>'); process.exit(1)
+    }
+    const dHex = await (await fetch(`${WOC}/tx/${dtxid}/hex`)).text()
+    depotTx = Transaction.fromHex(dHex.trim())
+    depotVout = dvout
+    const o = depotTx.outputs[dvout]
+    if (!o) { console.error(`racers: ${dtxid.slice(0, 16)}… has no output ${dvout}`); process.exit(1) }
+    depotValue = o.satoshis ?? 0
+    const deployed = o.lockingScript.toBinary()
+
+    /* ⚠ IS IT UNSPENT? /unspent is an index and lags the mempool; only a 404 from /spent is an answer. */
+    const sp = await fetch(`${WOC}/tx/${dtxid}/${dvout}/spent`)
+    if (sp.status !== 404) {
+      console.error(sp.ok
+        ? 'racers: that depot output is ALREADY SPENT — walk forward to the tip and use that'
+        : `racers: cannot tell whether it is spent (WoC ${sp.status}). Refusing to guess.`)
+      process.exit(1)
+    }
+
+    /* ⚠⚠ AND IS IT THE DEPOT THIS BUILD AGREES WITH? `buildMint` REBUILDS the script from the state it
+       reads rather than reusing the deployed bytes, so one byte of drift produces an unlocking script
+       for a program that is not there — and that failure arrives as a refused broadcast, with the car
+       already funded and no key to rescue it. Compare them here, where it costs nothing. */
+    const st = readDepotState(deployed)
+    const rebuilt = buildRacerDepotBasicLock({ carBlock: block, owner, mark: st.mark, count: st.count }).toBinary()
+    const same = rebuilt.length === deployed.length && rebuilt.every((x, i) => x === deployed[i])
+    console.log(`     ${dtxid.slice(0, 16)}…:${dvout}  ${n(depotValue)} sat · ${n(deployed.length)} B · mark ${st.mark} n ${st.count}`)
+    console.log(`     ${same ? '\x1b[32m★ byte-identical to the depot this build produces\x1b[0m'
+                             : '\x1b[31m⚠ THE DEPLOYED SCRIPT DIFFERS from what this build produces\x1b[0m'}`)
+    if (!same) { console.error('     refusing to spend a depot this build does not agree with — nothing sent.'); process.exit(1) }
+  } else {
+    /* ⚠ /unspent is an INDEX and it lags the mempool; only a 404 from /spent means unspent. */
+    const utxos = await getJson(`/address/${address}/unspent`)
+    const sorted = (Array.isArray(utxos) ? utxos : []).sort((x: any, y: any) => y.value - x.value)
+    let coin: any = null
+    for (const u of sorted) {
+      const r = await fetch(`${WOC}/tx/${u.tx_hash}/${u.tx_pos}/spent`)
+      await sleep(250)
+      if (r.status !== 404 && !r.ok) { console.error(`Cannot tell whether ${u.tx_hash.slice(0, 16)}… is spent (WoC ${r.status}). Refusing to guess.`); process.exit(1) }
+      if (r.ok) { console.log(`  ⚠ skipping ${u.tx_hash.slice(0, 16)}…:${u.tx_pos} — already spent`); continue }
+      if (u.value >= TANK + 500) { coin = u; break }
+    }
+    if (!coin) { console.error(`No unspent coin of at least ${n(TANK + 500)} sat at ${address}.`); process.exit(1) }
+    console.log(`funding    : ${coin.tx_hash.slice(0, 16)}…:${coin.tx_pos} (${n(coin.value)} sat)`)
+
+    const srcHex = await (await fetch(`${WOC}/tx/${coin.tx_hash}/hex`)).text()
+    const srcTx = Transaction.fromHex(srcHex.trim())
+
+    bar('1 · THE DEPOT GENESIS')
+    const g = new Transaction(); g.version = 2
+    g.addInput({ sourceTransaction: srcTx, sourceOutputIndex: coin.tx_pos,
+      unlockingScriptTemplate: new P2PKH().unlock(key), sequence: 0xffffffff })
+    g.addOutput({ lockingScript: DEPOT, satoshis: TANK })
+    g.addOutput({ lockingScript: new P2PKH().lock(address), change: true })
+    /* ⚠⚠ NEVER SERIALIZE AN UNSIGNED TRANSACTION TO PRICE IT. `tx.toBinary()` throws
+       `unlockingScript is undefined` at fee time, because the input has not been signed yet — and the
+       fee is what decides the change, which is what gets signed. The first version of this line did
+       exactly that and died on the first real funding input, having passed every offline test because
+       `--selftest` built a genesis with NO input at all.
+       ⇒ `SatoshisPerKilobyte` asks the unlocking TEMPLATE for its estimated length instead, which is
+       the whole reason templates carry one. 100 sat/KB, the official rate — never inflated. */
+    await g.fee(new SatoshisPerKilobyte(100))
+    await g.sign()
+    console.log(`     txid  ${g.id('hex')}`)
+    console.log(`     tank  ${n(TANK)} sat  ·  tx ${n(g.toBinary().length)} B`)
+    if (live) { await broadcast(g, 'the depot'); await awaitSeen(g.id('hex')) }
+    depotTx = g; depotVout = 0; depotValue = TANK; genesisTxid = g.id('hex')
   }
-  if (!coin) { console.error(`No unspent coin of at least ${n(TANK + 500)} sat at ${address}.`); process.exit(1) }
-  console.log(`funding    : ${coin.tx_hash.slice(0, 16)}…:${coin.tx_pos} (${n(coin.value)} sat)`)
-
-  const srcHex = await (await fetch(`${WOC}/tx/${coin.tx_hash}/hex`)).text()
-  const srcTx = Transaction.fromHex(srcHex.trim())
-
-  bar('1 · THE DEPOT GENESIS')
-  const g = new Transaction(); g.version = 2
-  g.addInput({ sourceTransaction: srcTx, sourceOutputIndex: coin.tx_pos,
-    unlockingScriptTemplate: new P2PKH().unlock(key), sequence: 0xffffffff })
-  g.addOutput({ lockingScript: DEPOT, satoshis: TANK })
-  g.addOutput({ lockingScript: new P2PKH().lock(address), change: true })
-  /* ⚠⚠ NEVER SERIALIZE AN UNSIGNED TRANSACTION TO PRICE IT. `tx.toBinary()` throws
-     `unlockingScript is undefined` at fee time, because the input has not been signed yet — and the
-     fee is what decides the change, which is what gets signed. The first version of this line did
-     exactly that and died on the first real funding input, having passed every offline test because
-     `--selftest` built a genesis with NO input at all.
-     ⇒ `SatoshisPerKilobyte` asks the unlocking TEMPLATE for its estimated length instead, which is
-     the whole reason templates carry one. 100 sat/KB, the official rate — never inflated. */
-  await g.fee(new SatoshisPerKilobyte(100))
-  await g.sign()
-  console.log(`     txid  ${g.id('hex')}`)
-  console.log(`     tank  ${n(TANK)} sat  ·  tx ${n(g.toBinary().length)} B`)
-  if (live) { await broadcast(g, 'the depot'); await awaitSeen(g.id('hex')) }
 
   bar('3 · THE MINT')
   const win = pastWindow(Math.floor(Date.now() / 1000))
-  const m = buildMint({ key, depotTx: g, depotVout: 0, depotValue: TANK, window: win, lowS: true })
+  const m = buildMint({ key, depotTx, depotVout, depotValue, window: win, lowS: true })
   const sim = simulate(TRACK, FUEL)
   console.log(`     ${TRACK} m · ${sim.run.ticks.length} ticks · ${sim.secs.toFixed(2)} s · ends '${sim.run.ending}'`)
   console.log(`     car ${n(m.car.length)} B · ${m.optimised ? 'optimised' : 'UNOPTIMISED — the run ' +
@@ -492,14 +543,16 @@ async function run(): Promise<void> {
   console.log(`     miner      ${n(m.carFee)} sat`)
   console.log(`     home       ${n(HOME)} sat → ${address}`)
   console.log(live
-    ? `\n🏁 On chain. Depot ${g.id('hex')}\n   ⚠ KEEP THAT TXID — nothing will find it for you.`
+    ? `\n🏁 On chain. ${genesisTxid ? `Depot ${genesisTxid}` : `Depot ${DEPOT_AT} (existing)`}` +
+      `\n   the depot continues at ${m.tx.id('hex')}:1` +
+      '\n   ⚠ KEEP THESE TXIDS — nothing will find them for you.'
     : '\n(dry build — nothing was sent. Re-run with --broadcast to race for real.)')
 }
 
 async function main(): Promise<void> {
   if (has('--selftest')) return selftest()
   if (has('--run')) return run()
-  console.log('usage: --selftest  |  --run [--broadcast]')
+  console.log('usage: --selftest  |  --run [--broadcast] [--depot <txid>:<vout>]')
   console.log('       --track <m> --fuel <sat> --eng <n> --tyr <n> --tank <sat> --home <sat>')
   console.log('       WIF via RACERS_WIF only.')
 }
