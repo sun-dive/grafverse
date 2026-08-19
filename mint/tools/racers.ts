@@ -90,6 +90,12 @@ function simulate(metres: number, tank: number): { run: RunTrace; finish: number
   let done = false
   for (let i = 0; i < 400; i++) {
     const r = refTick(st as never, { throttle: 8, fuel, lockTime: st.last + st.gap }, R)
+    /* ⚠⚠ A CAR CANNOT BUY A TICK IT CANNOT AFFORD. Without this the loop drives on with NEGATIVE
+       fuel; mass includes fuel, so a few ticks later the car weighs nothing and `refTick` refuses with
+       "a car cannot be massless" — true of the arithmetic and useless as an explanation, because the
+       real answer is that it ran dry. Measured 19 Aug on the live page: eng 14 · tyr 10 · 5,000 fuel
+       reported a missing mass when it had simply run out after seven ticks. */
+    if (r.burn > fuel) break
     fuel -= r.burn
     ticks.push({ throttle: 8, spun: r.spun })
     st = { ...(r.state as never as Record<string, number>), last: st.last + st.gap }
