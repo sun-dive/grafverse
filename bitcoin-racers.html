@@ -154,7 +154,7 @@
 
   <!-- ═══ FUEL ════════════════════════════════════════════════════════════════════════════════════ -->
   <div class="panel">
-    <div class="lbl">⛽ Put satoshis in the tank</div>
+    <div class="lbl">⛽ Put satoshis in the Fuel Depot</div>
     <p class="note" style="margin:0 0 4px">Every race costs the depot a little, and when it runs dry nobody
        races. This builds the top-up <b>here, unsigned</b>, and hands it to <b>Phar Lap</b> to sign — this page
        never sees a key. ★ A gift buys no minting slot: the covenant refuses a top-up that tries to take one.</p>
@@ -330,7 +330,17 @@
     function attempt(i){
       if(i >= tries.length) return Promise.resolve(null);
       return unspentAt(M, prov, tries[i][0], tries[i][1]).then(function(u){
-        return u ? { txid: u.tx_hash || u.txid, vout: (u.tx_pos != null ? u.tx_pos : u.vout), viaIndex: true } : attempt(i+1);
+        if(!u) return attempt(i+1);
+        /* ⚠⚠ READ THE SHAPE, DO NOT GUESS IT. `getUnspentByScriptHash` MAPS WoC's rows before handing
+           them back — `tx_hash` and `tx_pos` become `txId` and `outputIndex`. Reading the raw names
+           gave undefined, the page fetched /tx/undefined/hex, and the SDK reported "Invalid hex
+           string" — an error three steps downstream of the mistake.
+           ⇒ And it stayed hidden until a remembered state existed, because until then this fast path
+           never ran. A branch nothing has taken is a branch nothing has tested. */
+        if(typeof u.txId !== 'string' || typeof u.outputIndex !== 'number'){
+          throw Error('the unspent index returned a row this page does not understand: ' + JSON.stringify(u));
+        }
+        return { txid: u.txId, vout: u.outputIndex, viaIndex: true };
       });
     }
     return attempt(0).then(function(hit){ return hit || walkTip(GENESIS, 0) });
@@ -341,7 +351,15 @@
     return gm().then(function(M){
       return findTip(M).then(function(tip){
         return fetch(WOC + '/tx/' + tip.txid + '/hex').then(function(r){ return r.text() }).then(function(hex){
-          var tx = M.Transaction.fromHex(hex.trim()), out = tx.outputs[tip.vout];
+          /* ⚠ A fetch that returned an error PAGE is not hex, and letting the SDK discover that three
+             steps later reports "Invalid hex string" with nothing to say where it came from. */
+          hex = hex.trim();
+          if(!/^[0-9a-fA-F]+$/.test(hex)) {
+            throw Error('the chain did not return a transaction for ' + String(tip.txid).slice(0,16) +
+              '…:' + tip.vout + ' — got ' + hex.slice(0,60));
+          }
+          var tx = M.Transaction.fromHex(hex), out = tx.outputs[tip.vout];
+          if(!out) throw Error('there is no output ' + tip.vout + ' in ' + tip.txid.slice(0,16) + '…');
           /* ★ THE STATE COMES OFF THE SCRIPT, never from anything this page remembers. The depot is a
              chain, and anybody may have advanced it since the page loaded. */
           var st = M.readDepotState(out.lockingScript.toBinary());
