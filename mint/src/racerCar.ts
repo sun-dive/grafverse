@@ -278,18 +278,27 @@ export function carBlockOps(p: { depotScript: number[]; c?: PushTxConstants }): 
 export function feeConstant(depotBytes: number): number {
   /* Everything in the race transaction that is NOT the scriptCode field the block measures:
        transaction   version 4 · in-count 1 · outpoint 36 · unlock varint 3 · sequence 4
-                     · out-count 1 · value 8 · script varint 3 · locktime 4          =  64
+                     · out-count 1 · value 8 · locktime 4                             =  61
+       payee varint  the length varint in front of the payee's script — ITS WIDTH VARIES
        unlocking     the push opcode in front of the preimage (OP_PUSHDATA2)          =   3
        preimage      4+32+32+36 + 8+4+32+4+4, i.e. everything but the scriptCode      = 156
-       output        the depot's own script                                           = depotBytes
+       output        the payee's own script                                           = depotBytes
      …and +9, because `OP_DIV` truncates and the fee must round UP.
 
      ⚠⚠ THE FIRST VERSION OF THIS ASSEMBLED THE SAME NUMBER OUT OF PARTS AND DOUBLE-COUNTED TWO OF
      THEM, landing ONE SATOSHI UNDER on two car sizes out of five. Under the relay floor is permanent
      and unamendable, and this project has stood on that five times. ⇒ The test requires the in-script
      fee to EQUAL `racerCarFee`'s serialized answer across the whole range of car sizes, because
-     agreeing on three sizes out of five is exactly what this looked like. */
-  return 64 + 3 + 156 + depotBytes + 9
+     agreeing on three sizes out of five is exactly what this looked like.
+
+     ⚠⚠ AND THE SECOND VERSION MADE THE SAME MISTAKE IN THE OTHER DIRECTION, measured 19 Aug: it wrote
+     the payee's length varint as a CONSTANT 3, which is true only while the payee is 253 B or longer.
+     Every car the suite built paid a multi-kilobyte depot, so the sweep never left the range where the
+     assumption held. Point a car at a 25-byte P2PKH address and the constant over-counts by two, the
+     +9 tips the division, and the script demands ONE SATOSHI MORE than `racerCarFee` funds it with —
+     a car that cannot be spent, which is the one failure nobody can rescue. ⇒ The width is DERIVED
+     from the payee, and the sweep runs over both payee shapes. */
+  return 61 + varIntBytes(depotBytes).length + 3 + 156 + depotBytes + 9
 }
 
 /**

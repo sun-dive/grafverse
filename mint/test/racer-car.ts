@@ -371,22 +371,36 @@ check('★ the spender chooses nothing — the unlocking script is one push',
    constant and therefore pinnable. So `feeConstant` has to be exactly right — and the first version
    of it was assembled out of parts, double-counted two, and landed ONE SATOSHI UNDER on two car sizes
    out of five. Under the relay floor is permanent, unamendable, and this project has stood on it five
-   times. ⇒ Sweep the range; agreeing on a few sizes is precisely what being wrong looked like. */
+   times. ⇒ Sweep the range; agreeing on a few sizes is precisely what being wrong looked like.
+
+   ⚠⚠ AND SWEEP BOTH PAYEE SHAPES, measured 19 Aug. The second version of `feeConstant` wrote the
+   payee's length varint as a constant 3 — true only for a payee of 253 B or more. Every car this file
+   built paid a multi-kilobyte depot, so the sweep never left the range where that held, and a car
+   pointed at a 25-byte P2PKH address demanded ONE SATOSHI MORE than it was funded with: unspendable,
+   and nobody holds a key to rescue it. A range the code can be pointed at is a range the test sweeps. */
 {
-  const K = feeConstant(DEPOT.length)
+  const PAYEES: ReadonlyArray<{ name: string; script: number[] }> = [
+    { name: 'a depot', script: DEPOT },
+    /* 25 B — OP_DUP OP_HASH160 <20> OP_EQUALVERIFY OP_CHECKSIG. A one-byte length varint. */
+    { name: 'an address', script: [OP.OP_DUP, OP.OP_HASH160, 20, ...new Array(20).fill(7), OP.OP_EQUALVERIFY, OP.OP_CHECKSIG] },
+  ]
   let checked = 0, agree = 0, under = 0
-  for (const metres of [2, 4, 10, 25, 40, 70, 120, 180, 220, 300, 402]) {
-    const finish = Math.round(metres * S)
-    const run = simulateTo(finish)
-    const cfg = { ...CFG, finish }
-    const serialized = racerCarFee({ cfg, run, depotScript: DEPOT, consts: CONSTS }).fee
-    const car = buildRacerCar({ cfg, run, depotScript: DEPOT, consts: CONSTS })
-    const inScript = Math.floor((3 + car.toBinary().length + K) / 10)
-    checked++
-    if (inScript === serialized) agree++
-    if (inScript < serialized) under++
+  for (const payee of PAYEES) {
+    const K = feeConstant(payee.script.length)
+    for (const metres of [2, 4, 10, 25, 40, 70, 120, 180, 220, 300, 402]) {
+      const finish = Math.round(metres * S)
+      const run = simulateTo(finish)
+      const cfg = { ...CFG, finish }
+      const serialized = racerCarFee({ cfg, run, depotScript: payee.script, consts: CONSTS }).fee
+      const car = buildRacerCar({ cfg, run, depotScript: payee.script, consts: CONSTS })
+      const inScript = Math.floor((3 + car.toBinary().length + K) / 10)
+      checked++
+      if (inScript === serialized) agree++
+      if (inScript < serialized) under++
+    }
+    console.log(`        ${payee.name.padEnd(11)} payee ${String(payee.script.length).padStart(5)} B · feeConstant ${K}`)
   }
-  console.log(`\n        fee agreement swept over ${checked} car sizes · feeConstant ${K}`)
+  console.log(`        fee agreement swept over ${checked} car sizes across ${PAYEES.length} payee shapes`)
   check(`★★★ the in-script fee equals the serialized fee on all ${checked} sizes`, agree === checked)
   check('⚠⚠ …and is NEVER under it — under the relay floor is permanent and unamendable', under === 0)
 }
