@@ -1,4 +1,12 @@
-<!-- BRC-226 · BITCOIN RACERS — a whole drag race in ONE transaction, on mainnet.
+<meta charset="utf-8">
+<!-- ⚠⚠ THE CHARSET IS THE FIRST BYTE OF THE FILE, AND THAT IS NOT TIDINESS.
+     A parser stops looking for it after about 1024 bytes, and the comment below runs to 867 — so a
+     declaration placed underneath it sits one edit away from being ignored. The server sends
+     `content-type: text/html` with no charset of its own, so with nothing here the browser falls back
+     to Latin-1 and EVERY multi-byte character breaks: the car came out as ðŸŽ, and so did every ★, ⚠,
+     ⇒ and · on the page. One missing line, the whole document mojibake.
+
+     BRC-226 · BITCOIN RACERS — a whole drag race in ONE transaction, on mainnet.
      © 2026 sun-dive · Open BSV License v6.
 
      ⚠ IT RUNS THE EXACT CODE THE COVENANT IS VALIDATED AGAINST — mint/src/racerCar.ts and
