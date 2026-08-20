@@ -10,3 +10,8 @@ sky-elements-*.json
 
 # Claude Code local settings — LOCAL ONLY, this repo is PUBLIC
 .claude/
+
+# the racers leaderboard's server-side chain-follow cache — written by racers.php,
+# rebuilt from the chain whenever it is missing. Server state, never source.
+racers-board.json
+brc226-tip.json
