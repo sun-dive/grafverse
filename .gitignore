@@ -14,6 +14,7 @@ sky-elements-*.json
 # the racers leaderboard's server-side chain-follow cache — written by racers.php,
 # rebuilt from the chain whenever it is missing. Server state, never source.
 racers-board.json
+racebeta-board.json
 brc226-tip.json
 
 # the shared chain-call gate keeps its queue state here — runtime, never source

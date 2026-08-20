@@ -31,6 +31,7 @@ deployment:
     - /bin/cp lang-*.js "$DEPLOYPATH"                     # i18n language packs (lang-ja.js, lang-zh-Hant.js, …) lazy-loaded by the game
     - /bin/cp brc226.html "$DEPLOYPATH"                   # BRC-226 blueprint — self-contained, crawlable (coined-term SEO); shareable at grafverse.com/brc226.html
     - /bin/cp racers-og.jpg "$DEPLOYPATH"                    # Bitcoin Racers social card, 1200x630 (crop of the shirt art, above its own lettering)
+    - /bin/cp racebeta.html "$DEPLOYPATH"                 # ⚠ BETA of the depot-anchored rebuild — noindex, NOT in sitemap.php. Its own bundle (grafbeta.js) and its own cache (racebeta.php) so the live page cannot move.
     - /bin/cp bitcoin-racers.html "$DEPLOYPATH"           # BRC-226 demo three — the COVENANT, run through the real interpreter (indexable entry point; nothing broadcast)
     - /bin/cp depot.html "$DEPLOYPATH"                       # BRC-226 demo four — THE FUEL DEPOT: configure and race a real public car, keyless
     - /bin/cp green-test.html "$DEPLOYPATH"                # "A Green Test Is Not Evidence" — the article, canonical here; Substack is syndication
@@ -48,6 +49,7 @@ deployment:
     - /bin/cp tip.php "$DEPLOYPATH"                        # BRC-226 LiveCounter board cache: follows the covenant chain → { n, tipTxid, last21[] }
     - /bin/mkdir -p "$DEPLOYPATH/img" && /bin/cp img/racers-*.webp "$DEPLOYPATH/img/" 2>/dev/null || true   # Bitcoin Racers shop art. ⚠ img/ copies by PREFIX, not wholesale — a new racers-*.webp
     #                                                       deploys on this line, anything named otherwise is INVISIBLE.
+    - /bin/cp racebeta.php "$DEPLOYPATH"                   # ⚠ the BETA's cache — its OWN racebeta-board.json, so it can never rewrite the live board
     - /bin/cp racers.php "$DEPLOYPATH"                     # Bitcoin Racers leaderboard cache: follows the DEPOT's own spends → { races[] } as raw car HEADS (no times: the client derives them)
     - /bin/cp battery-og.php "$DEPLOYPATH"                # regenerates the card when a new contribution lands (PPM + ImageMagick, no GD)
     - /bin/cp battery-og.png "$DEPLOYPATH"                # the battery's social card — the REAL picture so far (regen: node mint/tools/battery-og.mjs)
