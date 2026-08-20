@@ -134,6 +134,12 @@
   .sim{background:#1a1206;border:1px solid #4a3410;color:var(--warm);border-radius:9px;padding:10px 13px;font-size:13.5px}
   .foot{color:var(--dim);font-size:13px;border-top:1px solid var(--line);margin-top:34px;padding-top:18px}
   code{font-family:ui-monospace,Menlo,monospace;color:var(--fg)}
+  /* ⚠ the technical blocks SCROLL rather than wrapping — a pinned-byte diagram whose columns reflow on
+     a phone stops being a diagram. The page body must never scroll sideways, so the overflow lives
+     here, in the one element that needs it. */
+  .tech{font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;background:#080c11;
+        border:1px solid var(--line);border-radius:8px;padding:11px 13px;margin:10px 0 14px;
+        overflow-x:auto;color:var(--dim);white-space:pre}
   textarea{width:100%;height:120px;padding:9px;border-radius:7px;border:1px solid var(--line);
            background:#080c11;color:var(--dim);font-family:ui-monospace,Menlo,monospace;font-size:11px}
 </style>
@@ -432,6 +438,69 @@
     <p class="note">⚠ It only works because the depot also checks its own <code>nSequence</code>. A transaction
       whose inputs are all final ignores <code>nLockTime</code> entirely — so without that one line, the whole
       scheme would be decoration.</p>
+  </div>
+
+  <!-- ═══ HOW THE COVENANTS WORK ══════════════════════════════════════════════════════════════════
+       For technical readers (sun-dive, 20 Aug). "What just happened" above says what the system
+       PROMISES; this says how it is ENFORCED. ⚠ Deliberately no overlap: the commitment and the
+       window rate limit are explained up there and only referenced here. -->
+  <div class="panel">
+    <div class="lbl">How the covenants work</div>
+
+    <p class="note" style="margin-top:0"><b>1 · A covenant with no key.</b> A Bitcoin script cannot normally
+      see the transaction that is spending it. <code>OP_PUSH_TX</code> is the technique that lets it: the
+      spender pushes the signature preimage as plain data, and the script proves that data is genuine by
+      running <code>OP_CHECKSIG</code> against a <b>public constant</b> rather than anybody's key. A forged
+      preimage fails the check.</p>
+    <p class="note">⚠ So the one <code>OP_CHECKSIG</code> in these scripts authorises nothing — it is how the
+      transaction is <i>read</i>. ⇒ Once a script can see its own outputs, it can constrain them. That is the
+      whole of a covenant, and <b>no key exists anywhere in a car</b>: nothing to steal, nothing to lose,
+      nobody to ask.</p>
+
+    <p class="note"><b>2 · How the depot emits a car.</b> A mint is one transaction with exactly two outputs:</p>
+    <pre class="tech">INPUT   the depot's UTXO, holding V satoshis
+OUT 0   the CAR — a brand new covenant, funded with exactly its race fee
+OUT 1   the depot again — same program, new state, V - car - fee</pre>
+    <p class="note">The depot never sees the car's source and has no idea how long a race is. It checks five
+      things and nothing else:</p>
+    <pre class="tech">shape      the car's TAIL is pinned as literal bytes — the pushtx frame, the fee
+           rule, and the address the last satoshi comes home to
+size       OP_SIZE <= 16,000 bytes
+funding    the car may be handed at most DRAW = 2,000 satoshis
+value      out1 >= V - (DRAW + MAX_FEE)   <- a FLOOR, never an equality
+successor  out1 must be the depot itself — see 3</pre>
+    <p class="note">★ The tail is pinned but <b>the body is free</b>, which is why one depot can mint a
+      five-tick car of 1.7 KB and a fifty-six-tick car of 13 KB without knowing anything about either. It is
+      not recognising a car it has seen before; it is requiring that whatever comes out <i>ends</i> like a
+      racer — paying its fee, and paying it home.</p>
+    <p class="note">⚠ And the value rule being a <b>floor</b> is what makes a gift possible at all: handing the
+      depot <i>more</i> than it had is always legal, at any balance, from anyone.</p>
+
+    <p class="note"><b>3 · The depot rebuilds itself.</b> It reads its own <code>scriptCode</code> back out of
+      the preimage, drops in the new state, and demands that the result is what the transaction actually
+      pays:</p>
+    <pre class="tech">hash256( newValue ‖ rebuilt scriptCode ‖ the car ‖ anything else ) == hashOutputs</pre>
+    <p class="note">★★ A spender never supplies the successor's program — it is <i>derived from the depot's own
+      bytes</i>. So handing the tank to a different script is not forbidden, it is <b>unrepresentable</b>: the
+      transaction simply cannot be built in a form that validates.</p>
+
+    <p class="note"><b>4 · The car is a race, unrolled.</b> The run is simulated in JavaScript before anything
+      is minted, so every branch is already decided. Each one is compiled as an <b>assertion</b> instead of two
+      arms:</p>
+    <pre class="tech">IF prop > 0 THEN th = throttle    ->    VERIFY fuel > 0     (or = 0 on a dry tick)
+IF demand > grip THEN spun = 1    ->    VERIFY grip >= demand
+IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
+    <p class="note">⇒ A car contains <b>no control flow at all</b> — about 222 bytes per tick of pure
+      arithmetic. A branch says <i>whichever way this goes, handle it</i>; an assertion says <i>this goes this
+      way, and if it does not, the spend is invalid</i>. The covenant enforces exactly as much either way; it
+      refuses instead of branching.</p>
+
+    <p class="note"><b>5 · Why a faster car is a cheaper one.</b> The mint fee is linear in the two script
+      lengths — roughly <code>(2·car + 2·depot + 267) / 10</code> — and the <b>2×</b> is the interesting part:
+      every script is paid for twice, once as the output itself and again inside the preimage that proves it.
+      A car's length <i>is</i> its tick count, and its tick count <i>is</i> its time.</p>
+    <p class="note">★ So the fee is the elapsed time, and nobody designed that — it falls out of the mechanism.
+      <b>You pay less to win.</b></p>
   </div>
 
   <div class="foot">
