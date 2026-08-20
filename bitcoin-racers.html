@@ -280,8 +280,14 @@
            below shows bytes for that reason, and the build REFUSES an over-long name rather than
            truncating it — a car that disagrees with its own leaderboard entry is worse than a
            rejected name. -->
-      <label>driver <b id="v-driver">8/24 B</b><input type="text" id="driver"
-        placeholder="a name, a handle, a domain…" value="SUN-DIVE"
+      <!-- ⚠⚠ THE DEFAULT WAS "SUN-DIVE" AND THAT IS A DEFAULT THAT SPEAKS FOR THE USER. A visitor who
+           did not edit it raced under the owner's name — so the leaderboard could not tell a stranger
+           from the person who built it, and "you will see when someone arrives" was FALSE while this
+           field had a value in it. ⇒ EMPTY, with the invitation in the label. An unnamed car reads as
+           "(no name)" on the board, which is honest; borrowing somebody's identity is not.
+           ★ It also costs nothing to leave blank: the head is zero-padded either way. -->
+      <label>put your name here <b id="v-driver">0/24 B</b><input type="text" id="driver"
+        placeholder="a name, a handle, a domain…" value=""
         style="width:100%;padding:6px 8px;font:inherit;color:inherit;background:#0d0f14;border:1px solid #2a2f3a;border-radius:4px"></label>
     </div>
     <div class="panel">
