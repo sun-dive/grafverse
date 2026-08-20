@@ -118,11 +118,19 @@ function does_spend($tx, $txid, $vout) {
  * un-reversed digest once and discovery 404'd every single time, silently, so the board could only ever
  * learn about spends that reported themselves. Same mistake, already paid for; do not make it twice.
  */
+/* ⚠⚠ THREE ANSWERS, NOT TWO — and collapsing them is what made a contribution invisible for two hours
+   (sun-dive, 20 Aug). This returned `null` both for "the history is complete and nothing spends the
+   tip" and for "the lookup failed", and `advance()` read every null as *we are current*. So one
+   throttled call turned into a board that confidently showed a total from before the top-up existed.
+   ⇒ `[$txid, $tx]` found · `null` genuinely unspent · `'unknown'` WE COULD NOT FIND OUT.
+   ★ The page has said this all along and the server did not listen — `wocGet`'s own docstring in
+   bitcoin-racers.html: "404 means UNSPENT. Anything else after backing off means WE DO NOT KNOW —
+   never guess." */
 function discover_spender($txid, $vout) {
-  $tx = get_tx($txid); if (!$tx) return null;
-  $hex = $tx['vout'][$vout]['scriptPubKey']['hex'] ?? null; if (!$hex) return null;
+  $tx = get_tx($txid); if (!$tx) return 'unknown';
+  $hex = $tx['vout'][$vout]['scriptPubKey']['hex'] ?? null; if (!$hex) return 'unknown';
   $sh = bin2hex(strrev(hash('sha256', hex2bin($hex), true)));
-  $hist = woc_get("/script/$sh/history"); if (!is_array($hist)) return null;
+  $hist = woc_get("/script/$sh/history"); if (!is_array($hist)) return 'unknown';
   foreach ($hist as $h) {
     $cand = $h['tx_hash'] ?? ''; if ($cand === '' || $cand === $txid) continue;
     $t = get_tx($cand); if ($t && does_spend($t, $txid, $vout)) return [$cand, $t];
@@ -169,7 +177,11 @@ function init_cache() {
           'tip' => ['txid' => $GENESIS_TXID, 'vout' => $GENESIS_VOUT],
           /* `val` = the depot's satoshis at the tip. A BSV input carries no amount, so a gift's SIZE
              is only knowable by remembering what the tank held before it. */
-          'races' => [], 'gifts' => [], 'topups' => 0, 'val' => null, 'updated' => 0];
+          /* ⚠ `checked`/`degraded` are RUNTIME STATUS, not recorded hop shape, and both have safe
+             defaults — so CACHE_VER deliberately does NOT move for them. Bumping it would force a cold
+             re-walk of the whole chain to learn two things the next request answers for free. */
+          'races' => [], 'gifts' => [], 'topups' => 0, 'val' => null,
+          'updated' => 0, 'checked' => 0, 'degraded' => false];
 }
 
 /**
@@ -180,6 +192,9 @@ function init_cache() {
 function advance(&$c, $hint = null) {
   global $MAX_ADVANCE, $MAX_ROWS;
   $moved = 0;
+  /* ⚠ CLEARED ON EVERY ATTEMPT. A walk that reaches the tip this time must not inherit the last
+     walk's failure, or the board would nag for ever after one throttled minute. */
+  $c['degraded'] = false;
   for ($i = 0; $i < $MAX_ADVANCE; $i++) {
     $tipTxid = $c['tip']['txid']; $tipVout = (int)$c['tip']['vout'];
     $spender = null;
@@ -188,8 +203,14 @@ function advance(&$c, $hint = null) {
          depot's current tip. Anyone may POST; only the chain decides. */
       $t = get_tx($hint); if ($t && does_spend($t, $tipTxid, $tipVout)) $spender = [$hint, $t];
     }
-    if (!$spender) { $f = discover_spender($tipTxid, $tipVout); if ($f) $spender = $f; }
-    if (!$spender) break;                                   // nothing has spent the tip: we are current
+    if (!$spender) {
+      $f = discover_spender($tipTxid, $tipVout);
+      /* ⚠ NOT KNOWING IS NOT THE SAME AS BEING CURRENT. Stop, and say so — the client can then walk
+         on from our tip with its own budget instead of trusting a total we cannot vouch for. */
+      if ($f === 'unknown') { $c['degraded'] = true; break; }
+      if ($f) $spender = $f;
+    }
+    if (!$spender) break;                                   // nothing has spent the tip: we ARE current
     [$sTxid, $sTx] = $spender;
 
     $depotAt = -1; $rows = [];
@@ -238,7 +259,15 @@ function advance(&$c, $hint = null) {
     if (!$r['raced']) { if (spent_status($r['mint'], $r['vout']) === 'spent') { $r['raced'] = true; $moved++; } }
   }
   unset($r);
-  if ($moved) { $c['updated'] = time(); save_cache($c); }
+  /* ★★ TWO CLOCKS, BECAUSE THEY ANSWER DIFFERENT QUESTIONS — and having only one is why a stale board
+     was indistinguishable from a quiet one.
+       updated   when the DEPOT last did something. Hours old on a quiet day, and correct.
+       checked   when WE last looked. This is the one a reader wants when asking "is this current?"
+     ⚠ SAVED EVEN WHEN NOTHING MOVED. `checked` and `degraded` are the whole point of the attempt, so
+     writing only on movement would throw away the answer we just paid a network call for. */
+  $c['checked'] = time();
+  if ($moved) $c['updated'] = time();
+  save_cache($c);
   return $moved;
 }
 
@@ -260,7 +289,11 @@ if ($method === 'POST') {
   $txid = is_array($body) ? ($body['txid'] ?? '') : '';
   advance($c, $txid);
 } elseif (isset($_GET['sync'])) {
-  if (time() - ($c['updated'] ?? 0) >= $THROTTLE) advance($c);
+  /* ⚠⚠ THROTTLE ON `checked`, NOT ON `updated` — this was BACKWARDS. `updated` only moves when the
+     chain moves, so a quiet depot left `time() - updated` enormous and EVERY page load walked, while a
+     busy one throttled itself exactly when there was most to see. Now the rate of looking is bounded
+     by when we last looked, which is the only thing it was ever meant to bound. */
+  if (time() - ($c['checked'] ?? 0) >= $THROTTLE) advance($c);
 }
 
 echo json_encode([
@@ -269,5 +302,9 @@ echo json_encode([
   'races'   => $c['races'],          // heads only — the client derives every time from them
   'gifts'   => $c['gifts'] ?? [],    // ⛽ who filled the tank: amount + mark. NEVER an address.
   'topups'  => $c['topups'],
-  'updated' => $c['updated'],
+  'updated' => $c['updated'],                        // when the DEPOT last moved
+  'checked' => $c['checked'] ?? 0,                   // ★ when WE last looked — what "is this current?" means
+  /* ⚠ TRUE means we could not reach the tip, so anything below may be incomplete. The client is
+     expected to walk on from `tip` itself rather than believe this. */
+  'degraded' => (bool)($c['degraded'] ?? false),
 ], JSON_UNESCAPED_UNICODE);

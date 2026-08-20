@@ -1530,6 +1530,12 @@ IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
       return r.json();
     }).then(function(j){
       if (!j || !Array.isArray(j.races)) throw Error('unusable cache');
+      /* ⚠⚠ A CACHE THAT COULD NOT REACH THE TIP IS NOT AN ANSWER. Throwing here drops us onto
+         `readBoardFromChain`, which walks from the genesis with the browser's OWN request budget and
+         its own localStorage of settled hops — so a contribution appears even while the server is
+         throttled. ⇒ This is the line that turns "an accelerator, never a dependency" from a comment
+         into behaviour. It is what left a 210,000 sat contribution off the board for two hours. */
+      if (j.degraded) throw Error('the site cache could not reach the tip');
       var rows = [];
       j.races.forEach(function(x){
         if (!x.raced) return;                       // a car that was never spent never raced
@@ -1541,7 +1547,7 @@ IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
                     slip: h.slip, secs: d.secs, mph: d.mph, top: d.top, ending: d.ending, got: d.got });
       });
       return { rows: rows, gifts: Array.isArray(j.gifts) ? j.gifts : null,
-               source: 'cache', fetched: 0, fromCache: j.races.length };
+               source: 'cache', fetched: 0, fromCache: j.races.length, checked: j.checked || 0 };
     });
   }
   /* the server hands numbers back; `deriveRace` wants the same little-endian byte arrays the chain has */
@@ -1667,7 +1673,17 @@ IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
    * ⚠ `null` gifts means the source could not tell us (an older racers.php), which is NOT the same as
    * "nobody has contributed". Say so rather than showing an empty board that reads as zero.
    */
-  function paintGifts(gifts){
+  /** ★ HOW OLD IS THIS, IN WORDS. Empty string when we walked the chain ourselves just now — a number
+      the reader does not need is noise, and "checked just now" beside a live walk is both. */
+  function since(t){
+    if (!t) return '';
+    var s = Math.max(0, Math.floor(Date.now()/1000) - t);
+    if (s < 90)   return ', checked just now';
+    if (s < 5400) return ', checked ' + Math.round(s/60) + ' min ago';
+    return ', checked ' + Math.round(s/3600) + ' h ago';
+  }
+
+  function paintGifts(gifts, checked){
     var box = $('d-gifts'), list = $('d-gift-rows');
     list.textContent = '';
     if (gifts == null){ box.style.display = ''; list.textContent = '';
@@ -1688,12 +1704,20 @@ IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
       var amt = document.createElement('span'); amt.textContent = n(g.added) + ' sat';
       row.appendChild(who); row.appendChild(amt); list.appendChild(row);
     });
-    $('d-gift-total').textContent = n(total) + ' sat';
+    /* ⚠⚠ THE TOTAL SAYS WHEN IT WAS TRUE. This row read "contributed in total 40,000 sat" in exactly
+       the same confident voice whether it had walked the chain a second ago or two hours ago — and a
+       210,000 sat contribution sat outside it, unmentioned, because the walk had been throttled.
+       ⇒ A number about the past, printed as a fact about now, is the failure. Naming the moment costs
+       eight words and makes it a claim the reader can judge. */
+    $('d-gift-total').textContent = n(total) + ' sat' + since(checked);
   }
 
   function paintBoard(res){
     var rows = res.rows, cutShort = res.cutShort;
-    paintGifts(res.gifts === undefined ? null : res.gifts);
+    /* ⚠ `checked` is the SERVER's clock and only exists on the cache path. A chain walk we just did
+       ourselves passes 0, which `since()` renders as nothing at all — correct, because there is no
+       staleness to disclose about a walk that finished a moment ago. */
+    paintGifts(res.gifts === undefined ? null : res.gifts, res.checked || 0);
     {
       var by = {};
       rows.forEach(function(r){
@@ -1742,7 +1766,7 @@ IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
       $('board-note').textContent = cutShort
         ? '⚠ cut short — this board is INCOMPLETE'
         : rows.length + ' race(s) · ' + (res.source === 'cache'
-            ? 'served from the site cache'
+            ? 'site cache' + since(res.checked)
             : (res.fetched ? res.fetched + ' new from chain' : 'nothing new') +
               (res.fromCache ? ', ' + res.fromCache + ' cached locally' : '')) +
           ' · times derived here, no indexer';
