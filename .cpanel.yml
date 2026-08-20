@@ -41,6 +41,9 @@ deployment:
     - /bin/cp basic.html "$DEPLOYPATH"                    # Bitcoin BASIC — the two-way workbench: Script → BASIC (a view over ANY covenant) and BASIC → Script; needs vendor/grafbasic.js, which rides along in the vendor copy above
     - /bin/cp robots.txt "$DEPLOYPATH"                    # crawl directives (allow content, disallow the .php endpoints + /worlds/) + Sitemap: pointer
     - /bin/cp sitemap.php "$DEPLOYPATH"                   # dynamic XML sitemap of the crawlable pages (/, /grafverse.html, /brc226.html) with real lastmod
+    - /bin/cp woc.php "$DEPLOYPATH"                        # ⚠⚠ THE SHARED CHAIN-CALL GATE — tip.php, racers.php AND battery.php all require_once this.
+    #                                                       Deploy it BEFORE or WITH them: if it is missing they fatal, because a new file is invisible
+    #                                                       until it is listed here. It queues every WoC call site-wide (one server IP = one limit).
     - /bin/cp tip.php "$DEPLOYPATH"                        # BRC-226 LiveCounter board cache: follows the covenant chain → { n, tipTxid, last21[] }
     - /bin/cp racers.php "$DEPLOYPATH"                     # Bitcoin Racers leaderboard cache: follows the DEPOT's own spends → { races[] } as raw car HEADS (no times: the client derives them)
     - /bin/cp battery-og.php "$DEPLOYPATH"                # regenerates the card when a new contribution lands (PPM + ImageMagick, no GD)

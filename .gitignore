@@ -15,3 +15,6 @@ sky-elements-*.json
 # rebuilt from the chain whenever it is missing. Server state, never source.
 racers-board.json
 brc226-tip.json
+
+# the shared chain-call gate keeps its queue state here — runtime, never source
+woc-gate.json

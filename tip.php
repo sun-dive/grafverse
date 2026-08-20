@@ -29,24 +29,19 @@ $BOARD        = 21;                 // "the last 21 signers"
 $MAX_ADVANCE  = 40;                 // ticks to catch up per request (bounds a viral burst)
 $THROTTLE     = 6;                  // seconds between chain reconciles
 $CACHE        = __DIR__ . '/brc226-tip.json';
-$WOC          = 'https://api.whatsonchain.com/v1/bsv/main';
+/* ⚠ the WoC base URL lives in woc.php now — one copy, or three of them drift apart. */
 
 // The covenant's fixed field prefix: pushData(0x50) 0x01 pushData(0x01) 0x01 pushData(0x06) 0x04 …
 //   bytes: 01 50 | 01 01 | 01 06 | 04 <n:4 LE> | 14 <lastFunder:20> …  → n at offset 7, funder at offset 12
 const LC_PREFIX = '01500101010604';
 const LC_N_OFF = 7, LC_FUNDER_OFF = 12;
 
-// ── tiny WoC client ─────────────────────────────────────────────────────────
-function woc_get($path) {
-  global $WOC;
-  $ch = curl_init($WOC . $path);
-  curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8,
-    CURLOPT_USERAGENT => 'grafverse-tip/1', CURLOPT_HTTPHEADER => ['Accept: application/json']]);
-  $out = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
-  if ($out === false || $code !== 200) return null;
-  $j = json_decode($out, true);
-  return is_array($j) ? $j : null;
-}
+// ── WoC client ──────────────────────────────────────────────────────────────
+// ⚠⚠ THIS FILE HAD NO RATE LIMITING AT ALL, and it is the one reached by TWO pages (brc226.html and
+// bitcoin-racers.html). It now queues through the shared gate with every other chain call on the
+// site — because the limit being respected is per-IP, and this server has one IP.
+require_once __DIR__ . '/woc.php';   // ★ THE ONE GATE — see woc.php. Every chain call on this site queues here.
+function woc_get($path) { return woc_json($path, 'grafverse-tip/1'); }
 function get_tx($txid) { return preg_match('/^[0-9a-f]{64}$/', $txid) ? woc_get("/tx/hash/$txid") : null; }
 
 // ── parsing counter + mark straight from tx bytes ────────────────────────────

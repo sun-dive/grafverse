@@ -44,7 +44,7 @@ $HOPS         = 12;                 // recent hops handed to the page to verify 
 $MAX_ADVANCE  = 60;                 // hops to catch up per request (bounds a viral burst)
 $THROTTLE     = 6;                  // seconds between chain reconciles
 $CACHE        = __DIR__ . '/battery-tip.json';
-$WOC          = 'https://api.whatsonchain.com/v1/bsv/main';
+/* ⚠ the WoC base URL lives in woc.php now — one copy, or three of them drift apart. */
 $MAX_FEE      = 312;                // the covenant's permanent per-tick ceiling — used for the fuel gauge
 
 // The covenant's fixed field prefix: pushData(0x50) pushData(0x01) pushData(0x07) then the nine fields.
@@ -67,30 +67,8 @@ const BAT_FIELDS = [
 //
 // Being behind is harmless: the state is derived, the cache heals on the next request, and a board that
 // lags a few seconds is far better than one that gets the site's IP banned from the chain.
-$WOC_LAST = 0.0;          // monotonic-ish timestamp of the previous call
-$WOC_CALLS = 0;           // calls made during THIS request
-$WOC_BLOCKED = false;     // set when a relay rate-limits us
-const WOC_MIN_INTERVAL = 0.35;   // seconds between calls
-const WOC_CALL_BUDGET  = 90;     // per request
-
-function woc_get($path) {
-  global $WOC, $WOC_LAST, $WOC_CALLS, $WOC_BLOCKED;
-  if ($WOC_BLOCKED || $WOC_CALLS >= WOC_CALL_BUDGET) return null;
-
-  $wait = WOC_MIN_INTERVAL - (microtime(true) - $WOC_LAST);
-  if ($wait > 0) usleep((int) ($wait * 1000000));
-
-  $ch = curl_init($WOC . $path);
-  curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8,
-    CURLOPT_USERAGENT => 'grafverse-battery/1', CURLOPT_HTTPHEADER => ['Accept: application/json']]);
-  $out = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
-  $WOC_LAST = microtime(true); $WOC_CALLS++;
-
-  if ($code === 429 || $code === 403) { $WOC_BLOCKED = true; return null; }
-  if ($out === false || $code !== 200) return null;
-  $j = json_decode($out, true);
-  return is_array($j) ? $j : null;
-}
+require_once __DIR__ . '/woc.php';   // ★ THE ONE GATE — see woc.php. Every chain call on this site queues here.
+function woc_get($path) { return woc_json($path, 'grafverse-battery/1'); }
 function get_tx($txid) { return preg_match('/^[0-9a-f]{64}$/', $txid) ? woc_get("/tx/hash/$txid") : null; }
 
 // ── reading the battery straight from the script bytes ───────────────────────
@@ -277,7 +255,7 @@ function advance(&$c, $hint = null) {
       @require_once __DIR__ . '/battery-og.php';
       if (function_exists('battery_render_card')) @battery_render_card($c);
     }
-  } elseif ($GLOBALS['WOC_BLOCKED']) {
+  } elseif (woc_blocked()) {
     // rate-limited: push the next reconcile well out rather than retrying into a longer block
     $c['updated'] = time() + 60;
     save_cache($c);
@@ -309,7 +287,8 @@ function discover_spender($tipTxid, $vout) {
      ★ AND THE SECOND CALL IS SKIPPED WHEN IT CANNOT HELP. A spender of an UNCONFIRMED tip cannot
      itself be confirmed — a child cannot be in a block while its parent is not — so for an unconfirmed
      tip the mempool is the only place worth looking. That matters: every call spends the per-request
-     budget (90) and a 429 sets WOC_BLOCKED, which pushes the next reconcile 60 seconds out. */
+     budget and a 429 now trip the SITE-WIDE gate in woc.php, which pushes the next reconcile out
+     for every page at once rather than only this one. */
   $paths = empty($tip['blockhash']) ? ['unconfirmed/history'] : ['unconfirmed/history', 'history'];
   foreach ($paths as $path) {
     $hist = woc_get("/script/$sh/$path");

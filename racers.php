@@ -44,79 +44,27 @@ $MAX_ADVANCE  = 25;      // hops to catch up per request — bounds a burst, and
 $THROTTLE     = 8;       // seconds between chain reconciles
 $MAX_ROWS     = 500;     // the board keeps this many races; older ones stay on chain, readable by anyone
 $CACHE        = __DIR__ . '/racers-board.json';
-$WOC          = 'https://api.whatsonchain.com/v1/bsv/main';
+/* ⚠ the WoC base URL lives in woc.php now — one copy, or three of them drift apart. */
 
 // ── tiny WoC client ──────────────────────────────────────────────────────────
-// ⚠⚠⚠ THE WoC BUDGET IS A SHARED RESOURCE, AND THIS FILE HAD NO GUARDS AT ALL (fixed 20 Aug).
-// EVERY call from here leaves the ONE server IP, and that IP is shared by tip.php (brc226.html AND
-// bitcoin-racers.html) and battery.php. So an unpaced walk here does not merely break the leaderboard
-// — it can get the whole site rate-limited, and the other boards fail with it. The file is called by
-// one page; its FAILURE MODE is site-wide.
-//
-// ⚠ MEASURED 20 Aug: a cold rebuild lost `discover_spender` at hop TWO to rate limiting and reported
-// a one-race board as though the chain simply ended. Being throttled looked exactly like being
-// finished, which is the worst shape a failure can take.
-//
-// ⇒ THE SAME THREE GUARDS battery.php ALREADY USES, and deliberately identical rather than improved:
-//   1. a minimum interval between calls (the 350 ms floor the browser queue also uses)
-//   2. a hard budget per request, so one cold visitor cannot walk 25 hops x N candidates
-//   3. on 429/403 stop immediately and REMEMBER it — a blocked IP must not be hammered into a
-//      longer block
-// ⚠ $THROTTLE (8 s) is a DIFFERENT thing and was never a substitute: it spaces RECONCILES, not the
-// hundreds of calls a single reconcile can make.
-//
-// Being behind is harmless: every result is derived, the cache heals on the next request, and a board
-// that lags a few seconds is far better than one that gets the site's IP banned from the chain.
-$WOC_LAST = 0.0;          // timestamp of the previous call
-$WOC_CALLS = 0;           // calls made during THIS request
-$WOC_BLOCKED = false;     // set when a relay rate-limits us
-const WOC_MIN_INTERVAL = 0.35;   // seconds between calls
-const WOC_CALL_BUDGET  = 90;     // per request
-
-/** the pacer + budget + penalty box, shared by every call this file makes. Returns false if spent. */
-function woc_ready() {
-  global $WOC_LAST, $WOC_CALLS, $WOC_BLOCKED;
-  if ($WOC_BLOCKED || $WOC_CALLS >= WOC_CALL_BUDGET) return false;
-  $wait = WOC_MIN_INTERVAL - (microtime(true) - $WOC_LAST);
-  if ($wait > 0) usleep((int) ($wait * 1000000));
-  return true;
-}
-function woc_done($code) {
-  global $WOC_LAST, $WOC_CALLS, $WOC_BLOCKED;
-  $WOC_LAST = microtime(true); $WOC_CALLS++;
-  if ($code === 429 || $code === 403) $WOC_BLOCKED = true;
-}
-
-function woc_get($path) {
-  global $WOC;
-  if (!woc_ready()) return null;
-  $ch = curl_init($WOC . $path);
-  curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8,
-    CURLOPT_USERAGENT => 'grafverse-racers/1', CURLOPT_HTTPHEADER => ['Accept: application/json']]);
-  $out = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
-  woc_done($code);
-  if ($out === false || $code !== 200) return null;
-  $j = json_decode($out, true);
-  return is_array($j) ? $j : null;
-}
+// ⚠⚠⚠ THE WoC BUDGET IS A SHARED RESOURCE — one server IP, one limit at the far end. This file's own
+// per-request guards were a step in the right direction and still could not bound it: four endpoints
+// each politely allowing themselves 90 calls is 360 calls from one IP. ⇒ Everything now queues
+// through woc.php, site-wide. → the exception to page-script isolation is argued in that file.
+require_once __DIR__ . '/woc.php';   // ★ THE ONE GATE — see woc.php. Every chain call on this site queues here.
+function woc_get($path) { return woc_json($path, 'grafverse-racers/1'); }
 function get_tx($txid) { return preg_match('/^[0-9a-f]{64}$/', $txid) ? woc_get("/tx/hash/$txid") : null; }
 
 /** ⚠ 404 means UNSPENT. Anything else means WE DO NOT KNOW — never report a guess as an answer. */
 function spent_status($txid, $vout) {
-  global $WOC;
-  /* ⚠ THIS MADE ITS OWN RAW CURL CALL AND SO ESCAPED EVERY GUARD — it needs the HTTP CODE rather than
-     JSON, which is why it never went through woc_get, and that is exactly how it slipped the net. It
-     runs once per minted car AND again for every unraced one on each sync, so it was the single
-     biggest caller in the file. It is paced and budgeted like everything else now. */
-  if (!woc_ready()) return 'unknown';
-  $ch = curl_init("$WOC/tx/$txid/$vout/spent");
-  curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8,
-    CURLOPT_USERAGENT => 'grafverse-racers/1']);
-  curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
-  woc_done($code);
+  /* ⚠ 404 means UNSPENT. Anything else — including being throttled — means WE DO NOT KNOW, and that
+     is NOT the same as "not raced". Reporting a guess here is what made a throttled walk look like a
+     finished one on 20 Aug. ★ It used to make its own raw curl call and so escaped every guard; it
+     is the biggest caller in the file (once per mint, then again per unraced car on every sync). */
+  $code = woc_status("/tx/$txid/$vout/spent", 'grafverse-racers/1');
   if ($code === 404) return 'unspent';
   if ($code === 200) return 'spent';
-  return 'unknown';   /* ⚠ NEVER a guess: a throttled check is "we do not know", not "not raced" */
+  return 'unknown';
 }
 
 // ── reading the covenants straight from their bytes ──────────────────────────
