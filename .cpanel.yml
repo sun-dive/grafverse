@@ -30,6 +30,7 @@ deployment:
     - /bin/cp milkyway.webp "$DEPLOYPATH"                 # all-sky backdrop image
     - /bin/cp lang-*.js "$DEPLOYPATH"                     # i18n language packs (lang-ja.js, lang-zh-Hant.js, …) lazy-loaded by the game
     - /bin/cp brc226.html "$DEPLOYPATH"                   # BRC-226 blueprint — self-contained, crawlable (coined-term SEO); shareable at grafverse.com/brc226.html
+    - /bin/cp racers-og.jpg "$DEPLOYPATH"                    # Bitcoin Racers social card, 1200x630 (crop of the shirt art, above its own lettering)
     - /bin/cp bitcoin-racers.html "$DEPLOYPATH"           # BRC-226 demo three — the COVENANT, run through the real interpreter (indexable entry point; nothing broadcast)
     - /bin/cp depot.html "$DEPLOYPATH"                       # BRC-226 demo four — THE FUEL DEPOT: configure and race a real public car, keyless
     - /bin/cp green-test.html "$DEPLOYPATH"                # "A Green Test Is Not Evidence" — the article, canonical here; Substack is syndication
