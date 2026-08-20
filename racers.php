@@ -47,12 +47,54 @@ $CACHE        = __DIR__ . '/racers-board.json';
 $WOC          = 'https://api.whatsonchain.com/v1/bsv/main';
 
 // ── tiny WoC client ──────────────────────────────────────────────────────────
+// ⚠⚠⚠ THE WoC BUDGET IS A SHARED RESOURCE, AND THIS FILE HAD NO GUARDS AT ALL (fixed 20 Aug).
+// EVERY call from here leaves the ONE server IP, and that IP is shared by tip.php (brc226.html AND
+// bitcoin-racers.html) and battery.php. So an unpaced walk here does not merely break the leaderboard
+// — it can get the whole site rate-limited, and the other boards fail with it. The file is called by
+// one page; its FAILURE MODE is site-wide.
+//
+// ⚠ MEASURED 20 Aug: a cold rebuild lost `discover_spender` at hop TWO to rate limiting and reported
+// a one-race board as though the chain simply ended. Being throttled looked exactly like being
+// finished, which is the worst shape a failure can take.
+//
+// ⇒ THE SAME THREE GUARDS battery.php ALREADY USES, and deliberately identical rather than improved:
+//   1. a minimum interval between calls (the 350 ms floor the browser queue also uses)
+//   2. a hard budget per request, so one cold visitor cannot walk 25 hops x N candidates
+//   3. on 429/403 stop immediately and REMEMBER it — a blocked IP must not be hammered into a
+//      longer block
+// ⚠ $THROTTLE (8 s) is a DIFFERENT thing and was never a substitute: it spaces RECONCILES, not the
+// hundreds of calls a single reconcile can make.
+//
+// Being behind is harmless: every result is derived, the cache heals on the next request, and a board
+// that lags a few seconds is far better than one that gets the site's IP banned from the chain.
+$WOC_LAST = 0.0;          // timestamp of the previous call
+$WOC_CALLS = 0;           // calls made during THIS request
+$WOC_BLOCKED = false;     // set when a relay rate-limits us
+const WOC_MIN_INTERVAL = 0.35;   // seconds between calls
+const WOC_CALL_BUDGET  = 90;     // per request
+
+/** the pacer + budget + penalty box, shared by every call this file makes. Returns false if spent. */
+function woc_ready() {
+  global $WOC_LAST, $WOC_CALLS, $WOC_BLOCKED;
+  if ($WOC_BLOCKED || $WOC_CALLS >= WOC_CALL_BUDGET) return false;
+  $wait = WOC_MIN_INTERVAL - (microtime(true) - $WOC_LAST);
+  if ($wait > 0) usleep((int) ($wait * 1000000));
+  return true;
+}
+function woc_done($code) {
+  global $WOC_LAST, $WOC_CALLS, $WOC_BLOCKED;
+  $WOC_LAST = microtime(true); $WOC_CALLS++;
+  if ($code === 429 || $code === 403) $WOC_BLOCKED = true;
+}
+
 function woc_get($path) {
   global $WOC;
+  if (!woc_ready()) return null;
   $ch = curl_init($WOC . $path);
   curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8,
     CURLOPT_USERAGENT => 'grafverse-racers/1', CURLOPT_HTTPHEADER => ['Accept: application/json']]);
   $out = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+  woc_done($code);
   if ($out === false || $code !== 200) return null;
   $j = json_decode($out, true);
   return is_array($j) ? $j : null;
@@ -62,13 +104,19 @@ function get_tx($txid) { return preg_match('/^[0-9a-f]{64}$/', $txid) ? woc_get(
 /** ⚠ 404 means UNSPENT. Anything else means WE DO NOT KNOW — never report a guess as an answer. */
 function spent_status($txid, $vout) {
   global $WOC;
+  /* ⚠ THIS MADE ITS OWN RAW CURL CALL AND SO ESCAPED EVERY GUARD — it needs the HTTP CODE rather than
+     JSON, which is why it never went through woc_get, and that is exactly how it slipped the net. It
+     runs once per minted car AND again for every unraced one on each sync, so it was the single
+     biggest caller in the file. It is paced and budgeted like everything else now. */
+  if (!woc_ready()) return 'unknown';
   $ch = curl_init("$WOC/tx/$txid/$vout/spent");
   curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8,
     CURLOPT_USERAGENT => 'grafverse-racers/1']);
   curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+  woc_done($code);
   if ($code === 404) return 'unspent';
   if ($code === 200) return 'spent';
-  return 'unknown';
+  return 'unknown';   /* ⚠ NEVER a guess: a throttled check is "we do not know", not "not raced" */
 }
 
 // ── reading the covenants straight from their bytes ──────────────────────────
@@ -134,15 +182,46 @@ function discover_spender($txid, $vout) {
   return null;
 }
 
+/**
+ * ★ THE CONTRIBUTOR'S MARK, out of a nulldata output. The top-up builder writes
+ * `OP_FALSE OP_RETURN <push>`; a bare `OP_RETURN <push>` is equally valid, so both are read.
+ * ⚠ Returns null for anything that is not one simple push — this is a stranger's bytes, and the
+ * board is not the place to be clever about exotic script shapes.
+ */
+function op_return_text($tx) {
+  foreach (($tx['vout'] ?? []) as $o) {
+    $h = $o['scriptPubKey']['hex'] ?? ''; if ($h === '') continue;
+    $b = @hex2bin($h); if ($b === false || strlen($b) < 3) continue;
+    $i = 0;
+    if (ord($b[0]) === 0x00 && ord($b[1]) === 0x6a) $i = 2;
+    elseif (ord($b[0]) === 0x6a) $i = 1;
+    else continue;
+    if (!isset($b[$i])) continue;
+    $len = ord($b[$i]);
+    if ($len <= 0 || $len > 0x4b || strlen($b) < $i + 1 + $len) continue;
+    $t = trim(substr($b, $i + 1, $len));
+    if ($t !== '' && mb_check_encoding($t, 'UTF-8')) return $t;
+  }
+  return null;
+}
+
 // ── cache ────────────────────────────────────────────────────────────────────
 function load_cache() { global $CACHE; $j = @file_get_contents($CACHE); $c = $j ? json_decode($j, true) : null; return is_array($c) ? $c : null; }
 function save_cache($c) { global $CACHE; @file_put_contents($CACHE, json_encode($c), LOCK_EX); }
 
+/* ⚠⚠ SCHEMA VERSION. The cache gained `gifts` and `val` on 20 Aug. An existing file has neither, and
+   every top-up already on chain sits BEHIND the tip — so without a rebuild those contributions could
+   never be walked again and the board would read a permanent zero. A schema change to a cache of
+   settled data is a REBUILD, not a migration: one cold walk, once. */
+define('CACHE_VER', 2);
+
 function init_cache() {
   global $GENESIS_TXID, $GENESIS_VOUT;
-  return ['genesis' => $GENESIS_TXID,
+  return ['ver' => CACHE_VER, 'genesis' => $GENESIS_TXID,
           'tip' => ['txid' => $GENESIS_TXID, 'vout' => $GENESIS_VOUT],
-          'races' => [], 'topups' => 0, 'updated' => 0];
+          /* `val` = the depot's satoshis at the tip. A BSV input carries no amount, so a gift's SIZE
+             is only knowable by remembering what the tank held before it. */
+          'races' => [], 'gifts' => [], 'topups' => 0, 'val' => null, 'updated' => 0];
 }
 
 /**
@@ -186,8 +265,19 @@ function advance(&$c, $hint = null) {
         'layout' => $h['_layout'],
       ];
     }
-    if (!$rows) $c['topups']++;                             // a top-up: spends the depot, mints no car
+    $newVal = $depotAt >= 0 ? (int)round(($sTx['vout'][$depotAt]['value'] ?? 0) * 1e8) : null;
+    if (!$rows) {
+      $c['topups']++;                                       // a top-up: spends the depot, mints no car
+      /* ⛽ WHAT IT ADDED is exactly the RISE in the depot's own value — the contributor pays the miner
+         from their own input, so there is nothing to net off. ⚠ Only recorded when the previous value
+         is actually known; a gift of unknown size is left out rather than guessed at. */
+      if ($newVal !== null && $c['val'] !== null && $newVal > $c['val']) {
+        $c['gifts'][] = ['added' => $newVal - $c['val'], 'mark' => op_return_text($sTx), 'txid' => $sTxid];
+        if (count($c['gifts']) > $MAX_ROWS) $c['gifts'] = array_slice($c['gifts'], -$MAX_ROWS);
+      }
+    }
     else $c['races'] = array_merge($c['races'], $rows);
+    if ($newVal !== null) $c['val'] = $newVal;
     if (count($c['races']) > $MAX_ROWS) $c['races'] = array_slice($c['races'], -$MAX_ROWS);
 
     if ($depotAt < 0) break;                                // the owner burned it: the chain ends here
@@ -208,6 +298,12 @@ function advance(&$c, $hint = null) {
 if (php_sapi_name() === 'cli' && empty($GLOBALS['RACERS_RUN'])) return;   // CLI include → parsers only
 
 $c = load_cache();
+/* ⚠⚠ A STALE SCHEMA IS REBUILT, NOT PATCHED. A v1 file has no `gifts` and no `val`, and every top-up
+   already on chain is BEHIND the tip — so patching the keys in would leave the contributions board
+   reading a permanent, confident ZERO. Rebuilding costs one cold walk and is the only answer that is
+   actually correct. ⇒ Bump CACHE_VER whenever a hop's recorded shape changes.
+   ⚠ Also rebuilt if the genesis ever changes, which would otherwise serve another depot's history. */
+if ($c && ((int)($c['ver'] ?? 1) !== CACHE_VER || ($c['genesis'] ?? '') !== $GENESIS_TXID)) $c = null;
 if (!$c) { $c = init_cache(); advance($c); save_cache($c); }
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -223,6 +319,7 @@ echo json_encode([
   'genesis' => $c['genesis'],
   'tip'     => $c['tip'],            // where the client resumes if it wants to verify or extend itself
   'races'   => $c['races'],          // heads only — the client derives every time from them
+  'gifts'   => $c['gifts'] ?? [],    // ⛽ who filled the tank: amount + mark. NEVER an address.
   'topups'  => $c['topups'],
   'updated' => $c['updated'],
 ], JSON_UNESCAPED_UNICODE);

@@ -206,6 +206,20 @@
         <div class="row"><span>this car will cost</span><span id="d-cost" class="dim">—</span></div>
         <div class="row"><span>minting window</span><span id="d-window" class="dim">—</span></div>
         <div class="row"><span>races left in it</span><span id="d-left" class="dim">—</span></div>
+
+        <!-- ⛽ WHO FILLED THE TANK — read from the depot's OWN chain of spends, the same walk the race
+             board already makes, so it needs NO INDEXER and no extra network call: a hop that mints no
+             car IS a top-up, and the walk was already detecting those and throwing them away.
+             ⚠⚠ THE MARK ONLY, NEVER THE ADDRESS (sun-dive, 20 Aug). The AMOUNT is a chain fact and
+             cannot be faked; the MARK is a message the contributor wrote. A donor's address is nobody
+             else's business, and publishing one is permanent — they cannot un-publish it later. -->
+        <div id="d-gifts" style="display:none;margin-top:14px">
+          <div class="lbl" style="margin-bottom:6px">⛽ who filled the tank</div>
+          <div id="d-gift-rows"></div>
+          <div class="row" style="border-top:1px solid var(--line);margin-top:6px;padding-top:6px">
+            <span>contributed in total</span><span id="d-gift-total">—</span></div>
+        </div>
+
         <p class="note" id="d-note" style="margin-top:10px">press <b>Re-read the chain</b> to find the depot.</p>
         <button class="ghost" id="reload">↺ Re-read the chain</button>
       </div>
@@ -218,7 +232,17 @@
     <p class="note" style="margin:0 0 4px">Every race costs the depot a little, and when it runs dry nobody
        races. This builds the top-up <b>here, unsigned</b>, and hands it to <b>Phar Lap</b> to sign — this page
        never sees a key. ★ A gift buys no minting slot: the covenant refuses a top-up that tries to take one.</p>
-    <label>satoshis <b id="v-add">20,000</b><input type="range" id="add" min="1000" max="500000" step="1000" value="20000"></label>
+    <!-- ⚠⚠⚠ TYPE THE NUMBER. THIS WAS A RANGE SLIDER, min 1000 max 500000 step 1000, AND IT ATE A
+         21,000,000 SAT DEPOSIT IN SILENCE — the value could not be entered at all, so it stayed at its
+         default 20,000 and the page funded that without a word (`94356c0f…`, 20 Aug).
+         ★ EVERY ONE OF THOSE FOUR LIMITS WAS THE PAGE'S INVENTION. `racerDepot.ts:146` is explicit —
+         the value rule is *"a FLOOR and not an equality, which is what makes a top-up free: anyone may
+         hand back MORE"*. There is no MAX_TANK in the racers depot at all, and the minimum is one
+         satoshi. ⇒ The only real limit is what the contributor's own coin can cover, so that is the
+         only one shown. Bootcamp #4, fourth time; a slider clamping in silence, third time. -->
+    <label>satoshis <span class="dim" id="v-add">≈ 0.0002 BSV</span></label>
+    <input type="number" id="add" min="1" step="1" value="20000"
+           style="width:100%;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--fg);font-family:ui-monospace,Menlo,monospace;font-size:13px">
     <label>your address <span class="dim" id="a-bal">— one coin must cover the fuel and the fee</span></label>
     <input id="addr" placeholder="1..." style="width:100%;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--fg);font-family:ui-monospace,Menlo,monospace;font-size:13px">
     <label>a mark for the board · optional</label>
@@ -1104,7 +1128,11 @@
      settled for ever — caching it is not an optimisation, it is the shape of the data. Without this the
      page re-walks the whole history on every load and shares one WoC rate limit with every visitor.
      ⇒ localStorage, keyed by outpoint. ★ Only the TIP is ever re-checked. */
-  var BOARD_CACHE = 'racers.board.v1';
+  /* ⚠⚠ v1 → v2: the hop entry gained `val` and `gift`. An old entry has neither, so a warm cache
+     would silently show ZERO contributions for ever — the top-ups are already behind the tip and
+     would never be walked again. A schema change to a cache of settled data is a REBUILD, not a
+     migration. One cold walk, once. */
+  var BOARD_CACHE = 'racers.board.v2';
   function cacheGet(){ try { return JSON.parse(localStorage.getItem(BOARD_CACHE) || '{}') } catch(e){ return {} } }
   function cachePut(c){ try { localStorage.setItem(BOARD_CACHE, JSON.stringify(c)) } catch(e){} }
 
@@ -1144,6 +1172,20 @@
     return null;
   }
   var leNum = function(b){ var n = 0; for (var i=0;i<b.length;i++) n += b[i]*Math.pow(256,i); return n };
+  /**
+   * ★ THE CONTRIBUTOR'S MARK, out of a nulldata output. `OP_FALSE OP_RETURN <push>` is what the
+   * top-up builder writes, but a bare `OP_RETURN <push>` is equally valid, so both are accepted.
+   * ⚠ Decoded as UTF-8 with a REPLACEMENT policy, never trusted as text: this is a string a stranger
+   * put on chain, so it is read defensively and rendered with textContent, never innerHTML.
+   */
+  function readMark(sc){
+    var i = 0;
+    if (sc[0] === 0x00 && sc[1] === 0x6a) i = 2; else if (sc[0] === 0x6a) i = 1; else return null;
+    var len = sc[i];
+    if (len === undefined || len <= 0 || len > 0x4b) return null;      // one simple push; nothing exotic
+    try { return new TextDecoder('utf-8').decode(new Uint8Array(sc.slice(i+1, i+1+len))).trim() || null }
+    catch(e){ return null }
+  }
   var leTxt = function(b){ return new TextDecoder().decode(new Uint8Array(b.filter(function(x){return x!==0}))) };
 
   /** ★★ RE-DERIVE the race from the setup the chain carries. The result is not stored; it is recomputed. */
@@ -1198,7 +1240,8 @@
         rows.push({ driver: leTxt(head.name) || '(no name)', metres: Math.round(h.finish/GM.S),
                     slip: h.slip, secs: d.secs, mph: d.mph, top: d.top, ending: d.ending, got: d.got });
       });
-      return { rows: rows, source: 'cache', fetched: 0, fromCache: j.races.length };
+      return { rows: rows, gifts: Array.isArray(j.gifts) ? j.gifts : null,
+               source: 'cache', fetched: 0, fromCache: j.races.length };
     });
   }
   /* the server hands numbers back; `deriveRace` wants the same little-endian byte arrays the chain has */
@@ -1220,7 +1263,7 @@
   }
 
   function readBoardFromChain(){
-    var M = GM, cache = cacheGet(), rows = [], other = 0, cutShort = false;
+    var M = GM, cache = cacheGet(), rows = [], other = 0, cutShort = false, gifts = [], prevVal = null;
     /* ★ Count the two kinds of hop. A reload that says "updated" while re-reading everything would be
        a claim rather than a fact, so the panel reports what was actually fetched. */
     var fromCache = 0, fetched = 0;
@@ -1237,6 +1280,8 @@
       if (cache[key] && cache[key].next){
         if (cache[key].cars) rows = rows.concat(cache[key].cars);
         if (cache[key].other) other++;
+        if (cache[key].gift) gifts.push(cache[key].gift);
+        if (cache[key].val != null) prevVal = cache[key].val;
         fromCache++;
         cur = cache[key].next;
         return hop(n+1);
@@ -1272,8 +1317,20 @@
                 if (!mine.length) other++;
                 rows = rows.concat(mine);
                 if (depotAt < 0) return;                    // burned: the chain ends
+                var newVal = tx.outputs[depotAt].satoshis, gift = null;
+                /* ⛽ A HOP THAT MINTS NO CAR IS A TOP-UP, and what it added is exactly the rise in the
+                   depot's own value — the funder pays the miner from their OWN input, so nothing has
+                   to be netted off. ⚠ Needs the PREVIOUS value, which a transaction does not carry:
+                   BSV inputs hold no amount. So the walk tracks it, and the cache stores it. */
+                if (!mine.length && prevVal != null && newVal > prevVal){
+                  var mk = null;
+                  tx.outputs.forEach(function(o){ if (mk === null) mk = readMark(o.lockingScript.toBinary()) });
+                  gift = { added: newVal - prevVal, mark: mk, txid: sp.txid };
+                  gifts.push(gift);
+                }
+                prevVal = newVal;
                 var next = { txid: sp.txid, vout: depotAt };
-                cache[key] = { next: next, cars: mine, other: !mine.length };
+                cache[key] = { next: next, cars: mine, other: !mine.length, val: newVal, gift: gift };
                 cachePut(cache);
                 cur = next;
                 return hop(n+1);
@@ -1284,14 +1341,59 @@
       });
     }
 
-    return hop(0).then(function(){
-      return { rows: rows, source: 'chain', fetched: fetched, fromCache: fromCache, cutShort: cutShort };
+    /* ⚠ SEED THE DEPOT'S STARTING VALUE. A gift is the RISE in the tank, and a BSV input carries no
+       amount, so without the genesis figure the first hop's contribution cannot be measured — and if
+       the first hop happened to be a top-up it would be silently missed rather than visibly wrong.
+       One extra fetch, on a cold walk only. */
+    var seed = prevVal != null ? Promise.resolve() : wocGet('/tx/' + GENESIS + '/hex').then(function(r){
+      if (!r || !r.ok) return;
+      return r.text().then(function(hx){
+        try { prevVal = M.Transaction.fromHex(hx.trim()).outputs[0].satoshis } catch(e){}
+      });
+    });
+    return seed.then(function(){ return hop(0) }).then(function(){
+      return { rows: rows, gifts: gifts, source: 'chain', fetched: fetched, fromCache: fromCache, cutShort: cutShort };
     });
   }
 
   /* ── painting, shared by both paths so they cannot drift ────────────────────────────────────── */
+  /**
+   * ⛽ WHO FILLED THE TANK — ranked by the size of the gift.
+   * ⚠⚠ THE MARK ONLY, NEVER THE ADDRESS (sun-dive, 20 Aug). The AMOUNT is a chain fact and cannot be
+   * faked; the MARK is a message its author chose to write. A donor's address is nobody else's
+   * business, and publishing one is permanent — it cannot be un-published later.
+   * ⚠ The mark is a STRANGER'S STRING. It goes in with textContent, never innerHTML, and it is
+   * clipped — an 80-character "mark" must not be able to redesign the panel.
+   * ⚠ `null` gifts means the source could not tell us (an older racers.php), which is NOT the same as
+   * "nobody has contributed". Say so rather than showing an empty board that reads as zero.
+   */
+  function paintGifts(gifts){
+    var box = $('d-gifts'), list = $('d-gift-rows');
+    list.textContent = '';
+    if (gifts == null){ box.style.display = ''; list.textContent = '';
+      var u = document.createElement('div'); u.className = 'note dim';
+      u.textContent = 'contributions are not in this cache yet — press ↻ update';
+      list.appendChild(u); $('d-gift-total').textContent = '—'; return;
+    }
+    if (!gifts.length){ box.style.display = 'none'; return }
+    box.style.display = '';
+    var total = 0;
+    gifts.slice().sort(function(a,b){ return b.added - a.added }).forEach(function(g){
+      total += g.added;
+      var row = document.createElement('div'); row.className = 'row';
+      var who = document.createElement('span');
+      var mk = (g.mark || '').replace(/\s+/g,' ').trim();
+      who.textContent = mk ? (mk.length > 64 ? mk.slice(0,63) + '…' : mk) : '(no mark)';
+      if (!mk) who.className = 'dim';
+      var amt = document.createElement('span'); amt.textContent = n(g.added) + ' sat';
+      row.appendChild(who); row.appendChild(amt); list.appendChild(row);
+    });
+    $('d-gift-total').textContent = n(total) + ' sat';
+  }
+
   function paintBoard(res){
     var rows = res.rows, cutShort = res.cutShort;
+    paintGifts(res.gifts === undefined ? null : res.gifts);
     {
       var by = {};
       rows.forEach(function(r){
@@ -1497,6 +1599,12 @@
     gm().then(function(g){
       M = g;
       if(!DEPOT) throw Error('find the depot first — press Re-read the chain');
+      /* ⚠ A TYPED FIELD CAN BE EMPTY, ZERO, FRACTIONAL OR NEGATIVE — a range slider never could, so
+         this guard did not exist before and now must. ★ ONE SATOSHI is the covenant's own minimum,
+         not the page's invention: a 0-value covenant output is refused as dust before the script is
+         evaluated at all. → memory `covenant-min-1-sat`. Everything ABOVE 1 stays the funder's call. */
+      if(!isFinite(add) || Math.floor(add) !== add || add < 1)
+        throw Error('the amount must be a whole number of satoshis, 1 or more');
       if(!addr) throw Error('put your address in, so the change has somewhere to go');
       sc = scripts(M);
       return coins(addr);
@@ -1571,7 +1679,25 @@
     else { if(master) master.gain.value = 0.9; rev(+$('eng').value) }
   });
   paintSnd();
-  $('add').addEventListener('input', function(){ $('v-add').textContent = n(+this.value) });
+  /* ★★ SHOW WHAT THE NUMBER MEANS; NEVER CLAMP IT. How big a tank should be is the funder's decision.
+     The page's job is to make the consequence legible, not to make the decision for them.
+     ⚠ AND THE GRIEFING BOUND STAYS VISIBLE (sun-dive, 20 Aug). §6i measured the covenant's own rate
+     limit at ~0.044 BSV/day of maximum drain, so a tank is worth about that many days if someone sets
+     out to empty it. A large tank is not a mistake — it is a choice, and this is the number to make it
+     against. ⇒ Informing is not forbidding. */
+  var GRIEF_BSV_PER_DAY = 0.044;
+  var SAT_PER_QUARTER_MILE = 2790;   /* MEASURED 20 Aug: 5,618 → 2,954 → 35 over two 402 m races */
+  function paintAdd(){
+    var s = Math.max(0, +$('add').value || 0), bsv = s/1e8;
+    var txt = '≈ ' + bsv.toFixed(bsv < 0.01 ? 6 : 4) + ' BSV · ~' +
+              n(Math.floor(s / SAT_PER_QUARTER_MILE)) + ' quarter miles';
+    var days = bsv / GRIEF_BSV_PER_DAY;
+    if (days >= 1) txt += ' · ⚠ ~' + (days < 10 ? days.toFixed(1) : n(Math.round(days))) +
+                          ' days of maximum griefing if someone set out to drain it';
+    $('v-add').textContent = txt;
+  }
+  $('add').addEventListener('input', paintAdd);
+  paintAdd();
   $('reload').addEventListener('click', reload);
   $('board-refresh').addEventListener('click', readBoard);
   $('go').addEventListener('click', race);
