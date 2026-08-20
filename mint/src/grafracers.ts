@@ -36,6 +36,8 @@ export type { ShellState, Move } from './shell.ts'
 
 /* ── the car ─────────────────────────────────────────────────────────────────────────────────────── */
 export { buildRacerCar, carBlockOps } from './racerCar.ts'
+/* ★ the leaderboard reads a minted car's head at fixed offsets — CAR_LAYOUT is what tells it where. */
+export { CAR_LAYOUT, NAME_BYTES } from './racerCar.ts'
 export { raceValidates, assertRaceable, buildRaceTx } from './racerTx.ts'
 export type { TickTrace, RunTrace, Ending } from './racerTick.ts'
 

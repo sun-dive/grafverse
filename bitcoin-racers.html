@@ -166,6 +166,25 @@
     <div class="log" id="log" style="margin-top:4px"><span class="dim">nothing yet.</span></div>
   </div>
 
+  <!-- ═══ THE LEADERBOARD ══════════════════════════════════════════════════════════════════════════
+       ★★ READ FROM THE CHAIN, WITH NO INDEX. Every mint is a hop in the depot's own chain, so walking
+       from one genesis txid enumerates every car it ever made. Nothing indexes covenants and nothing
+       needs to.
+       ★★ AND THE TIMES ARE NOT STORED — they are RE-DERIVED from the setup each car carries in its
+       head, with the same reference physics the covenant enforced. The chain proves the car existed
+       and was raced; the physics says how fast.
+       ⚠ Distance and surface are shown because they are the CATEGORY: a time is only comparable
+       against another run at the same distance on the same grip. The configuration is NOT shown —
+       engine, tyres and fuel stay the driver's business (sun-dive, 20 Aug). -->
+  <div class="panel">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+      <b>🏁 Leaderboard</b>
+      <span class="note" id="board-note">read straight off the chain — no index, no server</span>
+      <button id="board-refresh">↻ read the chain</button>
+    </div>
+    <div id="board" style="margin-top:10px"><span class="dim">not read yet.</span></div>
+  </div>
+
   <!-- ═══ FUEL ════════════════════════════════════════════════════════════════════════════════════ -->
   <div class="panel">
     <div class="lbl">⛽ Put satoshis in the Fuel Depot</div>
@@ -626,6 +645,169 @@
    * ⇒ A wreck is not an error path. The four-tick script IS a car getting away from its driver, and
    * that is a result worth reading, not a failure worth hiding.
    */
+  /* ═══ THE LEADERBOARD ═══════════════════════════════════════════════════════════════════════════
+     ⚠⚠ A WALKED HOP NEVER CHANGES. The chain is append-only, so once a depot spend has been read it is
+     settled for ever — caching it is not an optimisation, it is the shape of the data. Without this the
+     page re-walks the whole history on every load and shares one WoC rate limit with every visitor.
+     ⇒ localStorage, keyed by outpoint. ★ Only the TIP is ever re-checked. */
+  var BOARD_CACHE = 'racers.board.v1';
+  function cacheGet(){ try { return JSON.parse(localStorage.getItem(BOARD_CACHE) || '{}') } catch(e){ return {} } }
+  function cachePut(c){ try { localStorage.setItem(BOARD_CACHE, JSON.stringify(c)) } catch(e){} }
+
+  /** ⚠ 404 means UNSPENT. Anything else after backing off means WE DO NOT KNOW — never guess. */
+  function wocGet(path, tries){
+    tries = tries || 4;
+    var wait = 500;
+    function attempt(i){
+      return fetch(WOC + path).then(function(r){
+        if (r.ok || r.status === 404) return r;
+        if (i + 1 >= tries) return null;
+        return new Promise(function(res){ setTimeout(res, wait); wait *= 2 }).then(function(){ return attempt(i+1) });
+      }).catch(function(){ return null });
+    }
+    return attempt(0);
+  }
+
+  /* ★ The head announces its own layout: the first byte is the name's PUSH LENGTH. 0x0c is the 12-byte
+     era, 0x18 the 24-byte one. ⚠ Never remove an entry — a minted car is permanent, and the only thing
+     that can stop it being readable is us forgetting how. */
+  function headLayouts(M){
+    var cur = M.CAR_LAYOUT.map(function(f){ return { name:f.name, width:f.width } });
+    var old = M.CAR_LAYOUT.map(function(f){ return { name:f.name, width: f.name === 'name' ? 12 : f.width } });
+    return [cur, old];
+  }
+  function readHead(M, car){
+    var Ls = headLayouts(M);
+    for (var k = 0; k < Ls.length; k++){
+      var i = 0, ok = true, out = {};
+      for (var j = 0; j < Ls[k].length; j++){
+        var f = Ls[k][j];
+        if (car[i] !== f.width){ ok = false; break }
+        out[f.name] = car.slice(i+1, i+1+f.width); i += 1 + f.width;
+      }
+      if (ok) return out;
+    }
+    return null;
+  }
+  var leNum = function(b){ var n = 0; for (var i=0;i<b.length;i++) n += b[i]*Math.pow(256,i); return n };
+  var leTxt = function(b){ return new TextDecoder().decode(new Uint8Array(b.filter(function(x){return x!==0}))) };
+
+  /** ★★ RE-DERIVE the race from the setup the chain carries. The result is not stored; it is recomputed. */
+  function deriveRace(M, h){
+    var R = M.ONE_RACE_REGS, S = M.S, finish = leNum(h.finish);
+    var st = { phase:M.PHASE.RACING, driver:new Array(20).fill(0), pool:new Array(36).fill(0),
+               eng:leNum(h.eng), tyr:leNum(h.tyr), finish:finish, slip:leNum(h.slip),
+               green:0, gap:1, last:100, s:0, v:0, n:0 };
+    var fuel = leNum(h.fuel), t = 0;
+    for (var i=0;i<400;i++){
+      var r; try { r = M.racerRefTick(st, { throttle:8, fuel:fuel, lockTime:st.last+st.gap }, R) }
+      catch(e){ return { ending:'refused' } }
+      fuel = Math.max(0, fuel - r.burn); t++;
+      st = Object.assign({}, r.state, { last: st.last + st.gap });
+      if (r.ended !== null) return { ending:r.ended, secs:t/10, got:st.s/S };
+      if (st.phase === M.PHASE.DONE) return { ending:'finish', secs:t/10, mph:(st.v/S)*2.23694*10, got:st.s/S };
+    }
+    return { ending:'unresolved' };
+  }
+
+  function readBoard(){
+    if (!GM) { say('load the depot first', 'warn'); return Promise.resolve() }
+    var M = GM, cache = cacheGet(), rows = [], other = 0, cutShort = false;
+    $('board-note').textContent = 'walking the chain…';
+    var cur = { txid: GENESIS, vout: 0 };
+
+    function hop(n){
+      if (n > 200) return Promise.resolve();
+      var key = cur.txid + ':' + cur.vout;
+      /* ★ a settled hop is settled for ever — only the tip is ever re-read */
+      if (cache[key] && cache[key].next){
+        if (cache[key].cars) rows = rows.concat(cache[key].cars);
+        if (cache[key].other) other++;
+        cur = cache[key].next;
+        return hop(n+1);
+      }
+      return wocGet('/tx/' + cur.txid + '/' + cur.vout + '/spent').then(function(r){
+        if (!r){ cutShort = true; return }
+        if (r.status === 404) return;                       // the tip — stop
+        return r.json().then(function(sp){
+          return wocGet('/tx/' + sp.txid + '/hex').then(function(hr){
+            if (!hr || !hr.ok){ cutShort = true; return }
+            return hr.text().then(function(hex){
+              var tx = M.Transaction.fromHex(hex.trim()), depotAt = -1, mine = [];
+              tx.outputs.forEach(function(o, i){
+                var sc = o.lockingScript.toBinary();
+                if (depotAt < 0){ try { M.readDepotState(sc); depotAt = i; return } catch(e){} }
+              });
+              var pending = [];
+              tx.outputs.forEach(function(o, i){
+                if (i === depotAt) return;
+                var h = readHead(M, o.lockingScript.toBinary());
+                if (!h) return;
+                pending.push(wocGet('/tx/' + sp.txid + '/' + i + '/spent').then(function(sr){
+                  var raced = sr ? sr.status !== 404 : false;
+                  if (!sr) cutShort = true;
+                  var d = deriveRace(M, h);
+                  if (raced) mine.push({ driver: leTxt(h.name) || '(no name)',
+                    metres: Math.round(leNum(h.finish)/M.S), slip: leNum(h.slip),
+                    secs: d.secs, mph: d.mph, ending: d.ending, got: d.got });
+                }));
+              });
+              return Promise.all(pending).then(function(){
+                if (!mine.length) other++;
+                rows = rows.concat(mine);
+                if (depotAt < 0) return;                    // burned: the chain ends
+                var next = { txid: sp.txid, vout: depotAt };
+                cache[key] = { next: next, cars: mine, other: !mine.length };
+                cachePut(cache);
+                cur = next;
+                return hop(n+1);
+              });
+            });
+          });
+        });
+      });
+    }
+
+    return hop(0).then(function(){
+      var by = {};
+      rows.forEach(function(r){
+        var k = r.metres + ' m · grip ' + r.slip;
+        (by[k] = by[k] || []).push(r);
+      });
+      var keys = Object.keys(by).sort(function(a,b){ return by[b].length - by[a].length });
+      if (!keys.length){ $('board').innerHTML = '<span class="dim">no races found yet.</span>'; }
+      else {
+        var html = '';
+        keys.forEach(function(k){
+          var fin = by[k].filter(function(r){ return r.ending === 'finish' })
+                         .sort(function(a,b){ return a.secs - b.secs || b.mph - a.mph });
+          var rest = by[k].filter(function(r){ return r.ending !== 'finish' });
+          html += '<div style="margin:10px 0 4px"><b>' + k + '</b></div><table style="width:100%;border-collapse:collapse">';
+          fin.forEach(function(r, i){
+            html += '<tr><td style="width:2em;opacity:.6">' + (i+1) + '</td><td>' + esc(r.driver) +
+                    '</td><td style="text-align:right">' + r.secs.toFixed(2) + ' s</td>' +
+                    '<td style="text-align:right;opacity:.7">' + Math.round(r.mph) + ' mph</td><td style="width:2em">🏁</td></tr>';
+          });
+          rest.forEach(function(r){
+            var what = r.ending === 'stopped' ? '⛽ halted at ' + Math.round(r.got) + ' m'
+                     : r.ending === 'off' ? '💨 off the track' : '💥 engine';
+            html += '<tr style="opacity:.55"><td>—</td><td>' + esc(r.driver) +
+                    '</td><td colspan="3" style="text-align:right">' + what + '</td></tr>';
+          });
+          html += '</table>';
+        });
+        $('board').innerHTML = html;
+      }
+      /* ⚠ A SHORT BOARD MUST NOT LOOK LIKE A COMPLETE ONE. */
+      $('board-note').textContent = cutShort
+        ? '⚠ the walk was cut short — this board is INCOMPLETE'
+        : rows.length + ' race(s) · read straight off the chain, no index';
+      $('board-note').style.color = cutShort ? '#ff6b6b' : '';
+    });
+  }
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){
+    return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c] }) }
+
   function verdict(sim, metres){
     var t = sim.secs.toFixed(2);
     switch(sim.run.ending){
@@ -822,6 +1004,7 @@
   ['eng','tyr','tank','fin','slip','driver'].forEach(function(id){ $(id).addEventListener('input', replan) });
   $('add').addEventListener('input', function(){ $('v-add').textContent = n(+this.value) });
   $('reload').addEventListener('click', reload);
+  $('board-refresh').addEventListener('click', readBoard);
   $('go').addEventListener('click', race);
   $('build').addEventListener('click', buildTopUp);
   $('b-copy').addEventListener('click', function(){
