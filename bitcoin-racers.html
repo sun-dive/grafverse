@@ -49,10 +49,25 @@
   button{background:var(--acc);color:#04141c;border:0;border-radius:8px;padding:11px 18px;font:600 15px/1 inherit;cursor:pointer}
   button:disabled{background:#25333f;color:#5d6f80;cursor:not-allowed}
   button.ghost{background:transparent;color:var(--acc);border:1px solid var(--line)}
-  .strip{height:64px;background:#080c11;border:1px solid var(--line);border-radius:8px;position:relative;overflow:hidden;margin:12px 0}
+  /* ⚠ overflow is VISIBLE, deliberately — a car that goes off the track has to be able to LEAVE.
+     The strip's background and border still clip to the box (backgrounds always do), so the track
+     looks unchanged; only the car and the spark canvas can cross the edge. Both are absolutely
+     positioned, so nothing here can move the page's layout. */
+  .strip{height:64px;background:#080c11;border:1px solid var(--line);border-radius:8px;position:relative;overflow:visible;margin:12px 0}
   .car{position:absolute;top:16px;left:0;width:30px;height:30px;display:grid;place-items:center;
-       font-size:22px;transition:left .09s linear}
+       font-size:22px;transition:left .09s linear;z-index:2}
+  /* the fly-off: one transform, one transition, set from JS so the spin can scale with the impact */
+  .car.off{transition:left .9s ease-out,transform .9s ease-out,opacity .9s ease-in}
   .fin{position:absolute;top:0;bottom:0;right:8px;width:3px;background:repeating-linear-gradient(0deg,#fff 0 6px,#333 6px 12px)}
+  /* ★ the spark canvas OVERHANGS the strip on every side, so debris from a wreck at the finish line
+     is not guillotined by the track edge. pointer-events:none — it must never eat a click. */
+  .fx{position:absolute;left:-60px;top:-60px;pointer-events:none;z-index:1}
+  .snd{background:transparent;border:1px solid var(--line);color:var(--dim);border-radius:8px;
+       padding:8px 12px;font:600 13px/1 inherit;cursor:pointer}
+  .snd.on{color:var(--acc);border-color:var(--acc)}
+  /* ⚠ RESPECT THE SETTING, as grafverse.html already does for its own effects. Reduced motion kills
+     the fly-off and the sparks; the car still moves, because that IS the result being reported. */
+  @media(prefers-reduced-motion:reduce){.car.off{transition:opacity .3s linear}}
   .log{font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;background:#080c11;border:1px solid var(--line);
        border-radius:8px;padding:12px;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all}
   .ok{color:var(--good)} .no{color:var(--bad)} .warn{color:var(--warm)} .dim{color:var(--dim)}
@@ -145,11 +160,12 @@
     </div>
   </div>
 
-  <div class="strip"><div class="fin"></div><div class="car" id="carEl">🏎</div></div>
+  <div class="strip"><div class="fin"></div><canvas class="fx" id="fx"></canvas><div class="car" id="carEl">🏎</div></div>
 
   <div class="panel">
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
       <button id="go" disabled>▶ Race it on mainnet</button>
+      <button id="snd" class="snd" title="engine, tyres and crowd — all synthesised, no files">🔊 sound</button>
       <span class="note" id="go-note">find the depot first</span>
     </div>
     <!-- ⚠ LABELLED because it was mistaken for an input (sun-dive, 20 Aug). It is a <div>: output
@@ -531,7 +547,14 @@
          accelerating where the simulated one coasted. That is what made dry cars unraceable. */
       ticks.push({ throttle:r.throttle, spun:r.spun });
       st = Object.assign({}, r.state, { last: st.last + st.gap });
-      trace.push({ s: st.s, v: st.v });
+      /* ⚠ th and spun are RECORDED, not re-derived. The page must never recompute the physics to
+         drive a sound — that is a second implementation of the tick, and this project has already
+         paid for one of those (`racer-physics.ts` exists to pin the one copy it does allow).
+         ★ r.throttle is the EFFECTIVE throttle, so a dry tick reads 0 and the engine falls silent
+         for the same reason the car stops accelerating: there is no propellant.
+         ★ spun SURVIVES — a car can lose grip, bog down on SPIN_KEEP and keep racing, which is
+         wheelspin off the line, which is exactly when tyres screech. */
+      trace.push({ s: st.s, v: st.v, th: r.throttle, spun: r.spun, mph: (st.v/S)*2.23694*10 });
       /* ★ the fifth ending: dry, and provably short of the line. Legal — but no time and no row. */
       if(r.ended === 'stopped'){ ending='stopped'; done=true; break }
       if(r.ended === 'off'){ ending='off'; done=true; break }
@@ -633,12 +656,411 @@
                                        ' sat and this car needs ' + n(cost + 1) + '. Top it up below.'
                               : 'the depot pays — you need no wallet';
     }
-    place(0);
+    /* a new configuration is a new car: clear the wreck, the sparks and the fly-off transform */
+    resetCar(); place(0);
   }
-  function place(frac){
+  function place(frac, mph){
     var st = document.querySelector('.strip');
     $('carEl').style.left = (Math.max(0,Math.min(1,frac)) * (st.clientWidth - 44)) + 'px';
+    /* ★ ONE CALL MOVES THE CAR AND ITS SOUND TOGETHER. Position is not passed to the mixer
+       separately, so the picture and the mix have no way to drift out of step. */
+    spatialTo(frac, mph);
   }
+
+  /* ═══ 🔊 SOUND — SYNTHESISED, NO FILES ═══════════════════════════════════════════════════════════
+     Follows the house idiom set by `grafverse.html:1141` — *"audio (synthesised, fully offline — no
+     files)"*. There is not one audio asset in this repository and this change does not add one: no
+     bytes to deploy, no `.cpanel.yml` line to forget, no licence to carry in the colophon.
+
+     ★★ AND FOR THE ENGINE IT IS NOT A PREFERENCE — IT IS THE ONLY THING THAT WORKS.
+     A recording replayed faster is a recording replayed faster: tape speed, not a bigger motor. The
+     brief needs TWO independent knobs — pitch tracking `v` continuously, and timbre tracking `eng` —
+     and a sample gives one. Synthesis gives both, so a small engine is genuinely a higher, thinner
+     note and a big one is genuinely lower and heavier, rather than the same note slowed down.
+
+     ⚠ EVERYTHING BELOW IS DRIVEN FROM THE TRACE THE COVENANT SETTLED. No sound re-derives physics.  */
+
+  var AUDIO_KEY = 'racers.sound';
+  var SND = true; try { SND = localStorage.getItem(AUDIO_KEY) !== '0' } catch(e){}
+  var actx = null, master = null, ENGINE = null, SCREECH = null;
+  var CARPAN = null, CARDIST = null, CHEERPAN = null;
+  /* ⚠ ROUTE THROUGH A BUS, NEVER STRAIGHT TO MASTER. Everything the CAR makes — engine, tyres, the
+     crash, the grenade — shares one distance gain and one panner, so the car's position in the mix
+     is a single number that cannot disagree with itself. */
+  function carBus(){ return CARDIST || master }
+  function cheerBus(){ return CHEERPAN || master }
+
+  /* ═══ 🎧 WHERE THE CAR IS, AND HOW FAST IT IS COMING AT YOU ══════════════════════════════════════
+     ★★ ONE GEOMETRY DRIVES THREE THINGS — pan, loudness and Doppler — so they cannot drift apart.
+     The listener stands trackside, level with the middle of the strip and set back from the lane.
+     That is the seat the picture already takes: the car crosses left to right in front of you. So
+     the ear and the eye are in the same place, which is the only reason any of this reads as one car
+     rather than three effects.
+
+     ⚠ SET BACK BY A FRACTION OF THE TRACK, NOT A FIXED NUMBER OF METRES. A real spectator stands
+     ~18 m off the lane — on a quarter mile that is a distant pass, and on the 18 m 60-ft strip it is
+     standing further away than the car ever travels. A fraction keeps the effect the same SHAPE at
+     every distance, which for a game is worth more than a literal metre count. Stated because it is
+     a chosen constant, not a rule of the system.
+
+     ⚠⚠ AND WEBAUDIO'S OWN DOPPLER IS GONE. `PannerNode` carried `dopplerFactor` and `speedOfSound`
+     and both were DEPRECATED AND REMOVED from the spec, so nothing is inherited here — it is
+     computed by hand. Which costs nothing, because the engine's frequency is already ours to set. */
+  var LISTENER_BACK = 0.16;    /* the listener's set-back, as a fraction of the track length */
+  var SOUND_MPH     = 767.269; /* the speed of sound, in the unit the trace already reports */
+  var SPACE = { pan:-0.95, gain:0.30, dop:1 };
+
+  function spatial(frac, mph){
+    /* car at x along the lane, listener at the origin, set back by d */
+    var x = Math.max(0, Math.min(1, frac)) - 0.5, d = LISTENER_BACK;
+    var r = Math.sqrt(x*x + d*d);
+    /* ★ the rate the DISTANCE changes = the component of velocity pointing at the listener.
+       x < 0 (car still short of you) with the car moving on ⇒ negative ⇒ closing ⇒ pitch UP. */
+    var radial = mph * (x / r);
+    var dop = SOUND_MPH / (SOUND_MPH + radial);
+    return {
+      /* ★ pan is the SINE OF THE ANGLE, not a straight line along the track — so it hangs out wide
+         while the car is far off and swings hard through the middle as it passes, which is what a
+         pass-by actually does to your ears. */
+      pan:  Math.max(-0.95, Math.min(0.95, x / r)),
+      gain: Math.min(1, d / r),                       /* inverse distance, 1.0 at closest approach */
+      /* ⚠ CLAMPED. At the 330 mph rev limiter v/c is 0.43, so the true ratio runs 1.75× closing to
+         0.70× receding — genuinely that dramatic, and worth keeping. The clamp only stops the
+         arithmetic running away if a future physics change ever lets a car exceed the limiter. */
+      dop:  Math.max(0.55, Math.min(1.9, dop))
+    };
+  }
+  /** the car's position in the mix — driven from the same fraction that positions the picture */
+  function spatialTo(frac, mph){
+    SPACE = spatial(frac, mph || 0);
+    if(!actx) return;
+    var t = actx.currentTime;
+    if(CARPAN)  CARPAN.pan.setTargetAtTime(SPACE.pan, t, 0.045);
+    if(CARDIST) CARDIST.gain.setTargetAtTime(SPACE.gain, t, 0.045);
+  }
+
+  function engMax(){
+    /* ⚠ ASK THE REGS, don't type 24. It is a covenant constant and the page is not its author. */
+    try { if (GM && GM.ONE_RACE_REGS && GM.ONE_RACE_REGS.ENG_MAX) return GM.ONE_RACE_REGS.ENG_MAX } catch(e){}
+    return +$('eng').max || 24;
+  }
+  function blowMph(){
+    /* the rev limiter, in mph — `shell.ts` stores it as round((330 / 22.3694) * S), so read it back
+       through the same scale rather than re-typing the 330. */
+    try { return (GM.ONE_RACE_REGS.BLOW_V / GM.S) * 22.3694 } catch(e){ return 330 }
+  }
+
+  /** ⚠ A BROWSER WILL NOT PLAY OUTSIDE A USER GESTURE AND WILL NOT TELL YOU IT REFUSED. So the
+      context is CREATED and RESUMED inside the gesture, exactly as grafverse.html does. */
+  function armAudio(){
+    if(!SND) return null;
+    try{
+      if(!actx){
+        var AC = window.AudioContext || window.webkitAudioContext; if(!AC) return null;
+        actx = new AC();
+        master = actx.createGain(); master.gain.value = 0.9; master.connect(actx.destination);
+        /* the car's chain:  everything it makes → distance → pan → master
+           ⚠ StereoPannerNode is not universal (older Safari). With none, carBus() falls back to
+           master and the whole page still plays, centred — degraded, never silent. */
+        CARPAN = actx.createStereoPanner ? actx.createStereoPanner() : null;
+        if(CARPAN){
+          CARPAN.pan.value = SPACE.pan; CARPAN.connect(master);
+          CARDIST = actx.createGain(); CARDIST.gain.value = SPACE.gain; CARDIST.connect(CARPAN);
+        }
+        /* ★ the grandstand does NOT move — it sits at the finish line, off to the right, and stays
+           there while the car sweeps past it. That contrast is what sells the pass. */
+        CHEERPAN = actx.createStereoPanner ? actx.createStereoPanner() : null;
+        if(CHEERPAN){ CHEERPAN.pan.value = 0.30; CHEERPAN.connect(master) }
+        ENGINE = buildEngine(); SCREECH = buildScreech();
+      }
+      if(actx.state === 'suspended') actx.resume();
+    }catch(e){ actx = null }
+    return actx;
+  }
+  function noiseBuf(secs){
+    var b = actx.createBuffer(1, Math.floor(actx.sampleRate*secs), actx.sampleRate), d = b.getChannelData(0);
+    for(var i=0;i<d.length;i++) d[i] = Math.random()*2 - 1;
+    return b;
+  }
+
+  /* ★ THE ENGINE. Two sawtooths detuned against each other beat, which is the uneven note of a big
+     reciprocating motor; a square an octave down is the chest thump; a noise bed is induction roar.
+     ⚠ The lowpass OPENING as the revs rise is what makes it sound like it is WORKING — pitch alone
+     just sounds like a tape being wound on. */
+  function buildEngine(){
+    var g = actx.createGain(); g.gain.value = 0;
+    var lp = actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=400; lp.Q.value=5;
+    var a = actx.createOscillator(); a.type='sawtooth';
+    var b = actx.createOscillator(); b.type='sawtooth'; b.detune.value = 15;
+    var sub = actx.createOscillator(); sub.type='square';
+    var ga = actx.createGain(); ga.gain.value=0.34;
+    var gb = actx.createGain(); gb.gain.value=0.26;
+    var gs = actx.createGain(); gs.gain.value=0.30;
+    var nz = actx.createBufferSource(); nz.buffer = noiseBuf(2); nz.loop = true;
+    var nbp = actx.createBiquadFilter(); nbp.type='bandpass'; nbp.frequency.value=1100; nbp.Q.value=0.7;
+    var gn = actx.createGain(); gn.gain.value=0.13;
+    a.connect(ga); ga.connect(lp); b.connect(gb); gb.connect(lp); sub.connect(gs); gs.connect(lp);
+    nz.connect(nbp); nbp.connect(gn); gn.connect(lp);
+    lp.connect(g); g.connect(carBus());
+    a.start(); b.start(); sub.start(); nz.start();
+    return { gain:g, lp:lp, a:a, b:b, sub:sub };
+  }
+
+  /** ★ SMALL ENGINE HIGHER, BIG ENGINE LOWER — the mapping he asked for, as one line.
+      eng 24 → 58 Hz idle · eng 1 → ~131 Hz, then up to ~3.6× at the rev limiter. */
+  function engHz(size, p){
+    var f0 = 58 + (engMax() - size) * (73 / Math.max(1, engMax() - 1));
+    return f0 * (1 + 2.6 * Math.max(0, Math.min(1.15, p)));
+  }
+  /** p = fraction of BLOW_V · on = the EFFECTIVE throttle is open (false once the tank is dry) */
+  function engineTo(size, p, on){
+    if(!actx || !ENGINE) return;
+    /* ★★ DOPPLER RIDES ON TOP OF THE REV MAPPING — it does not replace it. The revs say how hard the
+       engine is WORKING; the Doppler says where it is relative to YOU. Both land on pitch, and a real
+       trackside pass has both at once: the note climbs as the car launches and falls away as it goes,
+       and the two fighting each other is exactly what a drag strip sounds like from the fence. */
+    var t = actx.currentTime, f = engHz(size, p) * SPACE.dop;
+    ENGINE.a.frequency.setTargetAtTime(f, t, 0.05);
+    ENGINE.b.frequency.setTargetAtTime(f, t, 0.05);
+    ENGINE.sub.frequency.setTargetAtTime(f/2, t, 0.05);
+    ENGINE.lp.frequency.setTargetAtTime(320 + 2700*Math.min(1,p), t, 0.06);
+    /* ⚠ A DYING ENGINE IS NOT A MUTED ONE. Going dry ramps down over ~0.3 s rather than cutting, which
+       is what running out of fuel sounds like — and the car is still moving while it happens. */
+    ENGINE.gain.gain.setTargetAtTime(on ? 0.22 : 0.0, t, on ? 0.04 : 0.10);
+  }
+
+  /* 🛞 TYRES. Two stacked bandpasses on noise — the second narrow and high is the howl. */
+  function buildScreech(){
+    var g = actx.createGain(); g.gain.value = 0;
+    var bp = actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1900; bp.Q.value=6;
+    var bp2 = actx.createBiquadFilter(); bp2.type='bandpass'; bp2.frequency.value=3100; bp2.Q.value=12;
+    var nz = actx.createBufferSource(); nz.buffer = noiseBuf(2); nz.loop = true;
+    nz.connect(bp); bp.connect(bp2); bp2.connect(g); g.connect(carBus()); nz.start();
+    return { gain:g, bp:bp, bp2:bp2 };
+  }
+  /** ⚠ WOBBLE THE BAND. A fixed one reads as a kettle; rubber howls unevenly as it grabs and lets go. */
+  function screechTo(on){
+    if(!actx || !SCREECH) return;
+    var t = actx.currentTime;
+    if(on){
+      /* the tyres shift with the car too — noise has no fundamental, so the BANDS are what move */
+      SCREECH.bp.frequency.setTargetAtTime((1500 + Math.random()*1400) * SPACE.dop, t, 0.03);
+      SCREECH.bp2.frequency.setTargetAtTime((2600 + Math.random()*1700) * SPACE.dop, t, 0.03);
+    }
+    SCREECH.gain.gain.setTargetAtTime(on ? 0.17 : 0, t, on ? 0.02 : 0.07);
+  }
+
+  /** the stage rev — a stab of throttle against no load, so it climbs fast and drops away fast */
+  function rev(size){
+    if(!armAudio() || !ENGINE) return;
+    /* ★ THE STAGING REV IS HEARD FROM THE CAR, NOT FROM THE FENCE — centred and close.
+       ⚠ Found by testing: a staged car sits at frac 0, which trackside means hard-left and a third
+       of the volume. Realistic, and useless for the job this sound does — auditioning the engine
+       tone before you buy it. So you stand AT the car while staging, and take your seat trackside
+       when the race starts, where `place()` takes the position back over. */
+    var t = actx.currentTime, lo = engHz(size, 0.04), hi = engHz(size, 0.78);
+    if(CARPAN)  CARPAN.pan.setTargetAtTime(0, t, 0.03);
+    if(CARDIST) CARDIST.gain.setTargetAtTime(1, t, 0.03);
+    [ENGINE.a, ENGINE.b].forEach(function(o){
+      o.frequency.cancelScheduledValues(t); o.frequency.setValueAtTime(lo, t);
+      o.frequency.exponentialRampToValueAtTime(hi, t+0.20);
+      o.frequency.exponentialRampToValueAtTime(lo, t+0.62);
+    });
+    ENGINE.sub.frequency.cancelScheduledValues(t); ENGINE.sub.frequency.setValueAtTime(lo/2, t);
+    ENGINE.sub.frequency.exponentialRampToValueAtTime(hi/2, t+0.20);
+    ENGINE.sub.frequency.exponentialRampToValueAtTime(lo/2, t+0.62);
+    ENGINE.lp.frequency.cancelScheduledValues(t); ENGINE.lp.frequency.setValueAtTime(420, t);
+    ENGINE.lp.frequency.exponentialRampToValueAtTime(3000, t+0.20);
+    ENGINE.lp.frequency.exponentialRampToValueAtTime(520, t+0.62);
+    var g = ENGINE.gain.gain;
+    g.cancelScheduledValues(t); g.setValueAtTime(0.0001, t);
+    g.exponentialRampToValueAtTime(0.21, t+0.05);
+    g.exponentialRampToValueAtTime(0.0001, t+0.72);
+  }
+
+  /** 💥 metal, not a bang — a filtered slam plus two detuned squares ringing and dying fast */
+  function sndCrash(power){
+    if(!actx) return; var t = actx.currentTime, p = 0.5 + 0.5*power;
+    var nz = actx.createBufferSource(); nz.buffer = noiseBuf(1);
+    var lp = actx.createBiquadFilter(); lp.type='lowpass';
+    lp.frequency.setValueAtTime(5200, t); lp.frequency.exponentialRampToValueAtTime(240, t+0.55);
+    var g = actx.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.50*p, t+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+0.70);
+    nz.connect(lp); lp.connect(g); g.connect(carBus()); nz.start(t); nz.stop(t+0.75);
+    [523, 761].forEach(function(f, i){
+      var o = actx.createOscillator(), og = actx.createGain();
+      o.type='square'; o.frequency.setValueAtTime(f*(0.9+0.2*Math.random()), t);
+      og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.09*p, t+0.02+i*0.01);
+      og.gain.exponentialRampToValueAtTime(0.0001, t+0.42);
+      o.connect(og); og.connect(carBus()); o.start(t); o.stop(t+0.45);
+    });
+  }
+
+  /** 💣 the grenade — a sub thump you feel, under a long dark noise decay */
+  function sndExplode(power){
+    if(!actx) return; var t = actx.currentTime, p = 0.55 + 0.45*power;
+    var nz = actx.createBufferSource(); nz.buffer = noiseBuf(2);
+    var lp = actx.createBiquadFilter(); lp.type='lowpass';
+    lp.frequency.setValueAtTime(2600, t); lp.frequency.exponentialRampToValueAtTime(70, t+1.10);
+    var g = actx.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.75*p, t+0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+1.25);
+    nz.connect(lp); lp.connect(g); g.connect(carBus()); nz.start(t); nz.stop(t+1.3);
+    var o = actx.createOscillator(), og = actx.createGain(); o.type='sine';
+    o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(28, t+0.50);
+    og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.55*p, t+0.02);
+    og.gain.exponentialRampToValueAtTime(0.0001, t+0.75);
+    o.connect(og); og.connect(carBus()); o.start(t); o.stop(t+0.8);
+  }
+
+  /* 🎉 THE CROWD.
+     ⚠⚠ SAY WHAT THIS IS, because it is the one place synthesis is genuinely weaker than a recording.
+     Synthesis does APPLAUSE well — a crowd clapping IS dense uncorrelated impulses, which is what
+     filtered noise is — and it does VOICES badly. So this is built as applause with a broad roar
+     swelling underneath, which is what a crowd sounds like from the far side of a drag strip. It is
+     not synthesised voices and it is not pretending to be. If it ever needs to be literal cheering,
+     that is the one sound worth a file, and the graph below is where it would swap in. */
+  function sndCheer(){
+    if(!actx) return; var t = actx.currentTime;
+    var nz = actx.createBufferSource(); nz.buffer = noiseBuf(3);
+    var hp = actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=1400;
+    var bp = actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=2600; bp.Q.value=0.6;
+    var g = actx.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.20, t+0.28);
+    g.gain.setValueAtTime(0.20, t+1.05); g.gain.exponentialRampToValueAtTime(0.0001, t+2.6);
+    nz.connect(hp); hp.connect(bp); bp.connect(g); g.connect(cheerBus()); nz.start(t); nz.stop(t+2.7);
+    var n2 = actx.createBufferSource(); n2.buffer = noiseBuf(3);
+    var b2 = actx.createBiquadFilter(); b2.type='bandpass'; b2.Q.value=1.1;
+    /* the roar's centre rising reads as a crowd getting to its feet */
+    b2.frequency.setValueAtTime(620, t); b2.frequency.linearRampToValueAtTime(980, t+1.2);
+    var g2 = actx.createGain();
+    g2.gain.setValueAtTime(0.0001, t); g2.gain.exponentialRampToValueAtTime(0.17, t+0.45);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t+2.6);
+    n2.connect(b2); b2.connect(g2); g2.connect(cheerBus()); n2.start(t); n2.stop(t+2.7);
+  }
+
+  /* ═══ ✨ SPARKS — A CANVAS BURST, GENERATED, NEVER A FILE ════════════════════════════════════════
+     ★★ WHY GENERATED: THE BURST SCALES WITH THE IMPACT. A car that grenades at 329 mph throws further
+     and hotter than one that lets go on the line at tick 1 — and those are different results, which
+     the board reports differently. A single file plays identically for both, which would be the page
+     saying they are the same thing. The physics already knows; the picture should too. */
+  var PART = [], fxRaf = 0, REDUCED = false;
+  try { REDUCED = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) } catch(e){}
+
+  var FX_PAD = 60;   /* must match `.fx { left:-60px; top:-60px }` */
+  function fxCtx(){
+    var c = $('fx'), st = document.querySelector('.strip');
+    var w = st.clientWidth + FX_PAD*2, h = st.clientHeight + FX_PAD*2;
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    if(c.width !== Math.round(w*dpr) || c.height !== Math.round(h*dpr)){
+      c.width = Math.round(w*dpr); c.height = Math.round(h*dpr);
+      c.style.width = w+'px'; c.style.height = h+'px';
+    }
+    var g = c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+    return { g:g, w:w, h:h };
+  }
+  var PALETTE = {
+    bang:  ['#fff3c4','#ffb347','#ff6b1a','#8c2f00'],
+    crash: ['#dfe8f0','#9fb0c0','#6b7885','#ffcf6b'],
+    cheer: ['#39d0ff','#7CFFB2','#ffd166','#ff6b9d'],
+    dust:  ['#6b6055','#8a7d6d','#575047','#9a9083']
+  };
+  /** x,y in STRIP coordinates · power 0..1 · kind selects palette, spread and gravity */
+  function burst(x, y, power, kind){
+    if(REDUCED) return;
+    var base = kind==='bang' ? 46 : kind==='crash' ? 28 : kind==='dust' ? 14 : 30;
+    var n = Math.round(base * (0.55 + 0.85*power)), pal = PALETTE[kind] || PALETTE.bang;
+    for(var i=0;i<n;i++){
+      var a = Math.random()*Math.PI*2;
+      var sp = (kind==='bang' ? 2.0 : kind==='dust' ? 0.5 : 1.3) * (0.5+Math.random()) * (0.55+power);
+      PART.push({
+        x: x + FX_PAD, y: y + FX_PAD,
+        vx: Math.cos(a)*sp*(kind==='cheer'?0.6:1) + (kind==='crash' ? 1.2*power : 0),
+        vy: Math.sin(a)*sp - (kind==='cheer' ? 1.7 : kind==='dust' ? 0.35 : 0),
+        life: 1, decay: 0.011 + Math.random()*0.021,
+        r: 1 + Math.random()*(kind==='bang' ? 2.6 : kind==='dust' ? 2.2 : 1.8),
+        col: pal[(Math.random()*pal.length)|0],
+        g: kind==='cheer' ? 0.045 : kind==='dust' ? 0.004 : 0.075
+      });
+    }
+    if(!fxRaf) fxRaf = requestAnimationFrame(fxStep);
+  }
+  function fxStep(){
+    var c = fxCtx();
+    c.g.clearRect(0, 0, c.w, c.h);
+    for(var i=PART.length-1; i>=0; i--){
+      var p = PART[i];
+      p.x += p.vx; p.y += p.vy; p.vy += p.g; p.vx *= 0.985; p.life -= p.decay;
+      if(p.life <= 0){ PART.splice(i,1); continue }
+      c.g.globalAlpha = Math.max(0, p.life);
+      c.g.fillStyle = p.col;
+      c.g.beginPath(); c.g.arc(p.x, p.y, p.r*(0.4 + p.life*0.6), 0, 6.2832); c.g.fill();
+    }
+    c.g.globalAlpha = 1;
+    fxRaf = PART.length ? requestAnimationFrame(fxStep) : 0;
+  }
+
+  /** a fresh configuration is a fresh car — clear any wreck left on the strip */
+  function resetCar(){
+    var c = $('carEl');
+    c.className = 'car'; c.style.transform = ''; c.style.opacity = '1'; c.textContent = '🏎';
+    PART.length = 0;
+    try { var x = fxCtx(); x.g.clearRect(0,0,x.w,x.h) } catch(e){}
+  }
+  /** ★ IT REALLY LEAVES. A spin at speed throws the car off the strip, spinning, and it does not
+      come back — which is what `off` means. `.strip` is overflow:visible so it can. */
+  function flyOff(power){
+    var c = $('carEl');
+    if(REDUCED){ c.style.opacity = '0.25'; return }
+    var up = Math.random() < 0.5 ? -1 : 1;
+    var dx = 40 + 150*power, dy = up*(70 + 95*power), spin = up*(420 + 560*power);
+    c.classList.add('off');
+    /* one frame later, or there is nothing for the transition to animate FROM */
+    requestAnimationFrame(function(){
+      c.style.transform = 'translate('+dx.toFixed(0)+'px,'+dy.toFixed(0)+'px) rotate('+spin.toFixed(0)+'deg) scale(.8)';
+      c.style.opacity = '0';
+    });
+  }
+
+  /**
+   * ★ THE ENDING, MADE VISIBLE AND AUDIBLE.
+   * ⚠⚠ EVERY BRANCH IS KEYED OFF `sim.run.ending` — the value the covenant settled — and never off
+   * "did the car reach the end of the trace". This panel has already told that lie once: it printed
+   * "🏁 0.40 s over 402 m" for a car that went off the track at tick four. Sparks and a crowd would
+   * tell the same lie far more loudly, so the ending decides and nothing else does.
+   */
+  function finale(sim, tick, finish, size){
+    var c = $('carEl'), st = document.querySelector('.strip');
+    var x = Math.max(0, Math.min(1, tick.s/finish)) * (st.clientWidth - 44) + 15, y = 31;
+    var power = Math.max(0, Math.min(1, tick.mph / blowMph()));
+    engineTo(size, 0, false); screechTo(false);
+    switch(sim.run.ending){
+      case 'off':
+        /* it is sliding before it is gone — the tyres let go first, which is what `off` IS */
+        screechTo(true); setTimeout(function(){ screechTo(false) }, 300);
+        sndCrash(power); burst(x, y, power, 'crash'); flyOff(power);
+        break;
+      case 'blown-throttle':
+      case 'blown-speed':
+        sndExplode(power); burst(x, y, power, 'bang');
+        c.textContent = '💥';
+        setTimeout(function(){ c.textContent = '🔥'; c.style.opacity = '0.85' }, 260);
+        break;
+      case 'finish':
+        sndCheer(); burst(st.clientWidth - 30, y, 0.8, 'cheer');
+        break;
+      case 'stopped':
+        /* ⚠ NOTHING LOUD, DELIBERATELY. The drama of `stopped` is the ABSENCE: the engine already
+           died when the tank hit zero, and the car has been rolling in silence since. A crash sound
+           here would file a car that quietly ran out of fuel alongside one that was wrecked, which
+           is the exact distinction §6j gave the fifth ending its own phase for.
+           ⇒ A little dust as it comes to rest, and no sound at all. */
+        burst(x, y, 0.25, 'dust');
+        break;
+    }
+  }
+
   /**
    * Run the 🏎 down the strip at the elapsed time the chain has already settled.
    *
@@ -647,12 +1069,24 @@
    * — walked the car all the way to the flag. A car that travelled forty metres of a quarter mile
    * belongs a tenth of the way along, and looking like it got home is the page telling a lie the chain
    * did not.
+   *
+   * ★ 90 ms a tick against a tick's 0.1 s of race time, so the sound is very nearly real time.
    */
-  function animate(sim, finish){
-    var i = 0;
+  function animate(sim, finish, size){
+    var i = 0, last = sim.trace.length - 1;
+    resetCar(); armAudio();
     var t = setInterval(function(){
       if(i >= sim.trace.length){ clearInterval(t); return }
-      place(sim.trace[i].s / finish); i++;
+      var p = sim.trace[i];
+      /* ⚠ mph goes in HERE, not into a separate mixer call — spatial() needs the speed to work out
+         how fast the car is closing on the listener, which is the whole of the Doppler shift. */
+      place(p.s / finish, p.mph);
+      /* engine pitch from the speed the covenant settled · silent once the effective throttle is 0 */
+      engineTo(size, p.mph / blowMph(), p.th > 0);
+      /* 🛞 wheelspin: demand beat grip and the car bogged down on SPIN_KEEP but kept going */
+      screechTo(!!p.spun && p.th > 0);
+      if(i === last) finale(sim, p, finish, size);
+      i++;
     }, 90);
   }
 
@@ -1027,7 +1461,7 @@
           if(sim.run.ending !== 'finish'){
             say('   the covenant settled the wreck — a car that ends badly still races, and still pays', 'dim');
           }
-          animate(sim, PLAN.sim.finish);
+          animate(sim, PLAN.sim.finish, PLAN.s.eng);
           return reload();
         });
       });
@@ -1117,6 +1551,26 @@
   function hex(b){ return Array.prototype.map.call(b, function(x){ return ('0'+x.toString(16)).slice(-2) }).join('') }
 
   ['eng','tyr','tank','fin','slip','driver'].forEach(function(id){ $(id).addEventListener('input', replan) });
+  /* ★ REV ON THE ENGINE SLIDER — the one place the size/tone mapping is USEFUL rather than
+     decorative: you can HEAR a bigger motor before you commit a satoshi to one.
+     ⚠ 'change', not 'input' — 'input' fires on every pixel of the drag and would machine-gun it. */
+  $('eng').addEventListener('change', function(){ rev(+this.value) });
+  /* the stage rev: a stab of throttle as it is sent, which is also the gesture that arms the audio */
+  $('go').addEventListener('click', function(){ armAudio(); rev(+$('eng').value) });
+  function paintSnd(){
+    $('snd').className = 'snd' + (SND ? ' on' : '');
+    $('snd').textContent = SND ? '🔊 sound' : '🔇 muted';
+  }
+  $('snd').addEventListener('click', function(){
+    SND = !SND;
+    try { localStorage.setItem(AUDIO_KEY, SND ? '1' : '0') } catch(e){}
+    paintSnd();
+    /* ⚠ SILENCE THE LOOPS TOO. The engine and the tyres are permanent nodes, so muting the master
+       alone would leave them running under it and they would come back mid-race on unmute. */
+    if(!SND){ engineTo(+$('eng').value, 0, false); screechTo(false); if(master) master.gain.value = 0 }
+    else { if(master) master.gain.value = 0.9; rev(+$('eng').value) }
+  });
+  paintSnd();
   $('add').addEventListener('input', function(){ $('v-add').textContent = n(+this.value) });
   $('reload').addEventListener('click', reload);
   $('board-refresh').addEventListener('click', readBoard);
