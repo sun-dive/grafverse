@@ -62,8 +62,12 @@
      ★ And being FIRST-PARTY — our image, our shop, our domain — the network-level rules never apply,
      since those target ad-server hosts. The three above are the whole remaining surface. */
   .garage{flex:0 0 clamp(250px,31%,336px)}
-  .garage-art{display:block;width:100%;aspect-ratio:6/5;border-radius:8px;overflow:hidden;
-              text-decoration:none;border:1px solid var(--line);transition:border-color .15s}
+  /* ⚠ aspect 672/900 — the ARTWORK's own ratio, so nothing is cropped or stretched, and it is a
+     deliberately odd number that matches no standard unit. The SVG fallback sits beneath the img. */
+  .garage-art{display:block;position:relative;width:100%;aspect-ratio:672/900;border-radius:8px;
+              overflow:hidden;text-decoration:none;border:1px solid var(--line);transition:border-color .15s}
+  .garage-art svg,.garage-art img{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .garage-art img{object-fit:cover}
   .garage-art:hover{border-color:var(--acc)}
   .garage-note{color:var(--dim);font-size:12.5px;line-height:1.6;margin:12px 2px 0}
   .garage-note b{color:var(--fg)}
@@ -172,9 +176,13 @@
          ⏭ TO DROP REAL ART IN LATER: replace everything between the <a> tags with one <img>, keep the
          <a> and its class. The box is already the right shape and the link already points at the shop. -->
     <div class="panel garage">
-    <a class="garage-art" href="https://grafverse-shop.fourthwall.com" target="_blank" rel="noopener"
-       aria-label="Bitcoin Racers merchandise — opens the shop in a new tab">
-      <svg viewBox="0 0 300 250" width="100%" height="100%" role="img" aria-hidden="true">
+    <a class="garage-art" href="https://grafverse-shop.fourthwall.com/products/bitcoin-racers"
+       target="_blank" rel="noopener"
+       aria-label="Bitcoin Racers t-shirt, $21 — opens the shop in a new tab">
+      <!-- ★ THE SVG IS THE FALLBACK, NOT A LEFTOVER. It sits UNDER the photograph, so if the image is
+           missing, still loading, or cosmetically blocked, the slot is a designed card rather than an
+           empty hole. `slice` fills the portrait box; the artwork itself is untouched. -->
+      <svg viewBox="0 0 300 250" preserveAspectRatio="xMidYMid slice" role="img" aria-hidden="true">
         <defs>
           <pattern id="pflag" width="24" height="24" patternUnits="userSpaceOnUse">
             <rect width="24" height="24" fill="#0d1218"/>
@@ -192,6 +200,11 @@
         <text x="150" y="216" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
               font-size="12" font-weight="700" fill="#04141c">SHOP THE SET</text>
       </svg>
+      <!-- ⚠ FIRST-PARTY AND LOCAL, never hotlinked from the shop's CDN: a third-party image host is
+           exactly what the network-level blocker rules match on, and it would be an outage we do not
+           control. 672x900 is 2x the slot's widest display size, and is nobody's ad unit. -->
+      <img src="/img/racers-shirt-88.webp?v=20260820" width="672" height="900" loading="lazy"
+           decoding="async" alt="Bitcoin Racers t-shirt — two wedge racers under a green 88">
     </a>
 
     <!-- ★★ "FIAT IN THE FRONT, SATS OUT THE BACK", SAID TO THE VISITOR'S FACE (sun-dive, 20 Aug).
@@ -200,17 +213,13 @@
          step in it. So the first line here is the freedom, not the ask, and the ask never becomes a
          toll: nobody has to buy anything to race, and the sentence must not be able to be read as
          though they do.
-         ★ AND IT ENDS ON THE PROOF, which is the part no ordinary merch pitch can offer: the loop is
-         AUDITABLE. The tank is a covenant, the top-ups are on chain, and the contributions board is a
-         few hundred pixels further down the same page. "Support the work" is usually a promise; here
-         it is a number anyone can count. → §6l, memory `bitcoin-sells-article`. -->
+         ⚠ A second paragraph pointed at the contributions board as proof and was CUT (sun-dive,
+         20 Aug) — two sentences say it, three explain it. The board carries its own heading a few
+         hundred pixels down and does not need announcing from up here. → §6l. -->
     <div class="lbl" style="margin:14px 0 0">⛽ How this stays free</div>
     <p class="garage-note">
       The depot pays for every car — <b>no wallet, and no coins from you, ever</b>.
       The shop is what keeps it fuelled: <b>fiat in the front, satoshis out the back</b>.
-      <br><br>
-      And you don't have to take that on trust. Every satoshi that goes in is on chain,
-      counted in <b>the tank below</b> — beside the note whoever sent it chose to leave.
     </p>
     </div>
   </div>
