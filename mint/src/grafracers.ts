@@ -45,6 +45,12 @@ export type { TickTrace, RunTrace, Ending } from './racerTick.ts'
 export { buildRacerDepotBasicLock, readDepotState, RACER_WINDOW_SECONDS, RACER_MINTS_PER_WINDOW }
   from './racerDepotFrame.ts'
 export { buildRacerTopUpTx, RACER_TOPUP_FEE_PAD } from './racerDepotTopUp.ts'
+/* ⚠⚠ `RACER_MAX_CAR_BYTES` IS THE DEFAULT A DEPOT IS BUILT WITH, NOT A LAW OF THE SYSTEM.
+   `racerDepotLockOps` takes `p.maxCarBytes`, so a depot minted with a different ceiling enforces a
+   different one — which is exactly why the page must PROVE its rebuild matches the deployed script
+   before it trusts this number for anything. Exported so the page can say WHY a car is refused
+   instead of typing 16,000 into a template and inventing a rule. */
+export { RACER_MAX_CAR_BYTES, RACER_DRAW } from './racerDepot.ts'
 /* ⚠ `buildDepotUnlock` lives in `depot.ts` and the one-race depot reuses it deliberately — the frame
    is the same shape, so a second copy would be a second thing to keep right. */
 export { buildDepotUnlock, DEPOT_SCOPE } from './depot.ts'

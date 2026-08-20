@@ -352,14 +352,22 @@
          ever gained things. It is not now: a visitor holding a bundle from before 20 Aug has no
          `ONE_RACE_REGS`, and this page's physics would come out `undefined` rather than wrong-but-
          plausible. Bump this whenever the physics moves. */
-      var s = document.createElement('script'); s.src = '/vendor/grafracers.js?v=20260820';
+      var s = document.createElement('script'); s.src = '/vendor/grafracers.js?v=20260820b';
       s.onload = function(){
         GM = window.GrafRacers;
         /* ⚠⚠ SAY IT PLAINLY RATHER THAN FAIL OBSCURELY. A stale bundle is a cached file, not a bug in
            this page, and "cannot read AERO_BY_MASS of undefined" sends the reader somewhere useless.
            A wrong name is worse than a stop, because a stop is visible. */
-        if(!GM || !GM.ONE_RACE_REGS){
-          rej(Error('grafracers.js is STALE — it has no ONE_RACE_REGS, so it predates the model C physics. Hard-reload this page.'));
+        /* ⚠⚠ CHECK EVERY SYMBOL THE PAGE WILL SILENTLY MISBEHAVE WITHOUT, not just the newest one.
+           `RACER_MAX_CAR_BYTES` is the sharp case: undefined makes `lockBytes > undefined` FALSE, so a
+           stale bundle does not break the size guard — it DELETES it, and the page cheerfully offers
+           to mint a car the depot will refuse. A missing feature that reads as a passing check is
+           worse than a crash. ⇒ Name it, fail loudly, and say what to do. */
+        if(!GM || !GM.ONE_RACE_REGS || typeof GM.RACER_MAX_CAR_BYTES !== 'number'){
+          rej(Error('grafracers.js is STALE — it is missing ' +
+                    (!GM || !GM.ONE_RACE_REGS ? 'ONE_RACE_REGS (the model C physics)'
+                                              : 'RACER_MAX_CAR_BYTES (the depot size guard)') +
+                    '. Hard-reload this page.'));
           return;
         }
         res(GM);
@@ -661,7 +669,14 @@
       ({ 'off':'goes off the track', 'blown-throttle':'blows the engine', 'blown-speed':'blows the engine',
          'stopped':'runs dry and rolls to a halt' }[sim.run.ending] || 'gets home');
     $('p-mph').textContent = sim.run.ending === 'finish' ? Math.round(sim.mph) + ' mph' : '—';
-    $('p-bytes').textContent = rep ? (n(rep.lockBytes) + ' B' + (faithful ? ' · unoptimised' : '')) : '—';
+    /* ★ SAY IT AT THE NUMBER ITSELF. The size ceiling is the DEPOT's rule (OP_SIZE), not the page's,
+       and it binds on exactly the cars the under-fuelling strategy produces: a car that goes dry early
+       and coasts a long way is the LONGEST script there is. Marked here so it is visible while the
+       sliders are still being moved, rather than discovered at the broadcast. */
+    var tooBig = !!rep && rep.lockBytes > M.RACER_MAX_CAR_BYTES;
+    $('p-bytes').textContent = rep ? (n(rep.lockBytes) + ' B' + (faithful ? ' · unoptimised' : '') +
+                                      (tooBig ? ' · ⚠ over the depot\'s limit' : '')) : '—';
+    $('p-bytes').style.color = tooBig ? '#ff6b6b' : '';
     $('p-fee').textContent = rep ? n(rep.fee + 1) + ' sat' : '—';
 
     if(DEPOT && rep){
@@ -670,12 +685,42 @@
       var W = M.RACER_WINDOW_SECONDS, nowWin = Math.floor((Date.now()/1000 - 3*3600)/W);
       var full = !(nowWin > DEPOT.mark) && DEPOT.count >= M.RACER_MINTS_PER_WINDOW;
       var poor = DEPOT.value < cost + 1;
-      $('go').disabled = !PLAN || full || poor;
+      /* ⚠⚠ RACEABLE AND MINTABLE ARE DIFFERENT QUESTIONS, and this page only ever asked the first.
+         On 20 Aug a 95-tick car said "proved raceable ✓" and was then refused by the NETWORK with
+         `mandatory-script-verify-flag-failed` — the DEPOT's OP_SIZE guard, at 21,796 B against 16,000.
+         The car was fine; the depot would not accept it. ⇒ Ask both, here, before the button. */
+      $('go').disabled = !PLAN || full || poor || tooBig;
       /* ⚠ "Out of fuel" must mean OUT OF FUEL. It is the friendly sentence, and the temptation is to
          reach for it whenever something goes wrong — which is exactly how a broken chain walk came to
          look like an empty tank. It is said here, where the number is known and the claim is true, and
          nowhere else. */
-      $('go-note').textContent = full ? 'this window is full — it reopens when a block moves the clock on'
+      /* ★★ AND THE ADVICE IS COUNTER-INTUITIVE, SO IT HAS TO BE SPELLED OUT: ADD FUEL TO SHRINK THE
+         CAR. The script IS the race, so a car that runs dry and crawls the last stretch is LONGER than
+         one that drives home — every coasting tick is another ~230 B. More fuel means fewer ticks
+         means a smaller car. Somebody told to "reduce" something will reach for the fuel slider and
+         make it worse. */
+      /* ⚠⚠ THE ADVICE DEPENDS ON WHICH SIDE OF THE OPTIMUM YOU ARE ON, and my first version got it
+         wrong by reasoning from the ONE car that failed. SWEPT at 402 m (eng 14 · tyr 10), and it is a
+         U with a spike in it, not a slope:
+         ```
+           12,000 → 12,513 B (53 t, stopped)   halts early: SHORT
+           14,000 → 40,221 B (178 t)           ⚠ dry early, then crawls the rest — the worst case
+           26,000 → 11,805 B (50 t)            the minimum
+           60,000 → 14,886 B (64 t)            heavy, slow, LONGER again
+         ```
+         ⇒ "Add fuel" shrinks a car on the LEFT of the optimum and GROWS it on the right. The page can
+         tell them apart with no new physics: a run that went DRY (an effective throttle of 0 on some
+         tick, which the trace already records) is left of the optimum; one that never did is right of
+         it and simply too heavy. Bootcamp #6 — sweep the parameter, do not sample it. */
+      var wentDry = sim.trace.some(function(p){ return p.th === 0 });
+      $('go-note').textContent = tooBig ? '⚠ this car is ' + n(rep.lockBytes) + ' B and this depot mints up to ' +
+                                       n(M.RACER_MAX_CAR_BYTES) + ' B. ⇒ ' + (wentDry
+                                         ? 'ADD FUEL — it runs dry and coasts, and every coasting tick is more ' +
+                                           'script. More fuel here makes the car SMALLER.'
+                                         : 'TAKE FUEL OUT — it never runs dry, so the tank is just weight: a ' +
+                                           'heavy car is slower, and a slower run is a longer script.') +
+                                       ' A shorter track works either way.'
+                              : full ? 'this window is full — it reopens when a block moves the clock on'
                               : poor ? '⛽ the depot is out of fuel — it holds ' + n(DEPOT.value) +
                                        ' sat and this car needs ' + n(cost + 1) + '. Top it up below.'
                               : 'the depot pays — you need no wallet';
@@ -1502,6 +1547,36 @@
       M.assertRaceable(PLAN.params, 1);   /* the same params the panel priced — optimised or faithful */
       var car = M.buildRacerCar(Object.assign({}, PLAN.params, { fee: rep.fee })).toBinary();
       say('car ' + n(car.length) + ' B · proved raceable ✓', 'ok');
+
+      /* ⚠⚠ PROVE OUR PICTURE OF THE DEPOT MATCHES THE ONE ON CHAIN, BEFORE TRUSTING ANY OF IT.
+         This page REBUILDS the depot's successor from parameters it assumes — carBlock, owner, and
+         the maxCarBytes default. Nothing checked that those assumptions describe the deployed
+         program. If any one of them differed, the mint would hand the tank to a DIFFERENT script,
+         and there is no key to get it back. `tools/racers.ts --depot` has done this since 19 Aug;
+         the page never did. ⇒ Rebuild the CURRENT state and require it byte-for-byte. */
+      var deployed = DEPOT.sourceTransaction.outputs[DEPOT.vout].lockingScript.toBinary();
+      var rebuilt = depotAt(M, DEPOT.mark, DEPOT.count).toBinary();
+      if (rebuilt.length !== deployed.length || rebuilt.some(function(b,i){ return b !== deployed[i] }))
+        throw Error('this page rebuilds the depot as ' + n(rebuilt.length) + ' B but the chain holds ' +
+                    n(deployed.length) + ' B — it was minted with different parameters, so nothing here ' +
+                    'can be trusted about it. Do not race until this is understood.');
+      say('depot rebuilt byte-for-byte ✓ ' + n(deployed.length) + ' B', 'ok');
+
+      /* ★★ THE SIZE CEILING, and it is the DEPOT'S rule, not the page's. `racerDepotLockOps` pins it
+         with OP_SIZE, so a car over it makes the mint fail script validation — which is exactly what
+         happened on 20 Aug: a 95-tick car of 21,796 B was refused by the network with
+         `mandatory-script-verify-flag-failed`, after the page had said "proved raceable ✓".
+         ⚠ RACEABLE AND MINTABLE ARE DIFFERENT QUESTIONS. `assertRaceable` proves the CAR can be
+         spent; this proves the DEPOT will accept it. The car was fine; the depot would not have it.
+         ★ It is only safe to use this constant because the rebuild above proved our parameter set is
+         the deployed one — otherwise it would be another number typed into a page. */
+      if (car.length > M.RACER_MAX_CAR_BYTES)
+        throw Error('this car is ' + n(car.length) + ' B and this depot mints up to ' +
+                    n(M.RACER_MAX_CAR_BYTES) + ' B. ⇒ ' +
+                    (sim.trace.some(function(p){ return p.th === 0 })
+                       ? 'ADD FUEL — it runs dry and coasts, and every coasting tick is more script.'
+                       : 'TAKE FUEL OUT — it never runs dry, so the tank is only weight.') +
+                    ' A shorter track works either way.');
 
       var W = M.RACER_WINDOW_SECONDS, win = Math.floor((Date.now()/1000 - 3*3600) / W);
       var nextCount = (win === DEPOT.mark) ? DEPOT.count + 1 : 1;
