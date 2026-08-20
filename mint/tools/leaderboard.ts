@@ -217,7 +217,16 @@ const eras = [...new Set(rows.map(r => r.layout))]
 console.log(`  ${rows.length} car(s) minted · ${raced.length} raced` +
   (other ? ` · ${other} depot spend(s) that made no car (top-ups, or the owner's burn)` : '') +
   (eras.length > 1 ? `\n  ★ across ${eras.length} car layouts: ${eras.join(' · ')}` : '') + '\n')
-for (const [cls, list] of [...byClass].sort((a, b) => b[1].length - a[1].length)) {
+/* ★★ FASTEST AT THE TOP. Sorting by race count put the quickest run on the board at the BOTTOM of it.
+   ⚠ Sorting purely by time is wrong too — 0.50 s over 4 m is not "faster" than 4.30 s over a quarter
+   mile, they are different events. ⇒ LONGEST DISTANCE FIRST (the quarter mile is the blue-riband
+   class), and within the same distance the class holding the quicker record leads. */
+const bestOf = (l: Row[]): number => {
+  const f = l.filter(r => r.ending === 'finish')
+  return f.length ? Math.min(...f.map(r => r.secs)) : Infinity
+}
+for (const [cls, list] of [...byClass].sort((a, b) =>
+    b[1][0].metres - a[1][0].metres || bestOf(a[1]) - bestOf(b[1]))) {
   /* ★ THE CATEGORY IS THE DISTANCE AND THE SURFACE — a time means nothing without both. */
   console.log(`  \x1b[1m${cls}\x1b[0m`)
   console.log('     #   driver                      time     trap      TOP   result')

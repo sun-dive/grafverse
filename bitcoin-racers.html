@@ -81,42 +81,23 @@
   <p class="sim">🏁 <b>Racing is free.</b> No wallet, no key, no coins from you — the depot pays for the car,
      and the car has no key for anyone to hold. The satoshis being spent are <b>the depot's</b>, never yours.</p>
 
-  <!-- ═══ THE DEPOT ═══════════════════════════════════════════════════════════════════════════════ -->
+  <!-- ═══ THE LEADERBOARD ══════════════════════════════════════════════════════════════════════════
+       ★★ READ FROM THE CHAIN, WITH NO INDEX. Every mint is a hop in the depot's own chain, so walking
+       from one genesis txid enumerates every car it ever made. Nothing indexes covenants and nothing
+       needs to.
+       ★★ AND THE TIMES ARE NOT STORED — they are RE-DERIVED from the setup each car carries in its
+       head, with the same reference physics the covenant enforced. The chain proves the car existed
+       and was raced; the physics says how fast.
+       ⚠ Distance and surface are shown because they are the CATEGORY: a time is only comparable
+       against another run at the same distance on the same grip. The configuration is NOT shown —
+       engine, tyres and fuel stay the driver's business (sun-dive, 20 Aug). -->
   <div class="panel">
-    <div class="lbl">The depot</div>
-    <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start">
-      <svg id="silo" viewBox="0 0 120 200" width="112" height="186" role="img"
-           aria-label="the fuel depot, and how full it is">
-        <defs>
-          <linearGradient id="fuel" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#ffd479"/><stop offset="100%" stop-color="#ff9b2f"/>
-          </linearGradient>
-          <clipPath id="tankClip"><path d="M20 42 h80 v120 a10 10 0 0 1 -10 10 h-60 a10 10 0 0 1 -10 -10 z"/></clipPath>
-        </defs>
-        <path d="M20 42 a40 22 0 0 1 80 0" fill="#1b2634" stroke="#2c3d52" stroke-width="2"/>
-        <path d="M20 42 h80 v120 a10 10 0 0 1 -10 10 h-60 a10 10 0 0 1 -10 -10 z"
-              fill="#131c27" stroke="#2c3d52" stroke-width="2"/>
-        <g clip-path="url(#tankClip)"><rect id="fuelLvl" x="20" y="172" width="80" height="0" fill="url(#fuel)"/></g>
-        <path d="M20 42 h80 v120 a10 10 0 0 1 -10 10 h-60 a10 10 0 0 1 -10 -10 z"
-              fill="none" stroke="#2c3d52" stroke-width="2"/>
-        <g stroke="#22303f" stroke-width="1.5" opacity=".8">
-          <line x1="20" y1="78" x2="100" y2="78"/><line x1="20" y1="114" x2="100" y2="114"/>
-          <line x1="20" y1="150" x2="100" y2="150"/>
-        </g>
-        <path d="M100 160 q22 0 22 -22" fill="none" stroke="#2c3d52" stroke-width="3"/>
-        <rect x="34" y="176" width="10" height="16" fill="#1b2634"/><rect x="76" y="176" width="10" height="16" fill="#1b2634"/>
-        <text id="siloTxt" x="60" y="112" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
-              font-size="13" fill="#dfe7ef">—</text>
-      </svg>
-      <div style="flex:1;min-width:250px">
-        <div class="row"><span>fuel in the tank</span><span id="d-tank" class="dim">reading…</span></div>
-        <div class="row"><span>this car will cost</span><span id="d-cost" class="dim">—</span></div>
-        <div class="row"><span>minting window</span><span id="d-window" class="dim">—</span></div>
-        <div class="row"><span>races left in it</span><span id="d-left" class="dim">—</span></div>
-        <p class="note" id="d-note" style="margin-top:10px">press <b>Re-read the chain</b> to find the depot.</p>
-        <button class="ghost" id="reload">↺ Re-read the chain</button>
-      </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+      <b>🏁 Leaderboard</b>
+      <span class="note" id="board-note">read straight off the chain — no index, no server</span>
+      <button id="board-refresh">↻ read the chain</button>
     </div>
+    <div id="board" style="margin-top:10px"><span class="dim">not read yet.</span></div>
   </div>
 
   <!-- ═══ THE CAR ═════════════════════════════════════════════════════════════════════════════════ -->
@@ -126,7 +107,14 @@
       <label>engine <b id="v-eng">14</b><input type="range" id="eng" min="1" max="24" step="1" value="14"></label>
       <label>tyres <b id="v-tyr">10</b><input type="range" id="tyr" min="1" max="10" step="1" value="10"></label>
       <label>fuel · a game quantity, and it is MASS <b id="v-tank">40,000</b><input type="range" id="tank" min="4000" max="120000" step="1000" value="40000"></label>
-      <label>the strip <b id="v-fin">60 m</b><input type="range" id="fin" min="4" max="420" step="1" value="60"></label>
+      <!-- ★★ STANDARD DRAG LENGTHS, and this is a LEADERBOARD PREREQUISITE rather than a nicety: a
+           time is only comparable against another run at the same distance, so a continuous slider
+           made every run its own category and nothing could ever be ranked.
+           ⚠ The slider carries an INDEX, not metres — the standard lengths are not evenly spaced.
+           ⚠⚠ AND THE METRES ARE ROUNDED TO THE INTEGERS ALREADY ON CHAIN. A quarter mile is 402.336 m,
+           but every quarter mile raced so far went in as 402, so using the exact figure would strand
+           "Follow the white 🐇" alone in a category no future car could join. -->
+      <label>the strip <b id="v-fin">1/4 mile · 402 m</b><input type="range" id="fin" min="0" max="4" step="1" value="4"></label>
       <label>surface · grip <b id="v-slip">1000</b><input type="range" id="slip" min="400" max="2000" step="25" value="1000"></label>
       <!-- ★ THE DRIVER, written into the car's HEAD and therefore onto the chain. Decorative by
            design — nothing computes from it — but it is what a leaderboard will show, so it is the
@@ -166,23 +154,42 @@
     <div class="log" id="log" style="margin-top:4px"><span class="dim">nothing yet.</span></div>
   </div>
 
-  <!-- ═══ THE LEADERBOARD ══════════════════════════════════════════════════════════════════════════
-       ★★ READ FROM THE CHAIN, WITH NO INDEX. Every mint is a hop in the depot's own chain, so walking
-       from one genesis txid enumerates every car it ever made. Nothing indexes covenants and nothing
-       needs to.
-       ★★ AND THE TIMES ARE NOT STORED — they are RE-DERIVED from the setup each car carries in its
-       head, with the same reference physics the covenant enforced. The chain proves the car existed
-       and was raced; the physics says how fast.
-       ⚠ Distance and surface are shown because they are the CATEGORY: a time is only comparable
-       against another run at the same distance on the same grip. The configuration is NOT shown —
-       engine, tyres and fuel stay the driver's business (sun-dive, 20 Aug). -->
+  <!-- ═══ THE DEPOT ═══════════════════════════════════════════════════════════════════════════════ -->
   <div class="panel">
-    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between">
-      <b>🏁 Leaderboard</b>
-      <span class="note" id="board-note">read straight off the chain — no index, no server</span>
-      <button id="board-refresh">↻ read the chain</button>
+    <div class="lbl">The depot</div>
+    <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start">
+      <svg id="silo" viewBox="0 0 120 200" width="112" height="186" role="img"
+           aria-label="the fuel depot, and how full it is">
+        <defs>
+          <linearGradient id="fuel" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#ffd479"/><stop offset="100%" stop-color="#ff9b2f"/>
+          </linearGradient>
+          <clipPath id="tankClip"><path d="M20 42 h80 v120 a10 10 0 0 1 -10 10 h-60 a10 10 0 0 1 -10 -10 z"/></clipPath>
+        </defs>
+        <path d="M20 42 a40 22 0 0 1 80 0" fill="#1b2634" stroke="#2c3d52" stroke-width="2"/>
+        <path d="M20 42 h80 v120 a10 10 0 0 1 -10 10 h-60 a10 10 0 0 1 -10 -10 z"
+              fill="#131c27" stroke="#2c3d52" stroke-width="2"/>
+        <g clip-path="url(#tankClip)"><rect id="fuelLvl" x="20" y="172" width="80" height="0" fill="url(#fuel)"/></g>
+        <path d="M20 42 h80 v120 a10 10 0 0 1 -10 10 h-60 a10 10 0 0 1 -10 -10 z"
+              fill="none" stroke="#2c3d52" stroke-width="2"/>
+        <g stroke="#22303f" stroke-width="1.5" opacity=".8">
+          <line x1="20" y1="78" x2="100" y2="78"/><line x1="20" y1="114" x2="100" y2="114"/>
+          <line x1="20" y1="150" x2="100" y2="150"/>
+        </g>
+        <path d="M100 160 q22 0 22 -22" fill="none" stroke="#2c3d52" stroke-width="3"/>
+        <rect x="34" y="176" width="10" height="16" fill="#1b2634"/><rect x="76" y="176" width="10" height="16" fill="#1b2634"/>
+        <text id="siloTxt" x="60" y="112" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
+              font-size="13" fill="#dfe7ef">—</text>
+      </svg>
+      <div style="flex:1;min-width:250px">
+        <div class="row"><span>fuel in the tank</span><span id="d-tank" class="dim">reading…</span></div>
+        <div class="row"><span>this car will cost</span><span id="d-cost" class="dim">—</span></div>
+        <div class="row"><span>minting window</span><span id="d-window" class="dim">—</span></div>
+        <div class="row"><span>races left in it</span><span id="d-left" class="dim">—</span></div>
+        <p class="note" id="d-note" style="margin-top:10px">press <b>Re-read the chain</b> to find the depot.</p>
+        <button class="ghost" id="reload">↺ Re-read the chain</button>
+      </div>
     </div>
-    <div id="board" style="margin-top:10px"><span class="dim">not read yet.</span></div>
   </div>
 
   <!-- ═══ FUEL ════════════════════════════════════════════════════════════════════════════════════ -->
@@ -269,6 +276,15 @@
   /* ⚠⚠ THE DEPOT. Minted 19 Aug 2026, block 962,950. There is no index that will find it — a covenant
      has no address to look up, so the genesis txid IS its identity and it is written down here. */
   var GENESIS  = '607272d1b35d6f0c4f1179fef2e4556d41f9bfb4bbed394de1f83e300ee0d1d7';
+  /* ★ The standard drag distances. Metres are the ROUNDED integers that go on chain — see the slider.
+     60 ft is the launch benchmark; 1000 ft is what NHRA Top Fuel actually runs today. */
+  var TRACKS = [
+    { m:  18, label: '60 ft · 18 m' },
+    { m: 101, label: '330 ft · 101 m' },
+    { m: 201, label: '1/8 mile · 201 m' },
+    { m: 305, label: '1000 ft · 305 m' },
+    { m: 402, label: '1/4 mile · 402 m' }
+  ];
   var OWNER_AD = '12tMiZzdMUGdR2me8Y6H7VjQkFTekrz141';
   var WOC = 'https://api.whatsonchain.com/v1/bsv/main';
   var LAST_KEY = 'racers.depot.tip.v1';
@@ -473,7 +489,7 @@
   }
   function setup(){
     return { eng:+$('eng').value, tyr:+$('tyr').value, slip:+$('slip').value,
-             metres:+$('fin').value, fuel:+$('tank').value, throttle:8,
+             metres:TRACKS[+$('fin').value].m, fuel:+$('tank').value, throttle:8,
              driver:$('driver').value };
   }
   /**
@@ -533,7 +549,7 @@
     if(!GM) return;
     var M = GM, s = setup(), sim = simulate(M, s), sc = scripts(M);
     $('v-eng').textContent = s.eng; $('v-tyr').textContent = s.tyr;
-    $('v-tank').textContent = n(s.fuel); $('v-fin').textContent = s.metres + ' m';
+    $('v-tank').textContent = n(s.fuel); $('v-fin').textContent = TRACKS[+$('fin').value].label;
     $('v-slip').textContent = s.slip;
     /* ⚠⚠ BYTES, NOT CHARACTERS. `maxlength` would count characters and let 24 rabbits through at four
        bytes each — 96 B into a 24 B field, refused by `buildRacerCar` only at build time, which is the
@@ -779,7 +795,19 @@
         var k = r.metres + ' m · grip ' + r.slip;
         (by[k] = by[k] || []).push(r);
       });
-      var keys = Object.keys(by).sort(function(a,b){ return by[b].length - by[a].length });
+      /* ★★ FASTEST AT THE TOP. Sorting by how many races a class has put the White Rabbit's category
+         LAST — the quickest run on the board was at the bottom of it.
+         ⚠ And sorting purely by time is wrong too: 0.50 s over 4 m is not "faster" than 4.30 s over a
+         quarter mile, they are different events. ⇒ LONGEST DISTANCE FIRST — the quarter mile is the
+         blue-riband class — and within the same distance, the class holding the quicker record leads. */
+      var best = {};
+      Object.keys(by).forEach(function(k){
+        var f = by[k].filter(function(r){ return r.ending === 'finish' });
+        best[k] = { m: by[k][0].metres, secs: f.length ? Math.min.apply(null, f.map(function(r){ return r.secs })) : Infinity };
+      });
+      var keys = Object.keys(by).sort(function(a,b){
+        return best[b].m - best[a].m || best[a].secs - best[b].secs;
+      });
       if (!keys.length){ $('board').innerHTML = '<span class="dim">no races found yet.</span>'; }
       else {
         var html = '';
