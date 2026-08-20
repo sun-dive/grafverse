@@ -128,6 +128,16 @@
       <label>fuel · a game quantity, and it is MASS <b id="v-tank">40,000</b><input type="range" id="tank" min="4000" max="120000" step="1000" value="40000"></label>
       <label>the strip <b id="v-fin">60 m</b><input type="range" id="fin" min="4" max="420" step="1" value="60"></label>
       <label>surface · grip <b id="v-slip">1000</b><input type="range" id="slip" min="400" max="2000" step="25" value="1000"></label>
+      <!-- ★ THE DRIVER, written into the car's HEAD and therefore onto the chain. Decorative by
+           design — nothing computes from it — but it is what a leaderboard will show, so it is the
+           one thing here a person chooses rather than tunes.
+           ⚠ 24 BYTES, and it is a BYTE budget, not a character one: 🐇 alone costs 4. The counter
+           below shows bytes for that reason, and the build REFUSES an over-long name rather than
+           truncating it — a car that disagrees with its own leaderboard entry is worse than a
+           rejected name. -->
+      <label>driver <b id="v-driver">8/24 B</b><input type="text" id="driver"
+        placeholder="a name, a handle, a domain…" value="SUN-DIVE"
+        style="width:100%;padding:6px 8px;font:inherit;color:inherit;background:#0d0f14;border:1px solid #2a2f3a;border-radius:4px"></label>
     </div>
     <div class="panel">
       <div class="lbl">What the chain will settle</div>
@@ -150,7 +160,10 @@
       <button id="go" disabled>▶ Race it on mainnet</button>
       <span class="note" id="go-note">find the depot first</span>
     </div>
-    <div class="log" id="log" style="margin-top:12px"><span class="dim">nothing yet.</span></div>
+    <!-- ⚠ LABELLED because it was mistaken for an input (sun-dive, 20 Aug). It is a <div>: output
+         only, and an unlabelled empty box with a placeholder-ish line in it invites typing. -->
+    <div class="note" style="margin-top:12px;text-transform:uppercase;letter-spacing:.08em;font-size:11px">race log · output only</div>
+    <div class="log" id="log" style="margin-top:4px"><span class="dim">nothing yet.</span></div>
   </div>
 
   <!-- ═══ FUEL ════════════════════════════════════════════════════════════════════════════════════ -->
@@ -441,7 +454,8 @@
   }
   function setup(){
     return { eng:+$('eng').value, tyr:+$('tyr').value, slip:+$('slip').value,
-             metres:+$('fin').value, fuel:+$('tank').value, throttle:8 };
+             metres:+$('fin').value, fuel:+$('tank').value, throttle:8,
+             driver:$('driver').value };
   }
   /**
    * ⚠ `racerRefTick` REFUSES rather than returning nonsense — "a car cannot be massless" for an engine and
@@ -502,6 +516,19 @@
     $('v-eng').textContent = s.eng; $('v-tyr').textContent = s.tyr;
     $('v-tank').textContent = n(s.fuel); $('v-fin').textContent = s.metres + ' m';
     $('v-slip').textContent = s.slip;
+    /* ⚠⚠ BYTES, NOT CHARACTERS. `maxlength` would count characters and let 24 rabbits through at four
+       bytes each — 96 B into a 24 B field, refused by `buildRacerCar` only at build time, which is the
+       wrong place to find out. TextEncoder is what the car's own `nameBytes()` measures with, so the
+       panel and the covenant agree on the number. */
+    var dB = new TextEncoder().encode(s.driver).length;
+    $('v-driver').textContent = dB + '/24 B';
+    $('v-driver').style.color = dB > 24 ? '#ff6b6b' : '';
+    if (dB > 24) {
+      PLAN = null;
+      $('go').disabled = true;
+      $('go-note').textContent = '⚠ the driver name is ' + dB + ' bytes — the field is 24. 🐇 costs 4 on its own.';
+      return;
+    }
     if(sim.unfinished){
       PLAN = null;
       $('p-ticks').textContent = '—'; $('p-mph').textContent = '—';
@@ -514,7 +541,9 @@
       place(0);
       return;
     }
-    var cfg = { name:'SUN-DIVE', fuel:s.fuel, eng:s.eng, tyr:s.tyr, slip:s.slip, finish:sim.finish };
+    /* ★ the driver goes on chain in the car's head. `buildRacerCar` REFUSES an over-long one, so the
+       panel must not let the user reach that point — see the byte counter in replan(). */
+    var cfg = { name:s.driver, fuel:s.fuel, eng:s.eng, tyr:s.tyr, slip:s.slip, finish:sim.finish };
     /* ⚠⚠ THE OPTIMISER REFUSES A CAR THAT RUNS DRY, AND A REFUSAL MEANS "DO NOT OPTIMISE", NOT
        "DO NOT RACE". `optimizeCarCompile` proves its hoisting against the faithful build before
        emitting, and on a run where the fuel reaches zero it cannot read `v` back — so it refuses
@@ -790,7 +819,7 @@
 
   function hex(b){ return Array.prototype.map.call(b, function(x){ return ('0'+x.toString(16)).slice(-2) }).join('') }
 
-  ['eng','tyr','tank','fin','slip'].forEach(function(id){ $(id).addEventListener('input', replan) });
+  ['eng','tyr','tank','fin','slip','driver'].forEach(function(id){ $(id).addEventListener('input', replan) });
   $('add').addEventListener('input', function(){ $('v-add').textContent = n(+this.value) });
   $('reload').addEventListener('click', reload);
   $('go').addEventListener('click', race);

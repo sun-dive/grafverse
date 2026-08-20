@@ -53,10 +53,20 @@ export const CAR_SCOPE = 0x41
 /**
  * How many characters of leaderboard name a car carries.
  *
- * ⚠ PINNED DEPOT-SIDE, so it is fixed once a depot genesis exists: the depot recognises a car partly by
- * the push opcode in front of this field, and a push opcode encodes its own length.
+ * ⚠⚠ THE COMMENT HERE USED TO SAY THIS WAS "PINNED DEPOT-SIDE, fixed once a depot genesis exists,
+ * because the depot recognises a car partly by the push opcode in front of this field". **THAT IS
+ * WRONG, and it was tested rather than argued** (20 Aug): widening 12 → 24 changes the push opcode
+ * from 0x0c to 0x18, leaves the pinned TAIL byte-identical, and the LIVE depot `904c97ad…:1` mints the
+ * car regardless. The depot recognises a car by its tail — the pushtx frame, the fee rule and the payee
+ * binding — and never looks at the head.
+ * ⇒ ★ SO THE NAME IS FREE TO WIDEN WITHOUT A NEW DEPOT. What it is NOT free of is cost: the field is
+ * FIXED WIDTH and zero-padded, so every car pays for every byte whether it carries a name or not —
+ * ~3 sat a mint at 24 B, 0.07% of a 402 m race.
+ * ⚠ What IS permanent is `CAR_LAYOUT`: a leaderboard parses minted cars at fixed offsets, so changing
+ * this after cars exist splits them into two formats. Widened to 24 on 20 Aug, before any leaderboard
+ * read anything, because that was the last free moment.
  */
-export const NAME_BYTES = 12
+export const NAME_BYTES = 24
 
 /**
  * The declared configuration, in the order it is laid out in the script.

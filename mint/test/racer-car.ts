@@ -195,8 +195,16 @@ check('★★★ the car races — one transaction, the whole run, paying the de
     race(withHead({ name: 'MA-AN-ZUO' }), V))
   check('★ the head and the race are the same length whatever the head says',
     withHead({ name: 'MA-AN-ZUO' }).toBinary().length === CAR.toBinary().length)
+  /* ⚠⚠ THIS PIN IS THE POINT. `CAR_LAYOUT` is what a leaderboard parses at fixed offsets, so it must
+     never move by accident — and it caught the one change that was made on purpose.
+     ★ 20 Aug: `name` widened 12 → 24 so a driver can write a domain or a phrase ("Follow the white 🐇"
+     is 21 B). Tested rather than assumed: the push opcode in front of the field goes 0x0c → 0x18, the
+     depot's pinned TAIL stays byte-identical, and the LIVE depot `904c97ad…:1` mints it. The source
+     comment claiming the field was "pinned depot-side" was simply wrong, and is corrected.
+     ⚠ It is FIXED WIDTH and zero-padded, so every car pays for all 24 bytes — ~3 sat a mint, 0.07% of
+     a 402 m race. Changing it again once cars are minted splits them into two formats. */
   check(`★ the layout is the shell's own widths: ${CAR_LAYOUT_STRING}`,
-    CAR_LAYOUT_STRING === 'name$12 fuel%4 eng%2 tyr%2 slip%2 finish%6')
+    CAR_LAYOUT_STRING === 'name$24 fuel%4 eng%2 tyr%2 slip%2 finish%6')
 }
 
 /* ── ★★★ WHAT THE NETWORK ACTUALLY CHECKS — the assertions are REAL, folded or not ────────────────
