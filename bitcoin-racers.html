@@ -1548,18 +1548,30 @@
       var car = M.buildRacerCar(Object.assign({}, PLAN.params, { fee: rep.fee })).toBinary();
       say('car ' + n(car.length) + ' B · proved raceable ✓', 'ok');
 
-      /* ⚠⚠ PROVE OUR PICTURE OF THE DEPOT MATCHES THE ONE ON CHAIN, BEFORE TRUSTING ANY OF IT.
-         This page REBUILDS the depot's successor from parameters it assumes — carBlock, owner, and
-         the maxCarBytes default. Nothing checked that those assumptions describe the deployed
-         program. If any one of them differed, the mint would hand the tank to a DIFFERENT script,
-         and there is no key to get it back. `tools/racers.ts --depot` has done this since 19 Aug;
-         the page never did. ⇒ Rebuild the CURRENT state and require it byte-for-byte. */
+      /* ★ CHECK OUR PICTURE OF THE DEPOT AGAINST THE ONE ON CHAIN — as a DIAGNOSTIC, not a guard.
+         This page rebuilds the depot's successor from parameters it assumes (carBlock, owner, the
+         maxCarBytes default), and nothing checked those describe the deployed program.
+
+         ⚠⚠ SAY WHAT THIS IS AND IS NOT, because the first version of this comment got it backwards
+         and sun-dive caught it: *"that's an exploit but the transaction shouldn't be minable."* He is
+         right, and it is not an exploit. The depot pulls its OWN scriptCode out of the preimage
+         (`racerDepotFrame.ts:190`, extractScriptCodeFieldOps) and rebuilds its successor from THAT,
+         binding it with OP_HASH256 ‖ OP_EQUAL against hashOutputs. A spender never supplies the
+         successor's program. ⇒ MEASURED: a mint whose successor was built with maxCarBytes 24,000 —
+         same 3,417 B length, different bytes — is REFUSED by the interpreter, as is an arbitrary
+         script in that slot. A parameter mismatch is an INVALID transaction; the tank cannot move.
+
+         ★ The trust model is the point: the covenant was never relying on this page being right.
+         This check exists to turn an opaque `mandatory-script-verify-flag-failed` into a sentence
+         that names the cause, before a broadcast rather than after — the same job as the size guard
+         below. It protects the DRIVER'S TIME, not the money. The chain protects the money. */
       var deployed = DEPOT.sourceTransaction.outputs[DEPOT.vout].lockingScript.toBinary();
       var rebuilt = depotAt(M, DEPOT.mark, DEPOT.count).toBinary();
       if (rebuilt.length !== deployed.length || rebuilt.some(function(b,i){ return b !== deployed[i] }))
         throw Error('this page rebuilds the depot as ' + n(rebuilt.length) + ' B but the chain holds ' +
-                    n(deployed.length) + ' B — it was minted with different parameters, so nothing here ' +
-                    'can be trusted about it. Do not race until this is understood.');
+                    n(deployed.length) + ' B — it was minted with different parameters than this page ' +
+                    'assumes. The mint would be REFUSED by the covenant (nothing can be lost), but ' +
+                    'nothing here describes this depot correctly, so the sizes and costs shown are wrong.');
       say('depot rebuilt byte-for-byte ✓ ' + n(deployed.length) + ' B', 'ok');
 
       /* ★★ THE SIZE CEILING, and it is the DEPOT'S rule, not the page's. `racerDepotLockOps` pins it
