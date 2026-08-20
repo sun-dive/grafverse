@@ -43,6 +43,34 @@
   .row span:last-child{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
   @media(max-width:700px){.grid{grid-template-columns:1fr}}
+  /* ⛳ board + promo. `align-items:flex-start` is what stops the 300×250 stretching to the board's
+     height — the whole reason a square was chosen is that it tolerates a board of ANY length, and a
+     stretched box would throw that away. `min-width:0` on the panel lets it actually shrink inside
+     the flex row instead of forcing an overflow. */
+  .boardwrap{display:flex;gap:14px;align-items:flex-start}
+  .promocol{flex:0 0 300px;width:300px}
+  .promo{display:block;width:100%;height:250px;border:1px solid var(--line);
+         border-radius:10px;overflow:hidden;text-decoration:none;transition:border-color .15s,transform .15s}
+  /* the support note sits UNDER the banner, in the same column, and reads as page copy not ad copy */
+  .promo-note{color:var(--dim);font-size:12.5px;line-height:1.6;margin:12px 2px 0}
+  .promo-note b{color:var(--fg)}
+  .promo-note .h{display:block;color:var(--acc);font:600 11px/1 ui-monospace,Menlo,monospace;
+                 letter-spacing:.12em;text-transform:uppercase;margin-bottom:7px}
+  .promo:hover{border-color:var(--acc);transform:translateY(-2px)}
+  /* ⚠ STACK BELOW THE BOARD, NOT ABOVE IT — and at 820px, NOT at .grid's 700px.
+     I first matched .grid's breakpoint for tidiness ("one mobile boundary rather than two that
+     disagree") and that reasoning was wrong: .grid is two EQUAL columns that shrink together, while
+     this is a flexible panel beside a FIXED 300px box, so it runs out of room sooner. Measured at
+     701px the board is left 351px and a race row — rank, driver, time, trap, mph, flag — is squeezed.
+     At 820px it still has 470px, which is the point it stops being comfortable.
+     ⇒ Different layouts have different natural breakpoints; forcing one number on both is tidiness
+     bought with the reader's eyes. `width:100%` with a cap keeps it centred rather than marooned. */
+  @media(max-width:820px){
+    .boardwrap{flex-direction:column}
+    .promocol{flex:none;width:100%;max-width:420px;margin:0 auto}
+    .promo{height:230px}
+  }
+  @media(prefers-reduced-motion:reduce){.promo:hover{transform:none}}
   label{display:block;font-size:13px;color:var(--dim);margin:10px 0 2px}
   label b{color:var(--fg);float:right;font-family:ui-monospace,Menlo,monospace}
   input[type=range]{width:100%;accent-color:var(--acc)}
@@ -110,13 +138,72 @@
        ⚠ Distance and surface are shown because they are the CATEGORY: a time is only comparable
        against another run at the same distance on the same grip. The configuration is NOT shown —
        engine, tyres and fuel stay the driver's business (sun-dive, 20 Aug). -->
-  <div class="panel">
-    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between">
-      <b>🏁 Leaderboard</b>
-      <span class="note" id="board-note">updated from chain — no indexer needed</span>
-      <button id="board-refresh">↻ update</button>
+  <!-- ★ THE BOARD AND THE SHOP SIT SIDE BY SIDE — board LEFT so it is the first thing read and the
+       first thing crawled, promo RIGHT (sun-dive, 20 Aug). Below 700px they stack and the promo falls
+       BELOW the board, which is the order that keeps the racing the headline.
+       ⚠ §6a already settled that the offer belongs ON THE RACE RESULT — "the visitor has just done
+       something, has a time and a txid worth sharing". This is a SECOND surface, not a replacement:
+       the result is where the intent is, this is where the dwell is. -->
+  <div class="boardwrap">
+    <div class="panel" style="flex:1;min-width:0">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+        <b>🏁 Leaderboard</b>
+        <span class="note" id="board-note">updated from chain — no indexer needed</span>
+        <button id="board-refresh">↻ update</button>
+      </div>
+      <div id="board" style="margin-top:10px"><span class="dim">reading the depot's own chain…</span></div>
     </div>
-    <div id="board" style="margin-top:10px"><span class="dim">reading the depot's own chain…</span></div>
+
+    <!-- ⛳ THE PROMO SLOT — 300×250.
+         ★★ BE THE MERCHANT, NEVER THE AFFILIATE. This is sun-dive's own shop, so it is styled as part
+         of the page rather than as an injected ad — no border-dance, no "sponsored", nothing that
+         invites an ad-blocker to eat it or a reader to skip it. → memory `user-affiliate-nonpayment-origin`.
+         ⚠ SVG AND TEXT, NO IMAGE FILE. Nothing to add to .cpanel.yml, nothing to cache-bust, and it is
+         a few hundred bytes rather than a photo. → memory `svg-not-png-reflex`.
+         ⏭ TO DROP REAL ART IN LATER: replace everything between the <a> tags with one <img>, keep the
+         <a> and its class. The box is already the right shape and the link already points at the shop. -->
+    <div class="promocol">
+    <a class="promo" href="https://grafverse-shop.fourthwall.com" target="_blank" rel="noopener"
+       aria-label="Bitcoin Racers merchandise — opens the shop in a new tab">
+      <svg viewBox="0 0 300 250" width="100%" height="100%" role="img" aria-hidden="true">
+        <defs>
+          <pattern id="pflag" width="24" height="24" patternUnits="userSpaceOnUse">
+            <rect width="24" height="24" fill="#0d1218"/>
+            <rect width="12" height="12" fill="#16202b"/>
+            <rect x="12" y="12" width="12" height="12" fill="#16202b"/>
+          </pattern>
+        </defs>
+        <rect width="300" height="250" fill="url(#pflag)"/>
+        <text x="150" y="86" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
+              font-size="15" letter-spacing="3" fill="#39d0ff">BITCOIN RACERS</text>
+        <text x="150" y="132" text-anchor="middle" font-size="44">🏎️💨</text>
+        <text x="150" y="176" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
+              font-size="13" fill="#dfe7ef">Wear the record</text>
+        <rect x="86" y="196" width="128" height="30" rx="7" fill="#39d0ff"/>
+        <text x="150" y="216" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
+              font-size="12" font-weight="700" fill="#04141c">SHOP THE SET</text>
+      </svg>
+    </a>
+
+    <!-- ★★ "FIAT IN THE FRONT, SATS OUT THE BACK", SAID TO THE VISITOR'S FACE (sun-dive, 20 Aug).
+         ⚠⚠ HIS COPY RULE GOVERNS THIS: **racing is FREE — say that and stop.** An earlier warning on
+         this page ended by naming the fuel button and made a free game read as one with a payment
+         step in it. So the first line here is the freedom, not the ask, and the ask never becomes a
+         toll: nobody has to buy anything to race, and the sentence must not be able to be read as
+         though they do.
+         ★ AND IT ENDS ON THE PROOF, which is the part no ordinary merch pitch can offer: the loop is
+         AUDITABLE. The tank is a covenant, the top-ups are on chain, and the contributions board is a
+         few hundred pixels further down the same page. "Support the work" is usually a promise; here
+         it is a number anyone can count. → §6l, memory `bitcoin-sells-article`. -->
+    <p class="promo-note">
+      <span class="h">⛽ How this stays free</span>
+      The depot pays for every car — <b>no wallet, and no coins from you, ever</b>.
+      The shop is what keeps it fuelled: <b>fiat in the front, satoshis out the back</b>.
+      <br><br>
+      And you don't have to take that on trust. Every satoshi that goes in is on chain,
+      counted in <b>the tank below</b> — beside the note whoever sent it chose to leave.
+    </p>
+    </div>
   </div>
 
   <!-- ═══ THE CAR ═════════════════════════════════════════════════════════════════════════════════ -->
