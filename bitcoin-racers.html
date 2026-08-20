@@ -1955,6 +1955,30 @@ IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
     return null;
   }
 
+  /* ⚠⚠⚠ WoC ALLOWS ONE CALL EVERY 250 ms PER IP (sun-dive, 20 Aug), AND THE BROWSER IS ITS OWN IP.
+     `woc.php` funnels every SERVER-side call through one 350 ms queue — but these calls are made from
+     the visitor's machine and never go near it, so they are bounded by nothing unless bounded here.
+     ⚠ THIS IS A HAZARD MULTI-COIN FUNDING CREATED. One coin meant two calls and the question never
+     arose; taking as many coins as the amount needs turned a `Promise.all` into a burst of one request
+     per coin, fired at once — at an address of 19 coins, twenty simultaneous calls against a limit of
+     four a second. The gate this project already built exists because that is how an IP gets blocked
+     "at exactly the moment traffic proved they were wanted".
+     ★ 350 ms, not 250 — the same pace `woc.php` keeps, so the two halves of the site are polite in the
+     same units and the floor has margin rather than sitting exactly on it. */
+  var WOC_PACE_MS = 350;
+
+  /** Run thunks ONE AT A TIME with the pace between them, and return their results in order. */
+  function pacedSeries(jobs){
+    var out = [];
+    return jobs.reduce(function(chain, job, i){
+      return chain.then(function(){
+        return (i === 0 ? Promise.resolve()
+                        : new Promise(function(res){ setTimeout(res, WOC_PACE_MS) }))
+          .then(job).then(function(v){ out[i] = v });
+      });
+    }, Promise.resolve()).then(function(){ return out });
+  }
+
   function buildTopUp(){
     $('f-err').textContent = ''; $('f-panel').style.display = 'none';
     var add = +$('add').value, addr = ($('addr').value || '').trim(), note = $('mark').value || null;
@@ -1994,12 +2018,24 @@ IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
       $('a-bal').textContent = '— using ' + n(picked.sum) + ' sat from ' + COINS.length + ' coin' +
                                (COINS.length === 1 ? '' : 's');
       var prov = new M.WalletProvider(addr);
-      /* ⚠ ORDER MATTERS BELOW: the depot's source is first and the coins follow in COINS order, because
-         the funding inputs are matched to their source transactions by INDEX. */
-      return Promise.all([prov.getSourceTransaction(DEPOT.txid)].concat(
-        COINS.map(function(c){ return prov.getSourceTransaction(c.txId) })));
-    }).then(function(txs){
-      depotTx = txs[0]; fundTxs = txs.slice(1);
+      /* ★★ ONE CALL PER TRANSACTION, NOT PER COIN. Two of this address's coins really do share a txid
+         (`971bcc6e…:2` and `:3`), and a source transaction is the same document whichever output of it
+         is being spent — so the unique set is what gets fetched and the coins are matched back to it
+         afterwards. Fewer calls is the point when the calls are the scarce thing. */
+      var need = [DEPOT.txid];
+      COINS.forEach(function(c){ if(need.indexOf(c.txId) < 0) need.push(c.txId) });
+      return pacedSeries(need.map(function(t){
+        return function(){ return prov.getSourceTransaction(t) };
+      })).then(function(got){
+        var byId = {};
+        need.forEach(function(t, i){ byId[t] = got[i] });
+        return byId;
+      });
+    }).then(function(byId){
+      depotTx = byId[DEPOT.txid];
+      /* ⚠ MATCHED BY TXID, NOT BY POSITION — `funder` below is built from COINS in the same order, and
+         the builder pairs each input with the source transaction at its own index. */
+      fundTxs = COINS.map(function(c){ return byId[c.txId] });
       return M.buildRacerTopUpTx({
         depot: { sourceTransaction: depotTx, outputIndex: DEPOT.vout, value: DEPOT.value },
         carBlock: sc.block, owner: sc.owner, addSats: add,
@@ -2025,7 +2061,16 @@ IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
         addSats: add, mark: note, changeAddress: addr };
       var outs = tx.outputs.map(function(o){ return o.satoshis || 0 });
       var change = outs[outs.length-1];
-      var fee = (DEPOT.value + u.satoshis) - outs.reduce(function(a,b){ return a+b }, 0);
+      /* ⚠⚠ EVERY COIN, NOT THE COIN. This read `DEPOT.value + u.satoshis` and survived the rename to
+         multi-coin funding because `u` is a live variable name elsewhere in the file — so it threw at
+         RUN TIME ("u is not defined") rather than failing to parse, and it threw in the one place no
+         test reached: the panel that reports the fee back to the contributor.
+         ⇒ The lesson is not "rename carefully". It is that the builder and the selector were both
+         tested and the DISPLAY between them was not, so the arithmetic a person actually reads had no
+         coverage at all. `test/racer-topup-coins.ts` balances the money inside the transaction; this
+         line is what balances it on the screen, and it is now derived the same way. */
+      var inSats = DEPOT.value + COINS.reduce(function(a, c){ return a + c.satoshis }, 0);
+      var fee = inSats - outs.reduce(function(a,b){ return a+b }, 0);
       $('b-add').textContent = n(add) + ' sat';
       $('b-mark').textContent = note || '(no mark)';
       $('b-change').textContent = n(change) + ' sat → ' + addr;
