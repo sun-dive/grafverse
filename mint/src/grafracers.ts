@@ -44,7 +44,11 @@ export type { TickTrace, RunTrace, Ending } from './racerTick.ts'
 /* ── the depot ───────────────────────────────────────────────────────────────────────────────────── */
 export { buildRacerDepotBasicLock, readDepotState, RACER_WINDOW_SECONDS, RACER_MINTS_PER_WINDOW }
   from './racerDepotFrame.ts'
-export { buildRacerTopUpTx, RACER_TOPUP_FEE_PAD } from './racerDepotTopUp.ts'
+/* ⚠ `racerTopUpPad` IS EXPORTED BECAUSE THE FEE ALLOWANCE IS A FUNCTION OF THE COIN COUNT, and the
+   page funds from as many coins as the contributor's amount needs. The flat `RACER_TOPUP_FEE_PAD` is
+   only `racerTopUpPad(1)`; a page that reaches for it while spending three coins has hard-coded a
+   number that is a function of a constant, which is a trap this project has already fallen into. */
+export { buildRacerTopUpTx, RACER_TOPUP_FEE_PAD, racerTopUpPad } from './racerDepotTopUp.ts'
 /* ⚠⚠ `RACER_MAX_CAR_BYTES` IS THE DEFAULT A DEPOT IS BUILT WITH, NOT A LAW OF THE SYSTEM.
    `racerDepotLockOps` takes `p.maxCarBytes`, so a depot minted with a different ceiling enforces a
    different one — which is exactly why the page must PROVE its rebuild matches the deployed script

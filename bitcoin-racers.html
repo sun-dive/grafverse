@@ -395,10 +395,25 @@
          hand back MORE"*. There is no MAX_TANK in the racers depot at all, and the minimum is one
          satoshi. ⇒ The only real limit is what the contributor's own coin can cover, so that is the
          only one shown. Bootcamp #4, fourth time; a slider clamping in silence, third time. -->
-    <label>satoshis <span class="dim" id="v-add">≈ 0.0002 BSV</span></label>
-    <input type="number" id="add" min="1" step="1" value="20000"
+    <!-- ★★ A SLIDER AND A TYPED FIELD, AND THE TYPED FIELD IS THE AUTHORITY (sun-dive, 20 Aug).
+         The slider is back because choosing an amount by eye is the natural gesture. What is NOT back
+         is its power to decide the number: it WRITES to the box below and never reads its own limits
+         back into it, so a figure larger than the slider's top stays exactly as typed and the thumb
+         simply parks at the end.
+         ⚠⚠ THAT IS THE WHOLE POINT — A SLIDER ALONE ATE 21,000,000 SAT. min 1000 max 500000 step
+         1000: the amount could not be entered at all, so it stayed at its default and the page funded
+         20,000 in silence (`94356c0f…`, 20 Aug). A slider that cannot overwrite a typed number cannot
+         do it again.
+         ⚠ 100,000 + 40 × 100,000 = 4,200,000, so both ends AND the 2,100,000 default sit on grid —
+         the same rule the grip slider follows.
+         ⚠ The slider's RANGE is the page's invention and nothing else. `racerDepot.ts:146` has no
+         MAX_TANK at all and the covenant's minimum is one satoshi, so the box is what governs and it
+         is bounded only by `min="1"`. Bootcamp #4. -->
+    <label>satoshis <span class="dim" id="v-add">≈ 0.021 BSV</span></label>
+    <input type="range" id="add-r" min="100000" max="4200000" step="100000" value="2100000">
+    <input type="number" id="add" min="1" step="1" value="2100000"
            style="width:100%;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--fg);font-family:ui-monospace,Menlo,monospace;font-size:13px">
-    <label>your address <span class="dim" id="a-bal">— one coin must cover the fuel and the fee</span></label>
+    <label>your address <span class="dim" id="a-bal">— the fuel and its fee come out of your coins</span></label>
     <input id="addr" placeholder="1..." style="width:100%;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--fg);font-family:ui-monospace,Menlo,monospace;font-size:13px">
     <label>a mark for the board · optional</label>
     <input id="mark" maxlength="75" placeholder="first fuel" style="width:100%;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--fg);font-size:13px">
@@ -420,7 +435,24 @@
            derive, which is not our problem; PSBT is the real format for it and nothing on BSV reads
            PSBT. This matches battery.html because that is what Phar Lap already reads, and a third
            bespoke format would be worse than either. -->
-      <p class="note" style="margin:10px 0 4px" id="b-fmt">(unsigned transaction — sign input #2, the only blank in it)</p>
+      <!-- ★★ WHAT TO DO, IN THE ORDER YOU DO IT (sun-dive, 20 Aug — the signing wording was unclear).
+           The old line was "(unsigned transaction — sign input #2, the only blank in it)". It names a
+           thing the reader has never been shown, uses the word "blank" for something they cannot see,
+           and gives no next step at the exact moment they are trying to take one. Somebody here wants
+           three things: what this is, where it goes, and what happens after.
+           ⚠ It deliberately says NOTHING about what Phar Lap's screens look like or which button to
+           press. That is another program; its wording is not ours to promise, and a description that
+           goes stale is worse than none. -->
+      <p class="note" style="margin:12px 0 6px"><b>Nothing is signed yet, and nothing has been sent.</b></p>
+      <ol class="note" style="margin:0 0 8px;padding-left:20px">
+        <li>Copy the transaction below.</li>
+        <li>Paste it into <b>Phar Lap</b> and sign it.</li>
+        <li>Broadcast it — the tank is filled the moment the network accepts it.</li>
+      </ol>
+      <p class="note" style="margin:0 0 4px">Only <b>your own input</b> needs a key. The depot's is already
+         complete: the covenant authorises itself with arithmetic, which is why this page has never asked
+         you for a key and cannot lose one.</p>
+      <p class="note" style="margin:10px 0 4px" id="b-fmt">unsigned transaction · hex</p>
       <textarea id="b-hex" readonly></textarea>
       <div style="margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <button id="b-copy" class="ghost">⧉ Copy</button>
@@ -570,7 +602,7 @@ IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
          ever gained things. It is not now: a visitor holding a bundle from before 20 Aug has no
          `ONE_RACE_REGS`, and this page's physics would come out `undefined` rather than wrong-but-
          plausible. Bump this whenever the physics moves. */
-      var s = document.createElement('script'); s.src = '/vendor/grafracers.js?v=20260820b';
+      var s = document.createElement('script'); s.src = '/vendor/grafracers.js?v=20260820c';
       s.onload = function(){
         GM = window.GrafRacers;
         /* ⚠⚠ SAY IT PLAINLY RATHER THAN FAIL OBSCURELY. A stale bundle is a cached file, not a bug in
@@ -581,10 +613,15 @@ IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
            stale bundle does not break the size guard — it DELETES it, and the page cheerfully offers
            to mint a car the depot will refuse. A missing feature that reads as a passing check is
            worse than a crash. ⇒ Name it, fail loudly, and say what to do. */
-        if(!GM || !GM.ONE_RACE_REGS || typeof GM.RACER_MAX_CAR_BYTES !== 'number'){
+        /* ⚠ `racerTopUpPad` JOINS THE LIST FOR THE SAME REASON. Undefined, `padFor(k)` throws — which
+           is at least loud — but the failure would surface inside coin selection, three steps from the
+           cause, and read as a bug in the funding maths rather than a cached file. */
+        if(!GM || !GM.ONE_RACE_REGS || typeof GM.RACER_MAX_CAR_BYTES !== 'number'
+              || typeof GM.racerTopUpPad !== 'function'){
           rej(Error('grafracers.js is STALE — it is missing ' +
                     (!GM || !GM.ONE_RACE_REGS ? 'ONE_RACE_REGS (the model C physics)'
-                                              : 'RACER_MAX_CAR_BYTES (the depot size guard)') +
+                     : typeof GM.RACER_MAX_CAR_BYTES !== 'number' ? 'RACER_MAX_CAR_BYTES (the depot size guard)'
+                                              : 'racerTopUpPad (the multi-coin fee allowance)') +
                     '. Hard-reload this page.'));
           return;
         }
@@ -1897,10 +1934,31 @@ IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
     }).catch(function(){ return [] });
   }
 
+  /** ★★ PICK COINS UNTIL THE AMOUNT IS COVERED. Biggest first, which is the cheapest answer and not
+      merely the obvious one: every extra input is a signature the contributor makes and ~148 bytes
+      somebody pays for, so the fewest inputs that reach the target is also the smallest fee.
+      ⚠⚠ THE TARGET MOVES AS YOU ADD COINS — `racerTopUpPad(k)` grows with the count, so it is
+      re-evaluated on every step rather than computed once up front. Reaching for the flat
+      `RACER_TOPUP_FEE_PAD` here would under-fund the fee by 20 sat a coin, and this project has been
+      under a fee floor five times.
+      ⚠ NO COIN IS FILTERED OUT. A tiny coin costs more to spend than it brings, but refusing one is
+      the page inventing a rule again — biggest-first already means the small ones are reached only
+      when they are genuinely needed. Returns null when the whole balance cannot cover it, which is
+      the only honest refusal there is. */
+  function pickCoins(us, need, padFor){
+    var s = us.slice().sort(function(a, b){ return b.satoshis - a.satoshis });
+    var out = [], sum = 0;
+    for(var i = 0; i < s.length; i++){
+      out.push(s[i]); sum += s[i].satoshis;
+      if(sum >= need + padFor(out.length)) return { coins: out, sum: sum };
+    }
+    return null;
+  }
+
   function buildTopUp(){
     $('f-err').textContent = ''; $('f-panel').style.display = 'none';
     var add = +$('add').value, addr = ($('addr').value || '').trim(), note = $('mark').value || null;
-    var M, sc, u, depotTx, fundTx;
+    var M, sc, COINS, depotTx, fundTxs;
     gm().then(function(g){
       M = g;
       if(!DEPOT) throw Error('find the depot first — press Re-read the chain');
@@ -1914,21 +1972,40 @@ IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
       sc = scripts(M);
       return coins(addr);
     }).then(function(us){
-      /* ONE coin must cover the fuel AND the fee. The smallest that does keeps the change tidy. */
-      var pad = M.RACER_TOPUP_FEE_PAD;
-      u = us.filter(function(x){ return x.satoshis >= add + pad })
-            .sort(function(a,b){ return a.satoshis - b.satoshis })[0];
-      if(!u) throw Error('no single coin at ' + addr + ' holds ' + n(add + pad) +
-                         ' sat — one input must cover the fuel and the fee');
-      $('a-bal').textContent = '— using ' + n(u.satoshis) + ' sat';
+      /* ★★ AS MANY COINS AS THE AMOUNT NEEDS — nothing on Bitcoin says a payment comes from one coin
+         (sun-dive, 20 Aug). This demanded a SINGLE coin covering fuel and fee, and refused otherwise:
+         at `12tMiZzd…`, whose largest coin is 208,603 sat, a 2,100,000 sat top-up was impossible while
+         the address held plenty. ⇒ The address's BALANCE is the only real limit and now it is the
+         only one applied.
+         ★★ AND EVERYTHING DOWNSTREAM WAS ALREADY BUILT FOR THIS — the restriction lived here alone:
+         · `RacerTopUpParams.funder` is an ARRAY, and its docstring says all of them are added before
+           the covenant's input so the preimage commits to every outpoint
+         · `racerTopUpPad(coins)` exists ONLY to price the extra inputs — and was never called
+         · `RacerTopUpRequest.funding` is TYPED as an array, and this page was passing one object
+         · Phar Lap signs every blank input that is its own (`cosign.ts:186`), not the first
+         ⇒ Bootcamp #4, and by his count the fifth restriction the funding page invented for itself. */
+      var picked = pickCoins(us, add, M.racerTopUpPad);
+      if(!picked){
+        var held = us.reduce(function(a, c){ return a + c.satoshis }, 0);
+        throw Error(addr + ' holds ' + n(held) + ' sat across ' + us.length + ' coin' +
+                    (us.length === 1 ? '' : 's') + ' — not enough for ' + n(add) + ' sat of fuel and its fee');
+      }
+      COINS = picked.coins;
+      $('a-bal').textContent = '— using ' + n(picked.sum) + ' sat from ' + COINS.length + ' coin' +
+                               (COINS.length === 1 ? '' : 's');
       var prov = new M.WalletProvider(addr);
-      return Promise.all([prov.getSourceTransaction(DEPOT.txid), prov.getSourceTransaction(u.txId)]);
+      /* ⚠ ORDER MATTERS BELOW: the depot's source is first and the coins follow in COINS order, because
+         the funding inputs are matched to their source transactions by INDEX. */
+      return Promise.all([prov.getSourceTransaction(DEPOT.txid)].concat(
+        COINS.map(function(c){ return prov.getSourceTransaction(c.txId) })));
     }).then(function(txs){
-      depotTx = txs[0]; fundTx = txs[1];
+      depotTx = txs[0]; fundTxs = txs.slice(1);
       return M.buildRacerTopUpTx({
         depot: { sourceTransaction: depotTx, outputIndex: DEPOT.vout, value: DEPOT.value },
         carBlock: sc.block, owner: sc.owner, addSats: add,
-        funder: [{ sourceTransaction: fundTx, outputIndex: u.outputIndex }],
+        funder: COINS.map(function(c, i){
+          return { sourceTransaction: fundTxs[i], outputIndex: c.outputIndex };
+        }),
         changeAddress: addr, mark: note
       });
     }).then(function(tx){
@@ -1936,7 +2013,13 @@ IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
       /* The request is the alternate, not the default — see the note in the markup above. */
       REQUEST = { v:1, action:'racer-depot-topup',
         depot:{ txId: DEPOT.txid, outputIndex: DEPOT.vout, satoshis: DEPOT.value, sourceTxHex: depotTx.toHex() },
-        funding:{ txId: u.txId, outputIndex: u.outputIndex, satoshis: u.satoshis, sourceTxHex: fundTx.toHex() },
+        /* ⚠ AN ARRAY, WHICH IS WHAT `RacerTopUpRequest.funding` HAS ALWAYS BEEN TYPED AS. The page was
+           passing a bare object — the format and its only producer were out of step, and nothing
+           caught it because nothing else has ever read this document. */
+        funding: COINS.map(function(c, i){
+          return { txId: c.txId, outputIndex: c.outputIndex, satoshis: c.satoshis,
+                   sourceTxHex: fundTxs[i].toHex() };
+        }),
         carBlockHex: hex(sc.block), ownerHex: hex(sc.owner),
         state:{ mark: DEPOT.mark, count: DEPOT.count },
         addSats: add, mark: note, changeAddress: addr };
@@ -1955,9 +2038,12 @@ IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
   function showHex(req){
     if(!BUILT || !REQUEST) return;
     $('b-hex').value = req ? JSON.stringify(REQUEST, null, 1) : BUILT.toHex();
-    $('b-fmt').textContent = req ? '(signing request — for a signer that rebuilds it from scratch)'
-                                 : '(unsigned transaction — sign input #2, the only blank in it)';
-    $('b-raw').textContent = req ? 'unsigned transaction instead' : 'signing request instead';
+    /* ⚠ THE FORMAT LINE LABELS THE BOX, IT DOES NOT INSTRUCT — the instructions are in the markup
+       above and stay put whichever format is showing. Saying "sign input #2" here was doing both
+       jobs badly at once. */
+    $('b-fmt').textContent = req ? 'signing request · JSON — for a signer that rebuilds it from the description'
+                                 : 'unsigned transaction · hex';
+    $('b-raw').textContent = req ? 'show the transaction instead' : 'show it as a JSON signing request';
     $('b-raw').onclick = function(ev){ ev.preventDefault(); showHex(!req) };
   }
 
@@ -2001,7 +2087,18 @@ IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
                           ' days of maximum griefing if someone set out to drain it';
     $('v-add').textContent = txt;
   }
-  $('add').addEventListener('input', paintAdd);
+  /* ★★ ONE DIRECTION ONLY. The slider writes the box; the box moves the THUMB and nothing else.
+     ⚠ `syncThumb` clamps to the slider's range — but it assigns to `add-r`, NEVER to `add`. Type
+     21,000,000 and the number stays 21,000,000 while the thumb rests at 4,200,000. Reversing that one
+     assignment is exactly the bug that funded 20,000 sat in silence, so it is written down here as
+     well as in the markup. */
+  function syncThumb(){
+    var s = +$('add').value;
+    if(isFinite(s)) $('add-r').value = Math.max(+$('add-r').min, Math.min(+$('add-r').max, s));
+  }
+  $('add-r').addEventListener('input', function(){ $('add').value = this.value; paintAdd() });
+  $('add').addEventListener('input', function(){ syncThumb(); paintAdd() });
+  syncThumb();
   paintAdd();
   $('reload').addEventListener('click', reload);
   $('board-refresh').addEventListener('click', readBoard);
