@@ -1,14 +1,22 @@
 // © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
 /**
- * ★★★ THE LEADERBOARD — read from the chain, with no index anywhere.
+ * ★★★ THE LEADERBOARD — read from the chain, with no INDEXER anywhere.
+ *
+ * ⚠⚠ SAY IT PRECISELY: "no indexer", never "no server". WhatsOnChain is a server and the page's cache
+ * is state we keep — an earlier version of this claim said "no server" and was simply false. What is
+ * true is narrower and better: no SPECIAL INDEX of covenants exists or is needed, so the data source is
+ * INTERCHANGEABLE — any node or API serves — where an indexer would not be.
  *
  *   node --experimental-strip-types mint/tools/leaderboard.ts [--depot <genesis txid>]
  *
  * ── ★★ WHY THIS NEEDS NO INDEXER ──────────────────────────────────────────────────────────────────
  * Nothing indexes covenants — that is the standing problem, and beacons in OP_RETURN were measured NOT
  * to be indexed either. But a leaderboard does not need one: **every mint is a hop in the depot's own
- * chain.** Walk the depot from its genesis and you have enumerated every car it ever made, in order,
- * from one starting txid. The chain is the index.
+ * chain.** Follow the depot's own spends from its genesis and you have enumerated every car it ever
+ * made, in order, from one starting txid. The chain is the index.
+ * ⚠ SAY IT PRECISELY: this is not "walking the chain" and not a block scan — it follows ONE chain of
+ * outputs, hop by hop. The distinction matters because scanning blocks is the indexer-shaped thing
+ * this exists to avoid, and the loose phrase describes exactly that.
  *
  * ── ★★ AND THE TIME IS NOT STORED ANYWHERE ────────────────────────────────────────────────────────
  * A one-race car's head carries the SETUP — driver, fuel, engine, tyres, surface, distance — at fixed
@@ -158,7 +166,7 @@ async function walk(genesis: string): Promise<{ rows: Row[]; tip: string | null;
 
   for (let hop = 0; hop < 200; hop++) {
     const status = await spentStatus(cur.txid, cur.vout)
-    if (status === 'unknown') { unknown++; cutShort = true; break }
+    if (status === 'unknown') { unknown++; cutShort = true; break }   // cannot read: stop, and say so
     if (status === 'unspent') {
       const t = await txOf(cur.txid)
       tip = `${cur.txid}:${cur.vout}`
@@ -202,7 +210,9 @@ async function walk(genesis: string): Promise<{ rows: Row[]; tip: string | null;
 
 /* ── the board ──────────────────────────────────────────────────────────────────────────────────── */
 const genesis = arg('depot', GENESIS)
-console.log(`\n  walking the depot from ${genesis.slice(0, 16)}…  (2–3 WoC calls a race, spaced)\n`)
+console.log(`\n  updating the leaderboard from chain — following the depot's own spends from` +
+  ` ${genesis.slice(0, 16)}…\n  ⚠ NOT a block scan: this follows ONE chain of outputs, 2–3 calls a race.` +
+  ` (This tool has no cache; the page does.)\n`)
 const { rows, tip, tank, unknown, other, cutShort } = await walk(genesis)
 
 const raced = rows.filter(r => r.raced)

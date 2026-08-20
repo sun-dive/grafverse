@@ -82,9 +82,13 @@
      and the car has no key for anyone to hold. The satoshis being spent are <b>the depot's</b>, never yours.</p>
 
   <!-- ═══ THE LEADERBOARD ══════════════════════════════════════════════════════════════════════════
-       ★★ READ FROM THE CHAIN, WITH NO INDEX. Every mint is a hop in the depot's own chain, so walking
-       from one genesis txid enumerates every car it ever made. Nothing indexes covenants and nothing
-       needs to.
+       ★★ READ FROM THE CHAIN, WITH NO INDEXER. Every mint is a hop in the depot's own chain, so
+       following it from one genesis txid enumerates every car it ever made. Nothing indexes covenants
+       and nothing needs to.
+       ⚠⚠ AND THE CLAIM IS "NO INDEXER", NOT "NO SERVER" — an earlier version said the latter and it was
+       simply FALSE. WhatsOnChain is a server, and the localStorage cache is state we keep. What is true
+       is narrower and more interesting: no SPECIAL INDEX of covenants exists or is needed, so the data
+       source is interchangeable — any node or API would do — where an indexer would not be.
        ★★ AND THE TIMES ARE NOT STORED — they are RE-DERIVED from the setup each car carries in its
        head, with the same reference physics the covenant enforced. The chain proves the car existed
        and was raced; the physics says how fast.
@@ -94,10 +98,10 @@
   <div class="panel">
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between">
       <b>🏁 Leaderboard</b>
-      <span class="note" id="board-note">read straight off the chain — no index, no server</span>
-      <button id="board-refresh">↻ read the chain</button>
+      <span class="note" id="board-note">updated from chain — no indexer needed</span>
+      <button id="board-refresh">↻ update</button>
     </div>
-    <div id="board" style="margin-top:10px"><span class="dim">not read yet.</span></div>
+    <div id="board" style="margin-top:10px"><span class="dim">reading the depot's own chain…</span></div>
   </div>
 
   <!-- ═══ THE CAR ═════════════════════════════════════════════════════════════════════════════════ -->
@@ -734,19 +738,27 @@
   function readBoard(){
     if (!GM) { say('load the depot first', 'warn'); return Promise.resolve() }
     var M = GM, cache = cacheGet(), rows = [], other = 0, cutShort = false;
-    $('board-note').textContent = 'walking the chain…';
+    /* ★ Count the two kinds of hop. A reload that says "updated" while re-reading everything would be
+       a claim rather than a fact, so the panel reports what was actually fetched. */
+    var fromCache = 0, fetched = 0;
+    $('board-note').textContent = 'updating the leaderboard from chain…';
     var cur = { txid: GENESIS, vout: 0 };
 
     function hop(n){
       if (n > 200) return Promise.resolve();
       var key = cur.txid + ':' + cur.vout;
       /* ★ a settled hop is settled for ever — only the tip is ever re-read */
+      /* ★★ A SETTLED HOP IS SETTLED FOR EVER — the chain is append-only, so a spend that has been read
+         once never changes. No network call is made here at all: the scan only reaches the network for
+         hops it has never seen, which is what makes this an UPDATE and not a re-read. */
       if (cache[key] && cache[key].next){
         if (cache[key].cars) rows = rows.concat(cache[key].cars);
         if (cache[key].other) other++;
+        fromCache++;
         cur = cache[key].next;
         return hop(n+1);
       }
+      fetched++;
       return wocGet('/tx/' + cur.txid + '/' + cur.vout + '/spent').then(function(r){
         if (!r){ cutShort = true; return }
         if (r.status === 404) return;                       // the tip — stop
@@ -835,8 +847,9 @@
       }
       /* ⚠ A SHORT BOARD MUST NOT LOOK LIKE A COMPLETE ONE. */
       $('board-note').textContent = cutShort
-        ? '⚠ the walk was cut short — this board is INCOMPLETE'
-        : rows.length + ' race(s) · read straight off the chain, no index';
+        ? '⚠ cut short — this board is INCOMPLETE'
+        : rows.length + ' race(s) · ' + (fetched ? fetched + ' new from chain' : 'nothing new') +
+          (fromCache ? ', ' + fromCache + ' cached' : '') + ' · via WhatsOnChain, no indexer';
       $('board-note').style.color = cutShort ? '#ff6b6b' : '';
     });
   }
@@ -1049,9 +1062,20 @@
     setTimeout(function(){ b.textContent = was }, 1400);
   });
 
-  gm().then(function(){ replan(); return reload() }).catch(function(e){
-    $('d-note').innerHTML = '<span class="no">⚠ ' + e.message + '</span>';
-  });
+  /* ⚠ THE BOARD READS ITSELF ON LOAD. It sits at the top of the page, so leaving it saying "not read
+     yet" until somebody finds a button made the first thing a visitor sees an empty panel.
+     ★ Affordable because of the cache: a return visit fetches only hops it has never seen, so the
+     usual cost of this line is one 404 at the tip. A first visit pays for the whole history once.
+     ⚠ It runs AFTER the depot, and its failure is caught separately — a board that cannot be read is
+     not a reason for the rest of the page to stop working. */
+  gm().then(function(){ replan(); return reload() })
+      .then(function(){ return readBoard().catch(function(e){
+        $('board-note').textContent = '⚠ could not update: ' + e.message;
+        $('board-note').style.color = '#ff6b6b';
+      }) })
+      .catch(function(e){
+        $('d-note').innerHTML = '<span class="no">⚠ ' + e.message + '</span>';
+      });
 })();
 </script>
 </body>
