@@ -43,20 +43,30 @@
   .row span:last-child{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
   @media(max-width:700px){.grid{grid-template-columns:1fr}}
-  /* ⛳ board + promo. `align-items:flex-start` is what stops the 300×250 stretching to the board's
-     height — the whole reason a square was chosen is that it tolerates a board of ANY length, and a
-     stretched box would throw that away. `min-width:0` on the panel lets it actually shrink inside
-     the flex row instead of forcing an overflow. */
+  /* ⛳ board + garage. `align-items:flex-start` stops the card stretching to the board's height —
+     it must tolerate a board of ANY length, and a stretched box would throw that away.
+     `min-width:0` on the panel lets it shrink inside the flex row instead of forcing an overflow. */
   .boardwrap{display:flex;gap:14px;align-items:flex-start}
-  .promocol{flex:0 0 300px;width:300px}
-  .promo{display:block;width:100%;height:250px;border:1px solid var(--line);
-         border-radius:10px;overflow:hidden;text-decoration:none;transition:border-color .15s,transform .15s}
-  /* the support note sits UNDER the banner, in the same column, and reads as page copy not ad copy */
-  .promo-note{color:var(--dim);font-size:12.5px;line-height:1.6;margin:12px 2px 0}
-  .promo-note b{color:var(--fg)}
-  .promo-note .h{display:block;color:var(--acc);font:600 11px/1 ui-monospace,Menlo,monospace;
-                 letter-spacing:.12em;text-transform:uppercase;margin-bottom:7px}
-  .promo:hover{border-color:var(--acc);transform:translateY(-2px)}
+
+  /* ⛽ THE GARAGE — the shop as a PANEL OF THIS PAGE, not a box stuck onto it.
+     ⚠⚠ DELIBERATELY NOT SHAPED, SIZED OR NAMED LIKE AN AD (sun-dive, 20 Aug). Blockers do not only
+     kill scripts; cosmetic filter lists match the three things a banner announces itself with:
+       · SIZE   `300x250` is THE canonical unit, matched literally by rules of the shape
+                ##[width="300"][height="250"]. ⇒ the width here is FLUID (clamp), so the computed
+                box lands on no round ad number at any viewport.
+       · NAME   `promo`, `banner`, `ad`, `sponsor` all appear in the common lists. ⇒ `garage` —
+                motorsport vocabulary, and in no filter list anywhere.
+       · SHAPE  a bordered rectangle floating beside content IS the visual grammar of an ad. ⇒ it
+                uses `.panel`, exactly like the leaderboard and the depot. It reads as a section of
+                the site because it now IS one.
+     ★ And being FIRST-PARTY — our image, our shop, our domain — the network-level rules never apply,
+     since those target ad-server hosts. The three above are the whole remaining surface. */
+  .garage{flex:0 0 clamp(250px,31%,336px)}
+  .garage-art{display:block;width:100%;aspect-ratio:6/5;border-radius:8px;overflow:hidden;
+              text-decoration:none;border:1px solid var(--line);transition:border-color .15s}
+  .garage-art:hover{border-color:var(--acc)}
+  .garage-note{color:var(--dim);font-size:12.5px;line-height:1.6;margin:12px 2px 0}
+  .garage-note b{color:var(--fg)}
   /* ⚠ STACK BELOW THE BOARD, NOT ABOVE IT — and at 820px, NOT at .grid's 700px.
      I first matched .grid's breakpoint for tidiness ("one mobile boundary rather than two that
      disagree") and that reasoning was wrong: .grid is two EQUAL columns that shrink together, while
@@ -67,10 +77,9 @@
      bought with the reader's eyes. `width:100%` with a cap keeps it centred rather than marooned. */
   @media(max-width:820px){
     .boardwrap{flex-direction:column}
-    .promocol{flex:none;width:100%;max-width:420px;margin:0 auto}
-    .promo{height:230px}
+    .garage{flex:none;width:100%;max-width:420px;margin:0 auto}
   }
-  @media(prefers-reduced-motion:reduce){.promo:hover{transform:none}}
+
   label{display:block;font-size:13px;color:var(--dim);margin:10px 0 2px}
   label b{color:var(--fg);float:right;font-family:ui-monospace,Menlo,monospace}
   input[type=range]{width:100%;accent-color:var(--acc)}
@@ -139,8 +148,8 @@
        against another run at the same distance on the same grip. The configuration is NOT shown —
        engine, tyres and fuel stay the driver's business (sun-dive, 20 Aug). -->
   <!-- ★ THE BOARD AND THE SHOP SIT SIDE BY SIDE — board LEFT so it is the first thing read and the
-       first thing crawled, promo RIGHT (sun-dive, 20 Aug). Below 700px they stack and the promo falls
-       BELOW the board, which is the order that keeps the racing the headline.
+       first thing crawled, the garage RIGHT (sun-dive, 20 Aug). Below 820px they stack and the garage
+       falls BELOW the board, which is the order that keeps the racing the headline.
        ⚠ §6a already settled that the offer belongs ON THE RACE RESULT — "the visitor has just done
        something, has a time and a txid worth sharing". This is a SECOND surface, not a replacement:
        the result is where the intent is, this is where the dwell is. -->
@@ -162,8 +171,8 @@
          a few hundred bytes rather than a photo. → memory `svg-not-png-reflex`.
          ⏭ TO DROP REAL ART IN LATER: replace everything between the <a> tags with one <img>, keep the
          <a> and its class. The box is already the right shape and the link already points at the shop. -->
-    <div class="promocol">
-    <a class="promo" href="https://grafverse-shop.fourthwall.com" target="_blank" rel="noopener"
+    <div class="panel garage">
+    <a class="garage-art" href="https://grafverse-shop.fourthwall.com" target="_blank" rel="noopener"
        aria-label="Bitcoin Racers merchandise — opens the shop in a new tab">
       <svg viewBox="0 0 300 250" width="100%" height="100%" role="img" aria-hidden="true">
         <defs>
@@ -195,8 +204,8 @@
          AUDITABLE. The tank is a covenant, the top-ups are on chain, and the contributions board is a
          few hundred pixels further down the same page. "Support the work" is usually a promise; here
          it is a number anyone can count. → §6l, memory `bitcoin-sells-article`. -->
-    <p class="promo-note">
-      <span class="h">⛽ How this stays free</span>
+    <div class="lbl" style="margin:14px 0 0">⛽ How this stays free</div>
+    <p class="garage-note">
       The depot pays for every car — <b>no wallet, and no coins from you, ever</b>.
       The shop is what keeps it fuelled: <b>fiat in the front, satoshis out the back</b>.
       <br><br>
