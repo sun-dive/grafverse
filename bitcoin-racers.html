@@ -134,7 +134,18 @@
            but every quarter mile raced so far went in as 402, so using the exact figure would strand
            "Follow the white 🐇" alone in a category no future car could join. -->
       <label>the strip <b id="v-fin">1/4 mile · 402 m</b><input type="range" id="fin" min="0" max="4" step="1" value="4"></label>
-      <label>surface · grip <b id="v-slip">1000</b><input type="range" id="slip" min="400" max="2000" step="25" value="1000"></label>
+      <!-- ★★ STEP 100, NOT 25 — and it is a LEADERBOARD change, not a tidy-up. The board's category is
+           `metres · grip`, so every reachable grip value is a separate class. At step 25 there were
+           65 of them; at 100 there are 17, and the same number of drivers spread over a quarter as
+           many classes is a board that actually ranks instead of splintering into fields of one.
+           → the open "slip is a driver slider" item in TODO.md.
+           ⚠ 400 + 16×100 = 2000 exactly, so the ends and the 1000 default all stay on the grid.
+           ⚠ COST, stated because it is permanent for one car: grip 950 becomes unreachable, so the
+           402 m · grip 950 test mint can never be joined in its class. Same shape as the track-length
+           lesson — metres went on chain as 402 so the Rabbit would not be stranded in a class of one.
+           Accepted here: it is a pre-launch test car, and the splintering costs more than it does.
+           ⚠ The 400–2000 range is still the PAGE's invention; the covenant only requires slip > 0. -->
+      <label>surface · grip <b id="v-slip">1000</b><input type="range" id="slip" min="400" max="2000" step="100" value="1000"></label>
       <!-- ★ THE DRIVER, written into the car's HEAD and therefore onto the chain. Decorative by
            design — nothing computes from it — but it is what a leaderboard will show, so it is the
            one thing here a person chooses rather than tunes.
