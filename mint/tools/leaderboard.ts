@@ -116,29 +116,36 @@ const text = (b: number[]): string => new TextDecoder().decode(new Uint8Array(b.
  * ★★ RE-DERIVE THE RACE from the setup the chain carries. This is the whole trick: the result is not
  * stored, it is RECOMPUTED, and it can only come out one way.
  */
-function derive(h: Record<string, number[]>): { secs: number; mph: number; ending: string; got: number } {
+function derive(h: Record<string, number[]>):
+  { secs: number; mph: number; top: number; topAt: number; ending: string; got: number } {
   const finish = num(h.finish)
   let st: ShellState = {
     phase: PHASE.RACING, driver: new Array(20).fill(0), pool: new Array(36).fill(0),
     eng: num(h.eng), tyr: num(h.tyr), finish, slip: num(h.slip), green: 0, gap: 1, last: 100,
     s: 0, v: 0, n: 0,
   } as never
-  let fuel = num(h.fuel), t = 0
+  let fuel = num(h.fuel), t = 0, peak = 0, peakAt = 0
+  const mph = (v: number): number => (v / S) * 2.23694 * 10
   for (let i = 0; i < 400; i++) {
     let r
     try { r = racerRefTick(st, { throttle: 8, fuel, lockTime: st.last + st.gap }, R) }
-    catch { return { secs: 0, mph: 0, ending: 'refused', got: 0 } }
+    catch { return { secs: 0, mph: 0, top: 0, topAt: 0, ending: 'refused', got: 0 } }
     fuel = Math.max(0, fuel - r.burn); t++
     st = { ...(r.state as ShellState), last: st.last + st.gap }
-    if (r.ended !== null) return { secs: t / 10, mph: 0, ending: r.ended, got: st.s / S }
-    if (st.phase === PHASE.DONE) return { secs: t / 10, mph: (st.v / S) * 2.23694 * 10, ending: 'finish', got: st.s / S }
+    /* ★★ TOP SPEED, not just trap speed. They are the same number only while the car is still pulling
+       at the line — the moment it runs dry it peaks and coasts, so the gap between the two IS the
+       under-fuelling gamble made visible. And for a car that never reaches the line, this is the only
+       speed it has. */
+    if (st.v > peak) { peak = st.v; peakAt = t }
+    if (r.ended !== null) return { secs: t / 10, mph: 0, top: mph(peak), topAt: peakAt, ending: r.ended, got: st.s / S }
+    if (st.phase === PHASE.DONE) return { secs: t / 10, mph: mph(st.v), top: mph(peak), topAt: peakAt, ending: 'finish', got: st.s / S }
   }
-  return { secs: t / 10, mph: 0, ending: 'unresolved', got: st.s / S }
+  return { secs: t / 10, mph: 0, top: mph(peak), topAt: peakAt, ending: 'unresolved', got: st.s / S }
 }
 
 interface Row {
   driver: string; secs: number; mph: number; metres: number; slip: number
-  ending: string; got: number; mint: string; raced: boolean; layout: string
+  ending: string; got: number; mint: string; raced: boolean; layout: string; top: number
 }
 
 async function walk(genesis: string): Promise<{ rows: Row[]; tip: string | null; tank: number; unknown: number; other: number; cutShort: boolean }> {
@@ -182,7 +189,7 @@ async function walk(genesis: string): Promise<{ rows: Row[]; tip: string | null;
       const raced = await spentStatus(sp.txid, n)
       if (raced === 'unknown') unknown++
       const d = derive(h)
-      rows.push({ driver: text(h.name) || '(no name)', secs: d.secs, mph: d.mph,
+      rows.push({ driver: text(h.name) || '(no name)', secs: d.secs, mph: d.mph, top: d.top,
         metres: Math.round(num(h.finish) / S), slip: num(h.slip), ending: d.ending, got: d.got,
         mint: sp.txid, raced: raced === 'spent', layout: parsed.layout })
     }
@@ -213,13 +220,13 @@ console.log(`  ${rows.length} car(s) minted · ${raced.length} raced` +
 for (const [cls, list] of [...byClass].sort((a, b) => b[1].length - a[1].length)) {
   /* ★ THE CATEGORY IS THE DISTANCE AND THE SURFACE — a time means nothing without both. */
   console.log(`  \x1b[1m${cls}\x1b[0m`)
-  console.log('     #   driver                      time      speed   result')
+  console.log('     #   driver                      time     trap      TOP   result')
   const fin = list.filter(r => r.ending === 'finish').sort((a, b) => a.secs - b.secs || b.mph - a.mph)
   const rest = list.filter(r => r.ending !== 'finish')
   fin.forEach((r, i) => console.log(
-    `    ${String(i + 1).padStart(2)}   ${r.driver.padEnd(24)}  ${r.secs.toFixed(2)} s   ${Math.round(r.mph).toString().padStart(4)} mph   🏁`))
+    `    ${String(i + 1).padStart(2)}   ${r.driver.padEnd(24)}  ${r.secs.toFixed(2)} s  ${Math.round(r.mph).toString().padStart(4)} mph  ${Math.round(r.top).toString().padStart(4)} mph   🏁`))
   for (const r of rest) console.log(
-    `     —   ${r.driver.padEnd(24)}     —          —   ${r.ending === 'stopped'
+    `     —   ${r.driver.padEnd(24)}     —         —  ${Math.round(r.top).toString().padStart(4)} mph   ${r.ending === 'stopped'
       ? `⛽ halted at ${r.got.toFixed(0)} m` : r.ending === 'off' ? '💨 off the track' : '💥 engine'}`)
   console.log()
 }

@@ -698,14 +698,19 @@
     var st = { phase:M.PHASE.RACING, driver:new Array(20).fill(0), pool:new Array(36).fill(0),
                eng:leNum(h.eng), tyr:leNum(h.tyr), finish:finish, slip:leNum(h.slip),
                green:0, gap:1, last:100, s:0, v:0, n:0 };
-    var fuel = leNum(h.fuel), t = 0;
+    var fuel = leNum(h.fuel), t = 0, peak = 0;
+    var mph = function(v){ return (v/S)*2.23694*10 };
     for (var i=0;i<400;i++){
       var r; try { r = M.racerRefTick(st, { throttle:8, fuel:fuel, lockTime:st.last+st.gap }, R) }
       catch(e){ return { ending:'refused' } }
       fuel = Math.max(0, fuel - r.burn); t++;
       st = Object.assign({}, r.state, { last: st.last + st.gap });
-      if (r.ended !== null) return { ending:r.ended, secs:t/10, got:st.s/S };
-      if (st.phase === M.PHASE.DONE) return { ending:'finish', secs:t/10, mph:(st.v/S)*2.23694*10, got:st.s/S };
+      /* ★★ TOP SPEED, not just trap speed. Equal only while the car is still pulling at the line — the
+         moment it runs dry it peaks and coasts, so the gap between them IS the under-fuelling gamble
+         made visible. For a car that never reaches the line it is the only speed there is. */
+      if (st.v > peak) peak = st.v;
+      if (r.ended !== null) return { ending:r.ended, secs:t/10, top:mph(peak), got:st.s/S };
+      if (st.phase === M.PHASE.DONE) return { ending:'finish', secs:t/10, mph:mph(st.v), top:mph(peak), got:st.s/S };
     }
     return { ending:'unresolved' };
   }
@@ -749,7 +754,7 @@
                   var d = deriveRace(M, h);
                   if (raced) mine.push({ driver: leTxt(h.name) || '(no name)',
                     metres: Math.round(leNum(h.finish)/M.S), slip: leNum(h.slip),
-                    secs: d.secs, mph: d.mph, ending: d.ending, got: d.got });
+                    secs: d.secs, mph: d.mph, top: d.top, ending: d.ending, got: d.got });
                 }));
               });
               return Promise.all(pending).then(function(){
@@ -786,13 +791,15 @@
           fin.forEach(function(r, i){
             html += '<tr><td style="width:2em;opacity:.6">' + (i+1) + '</td><td>' + esc(r.driver) +
                     '</td><td style="text-align:right">' + r.secs.toFixed(2) + ' s</td>' +
-                    '<td style="text-align:right;opacity:.7">' + Math.round(r.mph) + ' mph</td><td style="width:2em">🏁</td></tr>';
+                    '<td style="text-align:right;opacity:.55">' + Math.round(r.mph) + ' trap</td>' +
+                    '<td style="text-align:right">' + Math.round(r.top) + ' mph</td><td style="width:2em">🏁</td></tr>';
           });
           rest.forEach(function(r){
             var what = r.ending === 'stopped' ? '⛽ halted at ' + Math.round(r.got) + ' m'
                      : r.ending === 'off' ? '💨 off the track' : '💥 engine';
             html += '<tr style="opacity:.55"><td>—</td><td>' + esc(r.driver) +
-                    '</td><td colspan="3" style="text-align:right">' + what + '</td></tr>';
+                    '</td><td></td><td style="text-align:right">' + Math.round(r.top||0) + ' mph</td>' +
+                    '<td colspan="2" style="text-align:right">' + what + '</td></tr>';
           });
           html += '</table>';
         });
