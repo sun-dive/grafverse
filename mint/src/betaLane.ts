@@ -17,7 +17,9 @@
 // ★ AND THE SPECIALISER IS NOT USED. `specialiseRun` / `optimizeCarCompile` exist because the old car
 // was compiled for one predicted run. A lane has no trace: the throttle arrives at runtime and the
 // state carries forward, so this is a plain BASIC covenant through the untouched compiler.
-import { buildBasicLock, frameMaxFee } from './basicCovenant.ts'
+/* ★ THE BETA'S OWN FRAME — forked so the sighash scope can be chosen without touching the file
+   `basic.html`'s bundle is built from. Pinned to the original by `test/beta-frame.ts`. */
+import { buildBasicLock, frameMaxFee } from './betaFrame.ts'
 import { S, SLIP_UNIT } from './shell.ts'
 
 /** Fixed point: a real number `x` is stored as `round(x * S)`. */
