@@ -20,7 +20,7 @@
 /* ★ THE BETA'S OWN FRAME — forked so the sighash scope can be chosen without touching the file
    `basic.html`'s bundle is built from. Pinned to the original by `test/beta-frame.ts`. */
 import { buildBasicLock, frameMaxFee } from './betaFrame.ts'
-import { S, SLIP_UNIT } from './shell.ts'
+import { S, SLIP_UNIT, fmul, fdiv } from './shell.ts'
 
 /** Fixed point: a real number `x` is stored as `round(x * S)`. */
 export const f = (x: number): number => Math.round(x * S)
@@ -52,7 +52,13 @@ export const BETA_LANE_REGS: LaneRegs = {
   M0: f(0.85), WE: f(0.05), WT: f(0.03), WF: f(0.00011),
   /* ⚠ PROVISIONAL. Terminal velocity is `(F/m)/DRAG`; a boxstock T-Jet measures 1.73 m/s and a good
      one 2.59 m/s (51 ft in 9 s / under 6 s). These are set to land in that band and NOT fitted. */
-  FE: f(0.069), DRAG: f(0.20), DRAG2: f(0.09),
+  /* ⚠ FE RAISED 0.069 → 0.17 on 21 Aug, and the reason is worth keeping: at 0.069 the terminal
+     velocity was (F/m)/DRAG = 0.77 m/s against a deslot limit of 1.25 m/s on a 9" curve — SO THE CAR
+     COULD NEVER GO OFF, and `test/beta-lane.ts` proved the deslot rule was unreachable. A rule no test
+     can provoke is a rule no test has examined. ⇒ 0.17 gives ~1.7 m/s loaded and ~3.4 m/s light, so
+     full throttle through a corner deslots and lifting to ~6 does not. ⚠ STILL NOT A FIT — it makes the
+     branch REACHABLE so it can be tested. The calibration sweep is §8 and it is not done. */
+  FE: f(0.17), DRAG: f(0.20), DRAG2: f(0.09),
   /* ⚠ PROVISIONAL. μ ≈ 0.7 for rubber on plastic × g 9.81 ⇒ 6.9 m/s². On a 9" (0.229 m) curve that is
      1.25 m/s and on a 6" (0.152 m) curve 1.02 m/s, against 1.7–2.6 m/s on the straight — so a driver
      genuinely has to lift, and the tight corner is ~18% slower. ★ ONE real measurement fixes it for
@@ -144,6 +150,11 @@ t = t + dt
 fuel = MAX(0, fuel - BURN0 - eng * BURN_E * ths / TM)
 
 REM ══ THE TURN — ARCS × 45°, and the deslot test is the whole game ══════════
+REM ⚠⚠ over EXISTS BEFORE THE LOOP for the same reason rad does, and it must: a deslot is an
+REM    OUTCOME, not a refusal. VERIFY would make a car that went off UNSPENDABLE — the run could never
+REM    be recorded and the lane would sit stuck mid-race. "Deslot and out of the race" means the race
+REM    ENDS, and ending is a state the covenant writes.
+over = 0
 arclen = FMUL(rad, ARCK)
 FOR i = 1 TO ARCS
   mass = M0 + eng * WE + tyr * WT + FMUL(fuel * S, WF)
@@ -154,7 +165,7 @@ FOR i = 1 TO ARCS
   v = v + FMUL(accel, dt)
   VERIFY v > 0
   REM ⚠ TOO FAST FOR THE SLOT: out of the race, and there is no partial credit
-  VERIFY FMUL(v, v) <= vmax2
+  IF FMUL(v, v) > vmax2 THEN over = 1
   t = t + dt
   fuel = MAX(0, fuel - BURN0 - eng * BURN_E * tht / TM)
 NEXT
@@ -166,6 +177,11 @@ IF section = 4 THEN
   lap = lap + 1
 END IF
 IF lap = LAPS THEN phase = P_FINISHED
+REM ⚠⚠ THE DESLOT IS TESTED LAST, AND THE ORDER IS LOAD-BEARING. Go off in the final corner and you
+REM    did NOT finish — so this must overwrite the finish, never the other way round. Same lesson the
+REM    racers learned twice: two endings decided by ordering, and getting it backwards files a wreck
+REM    as a result.
+IF over = 1 THEN phase = P_DESLOTTED
 `.trim()
 
 /** The compile-time constants the program above resolves by name. */
@@ -182,7 +198,7 @@ export function laneConsts(regs: LaneRegs, track: LaneTrack): Record<string, num
        the decompiled script rather than baked into a number nobody can account for. */
     ARCK: f((2 * Math.PI) / 8),
     ARCS: track.arcs, LAPS: track.laps,
-    P_RACING: PHASE.RACING, P_FINISHED: PHASE.FINISHED,
+    P_RACING: PHASE.RACING, P_FINISHED: PHASE.FINISHED, P_DESLOTTED: PHASE.DESLOTTED,
   }
 }
 
@@ -217,3 +233,51 @@ export function buildLaneLock(
 }
 
 export { frameMaxFee }
+
+/**
+ * ★★ THE REFERENCE — what one section does, in JavaScript, mirroring `LANE_SRC` line for line.
+ *
+ * ⚠⚠ IT MUST AGREE WITH THE SCRIPT, and `test/beta-lane.ts` requires it through the real interpreter.
+ * A reference that quietly disagrees with the covenant is worse than none: the page would predict one
+ * race and the chain would settle another, and the page is what a driver sees.
+ *
+ * ⚠ Integer arithmetic throughout, truncating toward zero exactly as `OP_DIV` does — a double would
+ * agree for a while and then part by a unit, which is the hardest kind of divergence to find.
+ */
+export function laneSection(
+  st: LaneState, ths: number, tht: number,
+  regs: LaneRegs = BETA_LANE_REGS, track: LaneTrack = AURORA_FIG8,
+): LaneState & { deslot: boolean } {
+  const C = laneConsts(regs, track)
+  const t0 = (x: number): number => Math.trunc(x)
+  const rad = st.section % 2 === 0 ? C.RAD_IN : C.RAD_OUT
+  const slip = st.section % 2 === 0 ? C.SLIP_IN : C.SLIP_OUT
+  const vmax2 = t0(fmul(C.K, rad) * slip / C.SLIP)
+
+  let { v, fuel, t, section, lap, phase } = st
+  let deslot = false
+
+  const step = (ds: number, th: number, isArc: boolean): void => {
+    const mass = C.M0 + st.eng * C.WE + st.tyr * C.WT + fmul(fuel * C.S, C.WF)
+    const demand = t0(st.eng * C.FE * th / C.TM)
+    const aero = fmul(fmul(v, v), C.DRAG2)
+    const accel = fdiv(demand - aero, mass) - fmul(v, C.DRAG)
+    const dt = fdiv(ds, v)
+    v = v + fmul(accel, dt)
+    t = t + dt
+    fuel = Math.max(0, fuel - C.BURN0 - t0(st.eng * C.BURN_E * th / C.TM))
+    if (isArc && fmul(v, v) > vmax2) deslot = true
+  }
+
+  step(C.STRAIGHT, ths, false)
+  const arclen = fmul(rad, C.ARCK)
+  for (let i = 0; i < track.arcs; i++) step(arclen, tht, true)
+
+  section = section + 1
+  if (section === 4) { section = 0; lap = lap + 1 }
+  if (lap === track.laps) phase = PHASE.FINISHED
+  /* ⚠ LAST, and the order is load-bearing — see the note in LANE_SRC. */
+  if (deslot) phase = PHASE.DESLOTTED
+
+  return { ...st, v, fuel, t, section, lap, phase, deslot }
+}
