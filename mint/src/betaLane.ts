@@ -378,7 +378,7 @@ const le = (x: number, w: number): number[] => {
 export function laneTick(
   st: LaneState, inp: LaneInputs,
   regs: LaneRegs = BETA_LANE_REGS, track: LaneTrack = AURORA_FIG8,
-): LaneState & { deslot: boolean } {
+): LaneState & { deslot: boolean; atTurn: { v: number; fuel: number; t: number } } {
   const C = laneConsts(regs, track)
   if (st.phase !== PHASE.RACING) {
     /* ★ THE ID CHAINS FROM THE LAST RACE — unique with no entropy, and needing no outpoint, which
@@ -391,6 +391,7 @@ export function laneTick(
       raceId, phase: PHASE.RACING, section: 0, lap: 0,
       v: C.V0, fuel: inp.nfuel, t: 0,
       eng: inp.neng, tyr: inp.ntyr, dia: inp.ndia, driver: inp.ndriver, deslot: false,
+      atTurn: { v: C.V0, fuel: inp.nfuel, t: 0 },
     }
   }
   return laneSection(st, inp.ths, inp.tht, regs, track)
@@ -399,7 +400,7 @@ export function laneTick(
 export function laneSection(
   st: LaneState, ths: number, tht: number,
   regs: LaneRegs = BETA_LANE_REGS, track: LaneTrack = AURORA_FIG8,
-): LaneState & { deslot: boolean } {
+): LaneState & { deslot: boolean; atTurn: { v: number; fuel: number; t: number } } {
   const C = laneConsts(regs, track)
   const t0 = (x: number): number => Math.trunc(x)
   const rad = st.section % 2 === 0 ? C.RAD_IN : C.RAD_OUT
@@ -425,6 +426,12 @@ export function laneSection(
   }
 
   step(C.STRAIGHT, ths, false)
+  /* ★★ THE STATE AS THE CORNER ARRIVES, reported so a driver can be given that moment.
+     ⚠ The straight runs BEFORE the turn and reads only `ths`, so nothing above this line depends on
+     `tht` — which means the turn throttle may be committed LATER without changing anything that has
+     already happened. Not a convenience: it is why a bench can offer live control and still be exactly
+     what the covenant computes. */
+  const atTurn = { v, fuel, t }
   const arclen = fmul(rad, C.ARCK)
   for (let i = 0; i < track.arcs; i++) step(arclen, tht, true)
 
@@ -434,5 +441,5 @@ export function laneSection(
   /* ⚠ LAST, and the order is load-bearing — see the note in LANE_SRC. */
   if (deslot) phase = PHASE.DESLOTTED
 
-  return { ...st, v, fuel, t, section, lap, phase, deslot }
+  return { ...st, v, fuel, t, section, lap, phase, deslot, atTurn }
 }

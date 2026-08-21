@@ -113,6 +113,7 @@
         <div class="row"><span>speed</span><span id="d-v">—</span></div>
         <div class="row"><span>section</span><span id="d-sec">—</span></div>
         <div class="row"><span>deslot ceiling here</span><span id="d-lim">—</span></div>
+        <div class="row"><span>your trigger</span><span><b id="d-trig">8</b> · <span id="d-live" class="note"></span></span></div>
       </div>
       <div>
         <div class="note">grip · how close to leaving the slot <span id="d-pct" style="float:right"></span></div>
@@ -145,7 +146,8 @@
            numbers up front, per transaction. You set it before the corner arrives, which is also what
            a real trigger finger does. -->
       <label>throttle · the turn <b id="v-tht">8</b><input type="range" id="tht" min="1" max="16" step="1" value="8"></label>
-      <p class="note" style="margin:2px 0 0">★ or roll the <b>mouse wheel over the track</b> to feather it live</p>
+      <p class="note" style="margin:2px 0 0">★ roll the <b>mouse wheel over the track</b> to drive —
+        it is read as you enter the straight, and again <b>as the corner arrives</b></p>
       <label style="margin-top:12px">playback <b id="v-rate">0.5×</b><input type="range" id="rate" min="1" max="20" step="1" value="5"></label>
       <!-- ⚠ THE OIL. `slip` is a track property, not a car one — his drop of oil on the rails, made
            legitimate. Under §7.8 it becomes per-section data, so a lane can have one greasy corner. -->
@@ -351,20 +353,35 @@
          Set it before the corner arrives, which is what a trigger finger does anyway. */
       var rows = [], off = -1, at = 0, tPrev = 0, i = 0, cur = null, st0 = st;
 
-      function nextSection(){
+      /* ★★★ TWO COMMIT POINTS A SECTION, which is exactly what the covenant takes.
+         · entering the section  → `ths` is whatever you are holding
+         · reaching the corner   → `tht` is whatever you are holding THEN
+         ⚠ And that is exact, not an approximation: the straight runs first and reads only `ths`, so
+         recomputing the section with a late `tht` leaves the straight byte-identical. `laneSection`
+         reports `atTurn` — the state as the corner arrives — so the bench can hand you that moment. */
+      function beginSection(){
         if (i >= track.sections || off >= 0) return null;
         var k = i, lim = ceiling(GB, regs, k, tyr, +$('slip').value);
-        var used = LIVE;
-        var n = GB.laneSection(st0, ths, used, regs, track);
-        var split = fx(n.t) - tPrev; tPrev = fx(n.t);
-        var f = { from: at, to: at + g.L[k].len, secs: split, v: fx(n.v), lim: lim, sec: k,
-                  straightFrac: g.L[k].straight / g.L[k].len, ths: ths, tht: used };
-        rows.push({ sec: k, r: g.L[k].r, lim: lim, v: fx(n.v), split: split, off: n.deslot, tht: used });
-        at += g.L[k].len;
-        if (n.deslot) off = k;
-        st0 = n; i++;
+        var usedThs = LIVE;
+        var probe = GB.laneSection(st0, usedThs, 1, regs, track);   // tht irrelevant to the straight
+        var sFrac = g.L[k].straight / g.L[k].len;
+        return { phase: 'straight', sec: k, lim: lim, ths: usedThs,
+                 from: at, to: at + g.L[k].straight, secs: fx(probe.atTurn.t) - tPrev,
+                 v: fx(probe.atTurn.v), straightFrac: 1 };
+      }
+      function beginTurn(f){
+        var usedTht = LIVE;
+        var n = GB.laneSection(st0, f.ths, usedTht, regs, track);
+        var turnSecs = fx(n.t) - fx(n.atTurn.t);
+        rows.push({ sec: f.sec, r: g.L[f.sec].r, lim: f.lim, v: fx(n.v),
+                    split: fx(n.t) - tPrev, off: n.deslot, ths: f.ths, tht: usedTht });
+        tPrev = fx(n.t);
+        if (n.deslot) off = f.sec;
+        st0 = n; i++; at += g.L[f.sec].len;
         paintRows();
-        return f;
+        return { phase: 'turn', sec: f.sec, lim: f.lim, ths: f.ths, tht: usedTht,
+                 from: at - g.L[f.sec].len + g.L[f.sec].straight, to: at,
+                 secs: turnSecs, v: fx(n.v), straightFrac: 0 };
       }
       function paintRows(){
         $('splits').innerHTML = rows.map(function(r){
@@ -386,8 +403,9 @@
       }
 
       $('splits').innerHTML = '';
-      cur = nextSection();
+      cur = beginSection();
       if (!cur) return;
+      $('d-live').textContent = 'STRAIGHT';
 
       var t0 = performance.now();
       (function step(now){
@@ -413,7 +431,7 @@
         }
 
         /* the lamps run off the rails: they dim with the trigger and die when it leaves the slot */
-        var th = (u < f.straightFrac) ? f.ths : f.tht;
+        var th = (f.phase === 'straight') ? f.ths : f.tht;
         var lit = dying ? 0 : th / 16;
         $('lampL').setAttribute('opacity', (0.18 + 0.82 * lit).toFixed(2));
         $('lampR').setAttribute('opacity', (0.18 + 0.82 * lit).toFixed(2));
@@ -432,7 +450,9 @@
 
         if (u >= 1){
           if (off >= 0 && f.sec === off) return;      // it has gone; leave it lying there
-          cur = nextSection(); t0 = now;
+          cur = (f.phase === 'straight') ? beginTurn(f) : beginSection();
+          $('d-live').textContent = cur ? (cur.phase === 'turn' ? 'CORNER' : 'STRAIGHT') : '';
+          t0 = now;
           if (!cur) return;
         }
         RAF = requestAnimationFrame(step);
@@ -466,7 +486,7 @@
   $('track').addEventListener('wheel', function(ev){
     ev.preventDefault();
     LIVE = Math.max(1, Math.min(16, LIVE + (ev.deltaY < 0 ? 1 : -1)));
-    $('tht').value = LIVE; $('v-tht').textContent = LIVE;
+    $('tht').value = LIVE; $('v-tht').textContent = LIVE; $('d-trig').textContent = LIVE;
   }, { passive: false });
   $('go').addEventListener('click', run);
   $('stop').addEventListener('click', function(){ cancelAnimationFrame(RAF); $('msg').textContent = 'Stopped.' });
