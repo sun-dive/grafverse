@@ -16,7 +16,8 @@ import { Transaction, UnlockingScript, Spend } from '@bsv/sdk'
 import { basicUnlockingOps, valueBytes } from '../src/betaFrame.ts'
 import { pushTxPreimage } from '../src/pushtx.ts'
 import {
-  buildLaneLock, laneSection, PHASE, AURORA_FIG8, BETA_LANE_REGS, type LaneState,
+  buildLaneLock, laneSection, laneTick, PHASE, AURORA_FIG8, BETA_LANE_REGS,
+  type LaneState, type LaneInputs,
 } from '../src/betaLane.ts'
 
 let pass = 0, fail = 0
@@ -28,8 +29,11 @@ const SATS = 1                       // ★ the lane holds ONE satoshi and never
 const MAXFEE = 0                     // ⇒ so out0.value ≥ V − 0: the value may not move at all
 
 /** Spend one section: assemble the transaction, derive the preimage from it, and let the interpreter judge. */
-function spend(from: LaneState, to: LaneState, ths: number, tht: number, outSats = SATS):
-  { ok: boolean; why?: string } {
+const NEW: Omit<LaneInputs, 'ths' | 'tht'> =
+  { ndriver: new Array(24).fill(0), neng: 14, ntyr: 10, nfuel: 40000 }
+
+function spend(from: LaneState, to: LaneState, ths: number, tht: number, outSats = SATS,
+               nw: Omit<LaneInputs, 'ths' | 'tht'> = NEW): { ok: boolean; why?: string } {
   const lock = buildLaneLock(from, { maxFee: MAXFEE })
   const next = buildLaneLock(to, { maxFee: MAXFEE })
 
@@ -47,7 +51,8 @@ function spend(from: LaneState, to: LaneState, ths: number, tht: number, outSats
     inputSequence: 0xffffffff, lockTime: 0,
   })
   const unlock = new UnlockingScript(basicUnlockingOps({
-    spenderOutputs: [], newValue: valueBytes(outSats), preimage, inputs: [ths, tht],
+    spenderOutputs: [], newValue: valueBytes(outSats), preimage,
+    inputs: [ths, tht, nw.ndriver, nw.neng, nw.ntyr, nw.nfuel],
   }))
   tx.inputs[0].unlockingScript = unlock
 
@@ -64,6 +69,7 @@ function spend(from: LaneState, to: LaneState, ths: number, tht: number, outSats
 /* ── a lane mid-race: rolling start, section 0, a mid-range car ─────────────────────────────────── */
 const S = 4294967296
 const START: LaneState = {
+  raceId: new Array(32).fill(0),
   phase: PHASE.RACING, section: 0, lap: 0,
   v: Math.round(0.8 * S), fuel: 40000, t: 0,
   eng: 14, tyr: 10, driver: new Array(24).fill(0),
@@ -134,6 +140,36 @@ console.log('\n💥 THE DESLOT — too fast for the slot')
   check('the reference agrees the car is over the limit', hot.deslot)
   console.log(`      the covenant ${res.ok ? 'ACCEPTED it' : 'REFUSED the spend: ' + res.why}`)
   check('⚠⚠ A DESLOT IS RECORDABLE — it must END the race, not make the spend impossible', res.ok)
+}
+
+console.log('\n♾ THE LANE ALWAYS TICKS FORWARD — a finished or wrecked race is the next one\'s start')
+{
+  /* ⚠ An earlier draft opened with VERIFY phase = P_RACING, which left a lane in a terminal state
+     UNSPENDABLE and the next driver with nowhere to begin. Nothing about a covenant requires that. */
+  for (const [name, ph] of [['FINISHED', PHASE.FINISHED], ['DESLOTTED', PHASE.DESLOTTED]] as const) {
+    const dead: LaneState = { ...START, phase: ph, v: 0, fuel: 0, t: 12345, section: 3, lap: 1 }
+    const fresh = laneTick(dead, { ths: 0, tht: 0, ...NEW })
+    check(`★★ a ${name} lane accepts a fresh race`, spend(dead, fresh, 0, 0).ok)
+    check(`   and it starts clean — section 0, lap 0, t 0, rolling`,
+      fresh.section === 0 && fresh.lap === 0 && fresh.t === 0 && fresh.v > 0)
+  }
+
+  const dead: LaneState = { ...START, phase: PHASE.FINISHED, v: 0, fuel: 0, t: 999, section: 3, lap: 1 }
+  const fresh = laneTick(dead, { ths: 0, tht: 0, ...NEW })
+  check('★★★ THE RACE ID CHANGED — a walk can tell one race from the next',
+    fresh.raceId.join(',') !== dead.raceId.join(','))
+  check('   and it is 32 bytes', fresh.raceId.length === 32)
+  check('⚠ a reset claiming the OLD race id is REFUSED',
+    spend(dead, { ...fresh, raceId: dead.raceId }, 0, 0).ok, false)
+  check('⚠ a reset claiming an id built from a DIFFERENT car is REFUSED',
+    spend(dead, laneTick(dead, { ths: 0, tht: 0, ...NEW, neng: 24 }), 0, 0).ok, false)
+  check('⚠ a reset keeping the old time on the clock is REFUSED',
+    spend(dead, { ...fresh, t: dead.t }, 0, 0).ok, false)
+  check('★ the id CHAINS — the same car started twice gives DIFFERENT ids',
+    laneTick({ ...dead, raceId: fresh.raceId }, { ths: 0, tht: 0, ...NEW })
+      .raceId.join(',') !== fresh.raceId.join(','))
+  check('⚠ and a RACING lane may not be reset — it runs its section instead',
+    spend(START, fresh, 0, 0).ok, false)
 }
 
 console.log(`\n${fail === 0 ? '✅' : '❌'}  ${pass} passed, ${fail} failed`)

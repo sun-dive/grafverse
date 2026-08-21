@@ -20,6 +20,7 @@
 /* ★ THE BETA'S OWN FRAME — forked so the sighash scope can be chosen without touching the file
    `basic.html`'s bundle is built from. Pinned to the original by `test/beta-frame.ts`. */
 import { buildBasicLock, frameMaxFee } from './betaFrame.ts'
+import { Hash } from '@bsv/sdk'
 import { S, SLIP_UNIT, fmul, fdiv } from './shell.ts'
 
 /** Fixed point: a real number `x` is stored as `round(x * S)`. */
@@ -110,6 +111,7 @@ export const PHASE = { RACING: 1, FINISHED: 2, DESLOTTED: 3 } as const
  * should be would be a car nobody can check. → THE HARD RULE.
  */
 export const LANE_SRC = `
+DIM raceId$32
 DIM phase%1
 DIM section%1
 DIM lap%1
@@ -120,16 +122,47 @@ DIM eng%1
 DIM tyr%1
 DIM driver$24
 
-REM ── only a racing lane may be advanced ──
-VERIFY phase = P_RACING
+REM ⚠ EVERY WORKING VARIABLE IS GIVEN A VALUE BEFORE THE BRANCH. The compiler refuses an IF whose
+REM   arms have nothing to agree about — BRC-Z §4.1's stack-shape rule — and it is right to: two arms
+REM   that leave the stack different shapes fail hundreds of opcodes from the cause.
+rad = RAD_IN
+slip = SLIP_IN
+vmax2 = 0
+arclen = 0
+over = 0
+mass = 0
+demand = 0
+aero = 0
+accel = 0
+dt = 0
+
+REM ⚠⚠ THE PHASE CHOOSES WHAT THE TICK DOES, NEVER WHETHER IT MAY HAPPEN.
+REM    An earlier draft opened with VERIFY phase = P_RACING, which left a finished or wrecked lane
+REM    UNSPENDABLE and the next driver with nowhere to start. That was an invented restriction: nothing
+REM    about a covenant makes a terminal state terminal. A lane always ticks forward. Bootcamp #4.
+IF phase <> P_RACING THEN
+  REM ── A FRESH RACE. The id CHAINS from the last one, so it is unique with no entropy and needs no
+  REM    outpoint — which matters, because ANYONECANPAY zeroes hashPrevouts and the covenant cannot see
+  REM    the outpoint it spends. 32 bytes, not 8: this structure is meant to be reusable for science,
+  REM    engineering and safety work, and those readers would demand a full hash. (sun-dive, 21 Aug)
+  REM ⚠ CAT, NOT +. In this dialect + is OP_ADD — it would read two byte strings as NUMBERS and add
+  REM   them, which compiles perfectly and hashes something nobody intended.
+  raceId = HASH256(CAT(CAT(CAT(CAT(raceId, ndriver), NUM2BIN(neng, 1)), NUM2BIN(ntyr, 1)), NUM2BIN(nfuel, 4)))
+  driver = ndriver
+  eng = neng
+  tyr = ntyr
+  fuel = nfuel
+  v = V0
+  t = 0
+  section = 0
+  lap = 0
+  phase = P_RACING
+ELSE
+
 REM ── the rolling start: distance-stepping divides by v, so v is never zero ──
 VERIFY v > 0
 
-REM ── THE TRACK, BY SECTION. Script has no arrays; the figure 8 alternates, so ONE test does it.
-REM ⚠ Both are given a value BEFORE the branch: the compiler refuses an IF whose arms have nothing to
-REM   agree about, which is BRC-Z §4.1's stack-shape rule catching a real mistake before it is minted.
-rad = RAD_IN
-slip = SLIP_IN
+REM ── THE TRACK, BY SECTION. Script has no arrays; the figure 8 alternates, so ONE test does it. ──
 IF MOD(section, 2) = 1 THEN
   rad = RAD_OUT
   slip = SLIP_OUT
@@ -154,7 +187,6 @@ REM ⚠⚠ over EXISTS BEFORE THE LOOP for the same reason rad does, and it must
 REM    OUTCOME, not a refusal. VERIFY would make a car that went off UNSPENDABLE — the run could never
 REM    be recorded and the lane would sit stuck mid-race. "Deslot and out of the race" means the race
 REM    ENDS, and ending is a state the covenant writes.
-over = 0
 arclen = FMUL(rad, ARCK)
 FOR i = 1 TO ARCS
   mass = M0 + eng * WE + tyr * WT + FMUL(fuel * S, WF)
@@ -182,6 +214,7 @@ REM    did NOT finish — so this must overwrite the finish, never the other way
 REM    racers learned twice: two endings decided by ordering, and getting it backwards files a wreck
 REM    as a result.
 IF over = 1 THEN phase = P_DESLOTTED
+END IF
 `.trim()
 
 /** The compile-time constants the program above resolves by name. */
@@ -199,10 +232,13 @@ export function laneConsts(regs: LaneRegs, track: LaneTrack): Record<string, num
     ARCK: f((2 * Math.PI) / 8),
     ARCS: track.arcs, LAPS: track.laps,
     P_RACING: PHASE.RACING, P_FINISHED: PHASE.FINISHED, P_DESLOTTED: PHASE.DESLOTTED,
+    /* ★ THE ROLLING START — see LANE_SRC. Permanent, and it is why v is never zero. */
+    V0: f(0.8),
   }
 }
 
 export interface LaneState {
+  raceId: number[]
   phase: number; section: number; lap: number
   v: number; fuel: number; t: number
   eng: number; tyr: number
@@ -228,7 +264,7 @@ export function buildLaneLock(
     /* ★ "A covenant with no inputs can only advance itself; one with inputs is a machine somebody
        plays." Two numbers are the entire driver input: how hard down the straight, how much you lift
        for the corner. */
-    inputs: ['ths', 'tht'],
+    inputs: ['ths', 'tht', 'ndriver', 'neng', 'ntyr', 'nfuel'],
   })
 }
 
@@ -244,6 +280,47 @@ export { frameMaxFee }
  * ⚠ Integer arithmetic throughout, truncating toward zero exactly as `OP_DIV` does — a double would
  * agree for a while and then part by a unit, which is the hardest kind of divergence to find.
  */
+export interface LaneInputs {
+  /** throttle down the straight, and through the turn — the whole driver input */
+  ths: number; tht: number
+  /** ⚠ read ONLY when the lane is not racing: the next race's car */
+  ndriver: number[]; neng: number; ntyr: number; nfuel: number
+}
+
+/** little-endian, `w` bytes — what NUM2BIN(x, w) puts in the script. */
+const le = (x: number, w: number): number[] => {
+  const o: number[] = []
+  for (let i = 0; i < w; i++) { o.push(x & 0xff); x = Math.floor(x / 256) }
+  return o
+}
+
+/**
+ * ★★ ONE TICK, mirroring LANE_SRC exactly — a fresh race if the lane is not racing, a section if it is.
+ *
+ * ⚠ THE LANE ALWAYS TICKS FORWARD. There is no state it can be left in that blocks the next driver;
+ * the phase decides what happens, never whether anything may.
+ */
+export function laneTick(
+  st: LaneState, inp: LaneInputs,
+  regs: LaneRegs = BETA_LANE_REGS, track: LaneTrack = AURORA_FIG8,
+): LaneState & { deslot: boolean } {
+  const C = laneConsts(regs, track)
+  if (st.phase !== PHASE.RACING) {
+    /* ★ THE ID CHAINS FROM THE LAST RACE — unique with no entropy, and needing no outpoint, which
+       ANYONECANPAY denies us anyway. 32 bytes because the structure is meant to be reused where a
+       truncated identifier would not be accepted. */
+    const raceId = Hash.hash256([
+      ...st.raceId, ...inp.ndriver, ...le(inp.neng, 1), ...le(inp.ntyr, 1), ...le(inp.nfuel, 4),
+    ])
+    return {
+      raceId, phase: PHASE.RACING, section: 0, lap: 0,
+      v: C.V0, fuel: inp.nfuel, t: 0,
+      eng: inp.neng, tyr: inp.ntyr, driver: inp.ndriver, deslot: false,
+    }
+  }
+  return laneSection(st, inp.ths, inp.tht, regs, track)
+}
+
 export function laneSection(
   st: LaneState, ths: number, tht: number,
   regs: LaneRegs = BETA_LANE_REGS, track: LaneTrack = AURORA_FIG8,

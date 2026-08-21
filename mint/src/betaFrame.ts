@@ -180,13 +180,17 @@ export function buildBasicLock(p: FrameParams): LockingScript {
 
 /** The unlocking half, in the order the frame reads it. */
 export function basicUnlockingOps(
-  p: { spenderOutputs: number[]; newValue: number[]; preimage: number[]; inputs?: number[] },
+  /* ★ AN INPUT MAY BE A NUMBER OR RAW BYTES. A lane's reset carries a 24-byte driver name and a
+     32-byte race id, and neither is a script number. `basicCovenant.ts` pushes numbers only, which is
+     the second thing the fork exists for. */
+  p: { spenderOutputs: number[]; newValue: number[]; preimage: number[]
+       inputs?: Array<number | number[]> },
 ): ScriptChunk[] {
   if (p.newValue.length !== 8) throw new Error('basicCovenant: newValue is 8 bytes, little-endian')
   /* ⚠ IN THE SAME ORDER AS `inputs` NAMES THEM, deepest first — the compiler resolved every name
      against that list, so a reversed argument silently reads its neighbour. */
   return [
-    ...(p.inputs ?? []).map(n => PN(n)),
+    ...(p.inputs ?? []).map(n => (Array.isArray(n) ? pushData(n) : PN(n))),
     pushData(p.spenderOutputs), pushData(p.newValue), pushData(p.preimage),
   ]
 }
