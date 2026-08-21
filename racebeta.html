@@ -96,7 +96,15 @@
         <rect x="-6"  y="-10" width="6" height="3" rx="1" fill="#0b1016"/>
         <rect x="-6"  y="7"  width="6" height="3" rx="1" fill="#0b1016"/>
         <circle cx="-9" cy="0" r="4" fill="#0b1016"/>
-        <circle cx="2" cy="0" r="1.8" fill="#ffb454"/>
+        <!-- ★★ THE HEADLIGHTS RUN OFF THE RAILS, which is why they are an instrument and not a
+             flourish: a slot car's lamp is fed by the same track voltage as its motor, so it DIMS WHEN
+             YOU LIFT. You can watch a driver back off for the corner without reading a single number.
+             ⚠⚠ And when the car leaves the slot the lights GO OUT — not as a flourish either. Off the
+             rails is no power. The ending is the lamp. -->
+        <circle id="beam" cx="10" cy="-3" r="9" fill="#ffb454" opacity=".13"/>
+        <circle id="beam2" cx="10" cy="3" r="9" fill="#ffb454" opacity=".13"/>
+        <circle id="lampL" cx="2" cy="-3.5" r="1.9" fill="#ffe9b0"/>
+        <circle id="lampR" cx="2" cy="3.5" r="1.9" fill="#ffe9b0"/>
       </g>
     </svg>
     <div class="grid" style="margin-top:10px">
@@ -108,8 +116,9 @@
       <div>
         <div class="note">grip · how close to leaving the slot <span id="d-pct" style="float:right"></span></div>
         <div class="bar"><i id="d-bar"></i></div>
-        <p class="note" style="margin-top:8px">The tail comes round as the car uses up its grip. When the
-          bar reaches 100% it is gone.</p>
+        <p class="note" style="margin-top:8px">The tail comes round as the car uses up its grip; when the
+          bar reaches 100% it is gone. ★ The headlights run off the rails, so they <b>dim when you
+          lift</b> — and go out the moment it leaves the slot.</p>
       </div>
     </div>
   </div>
@@ -270,7 +279,8 @@
         var n = GB.laneSection(st, ths, tht, regs, track);
         var split = fx(n.t) - tPrev; tPrev = fx(n.t);
         rows.push({ sec: k, r: g.L[k].r, lim: lim, v: fx(n.v), split: split, off: n.deslot });
-        frames.push({ from: at, to: at + g.L[k].len, secs: split, v: fx(n.v), lim: lim, sec: k });
+        frames.push({ from: at, to: at + g.L[k].len, secs: split, v: fx(n.v), lim: lim, sec: k,
+                      straightFrac: g.L[k].straight / g.L[k].len, ths: ths, tht: tht });
         at += g.L[k].len;
         if (n.deslot){ off = k; st = n; break }
         st = n;
@@ -318,6 +328,15 @@
           slide += 520 * g2 * g2;
           $('carg').setAttribute('opacity', String(1 - 0.75 * g2));
         }
+        /* ★ WHICH THROTTLE IS THE DRIVER HOLDING RIGHT NOW? The first slice of a section is the
+           straight, the rest is the turn — so the lamps show the LIFT as it happens. */
+        var th = (u < f.straightFrac) ? f.ths : f.tht;
+        var lit = (off >= 0 && i === frames.length - 1 && u > 0.55) ? 0 : th / 16;
+        $('lampL').setAttribute('opacity', (0.18 + 0.82 * lit).toFixed(2));
+        $('lampR').setAttribute('opacity', (0.18 + 0.82 * lit).toFixed(2));
+        $('beam').setAttribute('opacity', (0.03 + 0.20 * lit).toFixed(3));
+        $('beam2').setAttribute('opacity', (0.03 + 0.20 * lit).toFixed(3));
+
         $('carg').setAttribute('transform',
           'translate(' + fr.x.toFixed(1) + ',' + fr.y.toFixed(1) + ') rotate(' + (fr.deg + slide).toFixed(1) + ')');
         $('d-v').textContent = f.v.toFixed(2) + ' m/s';
