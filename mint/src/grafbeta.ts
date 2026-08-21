@@ -83,7 +83,8 @@ export { Transaction, TransactionSignature, LockingScript, P2PKH } from '@bsv/sd
    ⚠⚠ `betaLane.ts` IS THE BETA'S OWN FILE and must stay that way. It is reached only from here, so
    nothing it does can move `vendor/grafracers.js` and nothing can move the live racers page. */
 export {
-  buildLaneLock, laneConsts, LANE_SRC, BETA_LANE_REGS, AURORA_FIG8, PHASE as LANE_PHASE, f as laneFixed,
+  buildLaneLock, laneConsts, LANE_SRC, BETA_LANE_REGS, AURORA_FIG8, DOUBLE_FIG8,
+  PHASE as LANE_PHASE, f as laneFixed,
   /* ★ the bench drives THESE — the same functions the covenant is proved against, never a copy */
   laneSection, laneTick,
 } from './betaLane.ts'

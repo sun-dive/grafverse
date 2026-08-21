@@ -109,6 +109,11 @@ export interface LaneTrack {
   slipOuter: number
   /** 45° pieces per turn. ⚠ THE SAME FOR EVERY SECTION — an unrolled FOR needs a compile-time bound. */
   arcs: number
+  /** Sections in a lap. ⚠ PERMANENT: it is a literal in the compiled program. */
+  sections: number
+  /** ★ Turn direction per section. PRESENTATION ONLY — the physics reads |radius| and never the sign,
+   *  so this never reaches the covenant. It is what makes an 8 an 8 rather than an oval. */
+  dirs: number[]
   /** Laps in a race. */
   laps: number
 }
@@ -123,6 +128,24 @@ export const AURORA_FIG8: LaneTrack = {
   radiusInner: 0.1524, radiusOuter: 0.2286,   // 6" and 9"
   slipInner: SLIP_UNIT, slipOuter: SLIP_UNIT,
   arcs: 6,                                 // 6 × 45° = 270°, past 180° to close the 8
+  sections: 4, dirs: [1, -1, 1, -1],
+  laps: 1,
+}
+
+/**
+ * ★★★ THE 88 — *"88 was just a warm up."* (sun-dive, 21 Aug)
+ *
+ * Eight sections, and it does NOT retrace: the alternating pattern simply drives the single 8 twice —
+ * it returns to the origin halfway — so this direction pattern was SEARCHED FOR rather than chosen. It
+ * closes exactly, net turn 0°, and reaches 18" out before coming back.
+ * ⚠ Twice the sections is twice the transactions a lap. The cost dial, made visible.
+ */
+export const DOUBLE_FIG8: LaneTrack = {
+  straight: 0.381,
+  radiusInner: 0.1524, radiusOuter: 0.2286,
+  slipInner: SLIP_UNIT, slipOuter: SLIP_UNIT,
+  arcs: 6,
+  sections: 8, dirs: [1, 1, -1, 1, 1, -1, -1, -1],
   laps: 1,
 }
 
@@ -248,7 +271,7 @@ NEXT
 
 REM ── advance the lap ──
 section = section + 1
-IF section = 4 THEN
+IF section = SECTIONS THEN
   section = 0
   lap = lap + 1
 END IF
@@ -277,7 +300,7 @@ export function laneConsts(regs: LaneRegs, track: LaneTrack): Record<string, num
     /* ★ A 45° arc is `2πr/8`. Written as a constant times the radius so the ARC LENGTH is visible in
        the decompiled script rather than baked into a number nobody can account for. */
     ARCK: f((2 * Math.PI) / 8),
-    ARCS: track.arcs, LAPS: track.laps,
+    ARCS: track.arcs, LAPS: track.laps, SECTIONS: track.sections,
     /* ★ The tyre the deslot ceiling is quoted at. tyr 10 is the reference compound; lower
        grades hold less. PERMANENT. */
     TYR_REF: 10,
@@ -406,7 +429,7 @@ export function laneSection(
   for (let i = 0; i < track.arcs; i++) step(arclen, tht, true)
 
   section = section + 1
-  if (section === 4) { section = 0; lap = lap + 1 }
+  if (section === track.sections) { section = 0; lap = lap + 1 }
   if (lap === track.laps) phase = PHASE.FINISHED
   /* ⚠ LAST, and the order is load-bearing — see the note in LANE_SRC. */
   if (deslot) phase = PHASE.DESLOTTED

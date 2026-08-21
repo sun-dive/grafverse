@@ -85,6 +85,7 @@
       <path id="path" fill="none" stroke="#0b1016" stroke-width="30" stroke-linecap="round"/>
       <path id="path1" fill="none" stroke="url(#lane)" stroke-width="22" stroke-linecap="round"/>
       <path id="slotline" fill="none" stroke="#0c141d" stroke-width="1.5" stroke-dasharray="4 7"/>
+      <g id="ribbon"></g>
       <g id="marks"></g>
       <!-- ★★ THE CAR PIVOTS ABOUT ITS NOSE, and that is not a drawing convenience: a slot car is held
            by a GUIDE PIN at the front, so when grip runs out it is the BACK that comes round. The body
@@ -152,6 +153,11 @@
       <!-- ⚠⚠ THE FITTED SET IS A BENCH OVERRIDE, NOT WHAT THE COVENANT CARRIES. betaLane.ts still holds
            the provisional constants and says so at every one; §7.10 records this fit and his call was
            to TEST BEFORE BUILDING IT IN. So you can feel both without the source pretending. -->
+      <!-- ★★★ "88 was just a warm up." Eight sections instead of four — and the PROGRAM is identical:
+           same 3,438 B lock, same physics. Only the track DATA and the transaction count change, which
+           is the design's whole claim made visible. -->
+      <label style="margin-top:14px">track <b id="v-trk">figure 8</b>
+        <input type="range" id="trk" min="0" max="1" step="1" value="0"></label>
       <label style="margin-top:14px">physics
         <b id="v-fit">fitted</b>
         <input type="range" id="fit" min="0" max="1" step="1" value="1"></label>
@@ -217,12 +223,13 @@
      ⚠ AND IT CLOSES. Four sections of (straight + 6x45°) with the turn direction alternating shut
      exactly when the straights are 15" — solved, not chosen, and 15" is a real AFX straight. */
   var PATH = null;
+  function trackOf(GB){ return +$('trk').value === 1 ? GB.DOUBLE_FIG8 : GB.AURORA_FIG8 }
   function buildPath(GB){
-    var T = GB.AURORA_FIG8, seg = [], x = 0, y = 0, h = 0, dist = 0;
-    var dirs = [1, -1, 1, -1];
+    var T = trackOf(GB), seg = [], x = 0, y = 0, h = 0, dist = 0;
+    var dirs = T.dirs;
     function push(px, py, d){ seg.push({ x: px, y: py, d: d }) }
     push(x, y, 0);
-    for (var k = 0; k < 4; k++){
+    for (var k = 0; k < T.sections; k++){
       var r = (k % 2 === 0) ? T.radiusInner : T.radiusOuter, dir = dirs[k];
       var straightEnd;
       x += Math.cos(h) * T.straight; y += Math.sin(h) * T.straight; dist += T.straight;
@@ -266,16 +273,30 @@
     return { x: px, y: py, deg: Math.atan2(b.py - a.py, b.px - a.px) * 180 / Math.PI,
              turn: Math.abs(cross) < 0.02 ? 0 : (cross > 0 ? 1 : -1) };
   }
+  /* ★★ THE CROSSING IS A BRIDGE, NOT A JUNCTION — which is how the real set did it: Y-trestles, one
+     strand over the other, never an intersection. Drawing the path as ONE stroke made the crossings
+     read as sharp corners, because a flat X is what they become.
+     ⇒ Drawn instead as segments IN ORDER, each with its own dark casing. A later strand paints over an
+     earlier one, so the crossing renders as an over-and-under for free — and the strand on top is
+     literally the one you drive second, which is the one on the bridge. */
   function drawTrack(){
-    var d = PATH.seg.map(function(q, i){ return (i ? 'L' : 'M') + q.px.toFixed(1) + ' ' + q.py.toFixed(1) }).join('');
-    d += 'Z';
-    $('path').setAttribute('d', d); $('path1').setAttribute('d', d); $('slotline').setAttribute('d', d);
+    var L = PATH.seg, chunks = [], N = 26, per = Math.ceil(L.length / N);
+    for (var c = 0; c < L.length - 1; c += per){
+      var d = '';
+      for (var i = c; i <= Math.min(L.length - 1, c + per); i++)
+        d += (i === c ? 'M' : 'L') + L[i].px.toFixed(1) + ' ' + L[i].py.toFixed(1);
+      chunks.push('<path d="' + d + '" fill="none" stroke="#05080c" stroke-width="30" stroke-linecap="round"/>' +
+                  '<path d="' + d + '" fill="none" stroke="#243244" stroke-width="22" stroke-linecap="round"/>' +
+                  '<path d="' + d + '" fill="none" stroke="#0c141d" stroke-width="1.5" stroke-dasharray="4 7"/>');
+    }
+    $('ribbon').innerHTML = chunks.join('');
+    $('path').setAttribute('d', ''); $('path1').setAttribute('d', ''); $('slotline').setAttribute('d', '');
   }
 
   /* ── section lengths, from the REAL geometry ───────────────────────────────────────────────────── */
   function geom(GB){
-    var T = GB.AURORA_FIG8, arc = function(r){ return 2 * Math.PI * r / 8 }, L = [], tot = 0;
-    for (var k = 0; k < 4; k++){
+    var T = trackOf(GB), arc = function(r){ return 2 * Math.PI * r / 8 }, L = [], tot = 0;
+    for (var k = 0; k < T.sections; k++){
       var r = (k % 2 === 0) ? T.radiusInner : T.radiusOuter;
       var len = T.straight + T.arcs * arc(r);
       L.push({ r: r, len: len, straight: T.straight });
@@ -293,7 +314,7 @@
 
   function marks(g){
     var html = '', at = 0;
-    for (var k = 0; k < 4; k++){
+    for (var k = 0; k < g.L.length; k++){
       at += g.L[k].len;
       var q = atDist(at);
       html += '<circle cx="' + q.x.toFixed(1) + '" cy="' + q.y.toFixed(1) + '" r="4" fill="#39d0d8" opacity=".45"/>';
@@ -310,7 +331,7 @@
          not CARRY its power. */
       var regs = Object.assign({}, GB.BETA_LANE_REGS);
       if (+$('fit').value === 1){ regs.VMAX_REF = GB.laneFixed(2.2); regs.ROLL = GB.laneFixed(0.08) }
-      var track = Object.assign({}, GB.AURORA_FIG8, { laps: 1,
+      var track = Object.assign({}, trackOf(GB), { laps: 1,
         slipInner: +$('slip').value, slipOuter: +$('slip').value });
       if (!PATH){ PATH = buildPath(GB); drawTrack() }
       var g = geom(GB); marks(g);
@@ -331,7 +352,7 @@
       var rows = [], off = -1, at = 0, tPrev = 0, i = 0, cur = null, st0 = st;
 
       function nextSection(){
-        if (i >= 4 || off >= 0) return null;
+        if (i >= track.sections || off >= 0) return null;
         var k = i, lim = ceiling(GB, regs, k, tyr, +$('slip').value);
         var used = LIVE;
         var n = GB.laneSection(st0, ths, used, regs, track);
@@ -354,7 +375,7 @@
             '<td class="' + (r.off ? 'no' : '') + '">' + r.v.toFixed(2) + '</td>' +
             '<td>' + (r.off ? '<span class="no">OFF</span>' : r.split.toFixed(3) + ' s') + '</td></tr>';
         }).join('');
-        var done = rows.length === 4 && off < 0;
+        var done = rows.length === track.sections && off < 0;
         $('d-lap').innerHTML = off >= 0
           ? '<span class="no">OFF at section ' + (off + 1) + '</span>'
           : (done ? tPrev.toFixed(3) + ' <span class="note">s</span>' : '<span class="note">running…</span>');
@@ -382,7 +403,7 @@
            ⚠ ZERO ON THE STRAIGHT for free: `turn` is 0 where the path does not bend. */
         var use = Math.min(1, pct / 100);
         var slide = fr.turn * -1 * 34 * use * use;
-        var dying = (off >= 0 && i >= 4 - 0 && f.sec === off && u > 0.55);
+        var dying = (off >= 0 && f.sec === off && u > 0.55);
         if (dying){
           var g2 = Math.min(1, (u - 0.55) / 0.45);
           fr.x += Math.cos((fr.deg + 70) * Math.PI / 180) * 190 * g2 * g2;
@@ -403,7 +424,7 @@
           'translate(' + fr.x.toFixed(1) + ',' + fr.y.toFixed(1) + ') rotate(' + (fr.deg + slide).toFixed(1) + ')');
         $('d-v').textContent = f.v.toFixed(2) + ' m/s';
         $('d-lim').textContent = f.lim.toFixed(2) + ' m/s';
-        $('d-sec').textContent = (f.sec + 1) + ' of 4 · ' + (f.sec % 2 === 0 ? 'tight (6\u2033)' : 'wide (9\u2033)');
+        $('d-sec').textContent = (f.sec + 1) + ' of ' + track.sections + ' · ' + (f.sec % 2 === 0 ? 'tight (6\u2033)' : 'wide (9\u2033)');
         $('d-pct').textContent = pct.toFixed(0) + '%';
         var bar = $('d-bar');
         bar.style.width = Math.min(100, pct) + '%';
@@ -432,6 +453,12 @@
       : 'a heavier rolling resistance, so the tyres matter less — for comparison only';
   }
   $('fit').addEventListener('input', paintFit); paintFit();
+  $('trk').addEventListener('input', function(){
+    $('v-trk').textContent = +this.value === 1 ? 'the 88' : 'figure 8';
+    cancelAnimationFrame(RAF);
+    load().then(function(GB){ PATH = buildPath(GB); drawTrack(); marks(geom(GB)); $('splits').innerHTML = '';
+      $('d-lap').textContent = '—'; $('msg').textContent = 'Track changed. Run a lap.'; });
+  });
   $('rate').addEventListener('input', function(){
     RATE = +this.value / 10; $('v-rate').textContent = RATE.toFixed(1) + '×';
   });
