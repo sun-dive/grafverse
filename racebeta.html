@@ -73,6 +73,47 @@
   <div class="sub">A figure 8 in one covenant. Set the car up, choose how hard you go down the straight
     and how much you lift for the corner, and see whether it holds the slot.</div>
 
+  <!-- ═══ THE TRACK — full width, because this is the thing you are meant to be watching ═══ -->
+  <div class="panel">
+    <div class="lbl">the figure 8 · 4 sections · straight then turn</div>
+    <svg id="track" viewBox="0 0 1000 420" style="width:100%;height:auto;display:block">
+      <defs>
+        <linearGradient id="lane" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#243244"/><stop offset="1" stop-color="#1a2532"/>
+        </linearGradient>
+      </defs>
+      <path id="path" fill="none" stroke="#0b1016" stroke-width="30" stroke-linecap="round"/>
+      <path id="path1" fill="none" stroke="url(#lane)" stroke-width="22" stroke-linecap="round"/>
+      <path id="slotline" fill="none" stroke="#0c141d" stroke-width="1.5" stroke-dasharray="4 7"/>
+      <g id="marks"></g>
+      <!-- ★★ THE CAR PIVOTS ABOUT ITS NOSE, and that is not a drawing convenience: a slot car is held
+           by a GUIDE PIN at the front, so when grip runs out it is the BACK that comes round. The body
+           is drawn running backwards from the origin so a rotation swings the tail. -->
+      <g id="carg">
+        <rect x="-26" y="-8.5" width="30" height="17" rx="3" fill="#39d0d8"/>
+        <rect x="-24" y="-11" width="8" height="4" rx="1" fill="#05080c"/>
+        <rect x="-24" y="7"  width="8" height="4" rx="1" fill="#05080c"/>
+        <rect x="-6"  y="-10" width="6" height="3" rx="1" fill="#0b1016"/>
+        <rect x="-6"  y="7"  width="6" height="3" rx="1" fill="#0b1016"/>
+        <circle cx="-9" cy="0" r="4" fill="#0b1016"/>
+        <circle cx="2" cy="0" r="1.8" fill="#ffb454"/>
+      </g>
+    </svg>
+    <div class="grid" style="margin-top:10px">
+      <div>
+        <div class="row"><span>speed</span><span id="d-v">—</span></div>
+        <div class="row"><span>section</span><span id="d-sec">—</span></div>
+        <div class="row"><span>deslot ceiling here</span><span id="d-lim">—</span></div>
+      </div>
+      <div>
+        <div class="note">grip · how close to leaving the slot <span id="d-pct" style="float:right"></span></div>
+        <div class="bar"><i id="d-bar"></i></div>
+        <p class="note" style="margin-top:8px">The tail comes round as the car uses up its grip. When the
+          bar reaches 100% it is gone.</p>
+      </div>
+    </div>
+  </div>
+
   <div class="grid">
     <!-- ═══ THE CAR ═══ -->
     <div class="panel">
@@ -100,29 +141,6 @@
       <p class="note" style="margin:12px 0 0" id="msg">Ready.</p>
     </div>
 
-    <!-- ═══ THE TRACK ═══ -->
-    <div class="panel">
-      <div class="lbl">the figure 8 · 4 sections · straight then turn</div>
-      <svg id="track" viewBox="0 0 460 260" style="width:100%;height:auto">
-        <defs>
-          <linearGradient id="lane" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stop-color="#243244"/><stop offset="1" stop-color="#1a2532"/>
-          </linearGradient>
-        </defs>
-        <path id="path" fill="none" stroke="url(#lane)" stroke-width="17" stroke-linecap="round"/>
-        <path id="path2" fill="none" stroke="#0c141d" stroke-width="1.5" stroke-dasharray="3 5"/>
-        <g id="marks"></g>
-        <circle id="car" r="6" fill="#39d0d8"/>
-        <circle id="ghost" r="3.5" fill="#2b3a4b"/>
-      </svg>
-      <div class="row"><span>speed</span><span id="d-v">—</span></div>
-      <!-- ★★ THE INSTRUMENT THAT MAKES IT FEELABLE: how close the car is to leaving the slot. The
-           ceiling is v² ≤ K·r·slip·tyr — one multiply and one compare, and it is the entire game. -->
-      <div class="note" style="margin-top:6px">grip · how close to leaving the slot <span id="d-pct" style="float:right"></span></div>
-      <div class="bar"><i id="d-bar"></i></div>
-      <div class="row" style="margin-top:8px"><span>section</span><span id="d-sec">—</span></div>
-      <div class="row"><span>deslot ceiling here</span><span id="d-lim">—</span></div>
-    </div>
   </div>
 
   <!-- ═══ THE RESULT ═══ -->
@@ -171,16 +189,28 @@
   /* ── the drawn shape: a lemniscate, parameterised so progress maps to distance ─────────────────── */
   function pointAt(u){                       // u in [0,1)
     var t = u * Math.PI * 2, k = 1 + Math.sin(t) * Math.sin(t);
-    return { x: 230 + 165 * Math.cos(t) / k, y: 130 + 105 * Math.sin(t) * Math.cos(t) / k };
+    return { x: 500 + 430 * Math.cos(t) / k, y: 210 + 175 * Math.sin(t) * Math.cos(t) / k };
+  }
+  /** heading in degrees, and the sign of the turn — which way the tail must go. */
+  function frameAt(u){
+    var e = 0.0016;
+    var a = pointAt((u - e + 1) % 1), b = pointAt(u), c = pointAt((u + e) % 1);
+    var t1x = b.x - a.x, t1y = b.y - a.y, t2x = c.x - b.x, t2y = c.y - b.y;
+    /* ★ the sign of the cross product IS the direction of the bend — and in a figure 8 it flips,
+       which is why the tail swings the other way on the other loop, for free. */
+    var cross = t1x * t2y - t1y * t2x;
+    return { x: b.x, y: b.y, deg: Math.atan2(t2y, t2x) * 180 / Math.PI,
+             turn: cross === 0 ? 0 : (cross > 0 ? 1 : -1) };
   }
   (function drawTrack(){
-    var d = '', d2 = '';
-    for (var i = 0; i <= 400; i++){
-      var p = pointAt(i / 400);
-      d += (i ? 'L' : 'M') + p.x.toFixed(1) + ' ' + p.y.toFixed(1);
-      d2 += (i ? 'L' : 'M') + p.x.toFixed(1) + ' ' + p.y.toFixed(1);
+    var d = '';
+    for (var i = 0; i <= 600; i++){
+      var q = pointAt(i / 600);
+      d += (i ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1);
     }
-    $('path').setAttribute('d', d); $('path2').setAttribute('d', d2);
+    $('path').setAttribute('d', d);
+    $('path1').setAttribute('d', d);
+    $('slotline').setAttribute('d', d);
   })();
 
   /* ── section lengths, from the REAL geometry ───────────────────────────────────────────────────── */
@@ -206,8 +236,8 @@
     var html = '', at = 0;
     for (var k = 0; k < 4; k++){
       at += g.L[k].len;
-      var p = pointAt((at / g.lap) % 1);
-      html += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="2.5" fill="#39d0d8" opacity=".5"/>';
+      var q = pointAt((at / g.lap) % 1);
+      html += '<circle cx="' + q.x.toFixed(1) + '" cy="' + q.y.toFixed(1) + '" r="4" fill="#39d0d8" opacity=".45"/>';
     }
     $('marks').innerHTML = html;
   }
@@ -269,9 +299,27 @@
         var f = frames[i], el = (now - t0) / 1000;
         var u = Math.min(1, el / Math.max(f.secs, 0.001));
         var dist = f.from + (f.to - f.from) * u;
-        var p = pointAt((dist / g.lap) % 1);
-        $('car').setAttribute('cx', p.x); $('car').setAttribute('cy', p.y);
+        var fr = frameAt((dist / g.lap) % 1);
         var pct = Math.min(140, 100 * f.v / f.lim);
+
+        /* ★★ THE TAIL COMES ROUND IN PROPORTION TO THE GRIP BEING USED — the same number the bar
+           shows, felt instead of read. Squared so it stays tidy until it suddenly is not, which is
+           how a slot car actually behaves: fine, fine, fine, gone.
+           ⚠ ZERO ON THE STRAIGHT: `turn` is 0 where the path is not bending, so no lateral force and
+           no slide, without any special case. */
+        var use = Math.min(1, pct / 100);
+        var slide = fr.turn * -1 * 34 * use * use;
+        if (off >= 0 && i === frames.length - 1 && u > 0.55){
+          /* ⇒ AND WHEN IT LETS GO IT LEAVES. It keeps the heading it had, spinning, off the track —
+             an ending you can see rather than a status line. */
+          var g2 = Math.min(1, (u - 0.55) / 0.45);
+          fr.x += Math.cos((fr.deg + 70) * Math.PI / 180) * 190 * g2 * g2;
+          fr.y += Math.sin((fr.deg + 70) * Math.PI / 180) * 190 * g2 * g2;
+          slide += 520 * g2 * g2;
+          $('carg').setAttribute('opacity', String(1 - 0.75 * g2));
+        }
+        $('carg').setAttribute('transform',
+          'translate(' + fr.x.toFixed(1) + ',' + fr.y.toFixed(1) + ') rotate(' + (fr.deg + slide).toFixed(1) + ')');
         $('d-v').textContent = f.v.toFixed(2) + ' m/s';
         $('d-lim').textContent = f.lim.toFixed(2) + ' m/s';
         $('d-sec').textContent = (f.sec + 1) + ' of 4 · ' + (f.sec % 2 === 0 ? 'tight (6″)' : 'wide (9″)');
@@ -279,11 +327,12 @@
         var bar = $('d-bar');
         bar.style.width = Math.min(100, pct) + '%';
         bar.className = pct >= 100 ? 'over' : (pct > 85 ? 'hot' : '');
-        if (u >= 1){ i++; t0 = now; if (i >= frames.length){
-          if (off >= 0){ $('car').setAttribute('fill', '#ff6b6b') } return } }
+        if (u >= 1 && !(off >= 0 && i === frames.length - 1)){ i++; t0 = now; if (i >= frames.length) return }
+        if (off >= 0 && i === frames.length - 1 && u >= 1) return;
         RAF = requestAnimationFrame(step);
       })(performance.now());
-      $('car').setAttribute('fill', off >= 0 ? '#ff6b6b' : '#39d0d8');
+      $('carg').setAttribute('opacity', '1');
+      $('carg').querySelector('rect').setAttribute('fill', off >= 0 ? '#ff6b6b' : '#39d0d8');
     }).catch(function(e){ $('msg').innerHTML = '<span class="no">⚠ ' + e.message + '</span>' });
   }
 
