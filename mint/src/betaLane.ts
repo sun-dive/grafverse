@@ -115,7 +115,11 @@ export interface LaneTrack {
 
 /** ★ The Aurora blueprint: 9" straights, 1/8 (45°) curves at 6" and 9". → spec §7.7. */
 export const AURORA_FIG8: LaneTrack = {
-  straight: 0.2286,                       // 9 inches
+  /* ★★ 15 INCHES, AND IT IS SOLVED RATHER THAN CHOSEN. Four sections of (straight + 6×45°) with the
+     turn direction alternating close EXACTLY — to 0.0000 m and 0° net turn — when the straights are
+     15.0". Any other length leaves a gap, so this is the figure 8 those parts actually make.
+     ★ And 15" is a real AFX straight: it is in Tuckaway 25's own parts list. Buildable, not drawn. */
+  straight: 0.381,                        // 15 inches — solved for closure
   radiusInner: 0.1524, radiusOuter: 0.2286,   // 6" and 9"
   slipInner: SLIP_UNIT, slipOuter: SLIP_UNIT,
   arcs: 6,                                 // 6 × 45° = 270°, past 180° to close the 8
