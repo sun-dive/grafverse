@@ -64,7 +64,13 @@ export const BETA_LANE_REGS: LaneRegs = {
      1.25 m/s and on a 6" (0.152 m) curve 1.02 m/s, against 1.7–2.6 m/s on the straight — so a driver
      genuinely has to lift, and the tight corner is ~18% slower. ★ ONE real measurement fixes it for
      every radius, because K = v²/r: film a car letting go on a known curve. */
-  K: f(6.9),
+  /* ⚠ RAISED 6.9 → 16.8 on 21 Aug, measured. At 6.9 the inner ceiling was 1.025 m/s against a
+     straight-line potential of 1.11 — the car was CORNER-LIMITED THE WHOLE LAP, the straights were
+     wasted and an eng 24 lapped no faster than an eng 14 (4.680 vs 4.679 s). 16.8 puts the inner
+     ceiling at ~1.6 and the outer at ~1.96, BELOW what the straights can reach, so you accelerate and
+     then brake — which is the skill. ⚠ That is μ ≈ 1.7: above 1, but silicone slot tyres genuinely
+     exceed it and a T-Jet's motor magnets pull it to the rails. ⚠ STILL NOT FITTED. */
+  K: f(16.8),
   THROTTLE_MAX: 16, BURN0: 392, BURN_E: 35,
 }
 
@@ -169,7 +175,12 @@ IF MOD(section, 2) = 1 THEN
 END IF
 
 REM ── the deslot ceiling for THIS turn: v² <= K·r, scaled by the surface ──
-vmax2 = FMUL(K, rad) * slip / SLIP
+REM ⚠⚠ TYRES ARE IN THE GRIP RULE, and that is faithful rather than invented: silicone, urethane,
+REM    rubber and foam were all sold for these cars, graded by compound — "S1 softer, for lower
+REM    down-force cars and plastic sectional track". Compound is chosen AGAINST the surface, so tyr and
+REM    slip belong multiplied. ⇒ Without this term tyr 4 and tyr 10 lapped within 0.04 s and one of the
+REM    car's two parameters was decorative.
+vmax2 = FMUL(K, rad) * slip / SLIP * tyr / TYR_REF
 
 REM ══ THE STRAIGHT ══════════════════════════════════════════════════════════
 mass = M0 + eng * WE + tyr * WT + FMUL(fuel * S, WF)
@@ -231,6 +242,9 @@ export function laneConsts(regs: LaneRegs, track: LaneTrack): Record<string, num
        the decompiled script rather than baked into a number nobody can account for. */
     ARCK: f((2 * Math.PI) / 8),
     ARCS: track.arcs, LAPS: track.laps,
+    /* ★ The tyre the deslot ceiling is quoted at. tyr 10 is the reference compound; lower
+       grades hold less. PERMANENT. */
+    TYR_REF: 10,
     P_RACING: PHASE.RACING, P_FINISHED: PHASE.FINISHED, P_DESLOTTED: PHASE.DESLOTTED,
     /* ★ THE ROLLING START — see LANE_SRC. Permanent, and it is why v is never zero. */
     V0: f(0.8),
@@ -329,7 +343,7 @@ export function laneSection(
   const t0 = (x: number): number => Math.trunc(x)
   const rad = st.section % 2 === 0 ? C.RAD_IN : C.RAD_OUT
   const slip = st.section % 2 === 0 ? C.SLIP_IN : C.SLIP_OUT
-  const vmax2 = t0(fmul(C.K, rad) * slip / C.SLIP)
+  const vmax2 = t0(t0(t0(fmul(C.K, rad) * slip / C.SLIP) * st.tyr) / C.TYR_REF)
 
   let { v, fuel, t, section, lap, phase } = st
   let deslot = false

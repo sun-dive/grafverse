@@ -1,2217 +1,312 @@
-<meta charset="utf-8">
-<!-- ⚠⚠ THE CHARSET IS THE FIRST BYTE OF THE FILE, AND THAT IS NOT TIDINESS.
-     A parser stops looking for it after about 1024 bytes, and the comment below runs to 867 — so a
-     declaration placed underneath it sits one edit away from being ignored. The server sends
-     `content-type: text/html` with no charset of its own, so with nothing here the browser falls back
-     to Latin-1 and EVERY multi-byte character breaks: the car came out as ðŸŽ, and so did every ★, ⚠,
-     ⇒ and · on the page. One missing line, the whole document mojibake.
-
-     BRC-226 · BITCOIN RACERS **BETA** — the depot-anchored rebuild. NOT the live game.
+<!doctype html>
+<html lang="en">
+<head>
+<!--
+     🛤 BITCOIN RACERS **BETA** — THE LANE BENCH. NOT the live game, and nothing here is broadcast.
      © 2026 sun-dive · Open BSV License v6.
 
-     ⚠⚠⚠ WHY THIS PAGE EXISTS (sun-dive, 20 Aug). The live page mints a car whose PHYSICS IS CHOSEN
-     OFF-CHAIN, per race, by whatever this page compiled that minute. The depot pins the car's frame —
-     the pushtx block, the fee rule, the payee, a size bound — and never the equation. So a visitor is
-     trusting the operator not to change the rules between runs, which is the one thing a covenant
-     exists to remove. → `racers-where-we-stand.md`, and the spec that must be written before any of
-     this is built.
+     ⚠⚠⚠ WHY THIS PAGE EXISTS. `bitcoin-racers.html` is the FLAWED FIRST IMPLEMENTATION: it mints a car
+     whose PHYSICS THE PAGE CHOOSES, per race. The depot pins the frame — pushtx block, fee rule, payee,
+     size bound — and never the equation, so a visitor is trusting the operator not to change the rules
+     between runs. That is the one thing a covenant exists to remove.
+     → `~/Documents/fuel-depot-spec.md` §7.7–§7.10.
 
-     ★ THE RULE THIS REBUILD IS TO: **the car's program is fixed and comes from the DEPOT. The server
-     supplies DATA — engine, tyres, surface, track, fuel, name — and never the program.**
+     ★ THE RULE THIS REBUILD IS TO: the car's program is FIXED and comes from the DEPOT. The server
+     supplies DATA — engine, tyres, surface, track, throttle — and never the program.
 
-     ⚠⚠ AND THE LIVE PAGE MUST NOT MOVE WHILE THIS IS BUILT. That is why this is a whole separate set:
-     ```
-     racebeta.html  ·  vendor/grafbeta.js  ·  mint/src/grafbeta.ts  ·  racebeta.php
-     ```
-     ⇒ Beta covenant work goes in NEW source files. `racerCar.ts`, `racerDepot.ts`, `racerTick.ts` and
-     `racerPhysics.ts` are reached by `grafracers.ts`, so editing any of them edits the LIVE PAGE — a
-     separate bundle over shared sources is not isolation, it is the same code with two names.
+     ★★ WHAT THIS PAGE IS FOR, and it is only this: GAUGING THE FEEL OF THE TRACK. It runs the real
+     `laneSection` out of `vendor/grafbeta.js` — the same function the covenant is proved against by
+     `mint/test/beta-lane.ts` — so the bench cannot quietly disagree with the chain. Nothing is minted,
+     nothing is signed, and no satoshi moves.
 
-     ⚠ IT RUNS THE EXACT CODE THE COVENANT IS VALIDATED AGAINST — through vendor/grafbeta.js, THIS
-     PAGE'S OWN BUNDLE, so beta work never rebuilds one another page loads. Nothing here reimplements
-     the physics, and nothing here holds a key.
+     ⚠ THE TRACK PICTURE IS STYLISED. The PHYSICS uses the real Aurora geometry (9" straights, 1/8
+     curves at 6" and 9", six per turn); the DRAWING is a lemniscate, because a surveyed layout that
+     actually closes is a separate job (§7.7). Progress along it is true to distance; the shape is not.
 
-     ⚠⚠ THIS PAGE REPLACED A MOCKUP OF THE CHAINED DESIGN. That one raced a car that persisted and was
-     refuelled, one transaction per tick, and broadcast nothing. This is the other machine: the run is
-     simulated first and compiled into a SINGLE locking script, so the script's length IS the predicted
-     race — and it spends real satoshis. The two share the physics and nothing else.
-     → mint/tools/RACERS.md, and do not read a number from one design and apply it to the other. -->
-<meta name="robots" content="noindex,nofollow">
-<title>Bitcoin Racers BETA · the depot-anchored rebuild</title>
+     ⚠⚠ EVERY CONSTANT IS PROVISIONAL. `betaLane.ts` says so at every one. The fitted set measured on
+     21 Aug — FE 0.12 · K 17 · WF 0 — is recorded in §7.10 and is deliberately NOT built in yet.
+-->
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="A drag race compiled into a single Bitcoin transaction. The car is a covenant with no key at all: it is minted for one run, races once, and pays the last satoshi home. Every assertion is checked by miners, not by a simulator.">
-<link rel="canonical" href="https://grafverse.com/bitcoin-racers.html">
-<meta property="og:title" content="Bitcoin Racers · a whole drag race in one transaction">
-<meta property="og:description" content="The car has no key. Its script IS the race, so its length is its time — and a faster setup is a cheaper transaction.">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="grafverse">
-<meta property="og:url" content="https://grafverse.com/bitcoin-racers.html">
-<!-- ⚠ THE CARD HAD NO IMAGE AT ALL until 20 Aug, so every share of this page rendered as a bare text
-     link — the one format nobody clicks. ★ 1200x630 is what the platforms crop to; anything else gets
-     centre-cropped by them, badly. JPEG rather than WebP deliberately: several scrapers still do not
-     render WebP cards, and a card that fails is worse than one that is 40 KB larger.
-     ⚠ The image carries NO words. The platform renders og:title and og:description itself, so text in
-     the picture is duplicated at best and clipped at worst — the crop stops above the artwork's own
-     lettering for exactly that reason. -->
-<meta property="og:image" content="https://grafverse.com/racers-og.jpg?v=1">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Two 1980s wedge racing cars side by side on a wet night circuit — an orange car marked BTC and a yellow car marked BSV wrapped in cyan electrical arcs, with green and white light trails sweeping away behind them.">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Bitcoin Racers · a whole drag race in one transaction">
-<meta name="twitter:description" content="No wallet, no key, no coins from you. The depot pays for the car, and the car has no key for anyone to hold.">
-<meta name="twitter:image" content="https://grafverse.com/racers-og.jpg?v=1">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><text x=%221%22 y=%2214%22 font-size=%2214%22>🏁</text></svg>">
+<meta name="robots" content="noindex,nofollow">
+<title>Bitcoin Racers BETA · the lane bench</title>
 <style>
-  :root{--bg:#0b0f14;--fg:#dfe7ef;--dim:#8fa3b8;--acc:#31c8ff;--warm:#ffb454;--good:#5ee08a;--bad:#ff6b6b;
-        --panel:#111823;--line:#1d2836}
+  :root{--bg:#070b10;--panel:#0d131b;--line:#1e2a38;--fg:#dfe7ef;--dim:#7d8ea1;--acc:#39d0d8;
+        --warn:#ffb454;--no:#ff6b6b;--ok:#7ee787}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-  .wrap{max-width:980px;margin:0 auto;padding:28px 18px 80px}
-  h1{font-size:1.7rem;margin:0 0 6px;letter-spacing:-.02em}
-  .sub{color:var(--dim);margin:0 0 10px}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0}
-  .lbl{font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;color:var(--acc);
-       text-transform:uppercase;margin-bottom:12px}
-  .row{display:flex;justify-content:space-between;gap:12px;align-items:baseline;padding:3px 0}
-  .row span:last-child{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:18px}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 2px}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:16px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+  .lbl{font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;color:var(--acc);
+       text-transform:uppercase;margin-bottom:10px}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  @media(max-width:700px){.grid{grid-template-columns:1fr}}
-  /* ⛳ board + garage. `align-items:flex-start` stops the card stretching to the board's height —
-     it must tolerate a board of ANY length, and a stretched box would throw that away.
-     `min-width:0` on the panel lets it shrink inside the flex row instead of forcing an overflow. */
-  .boardwrap{display:flex;gap:14px;align-items:flex-start}
-
-  /* ⛽ THE GARAGE — the shop as a PANEL OF THIS PAGE, not a box stuck onto it.
-     ⚠⚠ DELIBERATELY NOT SHAPED, SIZED OR NAMED LIKE AN AD (sun-dive, 20 Aug). Blockers do not only
-     kill scripts; cosmetic filter lists match the three things a banner announces itself with:
-       · SIZE   `300x250` is THE canonical unit, matched literally by rules of the shape
-                ##[width="300"][height="250"]. ⇒ the width here is FLUID (clamp), so the computed
-                box lands on no round ad number at any viewport.
-       · NAME   `promo`, `banner`, `ad`, `sponsor` all appear in the common lists. ⇒ `garage` —
-                motorsport vocabulary, and in no filter list anywhere.
-       · SHAPE  a bordered rectangle floating beside content IS the visual grammar of an ad. ⇒ it
-                uses `.panel`, exactly like the leaderboard and the depot. It reads as a section of
-                the site because it now IS one.
-     ★ And being FIRST-PARTY — our image, our shop, our domain — the network-level rules never apply,
-     since those target ad-server hosts. The three above are the whole remaining surface. */
-  .garage{flex:0 0 clamp(250px,31%,336px)}
-  /* ⚠ aspect 672/900 — the ARTWORK's own ratio, so nothing is cropped or stretched, and it is a
-     deliberately odd number that matches no standard unit. The SVG fallback sits beneath the img. */
-  .garage-art{display:block;position:relative;width:100%;aspect-ratio:672/900;border-radius:8px;
-              overflow:hidden;text-decoration:none;border:1px solid var(--line);transition:border-color .15s}
-  .garage-art svg,.garage-art img{position:absolute;inset:0;width:100%;height:100%;display:block}
-  .garage-art img{object-fit:cover}
-  .garage-art:hover{border-color:var(--acc)}
-  .garage-note{color:var(--dim);font-size:12.5px;line-height:1.6;margin:12px 2px 0}
-  .garage-note b{color:var(--fg)}
-  /* ⚠ STACK BELOW THE BOARD, NOT ABOVE IT — and at 820px, NOT at .grid's 700px.
-     I first matched .grid's breakpoint for tidiness ("one mobile boundary rather than two that
-     disagree") and that reasoning was wrong: .grid is two EQUAL columns that shrink together, while
-     this is a flexible panel beside a FIXED 300px box, so it runs out of room sooner. Measured at
-     701px the board is left 351px and a race row — rank, driver, time, trap, mph, flag — is squeezed.
-     At 820px it still has 470px, which is the point it stops being comfortable.
-     ⇒ Different layouts have different natural breakpoints; forcing one number on both is tidiness
-     bought with the reader's eyes. `width:100%` with a cap keeps it centred rather than marooned. */
-  @media(max-width:820px){
-    .boardwrap{flex-direction:column}
-    .garage{flex:none;width:100%;max-width:420px;margin:0 auto}
-  }
-
+  @media(max-width:860px){.grid{grid-template-columns:1fr}}
   label{display:block;font-size:13px;color:var(--dim);margin:10px 0 2px}
   label b{color:var(--fg);float:right;font-family:ui-monospace,Menlo,monospace}
   input[type=range]{width:100%;accent-color:var(--acc)}
-  button{background:var(--acc);color:#04141c;border:0;border-radius:8px;padding:11px 18px;font:600 15px/1 inherit;cursor:pointer}
-  button:disabled{background:#25333f;color:#5d6f80;cursor:not-allowed}
+  button{background:var(--acc);color:#04222a;border:0;border-radius:7px;padding:10px 18px;
+         font-weight:700;cursor:pointer;font-size:14px}
   button.ghost{background:transparent;color:var(--acc);border:1px solid var(--line)}
-  /* ⚠ overflow is VISIBLE, deliberately — a car that goes off the track has to be able to LEAVE.
-     The strip's background and border still clip to the box (backgrounds always do), so the track
-     looks unchanged; only the car and the spark canvas can cross the edge. Both are absolutely
-     positioned, so nothing here can move the page's layout. */
-  .strip{height:64px;background:#080c11;border:1px solid var(--line);border-radius:8px;position:relative;overflow:visible;margin:12px 0}
-  .car{position:absolute;top:16px;left:0;width:30px;height:30px;display:grid;place-items:center;
-       font-size:22px;transition:left .09s linear;z-index:2}
-  /* the fly-off: one transform, one transition, set from JS so the spin can scale with the impact */
-  .car.off{transition:left .9s ease-out,transform .9s ease-out,opacity .9s ease-in}
-  .fin{position:absolute;top:0;bottom:0;right:8px;width:3px;background:repeating-linear-gradient(0deg,#fff 0 6px,#333 6px 12px)}
-  /* ★ the spark canvas OVERHANGS the strip on every side, so debris from a wreck at the finish line
-     is not guillotined by the track edge. pointer-events:none — it must never eat a click. */
-  .fx{position:absolute;left:-60px;top:-60px;pointer-events:none;z-index:1}
-  .snd{background:transparent;border:1px solid var(--line);color:var(--dim);border-radius:8px;
-       padding:8px 12px;font:600 13px/1 inherit;cursor:pointer}
-  .snd.on{color:var(--acc);border-color:var(--acc)}
-  /* ⚠ RESPECT THE SETTING, as grafverse.html already does for its own effects. Reduced motion kills
-     the fly-off and the sparks; the car still moves, because that IS the result being reported. */
-  @media(prefers-reduced-motion:reduce){.car.off{transition:opacity .3s linear}}
-  .log{font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;background:#080c11;border:1px solid var(--line);
-       border-radius:8px;padding:12px;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all}
-  .ok{color:var(--good)} .no{color:var(--bad)} .warn{color:var(--warm)} .dim{color:var(--dim)}
-  a{color:var(--acc)}
-  .note{color:var(--dim);font-size:13px}
-  .big{font:600 22px/1.2 ui-monospace,Menlo,monospace}
-  .sim{background:#1a1206;border:1px solid #4a3410;color:var(--warm);border-radius:9px;padding:10px 13px;font-size:13.5px}
-  .foot{color:var(--dim);font-size:13px;border-top:1px solid var(--line);margin-top:34px;padding-top:18px}
-  code{font-family:ui-monospace,Menlo,monospace;color:var(--fg)}
-  /* ⚠ the technical blocks SCROLL rather than wrapping — a pinned-byte diagram whose columns reflow on
-     a phone stops being a diagram. The page body must never scroll sideways, so the overflow lives
-     here, in the one element that needs it. */
-  .tech{font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;background:#080c11;
-        border:1px solid var(--line);border-radius:8px;padding:11px 13px;margin:10px 0 14px;
-        overflow-x:auto;color:var(--dim);white-space:pre}
-  textarea{width:100%;height:120px;padding:9px;border-radius:7px;border:1px solid var(--line);
-           background:#080c11;color:var(--dim);font-family:ui-monospace,Menlo,monospace;font-size:11px}
+  button:disabled{opacity:.45;cursor:default}
+  .row{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:14px}
+  .row span:last-child{font-family:ui-monospace,Menlo,monospace}
+  .big{font:700 30px/1.1 ui-monospace,Menlo,monospace}
+  .note{color:var(--dim);font-size:12.5px}
+  .no{color:var(--no)} .ok{color:var(--ok)} .warn{color:var(--warn)}
+  .bar{height:9px;background:#0a1119;border:1px solid var(--line);border-radius:5px;overflow:hidden;margin-top:5px}
+  .bar i{display:block;height:100%;background:var(--acc);width:0}
+  .bar i.hot{background:var(--warn)} .bar i.over{background:var(--no)}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+  th,td{text-align:right;padding:4px 6px;border-bottom:1px solid var(--line);
+        font-family:ui-monospace,Menlo,monospace}
+  th{color:var(--dim);font-weight:400;text-align:right}
+  th:first-child,td:first-child{text-align:left}
 </style>
-
+</head>
+<body>
 <div class="wrap">
-  <h1>Bitcoin Racers 🏁</h1>
-  <p class="sub">A whole drag race compiled into <b>one Bitcoin transaction</b>. The car is a covenant with
-     <b>no key at all</b> — no owner, no signature, nothing but the proof of its own transaction. It is minted
-     for one run, it races once, and the last satoshi goes home.</p>
 
-  <!-- ⚠ THIS REPLACED A PAGE THAT PROMISED IT SPENT NOTHING. Saying so plainly matters more than the
-       feature: a visitor who read the old page has been told the opposite of what is now true. -->
-  <!-- ⚠ THE ORDER OF THESE TWO SENTENCES IS THE POINT. An earlier version ended by naming the fuel
-       button, which made a free game read as one with a payment step somewhere in it. Racing is free;
-       fuelling the depot is a thing an owner does, not a toll a player pays. Say the free part and
-       stop. -->
-  <p class="sim">🏁 <b>Racing is free.</b> No wallet, no key, no coins from you — the depot pays for the car,
-     and the car has no key for anyone to hold. The satoshis being spent are <b>the depot's</b>, never yours.</p>
+  <h1>🛤 The lane bench <span class="note">— beta, nothing is broadcast</span></h1>
+  <div class="sub">A figure 8 in one covenant. Set the car up, choose how hard you go down the straight
+    and how much you lift for the corner, and see whether it holds the slot.</div>
 
-  <!-- ═══ THE LEADERBOARD ══════════════════════════════════════════════════════════════════════════
-       ★★ READ FROM THE CHAIN, WITH NO INDEXER. Every mint is a hop in the depot's own chain, so
-       following it from one genesis txid enumerates every car it ever made. Nothing indexes covenants
-       and nothing needs to.
-       ⚠⚠ AND THE CLAIM IS "NO INDEXER", NOT "NO SERVER" — an earlier version said the latter and it was
-       simply FALSE. WhatsOnChain is a server, and the localStorage cache is state we keep. What is true
-       is narrower and more interesting: no SPECIAL INDEX of covenants exists or is needed, so the data
-       source is interchangeable — any node or API would do — where an indexer would not be.
-       ★★ AND THE TIMES ARE NOT STORED — they are RE-DERIVED from the setup each car carries in its
-       head, with the same reference physics the covenant enforced. The chain proves the car existed
-       and was raced; the physics says how fast.
-       ⚠ Distance and surface are shown because they are the CATEGORY: a time is only comparable
-       against another run at the same distance on the same grip. The configuration is NOT shown —
-       engine, tyres and fuel stay the driver's business (sun-dive, 20 Aug). -->
-  <!-- ★ THE BOARD AND THE SHOP SIT SIDE BY SIDE — board LEFT so it is the first thing read and the
-       first thing crawled, the garage RIGHT (sun-dive, 20 Aug). Below 820px they stack and the garage
-       falls BELOW the board, which is the order that keeps the racing the headline.
-       ⚠ §6a already settled that the offer belongs ON THE RACE RESULT — "the visitor has just done
-       something, has a time and a txid worth sharing". This is a SECOND surface, not a replacement:
-       the result is where the intent is, this is where the dwell is. -->
-  <div class="boardwrap">
-    <div class="panel" style="flex:1;min-width:0">
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between">
-        <b>🏁 Leaderboard</b>
-        <span class="note" id="board-note">updated from chain — no indexer needed</span>
-        <button id="board-refresh">↻ update</button>
-      </div>
-      <div id="board" style="margin-top:10px"><span class="dim">reading the depot's own chain…</span></div>
-    </div>
-
-    <!-- ⛳ THE PROMO SLOT — 300×250.
-         ★★ BE THE MERCHANT, NEVER THE AFFILIATE. This is sun-dive's own shop, so it is styled as part
-         of the page rather than as an injected ad — no border-dance, no "sponsored", nothing that
-         invites an ad-blocker to eat it or a reader to skip it. → memory `user-affiliate-nonpayment-origin`.
-         ⚠ SVG AND TEXT, NO IMAGE FILE. Nothing to add to .cpanel.yml, nothing to cache-bust, and it is
-         a few hundred bytes rather than a photo. → memory `svg-not-png-reflex`.
-         ⏭ TO DROP REAL ART IN LATER: replace everything between the <a> tags with one <img>, keep the
-         <a> and its class. The box is already the right shape and the link already points at the shop. -->
-    <div class="panel garage">
-    <a class="garage-art" href="https://grafverse-shop.fourthwall.com/products/bitcoin-racers"
-       target="_blank" rel="noopener"
-       aria-label="Bitcoin Racers t-shirt, $21 — opens the shop in a new tab">
-      <!-- ★ THE SVG IS THE FALLBACK, NOT A LEFTOVER. It sits UNDER the photograph, so if the image is
-           missing, still loading, or cosmetically blocked, the slot is a designed card rather than an
-           empty hole. `slice` fills the portrait box; the artwork itself is untouched. -->
-      <svg viewBox="0 0 300 250" preserveAspectRatio="xMidYMid slice" role="img" aria-hidden="true">
-        <defs>
-          <pattern id="pflag" width="24" height="24" patternUnits="userSpaceOnUse">
-            <rect width="24" height="24" fill="#0d1218"/>
-            <rect width="12" height="12" fill="#16202b"/>
-            <rect x="12" y="12" width="12" height="12" fill="#16202b"/>
-          </pattern>
-        </defs>
-        <rect width="300" height="250" fill="url(#pflag)"/>
-        <text x="150" y="86" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
-              font-size="15" letter-spacing="3" fill="#39d0ff">BITCOIN RACERS</text>
-        <text x="150" y="132" text-anchor="middle" font-size="44">🏎️💨</text>
-        <text x="150" y="176" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
-              font-size="13" fill="#dfe7ef">Wear the record</text>
-        <rect x="86" y="196" width="128" height="30" rx="7" fill="#39d0ff"/>
-        <text x="150" y="216" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
-              font-size="12" font-weight="700" fill="#04141c">SHOP THE SET</text>
-      </svg>
-      <!-- ⚠ FIRST-PARTY AND LOCAL, never hotlinked from the shop's CDN: a third-party image host is
-           exactly what the network-level blocker rules match on, and it would be an outage we do not
-           control. 672x900 is 2x the slot's widest display size, and is nobody's ad unit. -->
-      <img src="/img/racers-shirt-88.webp?v=20260820" width="672" height="900" loading="lazy"
-           decoding="async" alt="Bitcoin Racers t-shirt — two wedge racers under a green 88">
-    </a>
-
-    <!-- ★★ "FIAT IN THE FRONT, SATS OUT THE BACK", SAID TO THE VISITOR'S FACE (sun-dive, 20 Aug).
-         ⚠⚠ HIS COPY RULE GOVERNS THIS: **racing is FREE — say that and stop.** An earlier warning on
-         this page ended by naming the fuel button and made a free game read as one with a payment
-         step in it. So the first line here is the freedom, not the ask, and the ask never becomes a
-         toll: nobody has to buy anything to race, and the sentence must not be able to be read as
-         though they do.
-         ⚠ A second paragraph pointed at the contributions board as proof and was CUT (sun-dive,
-         20 Aug) — two sentences say it, three explain it. The board carries its own heading a few
-         hundred pixels down and does not need announcing from up here. → §6l. -->
-    <div class="lbl" style="margin:14px 0 0">⛽ How this stays free</div>
-    <p class="garage-note">
-      The depot pays for every car — <b>no wallet, and no coins from you, ever</b>.
-      The shop is what keeps it fuelled: <b>fiat in the front, satoshis out the back</b>.
-    </p>
-    </div>
-  </div>
-
-  <!-- ═══ THE CAR ═════════════════════════════════════════════════════════════════════════════════ -->
   <div class="grid">
+    <!-- ═══ THE CAR ═══ -->
     <div class="panel">
-      <div class="lbl">Build a car</div>
+      <div class="lbl">the car, and how you drive it</div>
       <label>engine <b id="v-eng">14</b><input type="range" id="eng" min="1" max="24" step="1" value="14"></label>
       <label>tyres <b id="v-tyr">10</b><input type="range" id="tyr" min="1" max="10" step="1" value="10"></label>
-      <label>fuel · a game quantity, and it is MASS <b id="v-tank">40,000</b><input type="range" id="tank" min="4000" max="120000" step="1000" value="40000"></label>
-      <!-- ★★ STANDARD DRAG LENGTHS, and this is a LEADERBOARD PREREQUISITE rather than a nicety: a
-           time is only comparable against another run at the same distance, so a continuous slider
-           made every run its own category and nothing could ever be ranked.
-           ⚠ The slider carries an INDEX, not metres — the standard lengths are not evenly spaced.
-           ⚠⚠ AND THE METRES ARE ROUNDED TO THE INTEGERS ALREADY ON CHAIN. A quarter mile is 402.336 m,
-           but every quarter mile raced so far went in as 402, so using the exact figure would strand
-           "Follow the white 🐇" alone in a category no future car could join. -->
-      <label>the strip <b id="v-fin">1/4 mile · 402 m</b><input type="range" id="fin" min="0" max="4" step="1" value="4"></label>
-      <!-- ★★ STEP 100, NOT 25 — and it is a LEADERBOARD change, not a tidy-up. The board's category is
-           `metres · grip`, so every reachable grip value is a separate class. At step 25 there were
-           65 of them; at 100 there are 17, and the same number of drivers spread over a quarter as
-           many classes is a board that actually ranks instead of splintering into fields of one.
-           → the open "slip is a driver slider" item in TODO.md.
-           ⚠ 400 + 16×100 = 2000 exactly, so the ends and the 1000 default all stay on the grid.
-           ⚠ COST, stated because it is permanent for one car: grip 950 becomes unreachable, so the
-           402 m · grip 950 test mint can never be joined in its class. Same shape as the track-length
-           lesson — metres went on chain as 402 so the Rabbit would not be stranded in a class of one.
-           Accepted here: it is a pre-launch test car, and the splintering costs more than it does.
-           ⚠ The 400–2000 range is still the PAGE's invention; the covenant only requires slip > 0. -->
-      <label>surface · grip <b id="v-slip">1000</b><input type="range" id="slip" min="400" max="2000" step="100" value="1000"></label>
-      <!-- ★ THE DRIVER, written into the car's HEAD and therefore onto the chain. Decorative by
-           design — nothing computes from it — but it is what a leaderboard will show, so it is the
-           one thing here a person chooses rather than tunes.
-           ⚠ 24 BYTES, and it is a BYTE budget, not a character one: 🐇 alone costs 4. The counter
-           below shows bytes for that reason, and the build REFUSES an over-long name rather than
-           truncating it — a car that disagrees with its own leaderboard entry is worse than a
-           rejected name. -->
-      <!-- ⚠⚠ THE DEFAULT WAS "SUN-DIVE" AND THAT IS A DEFAULT THAT SPEAKS FOR THE USER. A visitor who
-           did not edit it raced under the owner's name — so the leaderboard could not tell a stranger
-           from the person who built it, and "you will see when someone arrives" was FALSE while this
-           field had a value in it. ⇒ EMPTY, with the invitation in the label. An unnamed car reads as
-           "(no name)" on the board, which is honest; borrowing somebody's identity is not.
-           ★ It also costs nothing to leave blank: the head is zero-padded either way. -->
-      <label>put your name here <b id="v-driver">0/24 B</b><input type="text" id="driver"
-        placeholder="a name, a handle, a domain…" value=""
-        style="width:100%;padding:6px 8px;font:inherit;color:inherit;background:#0d0f14;border:1px solid #2a2f3a;border-radius:4px"></label>
+      <!-- ★ THE WHOLE DRIVER INPUT IS TWO NUMBERS, and that is the game: how hard down the straight,
+           how much you lift for the corner. It is also literally what crosses to the covenant. -->
+      <label>throttle · the straight <b id="v-ths">16</b><input type="range" id="ths" min="1" max="16" step="1" value="16"></label>
+      <label>throttle · the turn <b id="v-tht">8</b><input type="range" id="tht" min="1" max="16" step="1" value="8"></label>
+      <!-- ⚠ THE OIL. `slip` is a track property, not a car one — his drop of oil on the rails, made
+           legitimate. Under §7.8 it becomes per-section data, so a lane can have one greasy corner. -->
+      <label>surface · grip <b id="v-slip">1000</b><input type="range" id="slip" min="300" max="1400" step="100" value="1000"></label>
+      <!-- ⚠⚠ THE FITTED SET IS A BENCH OVERRIDE, NOT WHAT THE COVENANT CARRIES. betaLane.ts still holds
+           the provisional constants and says so at every one; §7.10 records this fit and his call was
+           to TEST BEFORE BUILDING IT IN. So you can feel both without the source pretending. -->
+      <label style="margin-top:14px">physics
+        <b id="v-fit">fitted</b>
+        <input type="range" id="fit" min="0" max="1" step="1" value="1"></label>
+      <p class="note" style="margin:2px 0 0" id="fitnote"></p>
+      <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+        <button id="go">▶ Run a lap</button>
+        <button id="stop" class="ghost">■ Stop</button>
+      </div>
+      <p class="note" style="margin:12px 0 0" id="msg">Ready.</p>
     </div>
+
+    <!-- ═══ THE TRACK ═══ -->
     <div class="panel">
-      <div class="lbl">What the chain will settle</div>
-      <div class="row"><span>ticks</span><span id="p-ticks">—</span></div>
-      <div class="row"><span>elapsed</span><span id="p-et">—</span></div>
-      <div class="row"><span>trap speed</span><span id="p-mph">—</span></div>
-      <div class="row"><span>the car, as Script</span><span id="p-bytes">—</span></div>
-      <div class="row"><span>the race costs</span><span id="p-fee">—</span></div>
-      <!-- ★★ THE CONSEQUENCE NOBODY DESIGNED. The script length IS the predicted race, so a faster
-           setup is a shorter script and a smaller fee. You pay less to win. -->
-      <p class="note" id="p-why" style="margin-top:10px">The car's script <i>is</i> the race, so its length
-         is its time — <b>a faster setup is a cheaper transaction</b>.</p>
-    </div>
-  </div>
-
-  <div class="strip"><div class="fin"></div><canvas class="fx" id="fx"></canvas><div class="car" id="carEl">🏎</div></div>
-
-  <div class="panel">
-    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-      <button id="go" disabled>▶ Race it on mainnet</button>
-      <button id="snd" class="snd" title="engine, tyres and crowd — all synthesised, no files">🔊 sound</button>
-      <span class="note" id="go-note">find the depot first</span>
-    </div>
-    <!-- ⚠ LABELLED because it was mistaken for an input (sun-dive, 20 Aug). It is a <div>: output
-         only, and an unlabelled empty box with a placeholder-ish line in it invites typing. -->
-    <div class="note" style="margin-top:12px;text-transform:uppercase;letter-spacing:.08em;font-size:11px">race log · output only</div>
-    <div class="log" id="log" style="margin-top:4px"><span class="dim">nothing yet.</span></div>
-  </div>
-
-  <!-- ═══ THE DEPOT ═══════════════════════════════════════════════════════════════════════════════ -->
-  <div class="panel">
-    <div class="lbl">The depot</div>
-    <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start">
-      <svg id="silo" viewBox="0 0 120 200" width="112" height="186" role="img"
-           aria-label="the fuel depot, and how full it is">
+      <div class="lbl">the figure 8 · 4 sections · straight then turn</div>
+      <svg id="track" viewBox="0 0 460 260" style="width:100%;height:auto">
         <defs>
-          <linearGradient id="fuel" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#ffd479"/><stop offset="100%" stop-color="#ff9b2f"/>
+          <linearGradient id="lane" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#243244"/><stop offset="1" stop-color="#1a2532"/>
           </linearGradient>
-          <clipPath id="tankClip"><path d="M20 42 h80 v120 a10 10 0 0 1 -10 10 h-60 a10 10 0 0 1 -10 -10 z"/></clipPath>
         </defs>
-        <path d="M20 42 a40 22 0 0 1 80 0" fill="#1b2634" stroke="#2c3d52" stroke-width="2"/>
-        <path d="M20 42 h80 v120 a10 10 0 0 1 -10 10 h-60 a10 10 0 0 1 -10 -10 z"
-              fill="#131c27" stroke="#2c3d52" stroke-width="2"/>
-        <g clip-path="url(#tankClip)"><rect id="fuelLvl" x="20" y="172" width="80" height="0" fill="url(#fuel)"/></g>
-        <path d="M20 42 h80 v120 a10 10 0 0 1 -10 10 h-60 a10 10 0 0 1 -10 -10 z"
-              fill="none" stroke="#2c3d52" stroke-width="2"/>
-        <g stroke="#22303f" stroke-width="1.5" opacity=".8">
-          <line x1="20" y1="78" x2="100" y2="78"/><line x1="20" y1="114" x2="100" y2="114"/>
-          <line x1="20" y1="150" x2="100" y2="150"/>
-        </g>
-        <path d="M100 160 q22 0 22 -22" fill="none" stroke="#2c3d52" stroke-width="3"/>
-        <rect x="34" y="176" width="10" height="16" fill="#1b2634"/><rect x="76" y="176" width="10" height="16" fill="#1b2634"/>
-        <text id="siloTxt" x="60" y="112" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
-              font-size="13" fill="#dfe7ef">—</text>
+        <path id="path" fill="none" stroke="url(#lane)" stroke-width="17" stroke-linecap="round"/>
+        <path id="path2" fill="none" stroke="#0c141d" stroke-width="1.5" stroke-dasharray="3 5"/>
+        <g id="marks"></g>
+        <circle id="car" r="6" fill="#39d0d8"/>
+        <circle id="ghost" r="3.5" fill="#2b3a4b"/>
       </svg>
-      <div style="flex:1;min-width:250px">
-        <div class="row"><span>fuel in the tank</span><span id="d-tank" class="dim">reading…</span></div>
-        <div class="row"><span>this car will cost</span><span id="d-cost" class="dim">—</span></div>
-        <div class="row"><span>minting window</span><span id="d-window" class="dim">—</span></div>
-        <div class="row"><span>races left in it</span><span id="d-left" class="dim">—</span></div>
-
-        <!-- ⛽ WHO FILLED THE TANK — read from the depot's OWN chain of spends, the same walk the race
-             board already makes, so it needs NO INDEXER and no extra network call: a hop that mints no
-             car IS a top-up, and the walk was already detecting those and throwing them away.
-             ⚠⚠ THE MARK ONLY, NEVER THE ADDRESS (sun-dive, 20 Aug). The AMOUNT is a chain fact and
-             cannot be faked; the MARK is a message the contributor wrote. A donor's address is nobody
-             else's business, and publishing one is permanent — they cannot un-publish it later. -->
-        <div id="d-gifts" style="display:none;margin-top:14px">
-          <div class="lbl" style="margin-bottom:6px">⛽ who filled the tank</div>
-          <div id="d-gift-rows"></div>
-          <div class="row" style="border-top:1px solid var(--line);margin-top:6px;padding-top:6px">
-            <span>contributed in total</span><span id="d-gift-total">—</span></div>
-        </div>
-
-        <p class="note" id="d-note" style="margin-top:10px">press <b>Re-read the chain</b> to find the depot.</p>
-        <button class="ghost" id="reload">↺ Re-read the chain</button>
-      </div>
+      <div class="row"><span>speed</span><span id="d-v">—</span></div>
+      <!-- ★★ THE INSTRUMENT THAT MAKES IT FEELABLE: how close the car is to leaving the slot. The
+           ceiling is v² ≤ K·r·slip·tyr — one multiply and one compare, and it is the entire game. -->
+      <div class="note" style="margin-top:6px">grip · how close to leaving the slot <span id="d-pct" style="float:right"></span></div>
+      <div class="bar"><i id="d-bar"></i></div>
+      <div class="row" style="margin-top:8px"><span>section</span><span id="d-sec">—</span></div>
+      <div class="row"><span>deslot ceiling here</span><span id="d-lim">—</span></div>
     </div>
   </div>
 
-  <!-- ═══ FUEL ════════════════════════════════════════════════════════════════════════════════════ -->
+  <!-- ═══ THE RESULT ═══ -->
   <div class="panel">
-    <div class="lbl">⛽ Put satoshis in the Fuel Depot</div>
-    <!-- ⚠⚠ A THIRD SENTENCE WAS CUT HERE (sun-dive, 20 Aug), and the reason is worth keeping:
-           "★ A gift buys no minting slot: the covenant refuses a top-up that tries to take one."
-         It was meant as reassurance — contributing does not consume anyone's race allowance, which is
-         true and was proved on chain today (a top-up leaves `mark` and `n` untouched, the successor
-         script byte-identical). But READ COLD, directly above a Contribute button, it says
-         "the covenant refuses a top-up" — the reader meets the word REFUSED at the exact moment they
-         are deciding to give, and "minting slot" is a term this page never introduces.
-         ⇒ It answered a question nobody had asked, in vocabulary nobody had been taught, and raised a
-         doubt while doing it. Same failure as the warning that once ended by naming the fuel button:
-         **racing is free — say that and stop.** The rate limit is already explained where it can be
-         seen working, on the depot panel's "minting window" row. -->
-    <p class="note" style="margin:0 0 4px">Every race costs the depot a little, and when it runs dry nobody
-       races. This builds the top-up <b>here, unsigned</b>, and hands it to <b>Phar Lap</b> to sign — this page
-       never sees a key.</p>
-    <!-- ⚠⚠⚠ TYPE THE NUMBER. THIS WAS A RANGE SLIDER, min 1000 max 500000 step 1000, AND IT ATE A
-         21,000,000 SAT DEPOSIT IN SILENCE — the value could not be entered at all, so it stayed at its
-         default 20,000 and the page funded that without a word (`94356c0f…`, 20 Aug).
-         ★ EVERY ONE OF THOSE FOUR LIMITS WAS THE PAGE'S INVENTION. `racerDepot.ts:146` is explicit —
-         the value rule is *"a FLOOR and not an equality, which is what makes a top-up free: anyone may
-         hand back MORE"*. There is no MAX_TANK in the racers depot at all, and the minimum is one
-         satoshi. ⇒ The only real limit is what the contributor's own coin can cover, so that is the
-         only one shown. Bootcamp #4, fourth time; a slider clamping in silence, third time. -->
-    <!-- ★★ A SLIDER AND A TYPED FIELD, AND THE TYPED FIELD IS THE AUTHORITY (sun-dive, 20 Aug).
-         The slider is back because choosing an amount by eye is the natural gesture. What is NOT back
-         is its power to decide the number: it WRITES to the box below and never reads its own limits
-         back into it, so a figure larger than the slider's top stays exactly as typed and the thumb
-         simply parks at the end.
-         ⚠⚠ THAT IS THE WHOLE POINT — A SLIDER ALONE ATE 21,000,000 SAT. min 1000 max 500000 step
-         1000: the amount could not be entered at all, so it stayed at its default and the page funded
-         20,000 in silence (`94356c0f…`, 20 Aug). A slider that cannot overwrite a typed number cannot
-         do it again.
-         ⚠ 100,000 + 40 × 100,000 = 4,200,000, so both ends AND the 2,100,000 default sit on grid —
-         the same rule the grip slider follows.
-         ⚠ The slider's RANGE is the page's invention and nothing else. `racerDepot.ts:146` has no
-         MAX_TANK at all and the covenant's minimum is one satoshi, so the box is what governs and it
-         is bounded only by `min="1"`. Bootcamp #4. -->
-    <label>satoshis <span class="dim" id="v-add">≈ 0.021 BSV</span></label>
-    <input type="range" id="add-r" min="100000" max="4200000" step="100000" value="2100000">
-    <input type="number" id="add" min="1" step="1" value="2100000"
-           style="width:100%;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--fg);font-family:ui-monospace,Menlo,monospace;font-size:13px">
-    <label>your address <span class="dim" id="a-bal">— the fuel and its fee come out of your coins</span></label>
-    <input id="addr" placeholder="1..." style="width:100%;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--fg);font-family:ui-monospace,Menlo,monospace;font-size:13px">
-    <label>a mark for the board · optional</label>
-    <input id="mark" maxlength="75" placeholder="first fuel" style="width:100%;padding:9px;border-radius:7px;border:1px solid var(--line);background:#080c11;color:var(--fg);font-size:13px">
-    <div style="margin-top:12px"><button id="build" class="ghost">⛽ Build the top-up</button></div>
-    <p class="note no" id="f-err" style="margin-top:8px"></p>
-
-    <div id="f-panel" style="display:none;margin-top:12px">
-      <div class="row"><span>fuel added</span><span id="b-add">—</span></div>
-      <div class="row"><span>mark</span><span id="b-mark">—</span></div>
-      <div class="row"><span>change back to you</span><span id="b-change">—</span></div>
-      <div class="row"><span>miner's fee</span><span id="b-fee">—</span></div>
-      <!-- ★★ THE TRANSACTION IS WHAT YOU GET, AND THE REQUEST IS THE ALTERNATE — that order matters.
-           The JSON is a document describing what to build, and the only thing that reads it is a signer
-           written for it. Handing a visitor a format one bespoke tool understands, and burying the
-           transaction behind a toggle, is a page serving its own architecture rather than the person
-           using it. So the default is the transaction: input #1 is the covenant and is already
-           COMPLETE — OP_PUSH_TX needs no key — and input #2 is yours and is deliberately BLANK.
-           ⚠ There is no BSV standard for this. Electrum's extended format describes which KEYS to
-           derive, which is not our problem; PSBT is the real format for it and nothing on BSV reads
-           PSBT. This matches battery.html because that is what Phar Lap already reads, and a third
-           bespoke format would be worse than either. -->
-      <!-- ★★ WHAT TO DO, IN THE ORDER YOU DO IT (sun-dive, 20 Aug — the signing wording was unclear).
-           The old line was "(unsigned transaction — sign input #2, the only blank in it)". It names a
-           thing the reader has never been shown, uses the word "blank" for something they cannot see,
-           and gives no next step at the exact moment they are trying to take one. Somebody here wants
-           three things: what this is, where it goes, and what happens after.
-           ⚠ It deliberately says NOTHING about what Phar Lap's screens look like or which button to
-           press. That is another program; its wording is not ours to promise, and a description that
-           goes stale is worse than none. -->
-      <p class="note" style="margin:12px 0 6px"><b>Nothing is signed yet, and nothing has been sent.</b></p>
-      <ol class="note" style="margin:0 0 8px;padding-left:20px">
-        <li>Copy the transaction below.</li>
-        <li>Paste it into <b>Phar Lap</b> and sign it.</li>
-        <li>Broadcast it — the tank is filled the moment the network accepts it.</li>
-      </ol>
-      <p class="note" style="margin:0 0 4px">Only <b>your own input</b> needs a key. The depot's is already
-         complete: the covenant authorises itself with arithmetic, which is why this page has never asked
-         you for a key and cannot lose one.</p>
-      <p class="note" style="margin:10px 0 4px" id="b-fmt">unsigned transaction · hex</p>
-      <textarea id="b-hex" readonly></textarea>
-      <div style="margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-        <button id="b-copy" class="ghost">⧉ Copy</button>
-        <a href="#" id="b-raw" class="note">signing request instead</a>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══ WHAT JUST HAPPENED ══════════════════════════════════════════════════════════════════════ -->
-  <div class="panel">
-    <div class="lbl">What just happened</div>
-    <p class="note" style="margin-top:0">The run is simulated before anything exists, and the car is
-      compiled <b>for that run and no other</b> — the physics, the distance, the finish test and the way it
-      ends are all unrolled into one locking script. Minting it is a <b>commitment</b>: the transaction
-      asserts <i>this car finishes in N ticks</i>, and the covenant refuses it if the arithmetic disagrees.</p>
-    <p class="note">So a wrong prediction produces <b>no race</b>, never a wrong one. Claiming a spin that did
-      not happen, or a time one tick shorter, both simply fail to validate.</p>
-    <p class="note">The depot mints at most <b>ten cars per window</b>, and the reset costs nothing: a
-      transaction cannot be mined until <i>median time past</i> passes its <code>nLockTime</code>, and that only
-      moves when a block is found. The script never has to know what a block is.</p>
-    <p class="note">⚠ It only works because the depot also checks its own <code>nSequence</code>. A transaction
-      whose inputs are all final ignores <code>nLockTime</code> entirely — so without that one line, the whole
-      scheme would be decoration.</p>
-  </div>
-
-  <!-- ═══ HOW THE COVENANTS WORK ══════════════════════════════════════════════════════════════════
-       For technical readers (sun-dive, 20 Aug). "What just happened" above says what the system
-       PROMISES; this says how it is ENFORCED. ⚠ Deliberately no overlap: the commitment and the
-       window rate limit are explained up there and only referenced here. -->
-  <div class="panel">
-    <div class="lbl">How the covenants work</div>
-
-    <p class="note" style="margin-top:0"><b>1 · A covenant with no key.</b> A Bitcoin script cannot normally
-      see the transaction that is spending it. <code>OP_PUSH_TX</code> is the technique that lets it: the
-      spender pushes the signature preimage as plain data, and the script proves that data is genuine by
-      running <code>OP_CHECKSIG</code> against a <b>public constant</b> rather than anybody's key. A forged
-      preimage fails the check.</p>
-    <p class="note">⚠ So the one <code>OP_CHECKSIG</code> in these scripts authorises nothing — it is how the
-      transaction is <i>read</i>. ⇒ Once a script can see its own outputs, it can constrain them. That is the
-      whole of a covenant, and <b>no key exists anywhere in a car</b>: nothing to steal, nothing to lose,
-      nobody to ask.</p>
-
-    <p class="note"><b>2 · How the depot emits a car.</b> A mint is one transaction with exactly two outputs:</p>
-    <pre class="tech">INPUT   the depot's UTXO, holding V satoshis
-OUT 0   the CAR — a brand new covenant, funded with exactly its race fee
-OUT 1   the depot again — same program, new state, V - car - fee</pre>
-    <p class="note">The depot never sees the car's source and has no idea how long a race is. It checks five
-      things and nothing else:</p>
-    <pre class="tech">shape      the car's TAIL is pinned as literal bytes — the pushtx frame, the fee
-           rule, and the address the last satoshi comes home to
-size       OP_SIZE <= 16,000 bytes
-funding    the car may be handed at most DRAW = 2,000 satoshis
-value      out1 >= V - (DRAW + MAX_FEE)   <- a FLOOR, never an equality
-successor  out1 must be the depot itself — see 3</pre>
-    <p class="note">★ The tail is pinned but <b>the body is free</b>, which is why one depot can mint a
-      five-tick car of 1.7 KB and a fifty-six-tick car of 13 KB without knowing anything about either. It is
-      not recognising a car it has seen before; it is requiring that whatever comes out <i>ends</i> like a
-      racer — paying its fee, and paying it home.</p>
-    <p class="note">⚠ And the value rule being a <b>floor</b> is what makes a gift possible at all: handing the
-      depot <i>more</i> than it had is always legal, at any balance, from anyone.</p>
-
-    <p class="note"><b>3 · The depot rebuilds itself.</b> It reads its own <code>scriptCode</code> back out of
-      the preimage, drops in the new state, and demands that the result is what the transaction actually
-      pays:</p>
-    <pre class="tech">hash256( newValue ‖ rebuilt scriptCode ‖ the car ‖ anything else ) == hashOutputs</pre>
-    <p class="note">★★ A spender never supplies the successor's program — it is <i>derived from the depot's own
-      bytes</i>. So handing the tank to a different script is not forbidden, it is <b>unrepresentable</b>: the
-      transaction simply cannot be built in a form that validates.</p>
-
-    <p class="note"><b>4 · The car is a race, unrolled.</b> The run is simulated in JavaScript before anything
-      is minted, so every branch is already decided. Each one is compiled as an <b>assertion</b> instead of two
-      arms:</p>
-    <pre class="tech">IF prop > 0 THEN th = throttle    ->    VERIFY fuel > 0     (or = 0 on a dry tick)
-IF demand > grip THEN spun = 1    ->    VERIFY grip >= demand
-IF nv >= BLOW_V THEN out = 1       ->    VERIFY nv &lt; BLOW_V</pre>
-    <p class="note">⇒ A car contains <b>no control flow at all</b> — about 222 bytes per tick of pure
-      arithmetic. A branch says <i>whichever way this goes, handle it</i>; an assertion says <i>this goes this
-      way, and if it does not, the spend is invalid</i>. The covenant enforces exactly as much either way; it
-      refuses instead of branching.</p>
-
-    <p class="note"><b>5 · Why a faster car is a cheaper one.</b> The mint fee is linear in the two script
-      lengths — roughly <code>(2·car + 2·depot + 267) / 10</code> — and the <b>2×</b> is the interesting part:
-      every script is paid for twice, once as the output itself and again inside the preimage that proves it.
-      A car's length <i>is</i> its tick count, and its tick count <i>is</i> its time.</p>
-    <p class="note">★ So the fee is the elapsed time, and nobody designed that — it falls out of the mechanism.
-      <b>You pay less to win.</b></p>
-  </div>
-
-  <div class="foot">
-    <b>Colophon.</b> The covenant is <code>mint/src/racerCar.ts</code> and <code>mint/src/racerDepotSrc.ts</code>
-    — the depot's rules are written in <a href="/basic.html">Bitcoin BASIC</a> and compiled to Script, so they
-    can be read back rather than re-derived. Designed by <b>sun-dive</b>, who made every decision here: the
-    drag race that deleted the track problem, one race per car because the number of unrolls depends on the
-    setup, the depot's window rate limit, and the address the last satoshi comes home to. <b>Claude (Opus 5)</b>
-    wrote the Script and the tests.
-    <br><br>
-    <b>★ <a href="/green-test.html">A Green Test Is Not Evidence</a></b> — Claude's own account of building
-    this: five failures, what each one taught, and the day it raced on mainnet.
-    <br><br>
-    The mistakes are in the commit history deliberately: a fee that would have been unmineable, a constant
-    fold that erased a car's whole setup, a bound that refused the very race it was sized for, and a suite
-    where only the refusals passed — which is what a covenant that always fails looks like from outside.
-    Every one was found by measuring something rather than by reasoning about it.
-    <br><br>
-    © 2026 sun-dive · Open BSV License Version 6 · <a href="/brc226.html">demo one</a> ·
-    <a href="/battery.html">demo two</a> · <a href="/racers.html">the tuning bench</a> ·
-    <b>in the covenant we trust</b>
+    <div class="lbl">the lap</div>
+    <div class="big" id="d-lap">—</div>
+    <table>
+      <thead><tr><th>section</th><th>radius</th><th>ceiling</th><th>exit speed</th><th>split</th></tr></thead>
+      <tbody id="splits"></tbody>
+    </table>
+    <p class="note" style="margin-top:12px">
+      ⚠ The picture is stylised — the physics uses the real Aurora geometry (9″ straights, 1/8 curves at
+      6″ and 9″, six per turn) but the drawn shape is a lemniscate. Progress along it is true to
+      distance; the shape is not. Every constant is provisional.
+    </p>
   </div>
 </div>
 
 <script>
 (function(){
-  "use strict";
+  'use strict';
+  var $ = function(id){ return document.getElementById(id) };
+  var GB = null, RAF = 0;
 
-  /* ⚠⚠ THE DEPOT. Minted 19 Aug 2026, block 962,950. There is no index that will find it — a covenant
-     has no address to look up, so the genesis txid IS its identity and it is written down here. */
-  var GENESIS  = '607272d1b35d6f0c4f1179fef2e4556d41f9bfb4bbed394de1f83e300ee0d1d7';
-  /* ★ The standard drag distances. Metres are the ROUNDED integers that go on chain — see the slider.
-     60 ft is the launch benchmark; 1000 ft is what NHRA Top Fuel actually runs today. */
-  var TRACKS = [
-    { m:  18, label: '60 ft · 18 m' },
-    { m: 101, label: '330 ft · 101 m' },
-    { m: 201, label: '1/8 mile · 201 m' },
-    { m: 305, label: '1000 ft · 305 m' },
-    { m: 402, label: '1/4 mile · 402 m' }
-  ];
-  var OWNER_AD = '12tMiZzdMUGdR2me8Y6H7VjQkFTekrz141';
-  var WOC = 'https://api.whatsonchain.com/v1/bsv/main';
-  var LAST_KEY = 'racers.depot.tip.v1';
-
-  var $ = function(i){ return document.getElementById(i) };
-  var n = function(x){ return Number(x).toLocaleString() };
-  var GM = null, DEPOT = null, PLAN = null;
-
-  function say(s, cls){
-    var d = document.createElement('div');
-    if(cls) d.className = cls;
-    d.textContent = s; $('log').appendChild(d); $('log').scrollTop = 1e6;
-  }
-  function clearLog(){ $('log').innerHTML = '' }
-
-  function gm(){
-    if(GM) return Promise.resolve(GM);
-    if(window.GrafBeta){ GM = window.GrafBeta; return Promise.resolve(GM) }
+  /* ⚠ THE BENCH RUNS THE COVENANT'S OWN PHYSICS. `laneSection` is the function `beta-lane.ts` proves
+     against the real interpreter — a bench that reimplements it is a bench that quietly disagrees. */
+  function load(){
+    if (GB) return Promise.resolve(GB);
     return new Promise(function(res, rej){
-      /* ⚠ CACHE-BUST. Every other page loads this bare, and that was survivable while the bundle only
-         ever gained things. It is not now: a visitor holding a bundle from before 20 Aug has no
-         `ONE_RACE_REGS`, and this page's physics would come out `undefined` rather than wrong-but-
-         plausible. Bump this whenever the physics moves. */
-      var s = document.createElement('script'); s.src = '/vendor/grafbeta.js?v=20260820beta1';
+      var s = document.createElement('script');
+      s.src = '/vendor/grafbeta.js?v=20260821bench';
       s.onload = function(){
-        GM = window.GrafBeta;
-        /* ⚠⚠ SAY IT PLAINLY RATHER THAN FAIL OBSCURELY. A stale bundle is a cached file, not a bug in
-           this page, and "cannot read AERO_BY_MASS of undefined" sends the reader somewhere useless.
-           A wrong name is worse than a stop, because a stop is visible. */
-        /* ⚠⚠ CHECK EVERY SYMBOL THE PAGE WILL SILENTLY MISBEHAVE WITHOUT, not just the newest one.
-           `RACER_MAX_CAR_BYTES` is the sharp case: undefined makes `lockBytes > undefined` FALSE, so a
-           stale bundle does not break the size guard — it DELETES it, and the page cheerfully offers
-           to mint a car the depot will refuse. A missing feature that reads as a passing check is
-           worse than a crash. ⇒ Name it, fail loudly, and say what to do. */
-        /* ⚠ `racerTopUpPad` JOINS THE LIST FOR THE SAME REASON. Undefined, `padFor(k)` throws — which
-           is at least loud — but the failure would surface inside coin selection, three steps from the
-           cause, and read as a bug in the funding maths rather than a cached file. */
-        if(!GM || !GM.ONE_RACE_REGS || typeof GM.RACER_MAX_CAR_BYTES !== 'number'
-              || typeof GM.racerTopUpPad !== 'function'){
-          rej(Error('grafbeta.js is STALE — it is missing ' +
-                    (!GM || !GM.ONE_RACE_REGS ? 'ONE_RACE_REGS (the model C physics)'
-                     : typeof GM.RACER_MAX_CAR_BYTES !== 'number' ? 'RACER_MAX_CAR_BYTES (the depot size guard)'
-                                              : 'racerTopUpPad (the multi-coin fee allowance)') +
-                    '. Hard-reload this page.'));
-          return;
-        }
-        res(GM);
+        GB = window.GrafBeta;
+        if (!GB || typeof GB.laneSection !== 'function')
+          return rej(Error('grafbeta.js is STALE — it has no laneSection. Hard-reload.'));
+        res(GB);
       };
       s.onerror = function(){ rej(Error('could not load grafbeta.js — serve this page, do not open the file')) };
       document.head.appendChild(s);
     });
   }
 
-  /* ── THE SCRIPTS, ALL FROM ONE ADDRESS ────────────────────────────────────────────────────────
-     ★ The address that owns the depot is the address a finished race pays back to. Because a 25-byte
-     address contains no depot, nothing is self-referential and there is exactly ONE depot. */
-  function scripts(M){
-    var payee = new M.P2PKH().lock(OWNER_AD).toBinary();
-    var owner = new M.P2PKH().lock(OWNER_AD).chunks[2].data;
-    return { payee: payee, owner: owner,
-             block: new M.LockingScript(M.carBlockOps({ depotScript: payee })).toBinary() };
-  }
-  function depotAt(M, mark, count){
-    var s = scripts(M);
-    return M.buildRacerDepotBasicLock({ carBlock: s.block, owner: s.owner, mark: mark, count: count });
-  }
+  var S = 4294967296;
+  var fx = function(v){ return v / S };
 
-  /* ── FINDING THE TIP ──────────────────────────────────────────────────────────────────────────
-     ⚠⚠ THE BATTERY'S SEARCH DOES NOT TRANSFER, and knowing why matters more than the code.
-     `battery.html` brackets its tip with an exponential probe and a binary search — 2·log2(k) lookups
-     instead of k hops — because the battery's state sequence is FORCED: state n is `refState` applied
-     n times, so existence walks an ordered line.
-
-     This depot's state is (mark, count), and `mark` is the WINDOW somebody raced in — which depends on
-     WHEN, not on how many. There is no sequence to bracket. Copying the shape without the property
-     would be a search over states that never existed.
-
-     ⇒ What DOES transfer: ask the SCRIPT-HASH index rather than the chain hop by hop, and ★★ ask the
-     MEMPOOL FIRST, because a tip is unconfirmed almost by definition. Measured on the battery,
-     `/history` did not contain a live tick that `/unconfirmed/history` did, and the page showed a
-     stale state for up to an hour.
-     ⚠ `wocScriptHash` REVERSES the sha256. The non-reversed form 404s silently — which here would read
-     as "unspent, this is the tip" and hand back the wrong output entirely. */
-  function unspentAt(M, prov, mark, count){
-    var sh = M.wocScriptHash(depotAt(M, mark, count).toBinary());
-    return prov.getUnspentByScriptHash(sh).then(function(u){
-      return (u && u.length) ? u[0] : null;
-    }).catch(function(){ return null });
+  /* ── the drawn shape: a lemniscate, parameterised so progress maps to distance ─────────────────── */
+  function pointAt(u){                       // u in [0,1)
+    var t = u * Math.PI * 2, k = 1 + Math.sin(t) * Math.sin(t);
+    return { x: 230 + 165 * Math.cos(t) / k, y: 130 + 105 * Math.sin(t) * Math.cos(t) / k };
   }
-  /**
-   * ⚠⚠ THE HOP IS NOT ALWAYS OUTPUT ZERO, AND ASSUMING IT WAS COST A LIVE PAGE.
-   *
-   * On a MINT the car takes out0 — its own covenant insists on that — and the depot follows at out1.
-   * The first version of this stepped to vout 0 every time, so it followed the CAR out of the depot,
-   * then the race, and arrived at the payout address. The state read then failed with
-   * `expected 4 … 1, got 118 … 162`, and 118 is 0x76, OP_DUP: the first byte of a P2PKH.
-   *
-   * ★ The message was RIGHT and the walk was wrong. Relabelling it "the depot is out of fuel" — which
-   * is what it looked like from outside — would have buried a bug that silently reads somebody else's
-   * output as the depot.
-   *
-   * ⇒ So the successor is FOUND, not assumed: fetch the spending transaction and take the output that
-   * carries a depot's state head. There is exactly one, because a mint has exactly two outputs.
-   * ⚠ Only a 404 means unspent. A 429 or a 500 must STOP rather than be read as "we have arrived".
-   */
-  function walkTip(txid, vout){
-    var hops = 0;
-    function step(t, v){
-      if(++hops > 400) throw Error('the depot chain is more than 400 deep — something is wrong');
-      return fetch(WOC + '/tx/' + t + '/' + v + '/spent').then(function(r){
-        if(r.status === 404) return { txid:t, vout:v, hops:hops-1 };
-        if(!r.ok) throw Error('cannot tell whether ' + t.slice(0,12) + '… is spent (WoC ' + r.status + ') — refusing to guess');
-        return r.json().then(function(s){
-          return fetch(WOC + '/tx/hash/' + s.txid).then(function(x){
-            if(!x.ok) throw Error('cannot read ' + s.txid.slice(0,12) + '… (WoC ' + x.status + ')');
-            return x.json();
-          }).then(function(spend){
-            var at = -1;
-            for(var i=0;i<spend.vout.length;i++){
-              var b = spend.vout[i].scriptPubKey.hex;
-              /* the state head: a 4-byte push, then a 1-byte push. `04 …… 01 …` */
-              if(b.slice(0,2) === '04' && b.slice(10,12) === '01'){ at = i; break }
-            }
-            if(at < 0) throw Error('the depot chain ends at ' + s.txid.slice(0,12) +
-              '… — that spend produced no depot, so it was swept by its owner');
-            return step(s.txid, at);
-          });
-        });
-      });
+  (function drawTrack(){
+    var d = '', d2 = '';
+    for (var i = 0; i <= 400; i++){
+      var p = pointAt(i / 400);
+      d += (i ? 'L' : 'M') + p.x.toFixed(1) + ' ' + p.y.toFixed(1);
+      d2 += (i ? 'L' : 'M') + p.x.toFixed(1) + ' ' + p.y.toFixed(1);
     }
-    return step(txid, vout);
-  }
-  function findTip(M){
-    var prov = new M.WalletProvider(OWNER_AD), remembered = null;
-    try { remembered = JSON.parse(localStorage.getItem(LAST_KEY) || 'null') } catch(e){}
-    var tries = [];
-    if(remembered){
-      var W = M.RACER_WINDOW_SECONDS, now = Math.floor((Date.now()/1000 - 3*3600) / W);
-      tries.push([remembered.mark, remembered.count]);
-      if(remembered.count < M.RACER_MINTS_PER_WINDOW) tries.push([remembered.mark, remembered.count + 1]);
-      if(now > remembered.mark) tries.push([now, 1]);
+    $('path').setAttribute('d', d); $('path2').setAttribute('d', d2);
+  })();
+
+  /* ── section lengths, from the REAL geometry ───────────────────────────────────────────────────── */
+  function geom(GB){
+    var T = GB.AURORA_FIG8, arc = function(r){ return 2 * Math.PI * r / 8 }, L = [], tot = 0;
+    for (var k = 0; k < 4; k++){
+      var r = (k % 2 === 0) ? T.radiusInner : T.radiusOuter;
+      var len = T.straight + T.arcs * arc(r);
+      L.push({ r: r, len: len, straight: T.straight });
+      tot += len;
     }
-    function attempt(i){
-      if(i >= tries.length) return Promise.resolve(null);
-      return unspentAt(M, prov, tries[i][0], tries[i][1]).then(function(u){
-        if(!u) return attempt(i+1);
-        /* ⚠⚠ READ THE SHAPE, DO NOT GUESS IT. `getUnspentByScriptHash` MAPS WoC's rows before handing
-           them back — `tx_hash` and `tx_pos` become `txId` and `outputIndex`. Reading the raw names
-           gave undefined, the page fetched /tx/undefined/hex, and the SDK reported "Invalid hex
-           string" — an error three steps downstream of the mistake.
-           ⇒ And it stayed hidden until a remembered state existed, because until then this fast path
-           never ran. A branch nothing has taken is a branch nothing has tested. */
-        if(typeof u.txId !== 'string' || typeof u.outputIndex !== 'number'){
-          throw Error('the unspent index returned a row this page does not understand: ' + JSON.stringify(u));
-        }
-        return { txid: u.txId, vout: u.outputIndex, viaIndex: true };
-      });
+    return { L: L, lap: tot };
+  }
+
+  function ceiling(GB, regs, sec, tyr, slip){
+    var C = GB.laneConsts(regs, GB.AURORA_FIG8);
+    var rad = (sec % 2 === 0) ? C.RAD_IN : C.RAD_OUT;
+    var v2 = Math.trunc(Math.trunc(Math.trunc((C.K * rad / S)) * slip / C.SLIP) * tyr / C.TYR_REF);
+    return Math.sqrt(v2 / S);
+  }
+
+  function marks(g){
+    var html = '', at = 0;
+    for (var k = 0; k < 4; k++){
+      at += g.L[k].len;
+      var p = pointAt((at / g.lap) % 1);
+      html += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="2.5" fill="#39d0d8" opacity=".5"/>';
     }
-    return attempt(0).then(function(hit){ return hit || walkTip(GENESIS, 0) });
+    $('marks').innerHTML = html;
   }
 
-  function reload(){
-    $('d-note').textContent = 'reading the chain…';
-    return gm().then(function(M){
-      return findTip(M).then(function(tip){
-        return fetch(WOC + '/tx/' + tip.txid + '/hex').then(function(r){ return r.text() }).then(function(hex){
-          /* ⚠ A fetch that returned an error PAGE is not hex, and letting the SDK discover that three
-             steps later reports "Invalid hex string" with nothing to say where it came from. */
-          hex = hex.trim();
-          if(!/^[0-9a-fA-F]+$/.test(hex)) {
-            throw Error('the chain did not return a transaction for ' + String(tip.txid).slice(0,16) +
-              '…:' + tip.vout + ' — got ' + hex.slice(0,60));
-          }
-          var tx = M.Transaction.fromHex(hex), out = tx.outputs[tip.vout];
-          if(!out) throw Error('there is no output ' + tip.vout + ' in ' + tip.txid.slice(0,16) + '…');
-          /* ★ THE STATE COMES OFF THE SCRIPT, never from anything this page remembers. The depot is a
-             chain, and anybody may have advanced it since the page loaded. */
-          var st = M.readDepotState(out.lockingScript.toBinary());
-          DEPOT = { txid: tip.txid, vout: tip.vout, sourceTxHex: hex.trim(), sourceTransaction: tx,
-                    value: out.satoshis, mark: st.mark, count: st.count };
-          try { localStorage.setItem(LAST_KEY, JSON.stringify({ mark: st.mark, count: st.count })) } catch(e){}
+  function run(){
+    cancelAnimationFrame(RAF);
+    load().then(function(GB){
+      /* ★ §7.10's measured fit: FE 0.12 · WF 0. K and the tyre term are already in the source.
+         ⚠ WF = 0 is the finding, not a tweak — at the drag-racing scaling the tank was ~90% of the
+         car's mass, so power barely mattered and the whole field lapped within 0.08 s. A slot car does
+         not CARRY its power. */
+      var regs = Object.assign({}, GB.BETA_LANE_REGS);
+      if (+$('fit').value === 1){ regs.FE = GB.laneFixed(0.12); regs.WF = 0 }
+      var track = Object.assign({}, GB.AURORA_FIG8, { laps: 1,
+        slipInner: +$('slip').value, slipOuter: +$('slip').value });
+      var g = geom(GB); marks(g);
 
-          var W = M.RACER_WINDOW_SECONDS, per = M.RACER_MINTS_PER_WINDOW;
-          var nowWin = Math.floor((Date.now()/1000 - 3*3600) / W);
-          var left = nowWin > st.mark ? per : per - st.count;
-          $('d-tank').textContent = n(out.satoshis) + ' sat';
-          $('d-window').textContent = st.mark + (nowWin > st.mark ? ' · a new one has opened' : '');
-          $('d-left').textContent = left + ' of ' + per;
-          $('d-note').innerHTML = 'tip <code>' + tip.txid.slice(0,18) + '…:' + tip.vout + '</code> · ' +
-            (tip.viaIndex ? 'one lookup, by script hash' : 'walked from the genesis');
-          /* the silo fills against a nominal full tank — it is a gauge, not a measurement */
-          var frac = Math.max(0.02, Math.min(1, out.satoshis / 200000));
-          $('fuelLvl').setAttribute('height', (130*frac).toFixed(1));
-          $('fuelLvl').setAttribute('y', (172 - 130*frac).toFixed(1));
-          $('siloTxt').textContent = n(out.satoshis);
-          replan();
-        });
-      });
-    }).catch(function(e){ $('d-note').innerHTML = '<span class="no">⚠ ' + e.message + '</span>' });
-  }
+      var eng = +$('eng').value, tyr = +$('tyr').value;
+      var ths = +$('ths').value, tht = +$('tht').value;
 
-  /* ── THE PREDICTION ───────────────────────────────────────────────────────────────────────────
-     ⚠ The car is compiled against the DEPLOYED constants, never a tuned bench value. A car minted from
-     provisional numbers would disagree with the covenant about how fast it is, and the covenant is the
-     one that decides. */
-  function physics(M){
-    /* ⚠ ONE_RACE_REGS, not RACER_REGS. This page builds ONE-RACE cars, which carry model C — the
-       aerodynamic term divides by mass, so a heavy car coasts further — and the closed-form `stopped`
-       ending. RACER_REGS still describes the deployed CHAINED car, whose physics is hand-emitted
-       Script and cannot change. → §6j */
-    var R = M.ONE_RACE_REGS;
-    return { M0:R.M0, WE:R.WE, WT:R.WT, WF:R.WF, FE:R.FE, G0:R.G0, GV:R.GV, DRAG:R.DRAG, DRAG2:R.DRAG2,
-             BLOW_V:R.BLOW_V, SPIN_KEEP:R.SPIN_KEEP, LOOSE_V:R.LOOSE_V, TM:R.THROTTLE_MAX,
-             BURN0:R.BURN0, BURN_E:R.BURN_E, SLIP:M.SLIP_UNIT, S:M.S };
-  }
-  function setup(){
-    return { eng:+$('eng').value, tyr:+$('tyr').value, slip:+$('slip').value,
-             metres:TRACKS[+$('fin').value].m, fuel:+$('tank').value, throttle:8,
-             driver:$('driver').value };
-  }
-  /**
-   * ⚠ `racerRefTick` REFUSES rather than returning nonsense — "a car cannot be massless" for an engine and
-   * tyre combination that has no mass to push. That is the reference being honest, and the page must
-   * catch it: an uncaught throw here kills `replan()`, and the panel then shows the LAST valid setup
-   * while the sliders say something else. A stale number that looks live is worse than an error.
-   */
-  function simulate(M, s){
-    try { return simulateUnsafe(M, s) }
-    catch(e){ return { refused: (e && e.message) || 'the reference refuses this car',
-                       run:{ ticks:[], ending:'finish' }, finish:0, unfinished:true, secs:0, mph:0, trace:[] } }
-  }
-  function simulateUnsafe(M, s){
-    var R = M.ONE_RACE_REGS, S = M.S, finish = Math.round(s.metres * S);
-    var st = { phase:M.PHASE.RACING, driver:new Array(20).fill(0), pool:new Array(36).fill(0),
-               eng:s.eng, tyr:s.tyr, finish:finish, slip:s.slip, green:0, gap:1, last:100, s:0, v:0, n:0 };
-    var fuel = s.fuel, ticks = [], done = false, ending = 'finish', trace = [];
-    for(var i=0;i<400;i++){
-      /* ⚠ racerRefTick, NOT refTick. The shell's tick is model A and describes the DEPLOYED chained
-         car; this page races ONE-RACE cars, which carry model C and the closed-form `stopped`
-         ending. → src/racerPhysics.ts */
-      var r = M.racerRefTick(st, { throttle:s.throttle, fuel:fuel, lockTime:st.last+st.gap }, R);
-      /* ⚠⚠ CLAMP AT EMPTY — DO NOT STOP. A dry car COASTS: with no propellant the throttle is forced
-         shut and it rolls on, slowing on drag, which is what a real one does. `shell.ts` says so
-         directly, and `racerCar.ts` adds that since the fee left the loop the fuel is a GAME quantity
-         rather than a balance.
-         ⚠ An earlier version broke out of the loop when the tank could not pay for a tick — a rule
-         imported from the CHAINED design, where a tick really was bought. Here it forbade the best
-         strategy in the game: measured 19 Aug, 30,000 fuel finishes 402 m in 5.40 s where 40,000
-         takes 6.00 s, because less fuel is less mass. Under-fuelling is a DECISION, not an error. */
-      fuel = Math.max(0, fuel - r.burn);
-      /* ⚠ r.throttle, NOT s.throttle — the EFFECTIVE throttle. A dry tick applies zero however
-         hard the pedal was pressed, and a trace recording the REQUEST compiles a car that keeps
-         accelerating where the simulated one coasted. That is what made dry cars unraceable. */
-      ticks.push({ throttle:r.throttle, spun:r.spun });
-      st = Object.assign({}, r.state, { last: st.last + st.gap });
-      /* ⚠ th and spun are RECORDED, not re-derived. The page must never recompute the physics to
-         drive a sound — that is a second implementation of the tick, and this project has already
-         paid for one of those (`racer-physics.ts` exists to pin the one copy it does allow).
-         ★ r.throttle is the EFFECTIVE throttle, so a dry tick reads 0 and the engine falls silent
-         for the same reason the car stops accelerating: there is no propellant.
-         ★ spun SURVIVES — a car can lose grip, bog down on SPIN_KEEP and keep racing, which is
-         wheelspin off the line, which is exactly when tyres screech. */
-      trace.push({ s: st.s, v: st.v, th: r.throttle, spun: r.spun, mph: (st.v/S)*2.23694*10 });
-      /* ★ the fifth ending: dry, and provably short of the line. Legal — but no time and no row. */
-      if(r.ended === 'stopped'){ ending='stopped'; done=true; break }
-      if(r.ended === 'off'){ ending='off'; done=true; break }
-      if(r.ended === 'blown'){ ending = r.spun ? 'blown-throttle' : 'blown-speed'; done=true; break }
-      if(st.phase === M.PHASE.DONE){ done=true; break }
-    }
-    /* ⚠ THE ENDING IS REPORTED, NOT ASSUMED. A run that goes dry described as a finish is a lie to the
-       compiler, and the optimiser refuses to certify it — correctly. */
-    /* ⚠ `unfinished` is the 400-tick fuse blowing, NOT the tank emptying — three different things
-       were once called "dry" here and it cost an hour: a dry RUN (fuel hits zero and the car coasts,
-       which is legal and often the fast setup), UNFINISHED (below), and a dry BUILD in the CLI sense.
-       ★ With COAST_STOP this should now be unreachable: a car that cannot cross proves itself
-       `stopped` instead, so this is a safety net rather than an outcome. → §6j */
-    return { run:{ ticks:ticks, ending:ending }, finish:finish, unfinished:!done,
-             secs:ticks.length/10, mph:(st.v/S)*2.23694*10, trace:trace };
-  }
+      var st = { raceId: new Array(32).fill(0), phase: GB.LANE_PHASE.RACING, section: 0, lap: 0,
+                 v: Math.round(0.8 * S), fuel: 400000, t: 0, eng: eng, tyr: tyr,
+                 driver: new Array(24).fill(0) };
 
-  function replan(){
-    if(!GM) return;
-    var M = GM, s = setup(), sim = simulate(M, s), sc = scripts(M);
-    $('v-eng').textContent = s.eng; $('v-tyr').textContent = s.tyr;
-    $('v-tank').textContent = n(s.fuel); $('v-fin').textContent = TRACKS[+$('fin').value].label;
-    $('v-slip').textContent = s.slip;
-    /* ⚠⚠ BYTES, NOT CHARACTERS. `maxlength` would count characters and let 24 rabbits through at four
-       bytes each — 96 B into a 24 B field, refused by `buildRacerCar` only at build time, which is the
-       wrong place to find out. TextEncoder is what the car's own `nameBytes()` measures with, so the
-       panel and the covenant agree on the number. */
-    var dB = new TextEncoder().encode(s.driver).length;
-    $('v-driver').textContent = dB + '/24 B';
-    $('v-driver').style.color = dB > 24 ? '#ff6b6b' : '';
-    if (dB > 24) {
-      PLAN = null;
-      $('go').disabled = true;
-      $('go-note').textContent = '⚠ the driver name is ' + dB + ' bytes — the field is 24. 🐇 costs 4 on its own.';
-      return;
-    }
-    if(sim.unfinished){
-      PLAN = null;
-      $('p-ticks').textContent = '—'; $('p-mph').textContent = '—';
-      $('p-bytes').textContent = '—'; $('p-fee').textContent = '—';
-      /* ⚠ A REFUSAL AND A DRY TANK ARE DIFFERENT THINGS, and telling somebody to add fuel when the
-         reference will not build the car at all sends them the wrong way entirely. */
-      $('p-et').textContent = sim.refused ? 'the car cannot be built' : 'never crosses';
-      $('go').disabled = true;
-      $('go-note').textContent = sim.refused ? '⚠ ' + sim.refused : 'more fuel, or a shorter strip';
-      place(0);
-      return;
-    }
-    /* ★ the driver goes on chain in the car's head. `buildRacerCar` REFUSES an over-long one, so the
-       panel must not let the user reach that point — see the byte counter in replan(). */
-    var cfg = { name:s.driver, fuel:s.fuel, eng:s.eng, tyr:s.tyr, slip:s.slip, finish:sim.finish };
-    /* ⚠⚠ THE OPTIMISER REFUSES A CAR THAT RUNS DRY, AND A REFUSAL MEANS "DO NOT OPTIMISE", NOT
-       "DO NOT RACE". `optimizeCarCompile` proves its hoisting against the faithful build before
-       emitting, and on a run where the fuel reaches zero it cannot read `v` back — so it refuses
-       rather than mint a car whose optimisation has not been checked. That is the self-proof doing
-       exactly its job.
-       ⇒ Falling back to the FAITHFUL build is the honest response: the car is bigger and costs more,
-       and it races. Measured 19 Aug: 402 m on 30,000 fuel is 14,754 B faithful where an optimised one
-       would have been ~12,200.
-       ⚠ It was invisible until tonight, because until the tank started clamping at empty a dry car was
-       never compiled at all. A branch nothing has taken is a branch nothing has tested. */
-    var params = { cfg:cfg, run:sim.run, depotScript:sc.payee, consts:physics(M), optimise:true };
-    var rep = null, faithful = false;
-    try { rep = M.raceValidates(params, 1) }
-    catch(e){
-      params = { cfg:cfg, run:sim.run, depotScript:sc.payee, consts:physics(M), optimise:false };
-      faithful = true;
-      try { rep = M.raceValidates(params, 1) } catch(e2){ rep = null; faithful = false }
-    }
-    PLAN = rep && rep.raceable ? { s:s, sim:sim, params:params, rep:rep } : null;
-    $('p-ticks').textContent = sim.run.ticks.length;
-    /* ★ A dry run costs more, and saying so is the other half of letting somebody choose it. */
-    if(faithful) $('p-why').innerHTML = '⛽ This car <b>runs dry</b> before the line and coasts in. ' +
-      'The optimiser will not certify a dry run, so the car is built faithfully — <b>bigger, and dearer</b>. ' +
-      'Still the right trade if it is quicker.';
-    else $('p-why').innerHTML = 'The car\'s script <i>is</i> the race, so its length is its time — ' +
-      '<b>a faster setup is a cheaper transaction</b>.';
-    /* ★ Say the ending in the panel too, so a wreck is visible BEFORE it is minted rather than after. */
-    $('p-et').textContent = sim.secs.toFixed(2) + ' s · ' +
-      ({ 'off':'goes off the track', 'blown-throttle':'blows the engine', 'blown-speed':'blows the engine',
-         'stopped':'runs dry and rolls to a halt' }[sim.run.ending] || 'gets home');
-    $('p-mph').textContent = sim.run.ending === 'finish' ? Math.round(sim.mph) + ' mph' : '—';
-    /* ★ SAY IT AT THE NUMBER ITSELF. The size ceiling is the DEPOT's rule (OP_SIZE), not the page's,
-       and it binds on exactly the cars the under-fuelling strategy produces: a car that goes dry early
-       and coasts a long way is the LONGEST script there is. Marked here so it is visible while the
-       sliders are still being moved, rather than discovered at the broadcast. */
-    var tooBig = !!rep && rep.lockBytes > M.RACER_MAX_CAR_BYTES;
-    $('p-bytes').textContent = rep ? (n(rep.lockBytes) + ' B' + (faithful ? ' · unoptimised' : '') +
-                                      (tooBig ? ' · ⚠ over the depot\'s limit' : '')) : '—';
-    $('p-bytes').style.color = tooBig ? '#ff6b6b' : '';
-    $('p-fee').textContent = rep ? n(rep.fee + 1) + ' sat' : '—';
-
-    if(DEPOT && rep){
-      var cost = rep.fee + 1 + Math.floor((2*rep.lockBytes + 2*(depotAt(M, DEPOT.mark, DEPOT.count).toBinary().length + 3) + 267)/10);
-      $('d-cost').textContent = n(cost) + ' sat';
-      var W = M.RACER_WINDOW_SECONDS, nowWin = Math.floor((Date.now()/1000 - 3*3600)/W);
-      var full = !(nowWin > DEPOT.mark) && DEPOT.count >= M.RACER_MINTS_PER_WINDOW;
-      var poor = DEPOT.value < cost + 1;
-      /* ⚠⚠ RACEABLE AND MINTABLE ARE DIFFERENT QUESTIONS, and this page only ever asked the first.
-         On 20 Aug a 95-tick car said "proved raceable ✓" and was then refused by the NETWORK with
-         `mandatory-script-verify-flag-failed` — the DEPOT's OP_SIZE guard, at 21,796 B against 16,000.
-         The car was fine; the depot would not accept it. ⇒ Ask both, here, before the button. */
-      $('go').disabled = !PLAN || full || poor || tooBig;
-      /* ⚠ "Out of fuel" must mean OUT OF FUEL. It is the friendly sentence, and the temptation is to
-         reach for it whenever something goes wrong — which is exactly how a broken chain walk came to
-         look like an empty tank. It is said here, where the number is known and the claim is true, and
-         nowhere else. */
-      /* ★★ AND THE ADVICE IS COUNTER-INTUITIVE, SO IT HAS TO BE SPELLED OUT: ADD FUEL TO SHRINK THE
-         CAR. The script IS the race, so a car that runs dry and crawls the last stretch is LONGER than
-         one that drives home — every coasting tick is another ~230 B. More fuel means fewer ticks
-         means a smaller car. Somebody told to "reduce" something will reach for the fuel slider and
-         make it worse. */
-      /* ⚠⚠ THE ADVICE DEPENDS ON WHICH SIDE OF THE OPTIMUM YOU ARE ON, and my first version got it
-         wrong by reasoning from the ONE car that failed. SWEPT at 402 m (eng 14 · tyr 10), and it is a
-         U with a spike in it, not a slope:
-         ```
-           12,000 → 12,513 B (53 t, stopped)   halts early: SHORT
-           14,000 → 40,221 B (178 t)           ⚠ dry early, then crawls the rest — the worst case
-           26,000 → 11,805 B (50 t)            the minimum
-           60,000 → 14,886 B (64 t)            heavy, slow, LONGER again
-         ```
-         ⇒ "Add fuel" shrinks a car on the LEFT of the optimum and GROWS it on the right. The page can
-         tell them apart with no new physics: a run that went DRY (an effective throttle of 0 on some
-         tick, which the trace already records) is left of the optimum; one that never did is right of
-         it and simply too heavy. Bootcamp #6 — sweep the parameter, do not sample it. */
-      var wentDry = sim.trace.some(function(p){ return p.th === 0 });
-      $('go-note').textContent = tooBig ? '⚠ this car is ' + n(rep.lockBytes) + ' B and this depot mints up to ' +
-                                       n(M.RACER_MAX_CAR_BYTES) + ' B. ⇒ ' + (wentDry
-                                         ? 'ADD FUEL — it runs dry and coasts, and every coasting tick is more ' +
-                                           'script. More fuel here makes the car SMALLER.'
-                                         : 'TAKE FUEL OUT — it never runs dry, so the tank is just weight: a ' +
-                                           'heavy car is slower, and a slower run is a longer script.') +
-                                       ' A shorter track works either way.'
-                              : full ? 'this window is full — it reopens when a block moves the clock on'
-                              : poor ? '⛽ the depot is out of fuel — it holds ' + n(DEPOT.value) +
-                                       ' sat and this car needs ' + n(cost + 1) + '. Top it up below.'
-                              : 'the depot pays — you need no wallet';
-    }
-    /* a new configuration is a new car: clear the wreck, the sparks and the fly-off transform */
-    resetCar(); place(0);
-  }
-  function place(frac, mph){
-    var st = document.querySelector('.strip');
-    $('carEl').style.left = (Math.max(0,Math.min(1,frac)) * (st.clientWidth - 44)) + 'px';
-    /* ★ ONE CALL MOVES THE CAR AND ITS SOUND TOGETHER. Position is not passed to the mixer
-       separately, so the picture and the mix have no way to drift out of step. */
-    spatialTo(frac, mph);
-  }
-
-  /* ═══ 🔊 SOUND — SYNTHESISED, NO FILES ═══════════════════════════════════════════════════════════
-     Follows the house idiom set by `grafverse.html:1141` — *"audio (synthesised, fully offline — no
-     files)"*. There is not one audio asset in this repository and this change does not add one: no
-     bytes to deploy, no `.cpanel.yml` line to forget, no licence to carry in the colophon.
-
-     ★★ AND FOR THE ENGINE IT IS NOT A PREFERENCE — IT IS THE ONLY THING THAT WORKS.
-     A recording replayed faster is a recording replayed faster: tape speed, not a bigger motor. The
-     brief needs TWO independent knobs — pitch tracking `v` continuously, and timbre tracking `eng` —
-     and a sample gives one. Synthesis gives both, so a small engine is genuinely a higher, thinner
-     note and a big one is genuinely lower and heavier, rather than the same note slowed down.
-
-     ⚠ EVERYTHING BELOW IS DRIVEN FROM THE TRACE THE COVENANT SETTLED. No sound re-derives physics.  */
-
-  var AUDIO_KEY = 'racers.sound';
-  var SND = true; try { SND = localStorage.getItem(AUDIO_KEY) !== '0' } catch(e){}
-  var actx = null, master = null, ENGINE = null, SCREECH = null;
-  var CARPAN = null, CARDIST = null, CHEERPAN = null;
-  /* ⚠ ROUTE THROUGH A BUS, NEVER STRAIGHT TO MASTER. Everything the CAR makes — engine, tyres, the
-     crash, the grenade — shares one distance gain and one panner, so the car's position in the mix
-     is a single number that cannot disagree with itself. */
-  function carBus(){ return CARDIST || master }
-  function cheerBus(){ return CHEERPAN || master }
-
-  /* ═══ 🎧 WHERE THE CAR IS, AND HOW FAST IT IS COMING AT YOU ══════════════════════════════════════
-     ★★ ONE GEOMETRY DRIVES THREE THINGS — pan, loudness and Doppler — so they cannot drift apart.
-     The listener stands trackside, level with the middle of the strip and set back from the lane.
-     That is the seat the picture already takes: the car crosses left to right in front of you. So
-     the ear and the eye are in the same place, which is the only reason any of this reads as one car
-     rather than three effects.
-
-     ⚠ SET BACK BY A FRACTION OF THE TRACK, NOT A FIXED NUMBER OF METRES. A real spectator stands
-     ~18 m off the lane — on a quarter mile that is a distant pass, and on the 18 m 60-ft strip it is
-     standing further away than the car ever travels. A fraction keeps the effect the same SHAPE at
-     every distance, which for a game is worth more than a literal metre count. Stated because it is
-     a chosen constant, not a rule of the system.
-
-     ⚠⚠ AND WEBAUDIO'S OWN DOPPLER IS GONE. `PannerNode` carried `dopplerFactor` and `speedOfSound`
-     and both were DEPRECATED AND REMOVED from the spec, so nothing is inherited here — it is
-     computed by hand. Which costs nothing, because the engine's frequency is already ours to set. */
-  var LISTENER_BACK = 0.16;    /* the listener's set-back, as a fraction of the track length */
-  var SOUND_MPH     = 767.269; /* the speed of sound, in the unit the trace already reports */
-  var SPACE = { pan:-0.95, gain:0.30, dop:1 };
-
-  function spatial(frac, mph){
-    /* car at x along the lane, listener at the origin, set back by d */
-    var x = Math.max(0, Math.min(1, frac)) - 0.5, d = LISTENER_BACK;
-    var r = Math.sqrt(x*x + d*d);
-    /* ★ the rate the DISTANCE changes = the component of velocity pointing at the listener.
-       x < 0 (car still short of you) with the car moving on ⇒ negative ⇒ closing ⇒ pitch UP. */
-    var radial = mph * (x / r);
-    var dop = SOUND_MPH / (SOUND_MPH + radial);
-    return {
-      /* ★ pan is the SINE OF THE ANGLE, not a straight line along the track — so it hangs out wide
-         while the car is far off and swings hard through the middle as it passes, which is what a
-         pass-by actually does to your ears. */
-      pan:  Math.max(-0.95, Math.min(0.95, x / r)),
-      gain: Math.min(1, d / r),                       /* inverse distance, 1.0 at closest approach */
-      /* ⚠ CLAMPED. At the 330 mph rev limiter v/c is 0.43, so the true ratio runs 1.75× closing to
-         0.70× receding — genuinely that dramatic, and worth keeping. The clamp only stops the
-         arithmetic running away if a future physics change ever lets a car exceed the limiter. */
-      dop:  Math.max(0.55, Math.min(1.9, dop))
-    };
-  }
-  /** the car's position in the mix — driven from the same fraction that positions the picture */
-  function spatialTo(frac, mph){
-    SPACE = spatial(frac, mph || 0);
-    if(!actx) return;
-    var t = actx.currentTime;
-    if(CARPAN)  CARPAN.pan.setTargetAtTime(SPACE.pan, t, 0.045);
-    if(CARDIST) CARDIST.gain.setTargetAtTime(SPACE.gain, t, 0.045);
-  }
-
-  function engMax(){
-    /* ⚠ ASK THE REGS, don't type 24. It is a covenant constant and the page is not its author. */
-    try { if (GM && GM.ONE_RACE_REGS && GM.ONE_RACE_REGS.ENG_MAX) return GM.ONE_RACE_REGS.ENG_MAX } catch(e){}
-    return +$('eng').max || 24;
-  }
-  function blowMph(){
-    /* the rev limiter, in mph — `shell.ts` stores it as round((330 / 22.3694) * S), so read it back
-       through the same scale rather than re-typing the 330. */
-    try { return (GM.ONE_RACE_REGS.BLOW_V / GM.S) * 22.3694 } catch(e){ return 330 }
-  }
-
-  /** ⚠ A BROWSER WILL NOT PLAY OUTSIDE A USER GESTURE AND WILL NOT TELL YOU IT REFUSED. So the
-      context is CREATED and RESUMED inside the gesture, exactly as grafverse.html does. */
-  function armAudio(){
-    if(!SND) return null;
-    try{
-      if(!actx){
-        var AC = window.AudioContext || window.webkitAudioContext; if(!AC) return null;
-        actx = new AC();
-        master = actx.createGain(); master.gain.value = 0.9; master.connect(actx.destination);
-        /* the car's chain:  everything it makes → distance → pan → master
-           ⚠ StereoPannerNode is not universal (older Safari). With none, carBus() falls back to
-           master and the whole page still plays, centred — degraded, never silent. */
-        CARPAN = actx.createStereoPanner ? actx.createStereoPanner() : null;
-        if(CARPAN){
-          CARPAN.pan.value = SPACE.pan; CARPAN.connect(master);
-          CARDIST = actx.createGain(); CARDIST.gain.value = SPACE.gain; CARDIST.connect(CARPAN);
-        }
-        /* ★ the grandstand does NOT move — it sits at the finish line, off to the right, and stays
-           there while the car sweeps past it. That contrast is what sells the pass. */
-        CHEERPAN = actx.createStereoPanner ? actx.createStereoPanner() : null;
-        if(CHEERPAN){ CHEERPAN.pan.value = 0.30; CHEERPAN.connect(master) }
-        ENGINE = buildEngine(); SCREECH = buildScreech();
+      /* ★ simulate the whole lap first, then play it back — the same shape the design uses on chain:
+         the outcome is known before anything moves. */
+      var frames = [], rows = [], off = -1, at = 0, tPrev = 0;
+      for (var k = 0; k < 4; k++){
+        var lim = ceiling(GB, regs, k, tyr, +$('slip').value);
+        var n = GB.laneSection(st, ths, tht, regs, track);
+        var split = fx(n.t) - tPrev; tPrev = fx(n.t);
+        rows.push({ sec: k, r: g.L[k].r, lim: lim, v: fx(n.v), split: split, off: n.deslot });
+        frames.push({ from: at, to: at + g.L[k].len, secs: split, v: fx(n.v), lim: lim, sec: k });
+        at += g.L[k].len;
+        if (n.deslot){ off = k; st = n; break }
+        st = n;
       }
-      if(actx.state === 'suspended') actx.resume();
-    }catch(e){ actx = null }
-    return actx;
-  }
-  function noiseBuf(secs){
-    var b = actx.createBuffer(1, Math.floor(actx.sampleRate*secs), actx.sampleRate), d = b.getChannelData(0);
-    for(var i=0;i<d.length;i++) d[i] = Math.random()*2 - 1;
-    return b;
-  }
 
-  /* ★ THE ENGINE. Two sawtooths detuned against each other beat, which is the uneven note of a big
-     reciprocating motor; a square an octave down is the chest thump; a noise bed is induction roar.
-     ⚠ The lowpass OPENING as the revs rise is what makes it sound like it is WORKING — pitch alone
-     just sounds like a tape being wound on. */
-  function buildEngine(){
-    var g = actx.createGain(); g.gain.value = 0;
-    var lp = actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=400; lp.Q.value=5;
-    var a = actx.createOscillator(); a.type='sawtooth';
-    var b = actx.createOscillator(); b.type='sawtooth'; b.detune.value = 15;
-    var sub = actx.createOscillator(); sub.type='square';
-    var ga = actx.createGain(); ga.gain.value=0.34;
-    var gb = actx.createGain(); gb.gain.value=0.26;
-    var gs = actx.createGain(); gs.gain.value=0.30;
-    var nz = actx.createBufferSource(); nz.buffer = noiseBuf(2); nz.loop = true;
-    var nbp = actx.createBiquadFilter(); nbp.type='bandpass'; nbp.frequency.value=1100; nbp.Q.value=0.7;
-    var gn = actx.createGain(); gn.gain.value=0.13;
-    a.connect(ga); ga.connect(lp); b.connect(gb); gb.connect(lp); sub.connect(gs); gs.connect(lp);
-    nz.connect(nbp); nbp.connect(gn); gn.connect(lp);
-    lp.connect(g); g.connect(carBus());
-    a.start(); b.start(); sub.start(); nz.start();
-    return { gain:g, lp:lp, a:a, b:b, sub:sub };
-  }
+      $('splits').innerHTML = rows.map(function(r){
+        return '<tr><td>' + (r.sec + 1) + (r.sec % 2 === 0 ? ' · tight' : ' · wide') + '</td>' +
+          '<td>' + (r.r * 39.37).toFixed(0) + '″</td>' +
+          '<td>' + r.lim.toFixed(2) + ' m/s</td>' +
+          '<td class="' + (r.off ? 'no' : '') + '">' + r.v.toFixed(2) + ' m/s</td>' +
+          '<td>' + (r.off ? '<span class="no">OFF</span>' : r.split.toFixed(3) + ' s') + '</td></tr>';
+      }).join('');
 
-  /** ★ SMALL ENGINE HIGHER, BIG ENGINE LOWER — the mapping he asked for, as one line.
-      eng 24 → 58 Hz idle · eng 1 → ~131 Hz, then up to ~3.6× at the rev limiter. */
-  function engHz(size, p){
-    var f0 = 58 + (engMax() - size) * (73 / Math.max(1, engMax() - 1));
-    return f0 * (1 + 2.6 * Math.max(0, Math.min(1.15, p)));
-  }
-  /** p = fraction of BLOW_V · on = the EFFECTIVE throttle is open (false once the tank is dry) */
-  function engineTo(size, p, on){
-    if(!actx || !ENGINE) return;
-    /* ★★ DOPPLER RIDES ON TOP OF THE REV MAPPING — it does not replace it. The revs say how hard the
-       engine is WORKING; the Doppler says where it is relative to YOU. Both land on pitch, and a real
-       trackside pass has both at once: the note climbs as the car launches and falls away as it goes,
-       and the two fighting each other is exactly what a drag strip sounds like from the fence. */
-    var t = actx.currentTime, f = engHz(size, p) * SPACE.dop;
-    ENGINE.a.frequency.setTargetAtTime(f, t, 0.05);
-    ENGINE.b.frequency.setTargetAtTime(f, t, 0.05);
-    ENGINE.sub.frequency.setTargetAtTime(f/2, t, 0.05);
-    ENGINE.lp.frequency.setTargetAtTime(320 + 2700*Math.min(1,p), t, 0.06);
-    /* ⚠ A DYING ENGINE IS NOT A MUTED ONE. Going dry ramps down over ~0.3 s rather than cutting, which
-       is what running out of fuel sounds like — and the car is still moving while it happens. */
-    ENGINE.gain.gain.setTargetAtTime(on ? 0.22 : 0.0, t, on ? 0.04 : 0.10);
+      var total = tPrev;
+      $('d-lap').innerHTML = off >= 0
+        ? '<span class="no">OFF at section ' + (off + 1) + '</span>'
+        : total.toFixed(3) + ' <span class="note">s</span>';
+      $('msg').innerHTML = off >= 0
+        ? '<span class="no">⚠ Too fast for the slot. Lift more for the turn.</span>'
+        : '<span class="ok">Clean lap.</span> Try a little more throttle in the turn.';
+
+      /* ── play it back ─────────────────────────────────────────────────────────────────────────── */
+      var i = 0, t0 = performance.now();
+      (function step(now){
+        if (i >= frames.length) return;
+        var f = frames[i], el = (now - t0) / 1000;
+        var u = Math.min(1, el / Math.max(f.secs, 0.001));
+        var dist = f.from + (f.to - f.from) * u;
+        var p = pointAt((dist / g.lap) % 1);
+        $('car').setAttribute('cx', p.x); $('car').setAttribute('cy', p.y);
+        var pct = Math.min(140, 100 * f.v / f.lim);
+        $('d-v').textContent = f.v.toFixed(2) + ' m/s';
+        $('d-lim').textContent = f.lim.toFixed(2) + ' m/s';
+        $('d-sec').textContent = (f.sec + 1) + ' of 4 · ' + (f.sec % 2 === 0 ? 'tight (6″)' : 'wide (9″)');
+        $('d-pct').textContent = pct.toFixed(0) + '%';
+        var bar = $('d-bar');
+        bar.style.width = Math.min(100, pct) + '%';
+        bar.className = pct >= 100 ? 'over' : (pct > 85 ? 'hot' : '');
+        if (u >= 1){ i++; t0 = now; if (i >= frames.length){
+          if (off >= 0){ $('car').setAttribute('fill', '#ff6b6b') } return } }
+        RAF = requestAnimationFrame(step);
+      })(performance.now());
+      $('car').setAttribute('fill', off >= 0 ? '#ff6b6b' : '#39d0d8');
+    }).catch(function(e){ $('msg').innerHTML = '<span class="no">⚠ ' + e.message + '</span>' });
   }
 
-  /* 🛞 TYRES. Two stacked bandpasses on noise — the second narrow and high is the howl. */
-  function buildScreech(){
-    var g = actx.createGain(); g.gain.value = 0;
-    var bp = actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1900; bp.Q.value=6;
-    var bp2 = actx.createBiquadFilter(); bp2.type='bandpass'; bp2.frequency.value=3100; bp2.Q.value=12;
-    var nz = actx.createBufferSource(); nz.buffer = noiseBuf(2); nz.loop = true;
-    nz.connect(bp); bp.connect(bp2); bp2.connect(g); g.connect(carBus()); nz.start();
-    return { gain:g, bp:bp, bp2:bp2 };
-  }
-  /** ⚠ WOBBLE THE BAND. A fixed one reads as a kettle; rubber howls unevenly as it grabs and lets go. */
-  function screechTo(on){
-    if(!actx || !SCREECH) return;
-    var t = actx.currentTime;
-    if(on){
-      /* the tyres shift with the car too — noise has no fundamental, so the BANDS are what move */
-      SCREECH.bp.frequency.setTargetAtTime((1500 + Math.random()*1400) * SPACE.dop, t, 0.03);
-      SCREECH.bp2.frequency.setTargetAtTime((2600 + Math.random()*1700) * SPACE.dop, t, 0.03);
-    }
-    SCREECH.gain.gain.setTargetAtTime(on ? 0.17 : 0, t, on ? 0.02 : 0.07);
-  }
-
-  /** the stage rev — a stab of throttle against no load, so it climbs fast and drops away fast */
-  function rev(size){
-    if(!armAudio() || !ENGINE) return;
-    /* ★ THE STAGING REV IS HEARD FROM THE CAR, NOT FROM THE FENCE — centred and close.
-       ⚠ Found by testing: a staged car sits at frac 0, which trackside means hard-left and a third
-       of the volume. Realistic, and useless for the job this sound does — auditioning the engine
-       tone before you buy it. So you stand AT the car while staging, and take your seat trackside
-       when the race starts, where `place()` takes the position back over. */
-    var t = actx.currentTime, lo = engHz(size, 0.04), hi = engHz(size, 0.78);
-    if(CARPAN)  CARPAN.pan.setTargetAtTime(0, t, 0.03);
-    if(CARDIST) CARDIST.gain.setTargetAtTime(1, t, 0.03);
-    [ENGINE.a, ENGINE.b].forEach(function(o){
-      o.frequency.cancelScheduledValues(t); o.frequency.setValueAtTime(lo, t);
-      o.frequency.exponentialRampToValueAtTime(hi, t+0.20);
-      o.frequency.exponentialRampToValueAtTime(lo, t+0.62);
-    });
-    ENGINE.sub.frequency.cancelScheduledValues(t); ENGINE.sub.frequency.setValueAtTime(lo/2, t);
-    ENGINE.sub.frequency.exponentialRampToValueAtTime(hi/2, t+0.20);
-    ENGINE.sub.frequency.exponentialRampToValueAtTime(lo/2, t+0.62);
-    ENGINE.lp.frequency.cancelScheduledValues(t); ENGINE.lp.frequency.setValueAtTime(420, t);
-    ENGINE.lp.frequency.exponentialRampToValueAtTime(3000, t+0.20);
-    ENGINE.lp.frequency.exponentialRampToValueAtTime(520, t+0.62);
-    var g = ENGINE.gain.gain;
-    g.cancelScheduledValues(t); g.setValueAtTime(0.0001, t);
-    g.exponentialRampToValueAtTime(0.21, t+0.05);
-    g.exponentialRampToValueAtTime(0.0001, t+0.72);
-  }
-
-  /** 💥 metal, not a bang — a filtered slam plus two detuned squares ringing and dying fast */
-  function sndCrash(power){
-    if(!actx) return; var t = actx.currentTime, p = 0.5 + 0.5*power;
-    var nz = actx.createBufferSource(); nz.buffer = noiseBuf(1);
-    var lp = actx.createBiquadFilter(); lp.type='lowpass';
-    lp.frequency.setValueAtTime(5200, t); lp.frequency.exponentialRampToValueAtTime(240, t+0.55);
-    var g = actx.createGain();
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.50*p, t+0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, t+0.70);
-    nz.connect(lp); lp.connect(g); g.connect(carBus()); nz.start(t); nz.stop(t+0.75);
-    [523, 761].forEach(function(f, i){
-      var o = actx.createOscillator(), og = actx.createGain();
-      o.type='square'; o.frequency.setValueAtTime(f*(0.9+0.2*Math.random()), t);
-      og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.09*p, t+0.02+i*0.01);
-      og.gain.exponentialRampToValueAtTime(0.0001, t+0.42);
-      o.connect(og); og.connect(carBus()); o.start(t); o.stop(t+0.45);
-    });
-  }
-
-  /** 💣 the grenade — a sub thump you feel, under a long dark noise decay */
-  function sndExplode(power){
-    if(!actx) return; var t = actx.currentTime, p = 0.55 + 0.45*power;
-    var nz = actx.createBufferSource(); nz.buffer = noiseBuf(2);
-    var lp = actx.createBiquadFilter(); lp.type='lowpass';
-    lp.frequency.setValueAtTime(2600, t); lp.frequency.exponentialRampToValueAtTime(70, t+1.10);
-    var g = actx.createGain();
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.75*p, t+0.015);
-    g.gain.exponentialRampToValueAtTime(0.0001, t+1.25);
-    nz.connect(lp); lp.connect(g); g.connect(carBus()); nz.start(t); nz.stop(t+1.3);
-    var o = actx.createOscillator(), og = actx.createGain(); o.type='sine';
-    o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(28, t+0.50);
-    og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.55*p, t+0.02);
-    og.gain.exponentialRampToValueAtTime(0.0001, t+0.75);
-    o.connect(og); og.connect(carBus()); o.start(t); o.stop(t+0.8);
-  }
-
-  /* 🎉 THE CROWD.
-     ⚠⚠ SAY WHAT THIS IS, because it is the one place synthesis is genuinely weaker than a recording.
-     Synthesis does APPLAUSE well — a crowd clapping IS dense uncorrelated impulses, which is what
-     filtered noise is — and it does VOICES badly. So this is built as applause with a broad roar
-     swelling underneath, which is what a crowd sounds like from the far side of a drag strip. It is
-     not synthesised voices and it is not pretending to be. If it ever needs to be literal cheering,
-     that is the one sound worth a file, and the graph below is where it would swap in. */
-  function sndCheer(){
-    if(!actx) return; var t = actx.currentTime;
-    var nz = actx.createBufferSource(); nz.buffer = noiseBuf(3);
-    var hp = actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=1400;
-    var bp = actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=2600; bp.Q.value=0.6;
-    var g = actx.createGain();
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.20, t+0.28);
-    g.gain.setValueAtTime(0.20, t+1.05); g.gain.exponentialRampToValueAtTime(0.0001, t+2.6);
-    nz.connect(hp); hp.connect(bp); bp.connect(g); g.connect(cheerBus()); nz.start(t); nz.stop(t+2.7);
-    var n2 = actx.createBufferSource(); n2.buffer = noiseBuf(3);
-    var b2 = actx.createBiquadFilter(); b2.type='bandpass'; b2.Q.value=1.1;
-    /* the roar's centre rising reads as a crowd getting to its feet */
-    b2.frequency.setValueAtTime(620, t); b2.frequency.linearRampToValueAtTime(980, t+1.2);
-    var g2 = actx.createGain();
-    g2.gain.setValueAtTime(0.0001, t); g2.gain.exponentialRampToValueAtTime(0.17, t+0.45);
-    g2.gain.exponentialRampToValueAtTime(0.0001, t+2.6);
-    n2.connect(b2); b2.connect(g2); g2.connect(cheerBus()); n2.start(t); n2.stop(t+2.7);
-  }
-
-  /* ═══ ✨ SPARKS — A CANVAS BURST, GENERATED, NEVER A FILE ════════════════════════════════════════
-     ★★ WHY GENERATED: THE BURST SCALES WITH THE IMPACT. A car that grenades at 329 mph throws further
-     and hotter than one that lets go on the line at tick 1 — and those are different results, which
-     the board reports differently. A single file plays identically for both, which would be the page
-     saying they are the same thing. The physics already knows; the picture should too. */
-  var PART = [], fxRaf = 0, REDUCED = false;
-  try { REDUCED = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) } catch(e){}
-
-  var FX_PAD = 60;   /* must match `.fx { left:-60px; top:-60px }` */
-  function fxCtx(){
-    var c = $('fx'), st = document.querySelector('.strip');
-    var w = st.clientWidth + FX_PAD*2, h = st.clientHeight + FX_PAD*2;
-    var dpr = Math.min(2, window.devicePixelRatio || 1);
-    if(c.width !== Math.round(w*dpr) || c.height !== Math.round(h*dpr)){
-      c.width = Math.round(w*dpr); c.height = Math.round(h*dpr);
-      c.style.width = w+'px'; c.style.height = h+'px';
-    }
-    var g = c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
-    return { g:g, w:w, h:h };
-  }
-  var PALETTE = {
-    bang:  ['#fff3c4','#ffb347','#ff6b1a','#8c2f00'],
-    crash: ['#dfe8f0','#9fb0c0','#6b7885','#ffcf6b'],
-    cheer: ['#39d0ff','#7CFFB2','#ffd166','#ff6b9d'],
-    dust:  ['#6b6055','#8a7d6d','#575047','#9a9083']
-  };
-  /** x,y in STRIP coordinates · power 0..1 · kind selects palette, spread and gravity */
-  function burst(x, y, power, kind){
-    if(REDUCED) return;
-    var base = kind==='bang' ? 46 : kind==='crash' ? 28 : kind==='dust' ? 14 : 30;
-    var n = Math.round(base * (0.55 + 0.85*power)), pal = PALETTE[kind] || PALETTE.bang;
-    for(var i=0;i<n;i++){
-      var a = Math.random()*Math.PI*2;
-      var sp = (kind==='bang' ? 2.0 : kind==='dust' ? 0.5 : 1.3) * (0.5+Math.random()) * (0.55+power);
-      PART.push({
-        x: x + FX_PAD, y: y + FX_PAD,
-        vx: Math.cos(a)*sp*(kind==='cheer'?0.6:1) + (kind==='crash' ? 1.2*power : 0),
-        vy: Math.sin(a)*sp - (kind==='cheer' ? 1.7 : kind==='dust' ? 0.35 : 0),
-        life: 1, decay: 0.011 + Math.random()*0.021,
-        r: 1 + Math.random()*(kind==='bang' ? 2.6 : kind==='dust' ? 2.2 : 1.8),
-        col: pal[(Math.random()*pal.length)|0],
-        g: kind==='cheer' ? 0.045 : kind==='dust' ? 0.004 : 0.075
-      });
-    }
-    if(!fxRaf) fxRaf = requestAnimationFrame(fxStep);
-  }
-  function fxStep(){
-    var c = fxCtx();
-    c.g.clearRect(0, 0, c.w, c.h);
-    for(var i=PART.length-1; i>=0; i--){
-      var p = PART[i];
-      p.x += p.vx; p.y += p.vy; p.vy += p.g; p.vx *= 0.985; p.life -= p.decay;
-      if(p.life <= 0){ PART.splice(i,1); continue }
-      c.g.globalAlpha = Math.max(0, p.life);
-      c.g.fillStyle = p.col;
-      c.g.beginPath(); c.g.arc(p.x, p.y, p.r*(0.4 + p.life*0.6), 0, 6.2832); c.g.fill();
-    }
-    c.g.globalAlpha = 1;
-    fxRaf = PART.length ? requestAnimationFrame(fxStep) : 0;
-  }
-
-  /** a fresh configuration is a fresh car — clear any wreck left on the strip */
-  function resetCar(){
-    var c = $('carEl');
-    c.className = 'car'; c.style.transform = ''; c.style.opacity = '1'; c.textContent = '🏎';
-    PART.length = 0;
-    try { var x = fxCtx(); x.g.clearRect(0,0,x.w,x.h) } catch(e){}
-  }
-  /** ★ IT REALLY LEAVES. A spin at speed throws the car off the strip, spinning, and it does not
-      come back — which is what `off` means. `.strip` is overflow:visible so it can. */
-  function flyOff(power){
-    var c = $('carEl');
-    if(REDUCED){ c.style.opacity = '0.25'; return }
-    var up = Math.random() < 0.5 ? -1 : 1;
-    var dx = 40 + 150*power, dy = up*(70 + 95*power), spin = up*(420 + 560*power);
-    c.classList.add('off');
-    /* one frame later, or there is nothing for the transition to animate FROM */
-    requestAnimationFrame(function(){
-      c.style.transform = 'translate('+dx.toFixed(0)+'px,'+dy.toFixed(0)+'px) rotate('+spin.toFixed(0)+'deg) scale(.8)';
-      c.style.opacity = '0';
-    });
-  }
-
-  /**
-   * ★ THE ENDING, MADE VISIBLE AND AUDIBLE.
-   * ⚠⚠ EVERY BRANCH IS KEYED OFF `sim.run.ending` — the value the covenant settled — and never off
-   * "did the car reach the end of the trace". This panel has already told that lie once: it printed
-   * "🏁 0.40 s over 402 m" for a car that went off the track at tick four. Sparks and a crowd would
-   * tell the same lie far more loudly, so the ending decides and nothing else does.
-   */
-  function finale(sim, tick, finish, size){
-    var c = $('carEl'), st = document.querySelector('.strip');
-    var x = Math.max(0, Math.min(1, tick.s/finish)) * (st.clientWidth - 44) + 15, y = 31;
-    var power = Math.max(0, Math.min(1, tick.mph / blowMph()));
-    engineTo(size, 0, false); screechTo(false);
-    switch(sim.run.ending){
-      case 'off':
-        /* it is sliding before it is gone — the tyres let go first, which is what `off` IS */
-        screechTo(true); setTimeout(function(){ screechTo(false) }, 300);
-        sndCrash(power); burst(x, y, power, 'crash'); flyOff(power);
-        break;
-      case 'blown-throttle':
-      case 'blown-speed':
-        sndExplode(power); burst(x, y, power, 'bang');
-        c.textContent = '💥';
-        setTimeout(function(){ c.textContent = '🔥'; c.style.opacity = '0.85' }, 260);
-        break;
-      case 'finish':
-        sndCheer(); burst(st.clientWidth - 30, y, 0.8, 'cheer');
-        break;
-      case 'stopped':
-        /* ⚠ NOTHING LOUD, DELIBERATELY. The drama of `stopped` is the ABSENCE: the engine already
-           died when the tank hit zero, and the car has been rolling in silence since. A crash sound
-           here would file a car that quietly ran out of fuel alongside one that was wrecked, which
-           is the exact distinction §6j gave the fifth ending its own phase for.
-           ⇒ A little dust as it comes to rest, and no sound at all. */
-        burst(x, y, 0.25, 'dust');
-        break;
-    }
-  }
-
-  /**
-   * Run the 🏎 down the strip at the elapsed time the chain has already settled.
-   *
-   * ⚠⚠ SCALED AGAINST THE FINISH LINE, NOT AGAINST WHERE IT STOPPED. The first version divided by the
-   * last position in the trace, so EVERY run — including one that went off the track after four ticks
-   * — walked the car all the way to the flag. A car that travelled forty metres of a quarter mile
-   * belongs a tenth of the way along, and looking like it got home is the page telling a lie the chain
-   * did not.
-   *
-   * ★ 90 ms a tick against a tick's 0.1 s of race time, so the sound is very nearly real time.
-   */
-  function animate(sim, finish, size){
-    var i = 0, last = sim.trace.length - 1;
-    resetCar(); armAudio();
-    var t = setInterval(function(){
-      if(i >= sim.trace.length){ clearInterval(t); return }
-      var p = sim.trace[i];
-      /* ⚠ mph goes in HERE, not into a separate mixer call — spatial() needs the speed to work out
-         how fast the car is closing on the listener, which is the whole of the Doppler shift. */
-      place(p.s / finish, p.mph);
-      /* engine pitch from the speed the covenant settled · silent once the effective throttle is 0 */
-      engineTo(size, p.mph / blowMph(), p.th > 0);
-      /* 🛞 wheelspin: demand beat grip and the car bogged down on SPIN_KEEP but kept going */
-      screechTo(!!p.spun && p.th > 0);
-      if(i === last) finale(sim, p, finish, size);
-      i++;
-    }, 90);
-  }
-
-  /**
-   * ★ WHAT ACTUALLY HAPPENED, named by cause.
-   * ⚠ The first version printed "🏁 0.40 s over 402 m" for a car that went OFF THE TRACK at tick four.
-   * It did not do 402 m in 0.40 s; it lost grip and was gone. The covenant settled the wreck correctly
-   * and the page reported a victory — which is the page disagreeing with the chain, and the chain is
-   * the thing that decides.
-   * ⇒ A wreck is not an error path. The four-tick script IS a car getting away from its driver, and
-   * that is a result worth reading, not a failure worth hiding.
-   */
-  /* ═══ THE LEADERBOARD ═══════════════════════════════════════════════════════════════════════════
-     ⚠⚠ A WALKED HOP NEVER CHANGES. The chain is append-only, so once a depot spend has been read it is
-     settled for ever — caching it is not an optimisation, it is the shape of the data. Without this the
-     page re-walks the whole history on every load and shares one WoC rate limit with every visitor.
-     ⇒ localStorage, keyed by outpoint. ★ Only the TIP is ever re-checked. */
-  /* ⚠⚠ v1 → v2: the hop entry gained `val` and `gift`. An old entry has neither, so a warm cache
-     would silently show ZERO contributions for ever — the top-ups are already behind the tip and
-     would never be walked again. A schema change to a cache of settled data is a REBUILD, not a
-     migration. One cold walk, once. */
-  var BOARD_CACHE = 'racers.board.v2';
-  function cacheGet(){ try { return JSON.parse(localStorage.getItem(BOARD_CACHE) || '{}') } catch(e){ return {} } }
-  function cachePut(c){ try { localStorage.setItem(BOARD_CACHE, JSON.stringify(c)) } catch(e){} }
-
-  /** ⚠ 404 means UNSPENT. Anything else after backing off means WE DO NOT KNOW — never guess. */
-  function wocGet(path, tries){
-    tries = tries || 4;
-    var wait = 500;
-    function attempt(i){
-      return fetch(WOC + path).then(function(r){
-        if (r.ok || r.status === 404) return r;
-        if (i + 1 >= tries) return null;
-        return new Promise(function(res){ setTimeout(res, wait); wait *= 2 }).then(function(){ return attempt(i+1) });
-      }).catch(function(){ return null });
-    }
-    return attempt(0);
-  }
-
-  /* ★ The head announces its own layout: the first byte is the name's PUSH LENGTH. 0x0c is the 12-byte
-     era, 0x18 the 24-byte one. ⚠ Never remove an entry — a minted car is permanent, and the only thing
-     that can stop it being readable is us forgetting how. */
-  function headLayouts(M){
-    var cur = M.CAR_LAYOUT.map(function(f){ return { name:f.name, width:f.width } });
-    var old = M.CAR_LAYOUT.map(function(f){ return { name:f.name, width: f.name === 'name' ? 12 : f.width } });
-    return [cur, old];
-  }
-  function readHead(M, car){
-    var Ls = headLayouts(M);
-    for (var k = 0; k < Ls.length; k++){
-      var i = 0, ok = true, out = {};
-      for (var j = 0; j < Ls[k].length; j++){
-        var f = Ls[k][j];
-        if (car[i] !== f.width){ ok = false; break }
-        out[f.name] = car.slice(i+1, i+1+f.width); i += 1 + f.width;
-      }
-      if (ok) return out;
-    }
-    return null;
-  }
-  var leNum = function(b){ var n = 0; for (var i=0;i<b.length;i++) n += b[i]*Math.pow(256,i); return n };
-  /**
-   * ★ THE CONTRIBUTOR'S MARK, out of a nulldata output. `OP_FALSE OP_RETURN <push>` is what the
-   * top-up builder writes, but a bare `OP_RETURN <push>` is equally valid, so both are accepted.
-   * ⚠ Decoded as UTF-8 with a REPLACEMENT policy, never trusted as text: this is a string a stranger
-   * put on chain, so it is read defensively and rendered with textContent, never innerHTML.
-   */
-  function readMark(sc){
-    var i = 0;
-    if (sc[0] === 0x00 && sc[1] === 0x6a) i = 2; else if (sc[0] === 0x6a) i = 1; else return null;
-    var len = sc[i];
-    if (len === undefined || len <= 0 || len > 0x4b) return null;      // one simple push; nothing exotic
-    try { return new TextDecoder('utf-8').decode(new Uint8Array(sc.slice(i+1, i+1+len))).trim() || null }
-    catch(e){ return null }
-  }
-  var leTxt = function(b){ return new TextDecoder().decode(new Uint8Array(b.filter(function(x){return x!==0}))) };
-
-  /** ★★ RE-DERIVE the race from the setup the chain carries. The result is not stored; it is recomputed. */
-  function deriveRace(M, h){
-    var R = M.ONE_RACE_REGS, S = M.S, finish = leNum(h.finish);
-    var st = { phase:M.PHASE.RACING, driver:new Array(20).fill(0), pool:new Array(36).fill(0),
-               eng:leNum(h.eng), tyr:leNum(h.tyr), finish:finish, slip:leNum(h.slip),
-               green:0, gap:1, last:100, s:0, v:0, n:0 };
-    var fuel = leNum(h.fuel), t = 0, peak = 0;
-    var mph = function(v){ return (v/S)*2.23694*10 };
-    for (var i=0;i<400;i++){
-      var r; try { r = M.racerRefTick(st, { throttle:8, fuel:fuel, lockTime:st.last+st.gap }, R) }
-      catch(e){ return { ending:'refused' } }
-      fuel = Math.max(0, fuel - r.burn); t++;
-      st = Object.assign({}, r.state, { last: st.last + st.gap });
-      /* ★★ TOP SPEED, not just trap speed. Equal only while the car is still pulling at the line — the
-         moment it runs dry it peaks and coasts, so the gap between them IS the under-fuelling gamble
-         made visible. For a car that never reaches the line it is the only speed there is. */
-      if (st.v > peak) peak = st.v;
-      if (r.ended !== null) return { ending:r.ended, secs:t/10, top:mph(peak), got:st.s/S };
-      if (st.phase === M.PHASE.DONE) return { ending:'finish', secs:t/10, mph:mph(st.v), top:mph(peak), got:st.s/S };
-    }
-    return { ending:'unresolved' };
-  }
-
-  /**
-   * ★★ THE FAST PATH — racebeta.php, which has already followed the depot's spends and remembered them.
-   * Measured: 20.3 s to build cold, 0.019 s served warm.
-   *
-   * ⚠⚠ IT IS AN ACCELERATOR, NEVER A DEPENDENCY. If it is missing, stale or refuses, the page follows
-   * the chain itself — `readBoardFromChain` below. That is what keeps "no indexer needed" a fact
-   * rather than a slogan: the fast path uses a cache, the correct path never requires one.
-   *
-   * ★★★ AND IT CANNOT LIE ABOUT A LAP TIME. The JSON carries no times at all — only each car's HEAD,
-   * the bytes the chain itself holds. Every result below is DERIVED here, with the same reference
-   * physics the covenant enforced when the race validated. A wrong cache can omit a row or invent one;
-   * it cannot make a car faster than its own setup allows, because it is not what decides that.
-   */
-  function readBoardFromCache(){
-    return fetch('/racebeta.php?sync').then(function(r){
-      if (!r.ok) throw Error('racebeta.php ' + r.status);
-      return r.json();
-    }).then(function(j){
-      if (!j || !Array.isArray(j.races)) throw Error('unusable cache');
-      /* ⚠⚠ A CACHE THAT COULD NOT REACH THE TIP IS NOT AN ANSWER. Throwing here drops us onto
-         `readBoardFromChain`, which walks from the genesis with the browser's OWN request budget and
-         its own localStorage of settled hops — so a contribution appears even while the server is
-         throttled. ⇒ This is the line that turns "an accelerator, never a dependency" from a comment
-         into behaviour. It is what left a 210,000 sat contribution off the board for two hours. */
-      if (j.degraded) throw Error('the site cache could not reach the tip');
-      var rows = [];
-      j.races.forEach(function(x){
-        if (!x.raced) return;                       // a car that was never spent never raced
-        var h = x.head;
-        var head = { name: hexBytes(h.name), fuel: leBytes(h.fuel,4), eng: leBytes(h.eng,2),
-                     tyr: leBytes(h.tyr,2), slip: leBytes(h.slip,2), finish: leBytes(h.finish,6) };
-        var d = deriveRace(GM, head);               // ★ derived here, never taken from the server
-        rows.push({ driver: leTxt(head.name) || '(no name)', metres: Math.round(h.finish/GM.S),
-                    slip: h.slip, secs: d.secs, mph: d.mph, top: d.top, ending: d.ending, got: d.got });
-      });
-      return { rows: rows, gifts: Array.isArray(j.gifts) ? j.gifts : null,
-               source: 'cache', fetched: 0, fromCache: j.races.length, checked: j.checked || 0 };
-    });
-  }
-  /* the server hands numbers back; `deriveRace` wants the same little-endian byte arrays the chain has */
-  function hexBytes(h){ var o=[]; for (var i=0;i<h.length;i+=2) o.push(parseInt(h.substr(i,2),16)); return o }
-  function leBytes(n,w){ var o=[]; for (var i=0;i<w;i++){ o.push(n % 256); n = Math.floor(n/256) } return o }
-
-  function readBoard(){
-    if (!GM) { say('load the depot first', 'warn'); return Promise.resolve() }
-    $('board-note').textContent = 'updating the leaderboard from chain…';
-    /* ⚠ cache first, and fall back WITHOUT complaining — an absent cache is not an error, it is the
-       slower half of a design that works either way. */
-    return readBoardFromCache()
-      .catch(function(){ return readBoardFromChain() })
-      .then(paintBoard)
-      .catch(function(e){
-        $('board-note').textContent = '⚠ could not update: ' + e.message;
-        $('board-note').style.color = '#ff6b6b';
-      });
-  }
-
-  function readBoardFromChain(){
-    var M = GM, cache = cacheGet(), rows = [], other = 0, cutShort = false, gifts = [], prevVal = null;
-    /* ★ Count the two kinds of hop. A reload that says "updated" while re-reading everything would be
-       a claim rather than a fact, so the panel reports what was actually fetched. */
-    var fromCache = 0, fetched = 0;
-    $('board-note').textContent = 'updating the leaderboard from chain…';
-    var cur = { txid: GENESIS, vout: 0 };
-
-    function hop(n){
-      if (n > 200) return Promise.resolve();
-      var key = cur.txid + ':' + cur.vout;
-      /* ★ a settled hop is settled for ever — only the tip is ever re-read */
-      /* ★★ A SETTLED HOP IS SETTLED FOR EVER — the chain is append-only, so a spend that has been read
-         once never changes. No network call is made here at all: the scan only reaches the network for
-         hops it has never seen, which is what makes this an UPDATE and not a re-read. */
-      if (cache[key] && cache[key].next){
-        if (cache[key].cars) rows = rows.concat(cache[key].cars);
-        if (cache[key].other) other++;
-        if (cache[key].gift) gifts.push(cache[key].gift);
-        if (cache[key].val != null) prevVal = cache[key].val;
-        fromCache++;
-        cur = cache[key].next;
-        return hop(n+1);
-      }
-      fetched++;
-      return wocGet('/tx/' + cur.txid + '/' + cur.vout + '/spent').then(function(r){
-        if (!r){ cutShort = true; return }
-        if (r.status === 404) return;                       // the tip — stop
-        return r.json().then(function(sp){
-          return wocGet('/tx/' + sp.txid + '/hex').then(function(hr){
-            if (!hr || !hr.ok){ cutShort = true; return }
-            return hr.text().then(function(hex){
-              var tx = M.Transaction.fromHex(hex.trim()), depotAt = -1, mine = [];
-              tx.outputs.forEach(function(o, i){
-                var sc = o.lockingScript.toBinary();
-                if (depotAt < 0){ try { M.readDepotState(sc); depotAt = i; return } catch(e){} }
-              });
-              var pending = [];
-              tx.outputs.forEach(function(o, i){
-                if (i === depotAt) return;
-                var h = readHead(M, o.lockingScript.toBinary());
-                if (!h) return;
-                pending.push(wocGet('/tx/' + sp.txid + '/' + i + '/spent').then(function(sr){
-                  var raced = sr ? sr.status !== 404 : false;
-                  if (!sr) cutShort = true;
-                  var d = deriveRace(M, h);
-                  if (raced) mine.push({ driver: leTxt(h.name) || '(no name)',
-                    metres: Math.round(leNum(h.finish)/M.S), slip: leNum(h.slip),
-                    secs: d.secs, mph: d.mph, top: d.top, ending: d.ending, got: d.got });
-                }));
-              });
-              return Promise.all(pending).then(function(){
-                if (!mine.length) other++;
-                rows = rows.concat(mine);
-                if (depotAt < 0) return;                    // burned: the chain ends
-                var newVal = tx.outputs[depotAt].satoshis, gift = null;
-                /* ⛽ A HOP THAT MINTS NO CAR IS A TOP-UP, and what it added is exactly the rise in the
-                   depot's own value — the funder pays the miner from their OWN input, so nothing has
-                   to be netted off. ⚠ Needs the PREVIOUS value, which a transaction does not carry:
-                   BSV inputs hold no amount. So the walk tracks it, and the cache stores it. */
-                if (!mine.length && prevVal != null && newVal > prevVal){
-                  var mk = null;
-                  tx.outputs.forEach(function(o){ if (mk === null) mk = readMark(o.lockingScript.toBinary()) });
-                  gift = { added: newVal - prevVal, mark: mk, txid: sp.txid };
-                  gifts.push(gift);
-                }
-                prevVal = newVal;
-                var next = { txid: sp.txid, vout: depotAt };
-                cache[key] = { next: next, cars: mine, other: !mine.length, val: newVal, gift: gift };
-                cachePut(cache);
-                cur = next;
-                return hop(n+1);
-              });
-            });
-          });
-        });
-      });
-    }
-
-    /* ⚠ SEED THE DEPOT'S STARTING VALUE. A gift is the RISE in the tank, and a BSV input carries no
-       amount, so without the genesis figure the first hop's contribution cannot be measured — and if
-       the first hop happened to be a top-up it would be silently missed rather than visibly wrong.
-       One extra fetch, on a cold walk only. */
-    var seed = prevVal != null ? Promise.resolve() : wocGet('/tx/' + GENESIS + '/hex').then(function(r){
-      if (!r || !r.ok) return;
-      return r.text().then(function(hx){
-        try { prevVal = M.Transaction.fromHex(hx.trim()).outputs[0].satoshis } catch(e){}
-      });
-    });
-    return seed.then(function(){ return hop(0) }).then(function(){
-      return { rows: rows, gifts: gifts, source: 'chain', fetched: fetched, fromCache: fromCache, cutShort: cutShort };
-    });
-  }
-
-  /* ── painting, shared by both paths so they cannot drift ────────────────────────────────────── */
-  /**
-   * ⛽ WHO FILLED THE TANK — ranked by the size of the gift.
-   * ⚠⚠ THE MARK ONLY, NEVER THE ADDRESS (sun-dive, 20 Aug). The AMOUNT is a chain fact and cannot be
-   * faked; the MARK is a message its author chose to write. A donor's address is nobody else's
-   * business, and publishing one is permanent — it cannot be un-published later.
-   * ⚠ The mark is a STRANGER'S STRING. It goes in with textContent, never innerHTML, and it is
-   * clipped — an 80-character "mark" must not be able to redesign the panel.
-   * ⚠ `null` gifts means the source could not tell us (an older racebeta.php), which is NOT the same as
-   * "nobody has contributed". Say so rather than showing an empty board that reads as zero.
-   */
-  /** ★ HOW OLD IS THIS, IN WORDS. Empty string when we walked the chain ourselves just now — a number
-      the reader does not need is noise, and "checked just now" beside a live walk is both. */
-  function since(t){
-    if (!t) return '';
-    var s = Math.max(0, Math.floor(Date.now()/1000) - t);
-    if (s < 90)   return ', checked just now';
-    if (s < 5400) return ', checked ' + Math.round(s/60) + ' min ago';
-    return ', checked ' + Math.round(s/3600) + ' h ago';
-  }
-
-  function paintGifts(gifts, checked){
-    var box = $('d-gifts'), list = $('d-gift-rows');
-    list.textContent = '';
-    if (gifts == null){ box.style.display = ''; list.textContent = '';
-      var u = document.createElement('div'); u.className = 'note dim';
-      u.textContent = 'contributions are not in this cache yet — press ↻ update';
-      list.appendChild(u); $('d-gift-total').textContent = '—'; return;
-    }
-    if (!gifts.length){ box.style.display = 'none'; return }
-    box.style.display = '';
-    var total = 0;
-    gifts.slice().sort(function(a,b){ return b.added - a.added }).forEach(function(g){
-      total += g.added;
-      var row = document.createElement('div'); row.className = 'row';
-      var who = document.createElement('span');
-      var mk = (g.mark || '').replace(/\s+/g,' ').trim();
-      who.textContent = mk ? (mk.length > 64 ? mk.slice(0,63) + '…' : mk) : '(no mark)';
-      if (!mk) who.className = 'dim';
-      var amt = document.createElement('span'); amt.textContent = n(g.added) + ' sat';
-      row.appendChild(who); row.appendChild(amt); list.appendChild(row);
-    });
-    /* ⚠⚠ THE TOTAL SAYS WHEN IT WAS TRUE. This row read "contributed in total 40,000 sat" in exactly
-       the same confident voice whether it had walked the chain a second ago or two hours ago — and a
-       210,000 sat contribution sat outside it, unmentioned, because the walk had been throttled.
-       ⇒ A number about the past, printed as a fact about now, is the failure. Naming the moment costs
-       eight words and makes it a claim the reader can judge. */
-    $('d-gift-total').textContent = n(total) + ' sat' + since(checked);
-  }
-
-  function paintBoard(res){
-    var rows = res.rows, cutShort = res.cutShort;
-    /* ⚠ `checked` is the SERVER's clock and only exists on the cache path. A chain walk we just did
-       ourselves passes 0, which `since()` renders as nothing at all — correct, because there is no
-       staleness to disclose about a walk that finished a moment ago. */
-    paintGifts(res.gifts === undefined ? null : res.gifts, res.checked || 0);
-    {
-      var by = {};
-      rows.forEach(function(r){
-        var k = r.metres + ' m · grip ' + r.slip;
-        (by[k] = by[k] || []).push(r);
-      });
-      /* ★★ FASTEST AT THE TOP. Sorting by how many races a class has put the White Rabbit's category
-         LAST — the quickest run on the board was at the bottom of it.
-         ⚠ And sorting purely by time is wrong too: 0.50 s over 4 m is not "faster" than 4.30 s over a
-         quarter mile, they are different events. ⇒ LONGEST DISTANCE FIRST — the quarter mile is the
-         blue-riband class — and within the same distance, the class holding the quicker record leads. */
-      var best = {};
-      Object.keys(by).forEach(function(k){
-        var f = by[k].filter(function(r){ return r.ending === 'finish' });
-        best[k] = { m: by[k][0].metres, secs: f.length ? Math.min.apply(null, f.map(function(r){ return r.secs })) : Infinity };
-      });
-      var keys = Object.keys(by).sort(function(a,b){
-        return best[b].m - best[a].m || best[a].secs - best[b].secs;
-      });
-      if (!keys.length){ $('board').innerHTML = '<span class="dim">no races found yet.</span>'; }
-      else {
-        var html = '';
-        keys.forEach(function(k){
-          var fin = by[k].filter(function(r){ return r.ending === 'finish' })
-                         .sort(function(a,b){ return a.secs - b.secs || b.mph - a.mph });
-          var rest = by[k].filter(function(r){ return r.ending !== 'finish' });
-          html += '<div style="margin:10px 0 4px"><b>' + k + '</b></div><table style="width:100%;border-collapse:collapse">';
-          fin.forEach(function(r, i){
-            html += '<tr><td style="width:2em;opacity:.6">' + (i+1) + '</td><td>' + esc(r.driver) +
-                    '</td><td style="text-align:right">' + r.secs.toFixed(2) + ' s</td>' +
-                    '<td style="text-align:right;opacity:.55">' + Math.round(r.mph) + ' trap</td>' +
-                    '<td style="text-align:right">' + Math.round(r.top) + ' mph</td><td style="width:2em">🏁</td></tr>';
-          });
-          rest.forEach(function(r){
-            var what = r.ending === 'stopped' ? '⛽ halted at ' + Math.round(r.got) + ' m'
-                     : r.ending === 'off' ? '💨 off the track' : '💥 engine';
-            html += '<tr style="opacity:.55"><td>—</td><td>' + esc(r.driver) +
-                    '</td><td></td><td style="text-align:right">' + Math.round(r.top||0) + ' mph</td>' +
-                    '<td colspan="2" style="text-align:right">' + what + '</td></tr>';
-          });
-          html += '</table>';
-        });
-        $('board').innerHTML = html;
-      }
-      /* ⚠ A SHORT BOARD MUST NOT LOOK LIKE A COMPLETE ONE. */
-      $('board-note').textContent = cutShort
-        ? '⚠ cut short — this board is INCOMPLETE'
-        : rows.length + ' race(s) · ' + (res.source === 'cache'
-            ? 'site cache' + since(res.checked)
-            : (res.fetched ? res.fetched + ' new from chain' : 'nothing new') +
-              (res.fromCache ? ', ' + res.fromCache + ' cached locally' : '')) +
-          ' · times derived here, no indexer';
-      $('board-note').style.color = cutShort ? '#ff6b6b' : '';
-    }
-  }
-  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){
-    return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c] }) }
-
-  function verdict(sim, metres){
-    var t = sim.secs.toFixed(2);
-    switch(sim.run.ending){
-      case 'off':            return ['💨 OFF THE TRACK after ' + t + ' s — it broke traction and was gone', 'no'];
-      case 'blown-throttle': return ['💥 ENGINE LET GO after ' + t + ' s — too much throttle for the grip', 'no'];
-      case 'blown-speed':    return ['💥 ENGINE LET GO after ' + t + ' s — past what the machinery takes', 'no'];
-      /* ★ Not a wreck and not a win. The car ran out of fuel and coasted to a halt short of the line —
-         a legal outcome with no time and no leaderboard row. Say what happened, not "failed". */
-      case 'stopped':        return ['⛽ OUT OF FUEL — rolled to a halt short of the line. No time recorded', 'warn'];
-      default:               return ['🏁 HOME in ' + t + ' s over ' + metres + ' m · 1 sat home', 'ok'];
-    }
-  }
-
-  /* ── BROADCAST ────────────────────────────────────────────────────────────────────────────────
-     ⚠ If CORS or a throttle refuses, the raw transaction is PRINTED rather than lost. One that was
-     built and then dropped on the floor is the worst outcome available here. */
-  function broadcast(hex, label){
-    return fetch(WOC + '/tx/raw', { method:'POST', headers:{'Content-Type':'application/json'},
-                                    body: JSON.stringify({ txhex: hex }) })
-      .then(function(r){ return r.text().then(function(t){
-        if(!r.ok) throw Error('WoC ' + r.status + ' ' + t.slice(0,140));
-        say('   ' + label + ' broadcast ✓', 'ok');
-      })})
-      .catch(function(e){
-        say('   ⚠ ' + label + ' was NOT sent: ' + e.message, 'no');
-        say('   the raw transaction, so nothing is lost — send it yourself:', 'warn');
-        say('   ' + hex, 'dim');
-        throw e;
-      });
-  }
-
-  var u64 = function(v){ var b=[],x=BigInt(v); for(var i=0;i<8;i++){ b.push(Number(x & 0xffn)); x >>= 8n } return b };
-  function serOut(v, s){
-    var L = s.length;
-    var vi = L < 0xfd ? [L] : L <= 0xffff ? [0xfd, L & 0xff, L >> 8]
-           : [0xfe, L & 0xff, (L>>8)&0xff, (L>>16)&0xff, (L>>24)&0xff];
-    return u64(v).concat(vi).concat(s);
-  }
-
-  function race(){
-    if(!PLAN || !DEPOT) return;
-    clearLog(); $('go').disabled = true;
-    var M = GM, sc = scripts(M), rep = PLAN.rep, sim = PLAN.sim;
-    say(PLAN.s.metres + ' m · ' + sim.run.ticks.length + ' ticks · ' + sim.secs.toFixed(2) + ' s · ends "' + sim.run.ending + '"');
-    Promise.resolve().then(function(){
-      /* ⚠⚠ THE GATE. A one-race car has no key — a car the covenant refuses can never be spent by
-         ANYBODY. It is proved raceable before it is funded, and this throws rather than returning. */
-      M.assertRaceable(PLAN.params, 1);   /* the same params the panel priced — optimised or faithful */
-      var car = M.buildRacerCar(Object.assign({}, PLAN.params, { fee: rep.fee })).toBinary();
-      say('car ' + n(car.length) + ' B · proved raceable ✓', 'ok');
-
-      /* ★ CHECK OUR PICTURE OF THE DEPOT AGAINST THE ONE ON CHAIN — as a DIAGNOSTIC, not a guard.
-         This page rebuilds the depot's successor from parameters it assumes (carBlock, owner, the
-         maxCarBytes default), and nothing checked those describe the deployed program.
-
-         ⚠⚠ SAY WHAT THIS IS AND IS NOT, because the first version of this comment got it backwards
-         and sun-dive caught it: *"that's an exploit but the transaction shouldn't be minable."* He is
-         right, and it is not an exploit. The depot pulls its OWN scriptCode out of the preimage
-         (`racerDepotFrame.ts:190`, extractScriptCodeFieldOps) and rebuilds its successor from THAT,
-         binding it with OP_HASH256 ‖ OP_EQUAL against hashOutputs. A spender never supplies the
-         successor's program. ⇒ MEASURED: a mint whose successor was built with maxCarBytes 24,000 —
-         same 3,417 B length, different bytes — is REFUSED by the interpreter, as is an arbitrary
-         script in that slot. A parameter mismatch is an INVALID transaction; the tank cannot move.
-
-         ★ The trust model is the point: the covenant was never relying on this page being right.
-         This check exists to turn an opaque `mandatory-script-verify-flag-failed` into a sentence
-         that names the cause, before a broadcast rather than after — the same job as the size guard
-         below. It protects the DRIVER'S TIME, not the money. The chain protects the money. */
-      var deployed = DEPOT.sourceTransaction.outputs[DEPOT.vout].lockingScript.toBinary();
-      var rebuilt = depotAt(M, DEPOT.mark, DEPOT.count).toBinary();
-      if (rebuilt.length !== deployed.length || rebuilt.some(function(b,i){ return b !== deployed[i] }))
-        throw Error('this page rebuilds the depot as ' + n(rebuilt.length) + ' B but the chain holds ' +
-                    n(deployed.length) + ' B — it was minted with different parameters than this page ' +
-                    'assumes. The mint would be REFUSED by the covenant (nothing can be lost), but ' +
-                    'nothing here describes this depot correctly, so the sizes and costs shown are wrong.');
-      say('depot rebuilt byte-for-byte ✓ ' + n(deployed.length) + ' B', 'ok');
-
-      /* ★★ THE SIZE CEILING, and it is the DEPOT'S rule, not the page's. `racerDepotLockOps` pins it
-         with OP_SIZE, so a car over it makes the mint fail script validation — which is exactly what
-         happened on 20 Aug: a 95-tick car of 21,796 B was refused by the network with
-         `mandatory-script-verify-flag-failed`, after the page had said "proved raceable ✓".
-         ⚠ RACEABLE AND MINTABLE ARE DIFFERENT QUESTIONS. `assertRaceable` proves the CAR can be
-         spent; this proves the DEPOT will accept it. The car was fine; the depot would not have it.
-         ★ It is only safe to use this constant because the rebuild above proved our parameter set is
-         the deployed one — otherwise it would be another number typed into a page. */
-      if (car.length > M.RACER_MAX_CAR_BYTES)
-        throw Error('this car is ' + n(car.length) + ' B and this depot mints up to ' +
-                    n(M.RACER_MAX_CAR_BYTES) + ' B. ⇒ ' +
-                    (sim.trace.some(function(p){ return p.th === 0 })
-                       ? 'ADD FUEL — it runs dry and coasts, and every coasting tick is more script.'
-                       : 'TAKE FUEL OUT — it never runs dry, so the tank is only weight.') +
-                    ' A shorter track works either way.');
-
-      var W = M.RACER_WINDOW_SECONDS, win = Math.floor((Date.now()/1000 - 3*3600) / W);
-      var nextCount = (win === DEPOT.mark) ? DEPOT.count + 1 : 1;
-      if(nextCount > M.RACER_MINTS_PER_WINDOW) throw Error('this window is full — it reopens on the next block');
-      var cur = depotAt(M, DEPOT.mark, DEPOT.count), nxt = depotAt(M, win, nextCount);
-      var paid = rep.fee + 1;
-      var mintFee = Math.floor((2*car.length + 2*(cur.toBinary().length + 3) + 267) / 10);
-      var kept = DEPOT.value - paid - mintFee;
-      if(kept < 1) throw Error('the tank holds ' + n(DEPOT.value) + ' sat; this car needs ' + n(paid + mintFee + 1));
-
-      /* ★ THE GRIND. ARC refuses a high-S signature even though it is valid and minable. The lever is
-         the six hundred nLockTime values inside this window — the bucketing that makes the rate limit
-         un-gameable, paying for itself a second time. */
-      var mint = null;
-      for(var i=0;i<W;i++){
-        var lt = win*W + i;
-        var tx = new M.Transaction(); tx.version = 2;
-        tx.addInput({ sourceTransaction: DEPOT.sourceTransaction, sourceOutputIndex: DEPOT.vout, sequence: 0xfffffffe });
-        tx.addOutput({ lockingScript: new M.LockingScript(M.LockingScript.fromBinary(car).chunks), satoshis: paid });
-        tx.addOutput({ lockingScript: nxt, satoshis: kept });
-        tx.lockTime = lt;
-        var pre = M.TransactionSignature.format({
-          sourceTXID: DEPOT.sourceTransaction.id('hex'), sourceOutputIndex: DEPOT.vout, sourceSatoshis: DEPOT.value,
-          transactionVersion: 2, otherInputs: [], inputIndex: 0, outputs: tx.outputs,
-          inputSequence: 0xfffffffe, subscript: cur, lockTime: lt, scope: M.DEPOT_SCOPE });
-        if(!M.derivedSigIsLowS(pre)) continue;
-        tx.inputs[0].unlockingScript = M.buildDepotUnlock({
-          prefixOutputs: serOut(paid, car), spenderOutputs: [], newValue: u64(kept), preimage: pre });
-        mint = { tx:tx, ground:i }; break;
-      }
-      if(!mint) throw Error('no canonical signature in ' + W + ' candidates — that should be impossible');
-      say('mint ' + n(mint.tx.toBinary().length) + ' B · fee ' + n(mintFee) + ' sat · grind ' + mint.ground);
-
-      return broadcast(mint.tx.toHex(), 'the car').then(function(){
-        say('   ' + mint.tx.id('hex'), 'dim');
-        /* ★ TELL THE BOARD. Without this the cache only learns about a race when discovery next runs,
-           so the driver who just raced would not see themselves. The server does not take our word for
-           it — it checks the chain shows this txid really spends the depot's tip before recording
-           anything, exactly as tip.php does. ⚠ Fire and forget: a board that cannot be told is not a
-           reason for a race that has already been broadcast to report a failure. */
-        fetch('/racebeta.php', { method:'POST', headers:{'Content-Type':'application/json'},
-                               body: JSON.stringify({ txid: mint.tx.id('hex') }) }).catch(function(){});
-        /* ★ nLockTime is entirely free on the race: the car reads hashOutputs, its own scriptCode and
-           its own value, and never nSequence or nLocktime. The grind costs nothing at all. */
-        var r = null;
-        for(var k=0;k<512;k++){
-          var b = M.buildRaceTx({ car:car, payeeScript:sc.payee, sourceSatoshis:paid, fee:rep.fee,
-                                  sourceTXID:mint.tx.id('hex'), sourceOutputIndex:0, lockTime:k });
-          if(!M.derivedSigIsLowS(b.tx.inputs[0].unlockingScript.chunks[0].data)) continue;
-          r = b; break;
-        }
-        if(!r) throw Error('no canonical signature for the race in 512 candidates');
-        say('race ' + n(r.tx.toBinary().length) + ' B · fee ' + n(rep.fee) + ' sat');
-        return broadcast(r.tx.toHex(), 'the race').then(function(){
-          say('   ' + r.tx.id('hex'), 'dim');
-          say('');
-          var v = verdict(sim, PLAN.s.metres);
-          say(v[0], v[1]);
-          if(sim.run.ending !== 'finish'){
-            say('   the covenant settled the wreck — a car that ends badly still races, and still pays', 'dim');
-          }
-          animate(sim, PLAN.sim.finish, PLAN.s.eng);
-          return reload();
-        });
-      });
-    }).catch(function(e){
-      say('⚠ ' + e.message, 'no');
-      $('go').disabled = false;
-    });
-  }
-
-  /* ── ⛽ THE CONTRIBUTE BUTTON ─────────────────────────────────────────────────────────────────
-     The page assembles it, leaves the contributor's inputs BLANK, and stops. What crosses to Phar Lap
-     is a REQUEST rather than a transaction: enough to REBUILD and CHECK the spend, so the other side
-     never has to trust this page. There is no signature in it and no key. */
-  var BUILT = null, REQUEST = null;
-
-  /** ⚠ NORMALISE BOTH SPELLINGS. `getUtxos` maps WoC's rows, but a raw row uses tx_hash/tx_pos and a
-      mapped one uses txId/outputIndex — reading only one set is what produced "Invalid hex string"
-      earlier today, three steps downstream of the mistake. */
-  function coins(addr){
-    return gm().then(function(M){ return new M.WalletProvider(addr).getUtxos() }).then(function(us){
-      return (us||[]).map(function(u){
-        return { txId: u.txId || u.tx_hash,
-                 outputIndex: (u.outputIndex != null ? u.outputIndex : u.tx_pos),
-                 satoshis: (u.satoshis != null ? u.satoshis : u.value) };
-      }).filter(function(u){ return typeof u.txId === 'string' && typeof u.outputIndex === 'number' });
-    }).catch(function(){ return [] });
-  }
-
-  /** ★★ PICK COINS UNTIL THE AMOUNT IS COVERED. Biggest first, which is the cheapest answer and not
-      merely the obvious one: every extra input is a signature the contributor makes and ~148 bytes
-      somebody pays for, so the fewest inputs that reach the target is also the smallest fee.
-      ⚠⚠ THE TARGET MOVES AS YOU ADD COINS — `racerTopUpPad(k)` grows with the count, so it is
-      re-evaluated on every step rather than computed once up front. Reaching for the flat
-      `RACER_TOPUP_FEE_PAD` here would under-fund the fee by 20 sat a coin, and this project has been
-      under a fee floor five times.
-      ⚠ NO COIN IS FILTERED OUT. A tiny coin costs more to spend than it brings, but refusing one is
-      the page inventing a rule again — biggest-first already means the small ones are reached only
-      when they are genuinely needed. Returns null when the whole balance cannot cover it, which is
-      the only honest refusal there is. */
-  function pickCoins(us, need, padFor){
-    var s = us.slice().sort(function(a, b){ return b.satoshis - a.satoshis });
-    var out = [], sum = 0;
-    for(var i = 0; i < s.length; i++){
-      out.push(s[i]); sum += s[i].satoshis;
-      if(sum >= need + padFor(out.length)) return { coins: out, sum: sum };
-    }
-    return null;
-  }
-
-  /* ⚠⚠⚠ WoC ALLOWS ONE CALL EVERY 250 ms PER IP (sun-dive, 20 Aug), AND THE BROWSER IS ITS OWN IP.
-     `woc.php` funnels every SERVER-side call through one 350 ms queue — but these calls are made from
-     the visitor's machine and never go near it, so they are bounded by nothing unless bounded here.
-     ⚠ THIS IS A HAZARD MULTI-COIN FUNDING CREATED. One coin meant two calls and the question never
-     arose; taking as many coins as the amount needs turned a `Promise.all` into a burst of one request
-     per coin, fired at once — at an address of 19 coins, twenty simultaneous calls against a limit of
-     four a second. The gate this project already built exists because that is how an IP gets blocked
-     "at exactly the moment traffic proved they were wanted".
-     ★ 350 ms, not 250 — the same pace `woc.php` keeps, so the two halves of the site are polite in the
-     same units and the floor has margin rather than sitting exactly on it. */
-  var WOC_PACE_MS = 350;
-
-  /** Run thunks ONE AT A TIME with the pace between them, and return their results in order. */
-  function pacedSeries(jobs){
-    var out = [];
-    return jobs.reduce(function(chain, job, i){
-      return chain.then(function(){
-        return (i === 0 ? Promise.resolve()
-                        : new Promise(function(res){ setTimeout(res, WOC_PACE_MS) }))
-          .then(job).then(function(v){ out[i] = v });
-      });
-    }, Promise.resolve()).then(function(){ return out });
-  }
-
-  function buildTopUp(){
-    $('f-err').textContent = ''; $('f-panel').style.display = 'none';
-    var add = +$('add').value, addr = ($('addr').value || '').trim(), note = $('mark').value || null;
-    var M, sc, COINS, depotTx, fundTxs;
-    gm().then(function(g){
-      M = g;
-      if(!DEPOT) throw Error('find the depot first — press Re-read the chain');
-      /* ⚠ A TYPED FIELD CAN BE EMPTY, ZERO, FRACTIONAL OR NEGATIVE — a range slider never could, so
-         this guard did not exist before and now must. ★ ONE SATOSHI is the covenant's own minimum,
-         not the page's invention: a 0-value covenant output is refused as dust before the script is
-         evaluated at all. → memory `covenant-min-1-sat`. Everything ABOVE 1 stays the funder's call. */
-      if(!isFinite(add) || Math.floor(add) !== add || add < 1)
-        throw Error('the amount must be a whole number of satoshis, 1 or more');
-      if(!addr) throw Error('put your address in, so the change has somewhere to go');
-      sc = scripts(M);
-      return coins(addr);
-    }).then(function(us){
-      /* ★★ AS MANY COINS AS THE AMOUNT NEEDS — nothing on Bitcoin says a payment comes from one coin
-         (sun-dive, 20 Aug). This demanded a SINGLE coin covering fuel and fee, and refused otherwise:
-         at `12tMiZzd…`, whose largest coin is 208,603 sat, a 2,100,000 sat top-up was impossible while
-         the address held plenty. ⇒ The address's BALANCE is the only real limit and now it is the
-         only one applied.
-         ★★ AND EVERYTHING DOWNSTREAM WAS ALREADY BUILT FOR THIS — the restriction lived here alone:
-         · `RacerTopUpParams.funder` is an ARRAY, and its docstring says all of them are added before
-           the covenant's input so the preimage commits to every outpoint
-         · `racerTopUpPad(coins)` exists ONLY to price the extra inputs — and was never called
-         · `RacerTopUpRequest.funding` is TYPED as an array, and this page was passing one object
-         · Phar Lap signs every blank input that is its own (`cosign.ts:186`), not the first
-         ⇒ Bootcamp #4, and by his count the fifth restriction the funding page invented for itself. */
-      var picked = pickCoins(us, add, M.racerTopUpPad);
-      if(!picked){
-        var held = us.reduce(function(a, c){ return a + c.satoshis }, 0);
-        throw Error(addr + ' holds ' + n(held) + ' sat across ' + us.length + ' coin' +
-                    (us.length === 1 ? '' : 's') + ' — not enough for ' + n(add) + ' sat of fuel and its fee');
-      }
-      COINS = picked.coins;
-      $('a-bal').textContent = '— using ' + n(picked.sum) + ' sat from ' + COINS.length + ' coin' +
-                               (COINS.length === 1 ? '' : 's');
-      var prov = new M.WalletProvider(addr);
-      /* ★★ ONE CALL PER TRANSACTION, NOT PER COIN. Two of this address's coins really do share a txid
-         (`971bcc6e…:2` and `:3`), and a source transaction is the same document whichever output of it
-         is being spent — so the unique set is what gets fetched and the coins are matched back to it
-         afterwards. Fewer calls is the point when the calls are the scarce thing. */
-      var need = [DEPOT.txid];
-      COINS.forEach(function(c){ if(need.indexOf(c.txId) < 0) need.push(c.txId) });
-      return pacedSeries(need.map(function(t){
-        return function(){ return prov.getSourceTransaction(t) };
-      })).then(function(got){
-        var byId = {};
-        need.forEach(function(t, i){ byId[t] = got[i] });
-        return byId;
-      });
-    }).then(function(byId){
-      depotTx = byId[DEPOT.txid];
-      /* ⚠ MATCHED BY TXID, NOT BY POSITION — `funder` below is built from COINS in the same order, and
-         the builder pairs each input with the source transaction at its own index. */
-      fundTxs = COINS.map(function(c){ return byId[c.txId] });
-      return M.buildRacerTopUpTx({
-        depot: { sourceTransaction: depotTx, outputIndex: DEPOT.vout, value: DEPOT.value },
-        carBlock: sc.block, owner: sc.owner, addSats: add,
-        funder: COINS.map(function(c, i){
-          return { sourceTransaction: fundTxs[i], outputIndex: c.outputIndex };
-        }),
-        changeAddress: addr, mark: note
-      });
-    }).then(function(tx){
-      BUILT = tx;
-      /* The request is the alternate, not the default — see the note in the markup above. */
-      REQUEST = { v:1, action:'racer-depot-topup',
-        depot:{ txId: DEPOT.txid, outputIndex: DEPOT.vout, satoshis: DEPOT.value, sourceTxHex: depotTx.toHex() },
-        /* ⚠ AN ARRAY, WHICH IS WHAT `RacerTopUpRequest.funding` HAS ALWAYS BEEN TYPED AS. The page was
-           passing a bare object — the format and its only producer were out of step, and nothing
-           caught it because nothing else has ever read this document. */
-        funding: COINS.map(function(c, i){
-          return { txId: c.txId, outputIndex: c.outputIndex, satoshis: c.satoshis,
-                   sourceTxHex: fundTxs[i].toHex() };
-        }),
-        carBlockHex: hex(sc.block), ownerHex: hex(sc.owner),
-        state:{ mark: DEPOT.mark, count: DEPOT.count },
-        addSats: add, mark: note, changeAddress: addr };
-      var outs = tx.outputs.map(function(o){ return o.satoshis || 0 });
-      var change = outs[outs.length-1];
-      /* ⚠⚠ EVERY COIN, NOT THE COIN. This read `DEPOT.value + u.satoshis` and survived the rename to
-         multi-coin funding because `u` is a live variable name elsewhere in the file — so it threw at
-         RUN TIME ("u is not defined") rather than failing to parse, and it threw in the one place no
-         test reached: the panel that reports the fee back to the contributor.
-         ⇒ The lesson is not "rename carefully". It is that the builder and the selector were both
-         tested and the DISPLAY between them was not, so the arithmetic a person actually reads had no
-         coverage at all. `test/racer-topup-coins.ts` balances the money inside the transaction; this
-         line is what balances it on the screen, and it is now derived the same way. */
-      var inSats = DEPOT.value + COINS.reduce(function(a, c){ return a + c.satoshis }, 0);
-      var fee = inSats - outs.reduce(function(a,b){ return a+b }, 0);
-      $('b-add').textContent = n(add) + ' sat';
-      $('b-mark').textContent = note || '(no mark)';
-      $('b-change').textContent = n(change) + ' sat → ' + addr;
-      $('b-fee').textContent = n(fee) + ' sat';
-      $('f-panel').style.display = 'block';
-      showHex(false);
-    }).catch(function(e){ $('f-err').textContent = '⚠ ' + e.message });
-  }
-
-  function showHex(req){
-    if(!BUILT || !REQUEST) return;
-    $('b-hex').value = req ? JSON.stringify(REQUEST, null, 1) : BUILT.toHex();
-    /* ⚠ THE FORMAT LINE LABELS THE BOX, IT DOES NOT INSTRUCT — the instructions are in the markup
-       above and stay put whichever format is showing. Saying "sign input #2" here was doing both
-       jobs badly at once. */
-    $('b-fmt').textContent = req ? 'signing request · JSON — for a signer that rebuilds it from the description'
-                                 : 'unsigned transaction · hex';
-    $('b-raw').textContent = req ? 'show the transaction instead' : 'show it as a JSON signing request';
-    $('b-raw').onclick = function(ev){ ev.preventDefault(); showHex(!req) };
-  }
-
-  function hex(b){ return Array.prototype.map.call(b, function(x){ return ('0'+x.toString(16)).slice(-2) }).join('') }
-
-  ['eng','tyr','tank','fin','slip','driver'].forEach(function(id){ $(id).addEventListener('input', replan) });
-  /* ★ REV ON THE ENGINE SLIDER — the one place the size/tone mapping is USEFUL rather than
-     decorative: you can HEAR a bigger motor before you commit a satoshi to one.
-     ⚠ 'change', not 'input' — 'input' fires on every pixel of the drag and would machine-gun it. */
-  $('eng').addEventListener('change', function(){ rev(+this.value) });
-  /* the stage rev: a stab of throttle as it is sent, which is also the gesture that arms the audio */
-  $('go').addEventListener('click', function(){ armAudio(); rev(+$('eng').value) });
-  function paintSnd(){
-    $('snd').className = 'snd' + (SND ? ' on' : '');
-    $('snd').textContent = SND ? '🔊 sound' : '🔇 muted';
-  }
-  $('snd').addEventListener('click', function(){
-    SND = !SND;
-    try { localStorage.setItem(AUDIO_KEY, SND ? '1' : '0') } catch(e){}
-    paintSnd();
-    /* ⚠ SILENCE THE LOOPS TOO. The engine and the tyres are permanent nodes, so muting the master
-       alone would leave them running under it and they would come back mid-race on unmute. */
-    if(!SND){ engineTo(+$('eng').value, 0, false); screechTo(false); if(master) master.gain.value = 0 }
-    else { if(master) master.gain.value = 0.9; rev(+$('eng').value) }
+  ['eng','tyr','ths','tht','slip'].forEach(function(id){
+    $(id).addEventListener('input', function(){ $('v-' + id).textContent = this.value });
   });
-  paintSnd();
-  /* ★★ SHOW WHAT THE NUMBER MEANS; NEVER CLAMP IT. How big a tank should be is the funder's decision.
-     The page's job is to make the consequence legible, not to make the decision for them.
-     ⚠ AND THE GRIEFING BOUND STAYS VISIBLE (sun-dive, 20 Aug). §6i measured the covenant's own rate
-     limit at ~0.044 BSV/day of maximum drain, so a tank is worth about that many days if someone sets
-     out to empty it. A large tank is not a mistake — it is a choice, and this is the number to make it
-     against. ⇒ Informing is not forbidding. */
-  var GRIEF_BSV_PER_DAY = 0.044;
-  var SAT_PER_QUARTER_MILE = 2790;   /* MEASURED 20 Aug: 5,618 → 2,954 → 35 over two 402 m races */
-  function paintAdd(){
-    var s = Math.max(0, +$('add').value || 0), bsv = s/1e8;
-    var txt = '≈ ' + bsv.toFixed(bsv < 0.01 ? 6 : 4) + ' BSV · ~' +
-              n(Math.floor(s / SAT_PER_QUARTER_MILE)) + ' quarter miles';
-    var days = bsv / GRIEF_BSV_PER_DAY;
-    if (days >= 1) txt += ' · ⚠ ~' + (days < 10 ? days.toFixed(1) : n(Math.round(days))) +
-                          ' days of maximum griefing if someone set out to drain it';
-    $('v-add').textContent = txt;
+  function paintFit(){
+    var on = +$('fit').value === 1;
+    $('v-fit').textContent = on ? 'fitted' : 'as minted';
+    $('fitnote').innerHTML = on
+      ? '§7.10\'s measured fit — FE 0.12, fuel carries no weight. <b>Not in the covenant.</b>'
+      : 'exactly what <code>betaLane.ts</code> carries today — provisional, and the tank is most of the mass';
   }
-  /* ★★ ONE DIRECTION ONLY. The slider writes the box; the box moves the THUMB and nothing else.
-     ⚠ `syncThumb` clamps to the slider's range — but it assigns to `add-r`, NEVER to `add`. Type
-     21,000,000 and the number stays 21,000,000 while the thumb rests at 4,200,000. Reversing that one
-     assignment is exactly the bug that funded 20,000 sat in silence, so it is written down here as
-     well as in the markup. */
-  function syncThumb(){
-    var s = +$('add').value;
-    if(isFinite(s)) $('add-r').value = Math.max(+$('add-r').min, Math.min(+$('add-r').max, s));
-  }
-  $('add-r').addEventListener('input', function(){ $('add').value = this.value; paintAdd() });
-  $('add').addEventListener('input', function(){ syncThumb(); paintAdd() });
-  syncThumb();
-  paintAdd();
-  $('reload').addEventListener('click', reload);
-  $('board-refresh').addEventListener('click', readBoard);
-  $('go').addEventListener('click', race);
-  $('build').addEventListener('click', buildTopUp);
-  $('b-copy').addEventListener('click', function(){
-    var t = $('b-hex'); t.select();
-    try { navigator.clipboard.writeText(t.value) } catch(e){ try { document.execCommand('copy') } catch(e2){} }
-    var b = $('b-copy'), was = b.textContent; b.textContent = '✓ copied';
-    setTimeout(function(){ b.textContent = was }, 1400);
-  });
+  $('fit').addEventListener('input', paintFit); paintFit();
+  $('go').addEventListener('click', run);
+  $('stop').addEventListener('click', function(){ cancelAnimationFrame(RAF); $('msg').textContent = 'Stopped.' });
 
-  /* ⚠ THE BOARD READS ITSELF ON LOAD. It sits at the top of the page, so leaving it saying "not read
-     yet" until somebody finds a button made the first thing a visitor sees an empty panel.
-     ★ Affordable because of the cache: a return visit fetches only hops it has never seen, so the
-     usual cost of this line is one 404 at the tip. A first visit pays for the whole history once.
-     ⚠ It runs AFTER the depot, and its failure is caught separately — a board that cannot be read is
-     not a reason for the rest of the page to stop working. */
-  gm().then(function(){ replan(); return reload() })
-      .then(function(){ return readBoard().catch(function(e){
-        $('board-note').textContent = '⚠ could not update: ' + e.message;
-        $('board-note').style.color = '#ff6b6b';
-      }) })
-      .catch(function(e){
-        $('d-note').innerHTML = '<span class="no">⚠ ' + e.message + '</span>';
-      });
+  /* show the ceilings before anyone presses anything */
+  load().then(function(GB){
+    marks(geom(GB));
+    $('d-lim').textContent = ceiling(GB, GB.BETA_LANE_REGS, 0, 10, 1000).toFixed(2) + ' m/s';
+    $('msg').textContent = 'Ready. Run a lap.';
+  }).catch(function(e){ $('msg').innerHTML = '<span class="no">⚠ ' + e.message + '</span>' });
 })();
 </script>
 </body>

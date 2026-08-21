@@ -16,9 +16,10 @@ import { Transaction, UnlockingScript, Spend } from '@bsv/sdk'
 import { basicUnlockingOps, valueBytes } from '../src/betaFrame.ts'
 import { pushTxPreimage } from '../src/pushtx.ts'
 import {
-  buildLaneLock, laneSection, laneTick, PHASE, AURORA_FIG8, BETA_LANE_REGS,
+  buildLaneLock, laneSection, laneTick, laneConsts, PHASE, AURORA_FIG8, BETA_LANE_REGS,
   type LaneState, type LaneInputs,
 } from '../src/betaLane.ts'
+import { fmul } from '../src/shell.ts'
 
 let pass = 0, fail = 0
 const check = (n: string, got: boolean, want = true): void => {
@@ -130,10 +131,16 @@ bad('taking the lane\'s satoshi', next, THS, THT, 0)
 
 console.log('\n💥 THE DESLOT — too fast for the slot')
 {
-  /* ⚠⚠ THE STARTING STATE IS PART OF THE TEST. At v = 0.8 the car ends section 0 at 1.019 m/s against
-     a 1.025 limit — SIX THOUSANDTHS UNDER, so the branch never fired and the sheet went green having
-     examined nothing. Entering faster reaches it. ⇒ Count the executions; never assume them. */
-  const HOT: LaneState = { ...START, v: Math.round(1.1 * S) }
+  /* ⚠⚠⚠ THE ENTRY SPEED IS DERIVED FROM THE CEILING, NEVER TYPED IN — and this is the THIRD time the
+     same lesson has cost a run. A hard-coded 1.1 m/s reached the branch when the ceiling was 1.025 and
+     stopped reaching it the moment K was recalibrated to 1.60, at which point the sheet went green
+     having examined nothing. A test that pins a magic number is a test that quietly retires itself.
+     ⇒ Enter at 1.2× whatever the ceiling currently is, and assert below that the branch was reached. */
+  const C = laneConsts(BETA_LANE_REGS, AURORA_FIG8)
+  const ceilInner = Math.sqrt(
+    Math.trunc(Math.trunc(Math.trunc(fmul(C.K, C.RAD_IN) * C.SLIP_IN / C.SLIP) * START.tyr) / C.TYR_REF) / S)
+  const HOT: LaneState = { ...START, v: Math.round(ceilInner * 1.2 * S) }
+  console.log(`      ceiling here ${ceilInner.toFixed(3)} m/s · entering at ${(ceilInner * 1.2).toFixed(3)}`)
   const hot = laneSection(HOT, 16, 16)          // no lift at all through the corner
   console.log(`      reference says deslot: ${hot.deslot}`)
   const res = spend(HOT, hot, 16, 16)
