@@ -40,7 +40,25 @@ export const f = (x: number): number => Math.round(x * S)
  */
 export interface LaneRegs {
   M0: number; WE: number; WT: number; WF: number
-  FE: number; DRAG: number; DRAG2: number
+  /**
+   * ★★★ TOP SPEED IS THE MOTOR, NOT THE AIR — his testimony, and the arithmetic agrees: a 20 g car at
+   * 2 m/s meets about 0.0012 N of aerodynamic drag, which is 0.06 m/s² of deceleration. Nothing.
+   *
+   * > *"Yes the limiting speed factor was the motor. And I bet the motor upgrade produced higher RPM.
+   * > Drag is practically zero. It was all about the tyres and motor RPM."*
+   *
+   * ⇒ `VMAX_REF` is the top speed of a REFERENCE car at full throttle. A bigger motor spins faster; a
+   * taller tyre covers more track per revolution; a part-open throttle is a lower voltage and therefore
+   * a lower free speed. All three scale it.
+   */
+  VMAX_REF: number
+  /** Pull at the axle for the reference car at full throttle, before the wheel divides it. */
+  F0: number
+  /** ⚠ Rolling resistance, LINEAR in v. The quadratic aero term is gone — it was standing in for the
+   *  motor's RPM limit, and doing it backwards: it made a TALLER tyre slower. */
+  ROLL: number
+  /** The engine and tyre diameter the two references above are quoted at. */
+  ENG_REF: number; DIA_REF: number
   /** ★ THE DESLOT CONSTANT. `v² ≤ K·r` — and for a MAGNETLESS car `K = μ·g`, with the car's mass
    *  cancelling out entirely, so it is a property of TRACK AND TYRES rather than of the car.
    *  ⚠ A traction magnet breaks that (its downforce does not scale with mass), which is one more reason
@@ -50,16 +68,21 @@ export interface LaneRegs {
 }
 
 export const BETA_LANE_REGS: LaneRegs = {
-  M0: f(0.85), WE: f(0.05), WT: f(0.03), WF: f(0.00011),
+  M0: f(0.85), WE: f(0.05), WT: f(0.03),
+  /* ⚠⚠ WF = 0 — A SLOT CAR DOES NOT CARRY ITS POWER. At the drag-racing scaling the tank was ~90% of
+     the car's mass, so power barely mattered and the whole field lapped within 0.08 s. Fuel here is how
+     LONG you may race, not how heavy you are. ⇒ It also retires the under-fuelling strategy the drag
+     racers had, which is right: the drama moved to the corners. */
+  WF: 0,
   /* ⚠ PROVISIONAL. Terminal velocity is `(F/m)/DRAG`; a boxstock T-Jet measures 1.73 m/s and a good
      one 2.59 m/s (51 ft in 9 s / under 6 s). These are set to land in that band and NOT fitted. */
-  /* ⚠ FE RAISED 0.069 → 0.17 on 21 Aug, and the reason is worth keeping: at 0.069 the terminal
-     velocity was (F/m)/DRAG = 0.77 m/s against a deslot limit of 1.25 m/s on a 9" curve — SO THE CAR
-     COULD NEVER GO OFF, and `test/beta-lane.ts` proved the deslot rule was unreachable. A rule no test
-     can provoke is a rule no test has examined. ⇒ 0.17 gives ~1.7 m/s loaded and ~3.4 m/s light, so
-     full throttle through a corner deslots and lifting to ~6 does not. ⚠ STILL NOT A FIT — it makes the
-     branch REACHABLE so it can be tested. The calibration sweep is §8 and it is not done. */
-  FE: f(0.17), DRAG: f(0.20), DRAG2: f(0.09),
+  /* ⚠ PROVISIONAL. 2.2 m/s is a good T-Jet at full throttle on stock wheels (measured practice: 1.73
+     boxstock, 2.59 for a strong one). ENG_REF 14 and DIA_REF 10 are the middle of each slider. */
+  /* ⚠ ROLL 0.08 is LOW ON PURPOSE. It has to be, or rolling resistance becomes the limiter and the
+     model stops saying what he said — that top speed is the MOTOR. At 0.35 the car settled at 1.42 m/s
+     against a 2.2 free speed; at 0.08 it reaches ~2.0 and the motor governs. */
+  VMAX_REF: f(2.2), F0: f(2.6), ROLL: f(0.08),
+  ENG_REF: 14, DIA_REF: 10,
   /* ⚠ PROVISIONAL. μ ≈ 0.7 for rubber on plastic × g 9.81 ⇒ 6.9 m/s². On a 9" (0.229 m) curve that is
      1.25 m/s and on a 6" (0.152 m) curve 1.02 m/s, against 1.7–2.6 m/s on the straight — so a driver
      genuinely has to lift, and the tight corner is ~18% slower. ★ ONE real measurement fixes it for
@@ -126,6 +149,8 @@ DIM fuel%4
 DIM t%5
 DIM eng%1
 DIM tyr%1
+REM ★ TYRE DIAMETER IS THE GEARBOX — see LaneRegs. Separate from tyr, which is the COMPOUND.
+DIM dia%1
 DIM driver$24
 
 REM ⚠ EVERY WORKING VARIABLE IS GIVEN A VALUE BEFORE THE BRANCH. The compiler refuses an IF whose
@@ -137,8 +162,8 @@ vmax2 = 0
 arclen = 0
 over = 0
 mass = 0
-demand = 0
-aero = 0
+vtop = 0
+pull = 0
 accel = 0
 dt = 0
 
@@ -153,10 +178,11 @@ IF phase <> P_RACING THEN
   REM    engineering and safety work, and those readers would demand a full hash. (sun-dive, 21 Aug)
   REM ⚠ CAT, NOT +. In this dialect + is OP_ADD — it would read two byte strings as NUMBERS and add
   REM   them, which compiles perfectly and hashes something nobody intended.
-  raceId = HASH256(CAT(CAT(CAT(CAT(raceId, ndriver), NUM2BIN(neng, 1)), NUM2BIN(ntyr, 1)), NUM2BIN(nfuel, 4)))
+  raceId = HASH256(CAT(CAT(CAT(CAT(CAT(raceId, ndriver), NUM2BIN(neng, 1)), NUM2BIN(ntyr, 1)), NUM2BIN(ndia, 1)), NUM2BIN(nfuel, 4)))
   driver = ndriver
   eng = neng
   tyr = ntyr
+  dia = ndia
   fuel = nfuel
   v = V0
   t = 0
@@ -184,9 +210,12 @@ vmax2 = FMUL(K, rad) * slip / SLIP * tyr / TYR_REF
 
 REM ══ THE STRAIGHT ══════════════════════════════════════════════════════════
 mass = M0 + eng * WE + tyr * WT + FMUL(fuel * S, WF)
-demand = eng * FE * ths / TM
-aero = FMUL(FMUL(v, v), DRAG2)
-accel = FDIV(demand - aero, mass) - FMUL(v, DRAG)
+REM ── top speed: the MOTOR through the WHEEL, scaled by how far the trigger is pulled ──
+REM ⚠ ths is a COUNT (1..16), not a fixed-point value — plain * and /, never FMUL
+vtop = FMUL(VMAX_REF * eng / ENG_REF, DIA * dia / DIA_REF) * ths / TM
+REM ── a DC motor's pull falls to nothing at its free speed; a TALLER wheel trades pull for speed ──
+pull = FMUL(F0 * ths / TM, ONE - FDIV(v, vtop))
+accel = FDIV(FDIV(pull, DIA * dia / DIA_REF), mass) - FMUL(v, ROLL)
 dt = FDIV(STRAIGHT, v)
 v = v + FMUL(accel, dt)
 VERIFY v > 0
@@ -201,9 +230,9 @@ REM    ENDS, and ending is a state the covenant writes.
 arclen = FMUL(rad, ARCK)
 FOR i = 1 TO ARCS
   mass = M0 + eng * WE + tyr * WT + FMUL(fuel * S, WF)
-  demand = eng * FE * tht / TM
-  aero = FMUL(FMUL(v, v), DRAG2)
-  accel = FDIV(demand - aero, mass) - FMUL(v, DRAG)
+  vtop = FMUL(VMAX_REF * eng / ENG_REF, DIA * dia / DIA_REF) * tht / TM
+  pull = FMUL(F0 * tht / TM, ONE - FDIV(v, vtop))
+  accel = FDIV(FDIV(pull, DIA * dia / DIA_REF), mass) - FMUL(v, ROLL)
   dt = FDIV(arclen, v)
   v = v + FMUL(accel, dt)
   VERIFY v > 0
@@ -232,7 +261,10 @@ END IF
 export function laneConsts(regs: LaneRegs, track: LaneTrack): Record<string, number> {
   return {
     M0: regs.M0, WE: regs.WE, WT: regs.WT, WF: regs.WF,
-    FE: regs.FE, DRAG: regs.DRAG, DRAG2: regs.DRAG2, K: regs.K,
+    VMAX_REF: regs.VMAX_REF, F0: regs.F0, ROLL: regs.ROLL, K: regs.K,
+    ENG_REF: regs.ENG_REF, DIA_REF: regs.DIA_REF,
+    /* the reference wheel, as a fixed-point 1.0 — `dia` scales it */
+    DIA: S, ONE: S,
     TM: regs.THROTTLE_MAX, BURN0: regs.BURN0, BURN_E: regs.BURN_E,
     S, SLIP: SLIP_UNIT,
     STRAIGHT: f(track.straight),
@@ -256,6 +288,8 @@ export interface LaneState {
   phase: number; section: number; lap: number
   v: number; fuel: number; t: number
   eng: number; tyr: number
+  /** ★ tyre DIAMETER — the gearbox. `DIA_REF` is stock. */
+  dia: number
   driver: number[]
 }
 
@@ -278,7 +312,7 @@ export function buildLaneLock(
     /* ★ "A covenant with no inputs can only advance itself; one with inputs is a machine somebody
        plays." Two numbers are the entire driver input: how hard down the straight, how much you lift
        for the corner. */
-    inputs: ['ths', 'tht', 'ndriver', 'neng', 'ntyr', 'nfuel'],
+    inputs: ['ths', 'tht', 'ndriver', 'neng', 'ntyr', 'ndia', 'nfuel'],
   })
 }
 
@@ -298,7 +332,7 @@ export interface LaneInputs {
   /** throttle down the straight, and through the turn — the whole driver input */
   ths: number; tht: number
   /** ⚠ read ONLY when the lane is not racing: the next race's car */
-  ndriver: number[]; neng: number; ntyr: number; nfuel: number
+  ndriver: number[]; neng: number; ntyr: number; nfuel: number; ndia: number
 }
 
 /** little-endian, `w` bytes — what NUM2BIN(x, w) puts in the script. */
@@ -324,12 +358,12 @@ export function laneTick(
        ANYONECANPAY denies us anyway. 32 bytes because the structure is meant to be reused where a
        truncated identifier would not be accepted. */
     const raceId = Hash.hash256([
-      ...st.raceId, ...inp.ndriver, ...le(inp.neng, 1), ...le(inp.ntyr, 1), ...le(inp.nfuel, 4),
+      ...st.raceId, ...inp.ndriver, ...le(inp.neng, 1), ...le(inp.ntyr, 1), ...le(inp.ndia, 1), ...le(inp.nfuel, 4),
     ])
     return {
       raceId, phase: PHASE.RACING, section: 0, lap: 0,
       v: C.V0, fuel: inp.nfuel, t: 0,
-      eng: inp.neng, tyr: inp.ntyr, driver: inp.ndriver, deslot: false,
+      eng: inp.neng, tyr: inp.ntyr, dia: inp.ndia, driver: inp.ndriver, deslot: false,
     }
   }
   return laneSection(st, inp.ths, inp.tht, regs, track)
@@ -350,9 +384,12 @@ export function laneSection(
 
   const step = (ds: number, th: number, isArc: boolean): void => {
     const mass = C.M0 + st.eng * C.WE + st.tyr * C.WT + fmul(fuel * C.S, C.WF)
-    const demand = t0(st.eng * C.FE * th / C.TM)
-    const aero = fmul(fmul(v, v), C.DRAG2)
-    const accel = fdiv(demand - aero, mass) - fmul(v, C.DRAG)
+    /* ★ mirrors LANE_SRC exactly: top speed is motor × wheel × throttle, and the pull falls to nothing
+       as the car approaches it. A taller wheel buys speed and spends pull. */
+    const wheel = t0(C.DIA * st.dia / C.DIA_REF)
+    const vtop = t0(fmul(t0(C.VMAX_REF * st.eng / C.ENG_REF), wheel) * th / C.TM)
+    const pull = fmul(t0(C.F0 * th / C.TM), C.ONE - fdiv(v, vtop))
+    const accel = fdiv(fdiv(pull, wheel), mass) - fmul(v, C.ROLL)
     const dt = fdiv(ds, v)
     v = v + fmul(accel, dt)
     t = t + dt

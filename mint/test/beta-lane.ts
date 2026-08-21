@@ -31,7 +31,7 @@ const MAXFEE = 0                     // ⇒ so out0.value ≥ V − 0: the value
 
 /** Spend one section: assemble the transaction, derive the preimage from it, and let the interpreter judge. */
 const NEW: Omit<LaneInputs, 'ths' | 'tht'> =
-  { ndriver: new Array(24).fill(0), neng: 14, ntyr: 10, nfuel: 40000 }
+  { ndriver: new Array(24).fill(0), neng: 14, ntyr: 10, ndia: 10, nfuel: 40000 }
 
 function spend(from: LaneState, to: LaneState, ths: number, tht: number, outSats = SATS,
                nw: Omit<LaneInputs, 'ths' | 'tht'> = NEW): { ok: boolean; why?: string } {
@@ -53,7 +53,7 @@ function spend(from: LaneState, to: LaneState, ths: number, tht: number, outSats
   })
   const unlock = new UnlockingScript(basicUnlockingOps({
     spenderOutputs: [], newValue: valueBytes(outSats), preimage,
-    inputs: [ths, tht, nw.ndriver, nw.neng, nw.ntyr, nw.nfuel],
+    inputs: [ths, tht, nw.ndriver, nw.neng, nw.ntyr, nw.ndia, nw.nfuel],
   }))
   tx.inputs[0].unlockingScript = unlock
 
@@ -73,7 +73,7 @@ const START: LaneState = {
   raceId: new Array(32).fill(0),
   phase: PHASE.RACING, section: 0, lap: 0,
   v: Math.round(0.8 * S), fuel: 40000, t: 0,
-  eng: 14, tyr: 10, driver: new Array(24).fill(0),
+  eng: 14, tyr: 10, dia: 10, driver: new Array(24).fill(0),
 }
 
 console.log('\n★★ THE POSITIVE CASES FIRST — these are what say the covenant RUNS\n')
@@ -115,6 +115,7 @@ bad('  a lap that did not happen', { ...next, lap: 1 })
 bad('★ FINISHING EARLY', { ...next, phase: PHASE.FINISHED })
 bad('  the car changing engine mid-race', { ...next, eng: 24 })
 bad('  the car changing tyres mid-race', { ...next, tyr: 1 })
+bad('★ the car changing WHEEL SIZE mid-race — the gearbox is not adjustable in flight', { ...next, dia: 14 })
 bad('  the driver being swapped', { ...next, driver: new Array(24).fill(7) })
 
 console.log('\n⚠ THE THROTTLE IS THE INPUT — so the LIE is claiming another throttle\'s outcome')
@@ -170,6 +171,8 @@ console.log('\n♾ THE LANE ALWAYS TICKS FORWARD — a finished or wrecked race 
     spend(dead, { ...fresh, raceId: dead.raceId }, 0, 0).ok, false)
   check('⚠ a reset claiming an id built from a DIFFERENT car is REFUSED',
     spend(dead, laneTick(dead, { ths: 0, tht: 0, ...NEW, neng: 24 }), 0, 0).ok, false)
+  check('⚠ a reset claiming an id built from a DIFFERENT WHEEL is REFUSED',
+    spend(dead, laneTick(dead, { ths: 0, tht: 0, ...NEW, ndia: 14 }), 0, 0).ok, false)
   check('⚠ a reset keeping the old time on the clock is REFUSED',
     spend(dead, { ...fresh, t: dead.t }, 0, 0).ok, false)
   check('★ the id CHAINS — the same car started twice gives DIFFERENT ids',

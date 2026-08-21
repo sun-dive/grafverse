@@ -128,7 +128,12 @@
     <div class="panel">
       <div class="lbl">the car, and how you drive it</div>
       <label>engine <b id="v-eng">14</b><input type="range" id="eng" min="1" max="24" step="1" value="14"></label>
-      <label>tyres <b id="v-tyr">10</b><input type="range" id="tyr" min="1" max="10" step="1" value="10"></label>
+      <label>tyres · compound <b id="v-tyr">10</b><input type="range" id="tyr" min="1" max="10" step="1" value="10"></label>
+      <!-- ★★ DIAMETER IS THE GEARBOX, and it is how the hobby actually geared these cars: the foam
+           tyres you could buy were TALLER than stock and they went on the DRIVEN rear wheels. Taller =
+           more track per revolution = more top speed, and less pull to get there. A real trade, and
+           which way it goes depends on the track. -->
+      <label>tyres · diameter <b id="v-dia">10</b><input type="range" id="dia" min="6" max="14" step="1" value="10"></label>
       <!-- ★ THE WHOLE DRIVER INPUT IS TWO NUMBERS, and that is the game: how hard down the straight,
            how much you lift for the corner. It is also literally what crosses to the covenant. -->
       <label>throttle · the straight <b id="v-ths">16</b><input type="range" id="ths" min="1" max="16" step="1" value="16"></label>
@@ -259,16 +264,16 @@
          car's mass, so power barely mattered and the whole field lapped within 0.08 s. A slot car does
          not CARRY its power. */
       var regs = Object.assign({}, GB.BETA_LANE_REGS);
-      if (+$('fit').value === 1){ regs.FE = GB.laneFixed(0.12); regs.WF = 0 }
+      if (+$('fit').value === 1){ regs.VMAX_REF = GB.laneFixed(2.2); regs.ROLL = GB.laneFixed(0.08) }
       var track = Object.assign({}, GB.AURORA_FIG8, { laps: 1,
         slipInner: +$('slip').value, slipOuter: +$('slip').value });
       var g = geom(GB); marks(g);
 
-      var eng = +$('eng').value, tyr = +$('tyr').value;
+      var eng = +$('eng').value, tyr = +$('tyr').value, dia = +$('dia').value;
       var ths = +$('ths').value, tht = +$('tht').value;
 
       var st = { raceId: new Array(32).fill(0), phase: GB.LANE_PHASE.RACING, section: 0, lap: 0,
-                 v: Math.round(0.8 * S), fuel: 400000, t: 0, eng: eng, tyr: tyr,
+                 v: Math.round(0.8 * S), fuel: 400000, t: 0, eng: eng, tyr: tyr, dia: dia,
                  driver: new Array(24).fill(0) };
 
       /* ★ simulate the whole lap first, then play it back — the same shape the design uses on chain:
@@ -355,15 +360,15 @@
     }).catch(function(e){ $('msg').innerHTML = '<span class="no">⚠ ' + e.message + '</span>' });
   }
 
-  ['eng','tyr','ths','tht','slip'].forEach(function(id){
+  ['eng','tyr','dia','ths','tht','slip'].forEach(function(id){
     $(id).addEventListener('input', function(){ $('v-' + id).textContent = this.value });
   });
   function paintFit(){
     var on = +$('fit').value === 1;
     $('v-fit').textContent = on ? 'fitted' : 'as minted';
     $('fitnote').innerHTML = on
-      ? '§7.10\'s measured fit — FE 0.12, fuel carries no weight. <b>Not in the covenant.</b>'
-      : 'exactly what <code>betaLane.ts</code> carries today — provisional, and the tank is most of the mass';
+      ? 'the current provisional set — top speed is the MOTOR through the WHEEL, not the air'
+      : 'a heavier rolling resistance, so the tyres matter less — for comparison only';
   }
   $('fit').addEventListener('input', paintFit); paintFit();
   $('go').addEventListener('click', run);
