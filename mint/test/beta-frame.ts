@@ -16,7 +16,7 @@
 // produces a DIFFERENT script. Without that, a comparison that always passed would look the same.
 import { buildBasicLock as liveLock } from '../src/basicCovenant.ts'
 import { buildBasicLock as betaLock } from '../src/betaFrame.ts'
-import { LANE_SRC, laneConsts, BETA_LANE_REGS, AURORA_FIG8 } from '../src/betaLane.ts'
+import { LANE_SRC, laneConsts, laneInputNames, BETA_LANE_REGS, AURORA_FIG8 } from '../src/betaLane.ts'
 
 let pass = 0, fail = 0
 const check = (n: string, got: boolean, want = true): void => {
@@ -45,10 +45,18 @@ const CASES: Case[] = [
   { name: 'inputs — a machine somebody plays',
     src: 'DIM n%2\n VERIFY a > 0\n n = n + a + b\n', state: { n: 0 }, inputs: ['a', 'b'], maxFee: 600 },
   { name: '★ THE LANE ITSELF — 1,549 opcodes',
-    src: LANE_SRC, maxFee: 0, inputs: ['ths', 'tht'],
+    /* ⚠ DERIVED, not listed. The lane now takes one trigger per SEGMENT, so a hand-written pair
+       here silently compiles a different program than the one the lane actually mints. */
+    src: LANE_SRC, maxFee: 0, inputs: laneInputNames(AURORA_FIG8),
     consts: laneConsts(BETA_LANE_REGS, AURORA_FIG8),
-    state: { phase: 1, section: 0, lap: 0, v: 2147483648, fuel: 40000, t: 0,
-             eng: 14, tyr: 10, driver: new Array(24).fill(0) } },
+    /* ⚠⚠ EVERY DIM NEEDS A VALUE, AND raceId AND dia WERE MISSING — so this case THREW, and the two
+       cases after it never ran at all. It reported six passes and a stack trace, and was recorded as
+       "10/10". The whole point of this file is in its own header: *a frame that agrees on a toy and
+       diverges on 1,549 opcodes has told you nothing* — and the 1,549-opcode case is the one that
+       never executed. Found 21 Aug while re-deriving the inputs; verified against a clean checkout of
+       HEAD before believing it. → the green-test-is-not-evidence rule, again. */
+    state: { raceId: new Array(32).fill(0), phase: 1, section: 0, lap: 0, v: 2147483648, fuel: 40000,
+             t: 0, eng: 14, tyr: 10, dia: 10, driver: new Array(24).fill(0) } },
 ]
 
 console.log('★★ THE FORK AT ITS DEFAULT SCOPE MUST BE THE LIVE FRAME, BYTE FOR BYTE\n')

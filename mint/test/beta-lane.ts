@@ -16,7 +16,7 @@ import { Transaction, UnlockingScript, Spend } from '@bsv/sdk'
 import { basicUnlockingOps, valueBytes } from '../src/betaFrame.ts'
 import { pushTxPreimage } from '../src/pushtx.ts'
 import {
-  buildLaneLock, laneSection, laneTick, laneConsts, PHASE, AURORA_FIG8, BETA_LANE_REGS,
+  buildLaneLock, laneSection, laneTick, laneConsts, laneTriggers, PHASE, AURORA_FIG8, BETA_LANE_REGS,
   type LaneState, type LaneInputs,
 } from '../src/betaLane.ts'
 import { fmul } from '../src/shell.ts'
@@ -33,7 +33,8 @@ const MAXFEE = 0                     // ⇒ so out0.value ≥ V − 0: the value
 const NEW: Omit<LaneInputs, 'ths' | 'tht'> =
   { ndriver: new Array(24).fill(0), neng: 14, ntyr: 10, ndia: 10, nfuel: 40000 }
 
-function spend(from: LaneState, to: LaneState, ths: number, tht: number, outSats = SATS,
+function spend(from: LaneState, to: LaneState, ths: number | number[], tht: number | number[],
+               outSats = SATS,
                nw: Omit<LaneInputs, 'ths' | 'tht'> = NEW): { ok: boolean; why?: string } {
   const lock = buildLaneLock(from, { maxFee: MAXFEE })
   const next = buildLaneLock(to, { maxFee: MAXFEE })
@@ -53,7 +54,10 @@ function spend(from: LaneState, to: LaneState, ths: number, tht: number, outSats
   })
   const unlock = new UnlockingScript(basicUnlockingOps({
     spenderOutputs: [], newValue: valueBytes(outSats), preimage,
-    inputs: [ths, tht, nw.ndriver, nw.neng, nw.ntyr, nw.ndia, nw.nfuel],
+    /* ⚠ ONE PER SEGMENT, and IN THE ORDER `laneInputNames` declares them — the compiler resolved
+       every name against that list, so a reordered argument silently reads its neighbour. */
+    inputs: [...laneTriggers(ths, AURORA_FIG8.subs), ...laneTriggers(tht, AURORA_FIG8.arcs),
+             nw.ndriver, nw.neng, nw.ntyr, nw.ndia, nw.nfuel],
   }))
   tx.inputs[0].unlockingScript = unlock
 
@@ -78,9 +82,41 @@ const START: LaneState = {
 
 console.log('\n★★ THE POSITIVE CASES FIRST — these are what say the covenant RUNS\n')
 
-const THS = 16, THT = 6          // flat out down the straight, lifting for the corner
+/**
+ * ★★★ THE LINE IS DERIVED, NEVER PINNED — the quickest way round that the physics actually allows.
+ *
+ * ⚠⚠ A hard-coded throttle here quietly retires the test. This file has already paid for that once:
+ * the deslot entry speed was pinned three times and stopped reaching its branch every time a constant
+ * moved, passing green having examined nothing. When the physics was re-anchored to real lap times the
+ * pinned `THT = 6` went the OTHER way and began deslotting. Same trap, opposite direction.
+ *
+ * ★ AND THE ANSWER IS HIS OWN LINE. *"Full trigger on the straight. Getting to a corner you'd pull it
+ * back to about half, and then full again at the end of the turn."* Flat out, then a BRAKING ZONE in
+ * the last straight step — which is precisely why the straight is sub-stepped, and why a lift inside
+ * the turn cannot save a car that arrived too fast.
+ */
+function line(st: LaneState): { ths: number[]; tht: number; t: number } {
+  let best: { ths: number[]; tht: number; t: number } | null = null
+  /* flat out, then lift from step `at` onward — his shape, with the LIFT POINT searched rather than
+     assumed. ⚠ One braking step is not always enough: shedding 2.16 → 1.27 m/s takes ~10 cm and a
+     sub-step is 9.5 cm, so where the lift STARTS is part of the line. */
+  for (let at = 0; at < 4; at++) for (let brake = 1; brake <= 16; brake++) for (let tht = 1; tht <= 16; tht++) {
+    const ths = [0, 1, 2, 3].map(i => (i < at ? 16 : brake))
+    const r = laneSection(st, ths, tht)
+    if (r.deslot || r.refused) continue
+    if (!best || r.t < best.t) best = { ths, tht, t: r.t }
+  }
+  if (!best) throw new Error('beta-lane: NO line gets round section 0 — the constants are undriveable')
+  return best
+}
+const LINE = line(START)
+const THS = LINE.ths, THT = LINE.tht
+console.log(`      the derived line: straight ${THS.join('·')} · turn ${THT}/16`)
 const next = laneSection(START, THS, THT)
-check(`the reference does not deslot at throttle ${THT} in the turn`, !next.deslot)
+check('the derived line gets round without deslotting', !next.deslot && !next.refused)
+check('  ★ and it is a genuine LIFT — flat out everywhere goes off', laneSection(START, 16, 16).deslot)
+check('  ★★ AND THE BRAKING ZONE IS ON THE STRAIGHT — no corner trigger saves a flat-out approach',
+  [...Array(16)].every((_, i) => laneSection(START, 16, i + 1).deslot))
 
 const r = spend(START, next, THS, THT)
 check('★★★ A SECTION SPENDS — the interpreter accepts the successor the reference computed', r.ok)
@@ -99,7 +135,8 @@ check('  the odd section took the OTHER radius', true)
 
 console.log('\n⚠⚠ NOW THE REFUSALS — every way of claiming a race that did not happen\n')
 
-const bad = (name: string, to: LaneState, ths = THS, tht = THT, outSats = SATS): void => {
+const bad = (name: string, to: LaneState, ths: number | number[] = THS,
+             tht: number | number[] = THT, outSats = SATS): void => {
   const res = spend(START, to, ths, tht, outSats)
   check(name, res.ok, false)
 }
