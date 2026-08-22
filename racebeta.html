@@ -14,17 +14,27 @@
      ★ THE RULE THIS REBUILD IS TO: the car's program is FIXED and comes from the DEPOT. The server
      supplies DATA — engine, tyres, surface, track, throttle — and never the program.
 
-     ★★ WHAT THIS PAGE IS FOR, and it is only this: GAUGING THE FEEL OF THE TRACK. It runs the real
-     `laneSection` out of `vendor/grafbeta.js` — the same function the covenant is proved against by
-     `mint/test/beta-lane.ts` — so the bench cannot quietly disagree with the chain. Nothing is minted,
-     nothing is signed, and no satoshi moves.
+     ★★★ THE GAME FEEL COMES FIRST AND THE COVENANT IS WRITTEN AFTER IT (sun-dive, 22 Aug):
+     *"The game play should not be ruled by the covenant during testing for game feel. Once we have
+     tweaked the game and got it running properly, then we translate that to the covenant."*
 
-     ⚠ THE TRACK PICTURE IS STYLISED. The PHYSICS uses the real Aurora geometry (9" straights, 1/8
-     curves at 6" and 9", six per turn); the DRAWING is a lemniscate, because a surveyed layout that
-     actually closes is a separate job (§7.7). Progress along it is true to distance; the shape is not.
+     ⚠⚠ SO THIS PAGE NO LONGER DRIVES `laneSection`. It used to, and the page called that a virtue —
+     *the bench cannot quietly disagree with the chain* — which is right for VERIFICATION and exactly
+     backwards for FEEL. Every limit Script has was leaking into the gameplay, and one evening's worth
+     of "game bugs" were all the same bug: the car could only go off at a 45° arc boundary; slowing
+     down was a REFUSED SPEND rather than a stopping car; letting go of the trigger voided the run;
+     the trigger only bit four times a straight because each sub-step costs ~257 B of Script.
 
-     ⚠⚠ EVERY CONSTANT IS PROVISIONAL. `betaLane.ts` says so at every one. The fitted set measured on
-     21 Aug — FE 0.12 · K 17 · WF 0 — is recorded in §7.10 and is deliberately NOT built in yet.
+     ⇒ It drives `benchPhysics.ts` instead: floating point, stepped in TIME at frame resolution, a
+     continuous trigger, the deslot tested CONTINUOUSLY, and a car that is allowed to stop and be
+     driven away again. The algebra is deliberately the covenant's, so translating back is a matter of
+     choosing a step size and a scale — not a rewrite. Nothing is minted and no satoshi moves.
+
+     ⚠ THE DRAWING IS THE REAL GEOMETRY — straights and constant-radius curves laid in order, the same
+     radii the physics uses. It closes because 15" straights make it close, which is a real AFX part.
+
+     ⚠⚠ EVERY CONSTANT IS PROVISIONAL, and `K` has never been measured at all. The one measurement that
+     would settle it is a car let go on a known radius: `K = v²/r`.
 -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -70,13 +80,15 @@
 <div class="wrap">
 
   <h1>🛤 The lane bench <span class="note">— beta, nothing is broadcast</span></h1>
-  <div class="sub">A figure 8 in one covenant. Set the car up, choose how hard you go down the straight
-    and how much you lift for the corner, and see whether it holds the slot.</div>
+  <div class="sub">Tuning the <b>feel</b> — free physics, no covenant in the way. Set the car up,
+    <b>click the track</b> to arm, then <b>roll the wheel</b>: it is the trigger, read every frame,
+    and the car goes when you give it throttle.</div>
 
   <!-- ═══ THE TRACK — full width, because this is the thing you are meant to be watching ═══ -->
   <div class="panel">
-    <div class="lbl">the figure 8 · 4 sections · straight then turn</div>
-    <svg id="track" viewBox="0 0 1000 420" style="width:100%;height:auto;display:block">
+    <div class="lbl" id="tracktitle">the one he built · 286″ lap · 84″ straight</div>
+    <!-- ★ cursor:pointer because the track is now the control, and nothing else says so -->
+    <svg id="track" viewBox="0 0 1000 300" style="width:100%;height:auto;display:block;cursor:pointer">
       <defs>
         <linearGradient id="lane" x1="0" y1="0" x2="1" y2="0">
           <stop offset="0" stop-color="#243244"/><stop offset="1" stop-color="#1a2532"/>
@@ -112,15 +124,19 @@
       <div>
         <div class="row"><span>speed</span><span id="d-v">—</span></div>
         <div class="row"><span>section</span><span id="d-sec">—</span></div>
-        <div class="row"><span>deslot ceiling here</span><span id="d-lim">—</span></div>
-        <div class="row"><span>your trigger</span><span><b id="d-trig">8</b> · <span id="d-live" class="note"></span></span></div>
+        <div class="row"><span>your trigger</span><span><b id="d-trig">0</b> · <span id="d-live" class="note"></span></span></div>
       </div>
       <div>
-        <div class="note">grip · how close to leaving the slot <span id="d-pct" style="float:right"></span></div>
+        <!-- ★★★ THE METER IS THE TRIGGER, NOT THE LIMIT. It used to read "how close to leaving the
+             slot", which told the driver the one thing FINDING OUT is the whole game. A controller
+             has no such gauge — it has your hand on it — so this shows what the car is being given
+             and nothing else. Where the edge is, is for you to discover. -->
+        <div class="note">throttle <span id="d-pct" style="float:right">0 / 16</span></div>
         <div class="bar"><i id="d-bar"></i></div>
-        <p class="note" style="margin-top:8px">The tail comes round as the car uses up its grip; when the
-          bar reaches 100% it is gone. ★ The headlights run off the rails, so they <b>dim when you
-          lift</b> — and go out the moment it leaves the slot.</p>
+        <p class="note" style="margin-top:8px">What the car is being given, right now. ★ The headlights run off
+          the rails, so they <b>dim when you lift</b> — and go out the moment it leaves the slot. The
+          tail comes round as the grip runs out; that is the only warning you get, and it is the car's,
+          not the page's.</p>
       </div>
     </div>
   </div>
@@ -129,6 +145,15 @@
     <!-- ═══ THE CAR ═══ -->
     <div class="panel">
       <div class="lbl">the car, and how you drive it</div>
+      <!-- ★★ THE START IS AT THE TOP, beside the track rather than a scroll below it. You cannot drive
+           a thing you have to go and find the button for — and the settings you are tuning are the
+           ones you want to change BETWEEN laps, so the launch belongs above them, not after them. -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button id="go">▶ Run a lap</button>
+        <button id="stop" class="ghost">■ Stop</button>
+      </div>
+      <p class="note" style="margin:10px 0 14px" id="msg">Ready. <b>Left-click the track</b> to launch ·
+        <b>roll the wheel</b> to drive.</p>
       <label>engine <b id="v-eng">14</b><input type="range" id="eng" min="1" max="24" step="1" value="14"></label>
       <label>tyres · compound <b id="v-tyr">10</b><input type="range" id="tyr" min="1" max="10" step="1" value="10"></label>
       <!-- ★★ DIAMETER IS THE GEARBOX, and it is how the hobby actually geared these cars: the foam
@@ -136,39 +161,84 @@
            more track per revolution = more top speed, and less pull to get there. A real trade, and
            which way it goes depends on the track. -->
       <label>tyres · diameter <b id="v-dia">10</b><input type="range" id="dia" min="6" max="14" step="1" value="10"></label>
-      <!-- ★ THE WHOLE DRIVER INPUT IS TWO NUMBERS, and that is the game: how hard down the straight,
-           how much you lift for the corner. It is also literally what crosses to the covenant. -->
-      <label>throttle · the straight <b id="v-ths">16</b><input type="range" id="ths" min="1" max="16" step="1" value="16"></label>
-      <!-- ★★ THE WHEEL IS THE TRIGGER. His own account of the game: "flat out for as long as you dared
-           before the corners" — so the straight stays pinned and the CORNER is what you modulate. Roll
-           the mouse wheel over the track to feather it.
-           ⚠ It is committed when the car ENTERS a section, because that is what the covenant takes: two
-           numbers up front, per transaction. You set it before the corner arrives, which is also what
-           a real trigger finger does. -->
-      <label>throttle · the turn <b id="v-tht">8</b><input type="range" id="tht" min="1" max="16" step="1" value="8"></label>
-      <p class="note" style="margin:2px 0 0">★ roll the <b>mouse wheel over the track</b> to drive —
-        it is read as you enter the straight, and again <b>as the corner arrives</b></p>
-      <label style="margin-top:12px">playback <b id="v-rate">0.5×</b><input type="range" id="rate" min="1" max="20" step="1" value="5"></label>
+      <!-- ★★★ ONE TRIGGER, and it replaces the pair that used to sit here ("the straight" and "the
+           turn"). Those were the two-number model, and that model is gone: the trigger is now sampled
+           ONCE PER SEGMENT — four times down the straight, once per 45° of the turn — so a single
+           continuous value is what a hand on a controller actually is.
+           ⚠ IT STARTS AT ZERO because a released trigger is an open circuit, and it is the mirror of
+           `LIVE`: the wheel writes here, this writes to the wheel. Two sliders reading 16 and 8 while
+           the throttle was 0 would have been the page lying about the car. -->
+      <label>throttle <b id="v-tht">0</b> / 16<input type="range" id="tht" min="0" max="16" step="1" value="0"></label>
+      <p class="note" style="margin:2px 0 0">★ <b>Left-click the track</b> to arm — the wheel becomes
+        the trigger and stops scrolling the page. The car waits on the line at zero; <b>roll the wheel
+        up</b> and it goes. ★ Read <b>every frame</b> now, so braking is continuous and the car leaves
+        the slot exactly where it runs out of grip. <b>Esc</b> or <b>Stop</b> gives the wheel back.</p>
+      <!-- ★★ TEN LAPS WHEN IT GOES LIVE. Real formats pick a DISTANCE or a DURATION and let the lap
+           count fall out — Indy is 200 laps because 200 × 2.5 miles is the 500 in the name. Ten laps
+           of 268″ is about 44 s flat out: long enough to be a race, short enough to hold. -->
+      <label style="margin-top:12px">race length <b id="v-laps">10</b> laps
+        <input type="range" id="laps" min="1" max="20" step="1" value="10"></label>
+      <label>playback <b id="v-rate">0.5×</b><input type="range" id="rate" min="1" max="20" step="1" value="5"></label>
       <!-- ⚠ THE OIL. `slip` is a track property, not a car one — his drop of oil on the rails, made
            legitimate. Under §7.8 it becomes per-section data, so a lane can have one greasy corner. -->
       <label>surface · grip <b id="v-slip">1000</b><input type="range" id="slip" min="300" max="1400" step="100" value="1000"></label>
       <!-- ⚠⚠ THE FITTED SET IS A BENCH OVERRIDE, NOT WHAT THE COVENANT CARRIES. betaLane.ts still holds
            the provisional constants and says so at every one; §7.10 records this fit and his call was
            to TEST BEFORE BUILDING IT IN. So you can feel both without the source pretending. -->
-      <!-- ★★★ "88 was just a warm up." Eight sections instead of four — and the PROGRAM is identical:
-           same 3,438 B lock, same physics. Only the track DATA and the transaction count change, which
-           is the design's whole claim made visible. -->
-      <label style="margin-top:14px">track <b id="v-trk">figure 8</b>
-        <input type="range" id="trk" min="0" max="1" step="1" value="0"></label>
-      <label style="margin-top:14px">physics
-        <b id="v-fit">fitted</b>
-        <input type="range" id="fit" min="0" max="1" step="1" value="1"></label>
-      <p class="note" style="margin:2px 0 0" id="fitnote"></p>
-      <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
-        <button id="go">▶ Run a lap</button>
-        <button id="stop" class="ghost">■ Stop</button>
-      </div>
-      <p class="note" style="margin:12px 0 0" id="msg">Ready.</p>
+      <!-- ★★★ THE TRACK YOU BUY, and this is his own history: *"The set I first bought was tiny —
+           only a small figure 8. To make the track actually fun to play I bought a lot more track.
+           Mostly straights and a few extra bends. Long straights are the most fun."*
+           ⚠⚠ AND THE STARTER 8 CANNOT BE STRETCHED. Four sections of straight + 270° bending
+           alternately close at EXACTLY 15" straights and nowhere else — measured, the loop springs
+           open by 1.08 m at 30" and 3.23 m at 60". That is not a style choice, it is the only root of
+           the closure equation, and it is precisely why he went and bought more track.
+           ★ THE BUILT LAYOUT IS A RECTANGLE, because four 90° bends all turning the same way close for
+           ANY side lengths — even with the corner radii mixed. So the straights can grow forever. -->
+      <!-- ★★★ HIS OWN TRACK, reconstructed from the whiteboard: he gave the ORDER of the turns and
+           the plywood gave the size. The turns sum to exactly −360°, and only a 6″ corner fits a
+           standard 96×48″ sheet — which is how we know his shop sold the tight one. -->
+      <div class="lbl" style="margin-top:18px">the track</div>
+      <label>layout <b id="v-trk">the one he built</b>
+        <input type="range" id="trk" min="0" max="1" step="1" value="1"></label>
+      <!-- ★★ THE INNER STRAIGHT, and the closure decides the rest: the start straight is 69″ minus
+           this, so the two simply trade and every setting gives the same 268″ lap on the same
+           93×30″ board. ⚠ It can never reach the outer edge — the two bends after it need 3× the
+           corner radius, which is a fixed 18″ at a 6″ corner. -->
+      <!-- ★★★ IN PIECES, because that is the only thing you could buy. One straight length, one
+           corner — and closure ties them: L × k = 2r. At 12″ pieces and a 6″ corner that is k = 1, so
+           the start and the inner ALWAYS sum to 6 pieces. They trade; the lap never changes. -->
+      <!-- ★★★ THE LAYOUT IS FORCED, so there is nothing to tune about it. One straight length, one
+           corner, a 96×48″ sheet, four straights with the longest as long as the board allows, and it
+           must shut — searched exhaustively, exactly TWO layouts qualify and they are mirror images.
+           ⇒ 84″ · 180°R · 60″ · 90°R · 36″ · 180°L · 36″ · 270°R. The only choice left is where the
+           start line sits along that 84″ straight. -->
+      <label>start line <b id="v-inner">33</b>% down the 84″ straight
+        <input type="range" id="inner" min="0" max="90" step="1" value="33"></label>
+      <label>straights · 15″ pieces a side <b id="v-nstr">4</b>
+        <input type="range" id="nstr" min="1" max="12" step="1" value="4"></label>
+      <!-- ★ ONE RADIUS FOR THE WHOLE TRACK, because that is what the shop sold: turn left and turn
+           right, same curve. Corner character came from how many you chained, not from the part. -->
+      <label>the corner your shop sold <b id="v-rad">9</b>″ radius
+        <input type="range" id="rad" min="6" max="15" step="3" value="9"></label>
+      <p class="note" style="margin:2px 0 0" id="tracknote"></p>
+      <!-- ★★★ THE TUNING DIALS. Every one of these is PROVISIONAL in betaLane.ts and says so, and
+           §7.10's rule was his: TEST BEFORE BUILDING IT IN. The lap times are anchored to real ones —
+           a decent boxstock T-Jet laps 51 ft in 9.0 s, a good one in 6.0 s — but the anchors cannot
+           settle the grip, because holding 1.73 m/s needs µ 2.00 on a 6" curve and µ 0.80 on a 15".
+           ⇒ These are here because the last word on feel is a hand on a trigger, not a fit. -->
+      <div class="lbl" style="margin-top:18px">the constants — still provisional, tune them</div>
+      <!-- ⚠ THE BRAKING ZONE. His answer was "a few inches"; at 3" the track is very nearly
+           undriveable and at 18" there is nothing to brake with. It is the most consequential dial. -->
+      <!-- ★★★ THE MASTER DIAL. It sets how hard the car stops AND — because the motor must out-push
+           the drag about ten to one to reach its free speed — how long it takes to wind up. Short
+           coast = a switch; long coast = a car you drive out of a corner. -->
+      <label>coast when you let go <b id="v-coast">6″</b><input type="range" id="coast" min="2" max="48" step="2" value="6"></label>
+      <p class="note" style="margin:2px 0 0" id="carnote"></p>
+      <!-- ⚠ K = µ·g, and µ is what the deslot ceiling really is. 1.08 is the current guess. -->
+      <label>grip · µ <b id="v-grip">1.08</b><input type="range" id="grip" min="50" max="200" step="2" value="108"></label>
+      <!-- ★ 90 Ω controller ÷ ~16 Ω armature ⇒ 5.6. Bigger = lifting makes the car weaker, sooner. -->
+      <label>controller · Ω ratio <b id="v-ctrl">5.6</b><input type="range" id="ctrl" min="10" max="120" step="1" value="56"></label>
+      <label>free speed <b id="v-top">2.38</b> m/s<input type="range" id="top" min="120" max="400" step="5" value="238"></label>
     </div>
 
   </div>
@@ -178,7 +248,7 @@
     <div class="lbl">the lap</div>
     <div class="big" id="d-lap">—</div>
     <table>
-      <thead><tr><th>section</th><th>radius</th><th>turn thr</th><th>ceiling</th><th>exit m/s</th><th>split</th></tr></thead>
+      <thead><tr><th>section</th><th>radius</th><th>exit m/s</th><th>split</th></tr></thead>
       <tbody id="splits"></tbody>
     </table>
     <p class="note" style="margin-top:12px">
@@ -194,11 +264,19 @@
   'use strict';
   var $ = function(id){ return document.getElementById(id) };
   var GB = null, RAF = 0;
-  /* ★ the live trigger, and the playback rate — the car was too quick to read at 1x */
-  var LIVE = 8, RATE = 0.5;
+  /* ★★ THE LIVE TRIGGER STARTS AT ZERO, and that is the physics rather than a preference: a released
+     trigger is an OPEN CIRCUIT — `acc0 = 0`, no drive and no braking either. The car is on the track
+     with your finger off it. ⚠ It is also why launching AT zero would be nonsense: at the default
+     drag a car stops from 0.8 m/s in 2.1 cm, a third of one sub-step, so it would be refused before
+     it moved. ⇒ Arming and launching are different acts. The wheel is what launches it. */
+  /* ⚠ RUNNING, not `RAF`, is the "a lap is in progress" flag. `run` loads the bundle through a
+     PROMISE, so between the roll that launches and the first frame there is a window in which `RAF`
+     is still zero — two quick clicks of the wheel would start two animation loops on one car. */
+  var LIVE = 0, RATE = 0.5, ARMED = false, RUNNING = false, START = 0;
 
-  /* ⚠ THE BENCH RUNS THE COVENANT'S OWN PHYSICS. `laneSection` is the function `beta-lane.ts` proves
-     against the real interpreter — a bench that reimplements it is a bench that quietly disagrees. */
+  /* ★★ THE BENCH RUNS ITS OWN PHYSICS — `benchPhysics.ts`, free of the covenant, because the FEEL is
+     tuned first and the covenant is written from the result. The covenant's own `laneSection` is
+     still in this bundle and untouched: it is what the settled model gets translated INTO. */
   function load(){
     if (GB) return Promise.resolve(GB);
     return new Promise(function(res, rej){
@@ -206,8 +284,8 @@
       s.src = '/vendor/grafbeta.js?v=20260821bench';
       s.onload = function(){
         GB = window.GrafBeta;
-        if (!GB || typeof GB.laneSection !== 'function')
-          return rej(Error('grafbeta.js is STALE — it has no laneSection. Hard-reload.'));
+        if (!GB || typeof GB.benchStep !== 'function')
+          return rej(Error('grafbeta.js is STALE — it has no benchStep. Hard-reload.'));
         res(GB);
       };
       s.onerror = function(){ rej(Error('could not load grafbeta.js — serve this page, do not open the file')) };
@@ -225,41 +303,68 @@
      ⚠ AND IT CLOSES. Four sections of (straight + 6x45°) with the turn direction alternating shut
      exactly when the straights are 15" — solved, not chosen, and 15" is a real AFX straight. */
   var PATH = null;
-  function trackOf(GB){ return +$('trk').value === 1 ? GB.DOUBLE_FIG8 : GB.AURORA_FIG8 }
-  function buildPath(GB){
-    var T = trackOf(GB), seg = [], x = 0, y = 0, h = 0, dist = 0;
-    var dirs = T.dirs;
+  /* ★ THE TRACK IS THE BENCH'S NOW, not the covenant's. `slip` rides on it because it is a property
+     of the SURFACE — his drop of oil on the rails — and not of the car. */
+  /* ★★★ THE DIALS ARE THE REGULATIONS, IN REAL UNITS — metres, seconds, m/s. Nothing here is
+     fixed-point and nothing is quoted per-segment, so a number you set is a number you can reason
+     about. ⚠ ONE SOURCE: the run and the track note both read this, or they would drift. */
+  function regsNow(GB){
+    var regs = Object.assign({}, GB.BENCH_REGS);
+    regs.VFREE = +$('top').value / 100;
+    /* ⚠ DRAGC FROM THE COAST: stopping from free speed in `coast` inches is a constant v²/2s. It is
+       the term that lets a car stop at all — a drag linear in v approaches zero and never arrives. */
+    regs.DRAGC = regs.VFREE * regs.VFREE / (2 * (+$('coast').value) * 0.0254);
+    regs.RC = +$('ctrl').value / 10;
+    regs.K = +$('grip').value / 100 * 9.81;          /* K = µ·g, and µ is what grip really is */
+    /* ★★★ THE PULL IS DERIVED FROM THE COAST, and it is not a tidy-up — it is the discovery that the
+       two are the same dial. To settle anywhere near its free speed the motor has to out-push the
+       constant drag by about ten to one, so a SHORT coast forces a BRUTAL motor:
+           coast  6″ → drag 18.5 → 169 m/s² → up to speed in 1.1″   ← a switch, not a car
+           coast 36″ → drag  3.1 →  30 m/s² → up to speed in 6.1″   ← something you drive
+       ⚠ At 6″ *"full throttle out of a bend"* cannot exist: the car is already at top speed before it
+       has left the bend. ⇒ So `F0` is solved for rather than typed, and the coast dial alone sets the
+       car's whole character — how hard it stops AND how long it takes to wind up.
+       ★ Solved from ve = 0.9·VFREE:  a0 = (DRAGC + 0.9·VFREE·ROLL) / 0.1 */
+    var refMass = regs.M0 + regs.ENG_REF * regs.WE + regs.TYR_REF * regs.WT;
+    regs.F0 = refMass * (regs.DRAGC + 0.9 * regs.VFREE * regs.ROLL) / 0.1;
+    return regs;
+  }
+  function trackOf(GB){
+    var slip = +$('slip').value / 1000;
+    /* ★ THE STARTER 8 IS A KEEPSAKE. It closes at 15" straights and NO other length, which is exactly
+       why he bought more track — so the layout you tune on is the one you BUILD, by adding straights. */
+    return +$('trk').value === 1 ? GB.benchHisTrack(slip, +$('inner').value)
+                                 : GB.benchOval(+$('nstr').value, +$('rad').value * GB.IN, slip);
+  }
+  function buildPath(T){
+    var seg = [], x = 0, y = 0, h = 0, dist = 0;
     function push(px, py, d){ seg.push({ x: px, y: py, d: d }) }
     push(x, y, 0);
-    for (var k = 0; k < T.sections; k++){
-      var r = (k % 2 === 0) ? T.radiusInner : T.radiusOuter, dir = dirs[k];
-      var straightEnd;
-      x += Math.cos(h) * T.straight; y += Math.sin(h) * T.straight; dist += T.straight;
-      straightEnd = dist; push(x, y, dist);
-      for (var a = 0; a < T.arcs; a++){
-        var cx = x - Math.sin(h) * r * dir, cy = y + Math.cos(h) * r * dir;
-        var stepA = dir * Math.PI / 4, n = 6;                    // 6 line segments per 45° arc
-        for (var i = 1; i <= n; i++){
-          var hh = h + stepA * i / n;
-          var px = cx + Math.sin(hh) * r * dir, py = cy - Math.cos(hh) * r * dir;
-          dist += (2 * Math.PI * r / 8) / n;
-          push(px, py, dist);
-        }
-        h += stepA;
-        x = cx + Math.sin(h) * r * dir; y = cy - Math.cos(h) * r * dir;
+    for (var k = 0; k < T.sections.length; k++){
+      var sc = T.sections[k], r = sc.r, dir = sc.dir;
+      x += Math.cos(h) * sc.straight; y += Math.sin(h) * sc.straight; dist += sc.straight;
+      push(x, y, dist);
+      /* ★ THE TURN IS ONE ARC NOW, walked finely — it was six 45° pieces because the COVENANT had to
+         unroll a FOR with a compile-time bound, which is a fact about Script and not about a corner. */
+      var total = dir * sc.turnDeg * Math.PI / 180, N = 48;
+      var cx = x - Math.sin(h) * r * dir, cy = y + Math.cos(h) * r * dir, h0 = h;
+      for (var i = 1; i <= N; i++){
+        var hh = h0 + total * i / N;
+        push(cx + Math.sin(hh) * r * dir, cy - Math.cos(hh) * r * dir,
+             dist + Math.abs(total) * r * i / N);
       }
-      seg[seg.length - 1].sectionEnd = k;
-      seg.forEach(function(){});
-      void straightEnd;
+      dist += Math.abs(total) * r;
+      h = h0 + total;
+      x = cx + Math.sin(h) * r * dir; y = cy - Math.cos(h) * r * dir;
     }
     /* fit it to the viewBox */
     var xs = seg.map(function(q){ return q.x }), ys = seg.map(function(q){ return q.y });
     var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
     var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
-    var sc = Math.min(920 / (x1 - x0), 360 / (y1 - y0));
+    var sc = Math.min(920 / (x1 - x0), 240 / (y1 - y0));
     seg.forEach(function(q){
       q.px = 40 + (q.x - x0) * sc + (920 - (x1 - x0) * sc) / 2;
-      q.py = 30 + (q.y - y0) * sc + (360 - (y1 - y0) * sc) / 2;
+      q.py = 30 + (q.y - y0) * sc + (240 - (y1 - y0) * sc) / 2;
     });
     return { seg: seg, lap: dist };
   }
@@ -296,23 +401,9 @@
   }
 
   /* ── section lengths, from the REAL geometry ───────────────────────────────────────────────────── */
-  function geom(GB){
-    var T = trackOf(GB), arc = function(r){ return 2 * Math.PI * r / 8 }, L = [], tot = 0;
-    for (var k = 0; k < T.sections; k++){
-      var r = (k % 2 === 0) ? T.radiusInner : T.radiusOuter;
-      var len = T.straight + T.arcs * arc(r);
-      L.push({ r: r, len: len, straight: T.straight });
-      tot += len;
-    }
-    return { L: L, lap: tot };
-  }
-
-  function ceiling(GB, regs, sec, tyr, slip){
-    var C = GB.laneConsts(regs, GB.AURORA_FIG8);
-    var rad = (sec % 2 === 0) ? C.RAD_IN : C.RAD_OUT;
-    var v2 = Math.trunc(Math.trunc(Math.trunc((C.K * rad / S)) * slip / C.SLIP) * tyr / C.TYR_REF);
-    return Math.sqrt(v2 / S);
-  }
+  /* ★ ONE SOURCE OF GEOMETRY, and it is the physics module's — so the picture and the model cannot
+     drift apart. The page used to keep its own copy of the lap arithmetic. */
+  function geom(GB, T){ return GB.benchGeom(T) }
 
   function marks(g){
     var html = '', at = 0;
@@ -325,178 +416,274 @@
   }
 
   function run(){
+    RUNNING = true;                      /* set BEFORE the promise — see the note on the flag */
     cancelAnimationFrame(RAF);
     load().then(function(GB){
-      /* ★ §7.10's measured fit: FE 0.12 · WF 0. K and the tyre term are already in the source.
-         ⚠ WF = 0 is the finding, not a tweak — at the drag-racing scaling the tank was ~90% of the
-         car's mass, so power barely mattered and the whole field lapped within 0.08 s. A slot car does
-         not CARRY its power. */
-      var regs = Object.assign({}, GB.BETA_LANE_REGS);
-      if (+$('fit').value === 1){ regs.VMAX_REF = GB.laneFixed(2.2); regs.ROLL = GB.laneFixed(0.08) }
-      var track = Object.assign({}, trackOf(GB), { laps: 1,
-        slipInner: +$('slip').value, slipOuter: +$('slip').value });
-      if (!PATH){ PATH = buildPath(GB); drawTrack() }
-      var g = geom(GB); marks(g);
+      /* ★★★ THE DIALS ARE THE REGULATIONS, IN REAL UNITS. Nothing is fixed-point any more and nothing
+         is quoted per-segment — metres, seconds, m/s — so a number you set here is a number you can
+         reason about. Every one is still provisional; this panel is how they get settled, by driving. */
+      var regs = regsNow(GB);
+      var track = trackOf(GB);
+      var car = { eng: +$('eng').value, tyr: +$('tyr').value, dia: +$('dia').value };
+      PATH = buildPath(track); drawTrack();
+      var g = geom(GB, track); marks(g);
 
-      var eng = +$('eng').value, tyr = +$('tyr').value, dia = +$('dia').value;
-      var ths = +$('ths').value, tht = +$('tht').value;
-      LIVE = tht;
+      /* ★★ ONE STATE, STEPPED IN TIME. There are no sections to commit, no triggers to gather and no
+         spend that can be refused — the car is at a distance with a speed, and every frame moves it.
+         ⇒ That is the whole change: the covenant is a thing we will WRITE from this, not a thing this
+           has to obey while we find out what the game is. */
+      var st = GB.benchStart(400000, track), rows = [], secDone = 0, tPrev = 0, stopped = 0;
+      /* ★★ TEN LAPS WHEN IT GOES LIVE (his call, 22 Aug). Real formats pick a DISTANCE or a
+         DURATION and let the lap count fall out — Indy is 200 × 2.5 miles because the name says 500.
+         Ten laps of 268″ is ~2,680″ and about 44 s flat out: a heat you can hold concentration for,
+         and cheap enough on chain to matter later. */
+      var LAPS = +$('laps').value;
 
-      var st = { raceId: new Array(32).fill(0), phase: GB.LANE_PHASE.RACING, section: 0, lap: 0,
-                 v: Math.round(0.8 * S), fuel: 400000, t: 0, eng: eng, tyr: tyr, dia: dia,
-                 driver: new Array(24).fill(0) };
-
-      /* ★★ THE SECTION IS SIMULATED WHEN THE CAR REACHES IT, not before — which is what makes the
-         wheel a THROTTLE rather than a setting. It is also exactly what the covenant does: two numbers
-         are committed per section, up front, and the section is then computed from them.
-         ⚠ So the value you are holding when the car ENTERS a section is the value that section runs on.
-         Set it before the corner arrives, which is what a trigger finger does anyway. */
-      var rows = [], off = -1, at = 0, tPrev = 0, i = 0, cur = null, st0 = st;
-
-      /* ★★★ TWO COMMIT POINTS A SECTION, which is exactly what the covenant takes.
-         · entering the section  → `ths` is whatever you are holding
-         · reaching the corner   → `tht` is whatever you are holding THEN
-         ⚠ And that is exact, not an approximation: the straight runs first and reads only `ths`, so
-         recomputing the section with a late `tht` leaves the straight byte-identical. `laneSection`
-         reports `atTurn` — the state as the corner arrives — so the bench can hand you that moment. */
-      function beginSection(){
-        if (i >= track.sections || off >= 0) return null;
-        var k = i, lim = ceiling(GB, regs, k, tyr, +$('slip').value);
-        var usedThs = LIVE;
-        var probe = GB.laneSection(st0, usedThs, 1, regs, track);   // tht irrelevant to the straight
-        var sFrac = g.L[k].straight / g.L[k].len;
-        return { phase: 'straight', sec: k, lim: lim, ths: usedThs,
-                 from: at, to: at + g.L[k].straight, secs: fx(probe.atTurn.t) - tPrev,
-                 v: fx(probe.atTurn.v), straightFrac: 1 };
-      }
-      function beginTurn(f){
-        var usedTht = LIVE;
-        var n = GB.laneSection(st0, f.ths, usedTht, regs, track);
-        var turnSecs = fx(n.t) - fx(n.atTurn.t);
-        rows.push({ sec: f.sec, r: g.L[f.sec].r, lim: f.lim, v: fx(n.v),
-                    split: fx(n.t) - tPrev, off: n.deslot, ths: f.ths, tht: usedTht });
-        tPrev = fx(n.t);
-        if (n.deslot) off = f.sec;
-        st0 = n; i++; at += g.L[f.sec].len;
-        paintRows();
-        return { phase: 'turn', sec: f.sec, lim: f.lim, ths: f.ths, tht: usedTht,
-                 from: at - g.L[f.sec].len + g.L[f.sec].straight, to: at,
-                 secs: turnSecs, v: fx(n.v), straightFrac: 0 };
-      }
       function paintRows(){
         $('splits').innerHTML = rows.map(function(r){
           return '<tr><td>' + (r.sec + 1) + (r.sec % 2 === 0 ? ' · tight' : ' · wide') + '</td>' +
-            '<td>' + (r.r * 39.37).toFixed(0) + '\u2033</td>' +
-            '<td>' + r.tht + '</td>' +
-            '<td>' + r.lim.toFixed(2) + '</td>' +
-            '<td class="' + (r.off ? 'no' : '') + '">' + r.v.toFixed(2) + '</td>' +
+            '<td>' + (r.r * 39.37).toFixed(0) + '″</td>' +
+            '<td>' + r.v.toFixed(2) + '</td>' +
             '<td>' + (r.off ? '<span class="no">OFF</span>' : r.split.toFixed(3) + ' s') + '</td></tr>';
         }).join('');
-        var done = rows.length === track.sections && off < 0;
-        $('d-lap').innerHTML = off >= 0
-          ? '<span class="no">OFF at section ' + (off + 1) + '</span>'
-          : (done ? tPrev.toFixed(3) + ' <span class="note">s</span>' : '<span class="note">running…</span>');
-        $('msg').innerHTML = off >= 0
-          ? '<span class="no">⚠ Too fast for the slot. Feather it earlier.</span>'
-          : (done ? '<span class="ok">Clean lap.</span> Try a little more through the turn.'
-                  : 'Roll the wheel over the track to feather the corner.');
       }
 
       $('splits').innerHTML = '';
-      cur = beginSection();
-      if (!cur) return;
-      $('d-live').textContent = 'STRAIGHT';
+      $('d-trig').textContent = LIVE;
+      placeCar(START, LIVE / 16);
 
-      var t0 = performance.now();
+      var last = performance.now();
       (function step(now){
-        if (!cur) return;
-        var f = cur, el = (now - t0) / 1000 * RATE;
-        var u = Math.min(1, el / Math.max(f.secs, 0.001));
-        var dist = f.from + (f.to - f.from) * u;
-        var fr = atDist(dist);
-        var pct = Math.min(140, 100 * f.v / f.lim);
+        /* ⚠ dt IS CLAMPED. A backgrounded tab hands back a gap of seconds, and while the implicit
+           step cannot blow up on it, the car would teleport through a corner it should have left. */
+        var dt = Math.min(0.05, (now - last) / 1000) * RATE;
+        last = now;
 
-        /* ★★ THE TAIL COMES ROUND IN PROPORTION TO THE GRIP BEING USED — the same number the bar
-           shows, felt instead of read. Squared, so it stays tidy until it suddenly is not.
-           ⚠ ZERO ON THE STRAIGHT for free: `turn` is 0 where the path does not bend. */
-        var use = Math.min(1, pct / 100);
-        var slide = fr.turn * -1 * 34 * use * use;
-        var dying = (off >= 0 && f.sec === off && u > 0.55);
-        if (dying){
-          var g2 = Math.min(1, (u - 0.55) / 0.45);
-          fr.x += Math.cos((fr.deg + 70) * Math.PI / 180) * 190 * g2 * g2;
-          fr.y += Math.sin((fr.deg + 70) * Math.PI / 180) * 190 * g2 * g2;
-          slide += 520 * g2 * g2;
+        var th = LIVE / 16;
+        var was = GB.benchAt(track, st.s);
+        st = GB.benchStep(st, car, th, dt, regs, track);
+        var here = GB.benchAt(track, st.s);
+
+        /* ── the section split, taken as the car crosses the line ── */
+        if (here.sec !== was.sec){
+          rows.push({ sec: was.sec, r: was.r || g.L[was.sec].r, v: st.v,
+                      split: st.t - tPrev, off: false });
+          tPrev = st.t; secDone++; paintRows();
+        }
+
+        var load = GB.benchLoad(st, car, regs, track);
+        var fr = atDist(st.s);
+        var dir = here.dir || was.dir || 1;
+
+        /* ★ the tail steps out to the OUTSIDE in proportion to the grip being used — the car's own
+           body language, and deliberately the only cue there is. */
+        var slide = fr.turn * 34 * Math.min(1, load) * Math.min(1, load);
+
+        if (st.off){
+          stopped = stopped || now;
+          var g2 = Math.min(1, (now - stopped) / 700);
+          fr.x += Math.cos((fr.deg - 70 * dir) * Math.PI / 180) * 190 * g2 * g2;
+          fr.y += Math.sin((fr.deg - 70 * dir) * Math.PI / 180) * 190 * g2 * g2;
+          slide += 520 * g2 * g2 * dir;
           $('carg').setAttribute('opacity', String(1 - 0.75 * g2));
         }
 
-        /* the lamps run off the rails: they dim with the trigger and die when it leaves the slot */
-        var th = (f.phase === 'straight') ? f.ths : f.tht;
-        var lit = dying ? 0 : th / 16;
-        $('lampL').setAttribute('opacity', (0.18 + 0.82 * lit).toFixed(2));
-        $('lampR').setAttribute('opacity', (0.18 + 0.82 * lit).toFixed(2));
-        $('beam').setAttribute('opacity', (0.03 + 0.20 * lit).toFixed(3));
-        $('beam2').setAttribute('opacity', (0.03 + 0.20 * lit).toFixed(3));
-
+        var lit = st.off ? 0 : th;
+        lamps(lit); meter(st.off ? 0 : LIVE);
         $('carg').setAttribute('transform',
           'translate(' + fr.x.toFixed(1) + ',' + fr.y.toFixed(1) + ') rotate(' + (fr.deg + slide).toFixed(1) + ')');
-        $('d-v').textContent = f.v.toFixed(2) + ' m/s';
-        $('d-lim').textContent = f.lim.toFixed(2) + ' m/s';
-        $('d-sec').textContent = (f.sec + 1) + ' of ' + track.sections + ' · ' + (f.sec % 2 === 0 ? 'tight (6\u2033)' : 'wide (9\u2033)');
-        $('d-pct').textContent = pct.toFixed(0) + '%';
-        var bar = $('d-bar');
-        bar.style.width = Math.min(100, pct) + '%';
-        bar.className = pct >= 100 ? 'over' : (pct > 85 ? 'hot' : '');
+        $('d-v').textContent = st.v.toFixed(2) + ' m/s';
+        $('d-sec').textContent = (here.sec + 1) + ' of ' + track.sections.length + ' · ' +
+          (here.onArc ? here.into.toFixed(0) + '° into the turn' : 'straight');
+        $('d-live').textContent = st.off ? '' : (here.onArc ? 'CORNER' : 'STRAIGHT');
+        $('d-lap').innerHTML = st.off
+          ? '<span class="no">OFF at section ' + (here.sec + 1) + '</span>'
+          : (st.lap >= LAPS ? st.t.toFixed(3) + ' <span class="note">s</span>'
+                            : '<span class="note">' + st.t.toFixed(2) + ' s…</span>');
 
-        if (u >= 1){
-          if (off >= 0 && f.sec === off) return;      // it has gone; leave it lying there
-          cur = (f.phase === 'straight') ? beginTurn(f) : beginSection();
-          $('d-live').textContent = cur ? (cur.phase === 'turn' ? 'CORNER' : 'STRAIGHT') : '';
-          t0 = now;
-          if (!cur) return;
+        if (st.off){
+          if (now - stopped < 900){ RAF = requestAnimationFrame(step); return }
+          rows.push({ sec: here.sec, r: here.r, v: 0, split: 0, off: true }); paintRows();
+          RAF = 0; RUNNING = false;
+          $('msg').innerHTML = '<span class="no">⚠ Too fast for that corner.</span> ' +
+            'It let go ' + here.into.toFixed(0) + '° in.';
+          ready('Roll up to go again.'); return;
+        }
+        if (st.lap >= LAPS){
+          RAF = 0; RUNNING = false;
+          $('msg').innerHTML = '<span class="ok">Clean lap — ' + st.t.toFixed(3) + ' s.</span> ' +
+            'Now try carrying more speed in.';
+          ready('Roll up to go again.'); return;
         }
         RAF = requestAnimationFrame(step);
       })(performance.now());
       $('carg').setAttribute('opacity', '1');
-      $('carg').querySelector('rect').setAttribute('fill', off >= 0 ? '#ff6b6b' : '#39d0d8');
-    }).catch(function(e){ $('msg').innerHTML = '<span class="no">⚠ ' + e.message + '</span>' });
+      $('carg').querySelector('rect').setAttribute('fill', '#39d0d8');
+    }).catch(function(e){ RUNNING = false; disarm();   /* ⚠ or a failed load leaves the wheel captured */
+      $('msg').innerHTML = '<span class="no">⚠ ' + e.message + '</span>' });
   }
 
-  ['eng','tyr','dia','ths','tht','slip'].forEach(function(id){
+  /* ⚠ `tht` is NOT in this list — it has its own handler below, because it is the trigger and not a
+     setting. Leaving it here too would paint its label twice with two different numbers. */
+  ['eng','tyr','dia','slip'].forEach(function(id){
     $(id).addEventListener('input', function(){ $('v-' + id).textContent = this.value });
   });
-  function paintFit(){
-    var on = +$('fit').value === 1;
-    $('v-fit').textContent = on ? 'fitted' : 'as minted';
-    $('fitnote').innerHTML = on
-      ? 'the current provisional set — top speed is the MOTOR through the WHEEL, not the air'
-      : 'a heavier rolling resistance, so the tyres matter less — for comparison only';
-  }
-  $('fit').addEventListener('input', paintFit); paintFit();
-  $('trk').addEventListener('input', function(){
-    $('v-trk').textContent = +this.value === 1 ? 'the 88' : 'figure 8';
+  $('coast').addEventListener('input', function(){ $('v-coast').textContent = this.value + '\u2033'; relayTrack() });
+  $('grip').addEventListener('input', function(){ $('v-grip').textContent = (this.value / 100).toFixed(2) });
+  $('ctrl').addEventListener('input', function(){ $('v-ctrl').textContent = (this.value / 10).toFixed(1) });
+  $('top').addEventListener('input', function(){ $('v-top').textContent = (this.value / 100).toFixed(2) });
+  /* ★ RELAYING THE TRACK. The starter 8 has no straights to buy, so its dials go dead rather than
+     lying about what they do — its length is fixed by the closure, not by taste. */
+  function relayTrack(){
+    var his = +$('trk').value === 1;
+    $('v-trk').textContent = his ? 'the one he built' : 'a plain oval';
+    /* ⚠ his layout is fixed — its dials go dead rather than pretending to do something */
+    $('nstr').disabled = his; $('rad').disabled = his;
+    $('v-nstr').textContent = +$('nstr').value; $('v-rad').textContent = +$('rad').value;
+    $('v-inner').textContent = +$('inner').value; $('inner').disabled = !his;
     cancelAnimationFrame(RAF);
-    load().then(function(GB){ PATH = buildPath(GB); drawTrack(); marks(geom(GB)); $('splits').innerHTML = '';
-      $('d-lap').textContent = '—'; $('msg').textContent = 'Track changed. Run a lap.'; });
-  });
+    load().then(function(GB){
+      var T = trackOf(GB), g = geom(GB, T);
+      PATH = buildPath(T); drawTrack(); marks(g); $('splits').innerHTML = '';
+      RUNNING = false; placeCar(START, LIVE / 16);
+      var str = T.sections.reduce(function(a, x){ return a + x.straight }, 0);
+      /* ★ what the dials actually produced, in inches — the two numbers that decide the feel */
+      var rg = regsNow(GB), m = rg.M0 + rg.ENG_REF * rg.WE + rg.TYR_REF * rg.WT;
+      var a0 = rg.F0 / m, al = a0 - rg.DRAGC, be = a0 / rg.VFREE + rg.ROLL, ve = al / be;
+      $('carnote').innerHTML = 'top ' + ve.toFixed(2) + ' m/s · up to speed in <b>' +
+        (ve * ve / al / GB.IN).toFixed(1) + '″</b> · stops in <b>' + (+$('coast').value) + '″</b>';
+      START = T.startAt || 0;
+      var cl = GB.benchClosure(T);
+      var longest = Math.max.apply(null, T.sections.map(function(x){ return x.straight }));
+      $('tracknote').innerHTML = (g.lap / GB.IN).toFixed(0) + '″ lap · <b>' +
+        (str / g.lap * 100).toFixed(0) + '% straight</b> · longest run <b>' +
+        (longest / GB.IN).toFixed(0) + '″</b> · corner limit ' +
+        GB.benchCeiling(regsNow(GB), T.sections[0].r, +$('tyr').value, T.slip).toFixed(2) + ' m/s' +
+        (his ? '<br>' + (cl.extent.w / GB.IN).toFixed(0) + '×' + (cl.extent.h / GB.IN).toFixed(0) +
+               '″ on a 96×48″ sheet · closes to <b>0.000″</b> · opening run ' +
+               ((longest * (100 - +$('inner').value) / 100) / GB.IN).toFixed(0) + '″' : '');
+      $('d-lap').textContent = '—'; $('d-live').textContent = 'ON THE LINE';
+      $('msg').textContent = ARMED ? 'Track changed. Roll up to go.' : 'Track changed. Click the track to arm.'; });
+  }
+  ['trk','nstr','rad','inner','tyr','grip','slip'].forEach(function(id){ $(id).addEventListener('input', relayTrack) });
+  $('laps').addEventListener('input', function(){ $('v-laps').textContent = this.value });
   $('rate').addEventListener('input', function(){
     RATE = +this.value / 10; $('v-rate').textContent = RATE.toFixed(1) + '×';
   });
-  /* ⚠ passive:false — the page must be allowed to swallow the scroll, or the whole document moves */
-  $('track').addEventListener('wheel', function(ev){
-    ev.preventDefault();
-    LIVE = Math.max(1, Math.min(16, LIVE + (ev.deltaY < 0 ? 1 : -1)));
+  /* ══ THE CONTROLLER ═══════════════════════════════════════════════════════════════════════════
+     ★★★ ARMING AND LAUNCHING ARE DIFFERENT ACTS, and the split is what a slot car actually does:
+     you put the car on the track, THEN you squeeze. Clicking arms — it hands the wheel to the
+     throttle and takes it away from the page — and the car sits on the line at zero. The first
+     click of the wheel off zero is what sends it.
+     ⚠ WHY THE CAPTURE IS ON `window` AND NOT THE TRACK: scoping it to the SVG means the page scrolls
+     out from under you the moment the pointer drifts off the ribbon, which while driving it will.
+     Armed, the wheel belongs to the throttle wherever the pointer is. ⇒ And it must be GIVEN BACK,
+     or the page is broken for anyone who just wants to read it — Stop, Esc, and the end of the lap
+     all disarm. */
+  /* ★★ THE CAR ON THE LINE. Arming puts it where the lap will begin instead of conjuring it at the
+     first frame — you should be able to SEE the thing you are about to drive, and watch the lamps
+     come up as you roll on, before it has moved an inch. That is a slot car sitting on a live track.
+     ⚠ Needs PATH, which the opening load builds for the ceilings. No path, nothing to place it on. */
+  /** ★ the lamps alone — they answer the trigger wherever the car is, because a slot car's lamp is
+      fed by the RAILS. A stopped car with your finger on the trigger is still lit. */
+  /** ★ the throttle meter — the same number the lamps burn on, so gauge and car never disagree */
+  function meter(th){
+    $('d-pct').textContent = th + ' / 16';
+    $('d-bar').style.width = (th / 16 * 100).toFixed(1) + '%';
+    $('d-bar').className = '';        /* ⚠ no states: it is a throttle, not a warning */
+  }
+  function lamps(lit){
+    $('lampL').setAttribute('opacity', (0.18 + 0.82 * lit).toFixed(2));
+    $('lampR').setAttribute('opacity', (0.18 + 0.82 * lit).toFixed(2));
+    $('beam').setAttribute('opacity', (0.03 + 0.20 * lit).toFixed(3));
+    $('beam2').setAttribute('opacity', (0.03 + 0.20 * lit).toFixed(3));
+  }
+  function placeCar(m, lit){
+    if (!PATH) return;
+    var fr = atDist(m);
+    $('carg').setAttribute('opacity', '1');
+    $('carg').querySelector('rect').setAttribute('fill', '#39d0d8');
+    $('carg').setAttribute('transform',
+      'translate(' + fr.x.toFixed(1) + ',' + fr.y.toFixed(1) + ') rotate(' + fr.deg.toFixed(1) + ')');
+    lamps(lit);
+  }
+  function setTrig(n){
+    LIVE = Math.max(0, Math.min(16, n));
     $('tht').value = LIVE; $('v-tht').textContent = LIVE; $('d-trig').textContent = LIVE;
+    /* ⚠⚠ LAMPS ONLY — THE CAR DOES NOT MOVE. This used to call `placeCar(0, …)`, which meant that
+       slowing the car to a stop and then so much as touching the wheel TELEPORTED IT TO THE START.
+       Where it stopped is the result of the lap; only a genuinely new lap returns it to the line. */
+    if (!RUNNING){ lamps(LIVE / 16); meter(LIVE) }
+  }
+  /** a lap has ended — cleanly or in the scenery — and the wheel is STILL yours.
+      ⚠ It does not move the car: a deslotted one lies where it was thrown, and that is the result.
+      Only a genuinely new lap returns it to the line. */
+  function ready(why){
+    /* ★★★ THE TRIGGER GOES BACK TO ZERO, and a crash is exactly when it must. Holding 16 when the
+       car went off meant the next click of the wheel — even a click DOWNWARD, 16 → 15 — was still
+       above zero, so it relaunched instantly at nearly full throttle. You never got to start the
+       next run from rest; you inherited the throttle that had just put you in the wall.
+       ⇒ Zero, then roll on. The same act that starts it from armed starts it from a wreck. */
+    setTrig(0);
+    $('d-live').textContent = '';       /* or a crash leaves "CORNER 3/6" sitting there afterwards */
+    /* ⚠ APPENDS. `paintRows` has just written the result — "Clean lap", "Too fast for the slot,
+       brake EARLIER" — and that is the whole point of the run. Replacing it would throw away the
+       feedback at the exact moment it arrived. */
+    $('msg').innerHTML += ' <span class="note">' + why + ' <b>Esc</b> gives the wheel back.</span>';
+  }
+  function arm(){
+    cancelAnimationFrame(RAF); RAF = 0;
+    ARMED = true; RUNNING = false; setTrig(0);
+    $('track').style.outline = '2px solid #39d0d8';
+    placeCar(START, 0);
+    $('d-v').textContent = '0.00 m/s'; $('d-live').textContent = 'ON THE LINE';
+    $('msg').innerHTML = '<b>Armed</b> — the wheel is the trigger now. <b>Roll it up</b> to go.';
+  }
+  function disarm(){
+    ARMED = false;
+    $('track').style.outline = '';
+  }
+  /* ⚠ passive:false — the page must be allowed to swallow the scroll, or the whole document moves */
+  window.addEventListener('wheel', function(ev){
+    if (!ARMED) return;                  /* unarmed, the wheel is the page's again */
+    ev.preventDefault();
+    setTrig(LIVE + (ev.deltaY < 0 ? 1 : -1));
+    /* ★ THE THROTTLE IS THE STARTER. Nothing else launches a lap, which is why zero is a safe
+       default: the car cannot be refused for stopping before you have asked it to move. */
+    if (!RUNNING && LIVE > 0) run();
   }, { passive: false });
-  $('go').addEventListener('click', run);
-  $('stop').addEventListener('click', function(){ cancelAnimationFrame(RAF); $('msg').textContent = 'Stopped.' });
+  /* ★ LEFT ONLY. Middle and right keep their normal jobs — taking the context menu away would be a
+     restriction nothing asked for. */
+  $('track').addEventListener('mousedown', function(ev){
+    if (ev.button !== 0) return;
+    ev.preventDefault();                 /* or the drag-select ghost follows the pointer round */
+    arm();
+  });
+  /* ★ the slider is the same trigger, for anyone without a wheel — it launches on the same rule */
+  $('tht').addEventListener('input', function(){
+    setTrig(+this.value);
+    if (ARMED && !RUNNING && LIVE > 0) run();
+  });
+  $('go').addEventListener('click', arm);
+  $('stop').addEventListener('click', function(){
+    cancelAnimationFrame(RAF); RAF = 0; RUNNING = false; disarm(); $('msg').textContent = 'Stopped. Click the track to arm again.';
+  });
+  window.addEventListener('keydown', function(ev){
+    if (ev.key === 'Escape' && ARMED){ cancelAnimationFrame(RAF); RAF = 0; RUNNING = false; disarm();
+      $('msg').textContent = 'Disarmed — the wheel scrolls the page again.' }
+  });
 
   /* show the ceilings before anyone presses anything */
   load().then(function(GB){
-    PATH = buildPath(GB); drawTrack();
-    marks(geom(GB));
-    $('d-lim').textContent = ceiling(GB, GB.BETA_LANE_REGS, 0, 10, 1000).toFixed(2) + ' m/s';
-    $('msg').textContent = 'Ready. Run a lap.';
+    var T0 = trackOf(GB);
+    PATH = buildPath(T0); drawTrack();
+    marks(geom(GB, T0));
+    relayTrack();
+    /* ★ the car is on the line from the moment the page settles, lamps out — there is never a state
+       where you are looking at an empty track wondering where it went. */
+    placeCar(START, 0);
+    $('d-v').textContent = '0.00 m/s'; $('d-live').textContent = 'ON THE LINE';
+    $('msg').innerHTML = 'Ready. <b>Click the track</b> to arm, then <b>roll the wheel</b> to go.';
   }).catch(function(e){ $('msg').innerHTML = '<span class="no">⚠ ' + e.message + '</span>' });
 })();
 </script>

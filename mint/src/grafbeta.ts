@@ -79,6 +79,19 @@ export { wocScriptHash } from './editionBuilder.ts'
 /* ── @bsv/sdk primitives the page uses directly ──────────────────────────────────────────────────── */
 export { Transaction, TransactionSignature, LockingScript, P2PKH } from '@bsv/sdk'
 
+/* ── 🎮 THE BENCH'S OWN PHYSICS — free of the covenant, and that is the point ────────────────────────
+   ⚠⚠ THE GAME FEEL IS TUNED FIRST AND THE COVENANT IS WRITTEN AFTER (sun-dive, 22 Aug). `racebeta.html`
+   drives THESE, not `laneSection`: a bench ruled by what Script can express turns Script's limits into
+   gameplay, and an evening of "game bugs" turned out to be exactly that, every one.
+   ★ `benchPhysics.ts` imports nothing from `betaLane.ts` or `shell.ts`, so tuning cannot reach the
+   covenant — and the covenant exports below stay for the day we translate the settled model back. */
+export {
+  BENCH_REGS, PIECE, IN, STRAIGHT_PIECES, straightPieces, buildableStraights, benchOval, benchLayout, benchClosure, benchHisTrack,
+  benchStep, benchStart, benchGeom, benchAt, benchCeiling, benchLoad, benchTurnLen,
+  benchPieces, benchRunPiece, TEST_AT,
+} from './benchPhysics.ts'
+export type { BenchRegs, BenchTrack, BenchSection, BenchState, BenchCar, BenchPiece } from './benchPhysics.ts'
+
 /* ── 🛤 THE LANE — the depot-anchored rebuild (spec §7.7–§7.8) ──────────────────────────────────────
    ⚠⚠ `betaLane.ts` IS THE BETA'S OWN FILE and must stay that way. It is reached only from here, so
    nothing it does can move `vendor/grafracers.js` and nothing can move the live racers page. */
@@ -87,5 +100,8 @@ export {
   PHASE as LANE_PHASE, f as laneFixed,
   /* ★ the bench drives THESE — the same functions the covenant is proved against, never a copy */
   laneSection, laneTick,
+  /* ★ the per-segment trigger machinery — the page samples the wheel once per physics step, and
+     `laneTriggers` is how a HELD trigger and a driven one become the same list. */
+  laneTriggers, laneInputNames, laneSrc,
 } from './betaLane.ts'
 export type { LaneRegs, LaneTrack, LaneState } from './betaLane.ts'
