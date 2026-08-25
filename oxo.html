@@ -238,11 +238,35 @@ const rawOf = async t => (await (await api(`/tx/${t}/hex`)).text()).trim()
  * ⚠ AND A NON-EMPTY LIST IS NOT AN ANSWER: the list contains the transaction that CREATED this tip.
  *   Each list must be SCANNED for something that actually spends it.
  */
-async function nextHop(tipTxid, tipRawHex) {
+/**
+ * ★ THREE OUTCOMES, NOT TWO — `racers.php` records why: *"`advance()` read every null as WE ARE
+ *   CURRENT"*. ⇒ A lookup that FAILED is not the same as a tip that is UNSPENT, and treating them
+ *   alike makes a throttled poll look like a finished game.
+ *     { txid, raw }  found the spender
+ *     'current'      nothing has spent it — genuinely up to date
+ *     'unknown'      ⚠ WE COULD NOT FIND OUT. Say so; do not paint a stale board as live.
+ *
+ * ⚠⚠ AND `/spent` IS NOT USABLE HERE. Measured 26 Aug: it answered 200 for the battery genesis
+ *    (spent, 1,600 blocks deep) and 404 for this board's genesis (spent minutes earlier, two
+ *    confirmations). ⇒ It is a confirmed-only index that also TRAILS confirmation, so a live board
+ *    would show nothing. `/script/{h}/unconfirmed/history` is the only current view.
+ */
+async function nextHop(tipTxid, tipRawHex, tipUnconfirmed) {
   const sh = await G.scriptHash(G.parse(tipRawHex).lockHex)
-  for (const path of ['unconfirmed/history', 'history']) {
+  let reached = false
+  /* ★ A child cannot be in a block while its parent is not, so an unconfirmed tip only ever has an
+     unconfirmed spender. ⇒ Skip the second call entirely while a game is being played, which is
+     exactly when polls are most frequent. */
+  const paths = tipUnconfirmed ? ['unconfirmed/history'] : ['unconfirmed/history', 'history']
+  for (const path of paths) {
     let hist
-    try { hist = await (await api(`/script/${sh}/${path}`)).json() } catch { continue }
+    try {
+      const r = await fetch(`${WOC}/script/${sh}/${path}`)
+      /* ⚠ 404 here means "no history of that kind", which IS an answer. Anything else is a failure. */
+      if (r.status === 404) { reached = true; continue }
+      if (!r.ok) continue
+      hist = await r.json()
+    } catch { continue }
     /* ⚠⚠ WhatsOnChain answers `{ script, result: [...] }`, NOT a bare array — measured against the
        first real board. Testing Array.isArray(response) skips the reply entirely and shows an empty
        board while the move is in the mempool. ⇒ Accept both shapes. */
@@ -255,8 +279,9 @@ async function nextHop(tipTxid, tipRawHex) {
       try { raw = await rawOf(id) } catch { continue }
       if (G.spendsTip(raw, tipTxid, 0)) return { txid: id, raw }
     }
+    reached = true
   }
-  return null
+  return reached ? 'current' : 'unknown'
 }
 
 /** ★ Walk forward to whatever is unspent — that is the board as it stands. No index, no server. */
@@ -281,9 +306,11 @@ async function sync(fromScratch) {
       if (start !== genesis) tag('resuming from the last board this browser saw')
     }
     let moved = false
+    let unconf = false
     for (let guard = 0; guard < 60; guard++) {
-      const hop = await nextHop(tip, tipRaw)
-      if (!hop) break
+      const hop = await nextHop(tip, tipRaw, unconf)
+      if (hop === 'unknown') { tag('could not reach the chain — retrying', 'err'); return }
+      if (hop === 'current') break
       const st = G.decodeBoard(G.parse(hop.raw).lockHex)
       if (st) {
         const prev = state
@@ -291,7 +318,7 @@ async function sync(fromScratch) {
         logMove(st, sq, prev, hop.txid, G.MAX_FEE)
         state = st
       }
-      tip = hop.txid; tipRaw = hop.raw; moved = true
+      tip = hop.txid; tipRaw = hop.raw; moved = true; unconf = true
       try { localStorage.setItem('oxo:' + genesis, tip) } catch (e) {}
     }
     if (!state) state = G.decodeBoard(G.parse(tipRaw).lockHex)
