@@ -138,6 +138,17 @@ footer b{color:var(--ink)}
 
 <script src="vendor/grafoxo.js?v=1"></script>
 <script>
+/**
+ * ⚠⚠ THIS PAGE TALKS TO THE CHAIN DIRECTLY, AND DELIBERATELY DOES NOT GO THROUGH woc.php.
+ *
+ * Every grafverse PHP page shares ONE WhatsOnChain budget and one penalty gate — woc.php: *"one 429
+ * anywhere stops everyone until it expires."* ⇒ A permanent public game is the page most likely to
+ * trip it, and tripping it would stall battery.html, depot.html and the rest.
+ * ★ From the browser each visitor spends their OWN per-IP allowance, so a busy board cannot slow
+ *   anything else on the site down. It also means there is no server in the trust path: what you see
+ *   is what the chain says, not what a cache of ours says it says.
+ * ⚠ The cost is a long FIRST LOAD on an old board, which is what the remembered tip below is for.
+ */
 const WOC = 'https://api.whatsonchain.com/v1/bsv/main'
 const G = GrafOxo
 const $ = id => document.getElementById(id)

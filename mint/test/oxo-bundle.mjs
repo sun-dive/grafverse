@@ -10,6 +10,10 @@
  *
  *   node mint/build-oxo.mjs && node mint/test/oxo-bundle.mjs
  */
+import { readFileSync } from 'node:fs'
+import vm from 'node:vm'
+
+const code = readFileSync(new URL('../../vendor/grafoxo.js', import.meta.url), 'utf8')
 const ctx = { globalThis: null, console, TextEncoder, TextDecoder, crypto, fetch, Buffer,
               setTimeout, clearTimeout, URL, atob, btoa }
 ctx.globalThis = ctx; ctx.self = ctx; ctx.window = ctx
