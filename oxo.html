@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Noughts and Crosses, on chain — grafverse</title>
+<meta name="description" content="Two strangers play noughts and crosses on Bitcoin. No wallet, no signature, no server — the rules are enforced by the script, and neither player can cheat.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>⭕</text></svg>">
+<style>
+:root{
+  --ground:#eaeef3; --panel:#ffffff; --ink:#141d2b; --muted:#586a83; --line:#c5d1e0;
+  --accent:#c17d16; --accent-soft:#f6ecd8; --struct:#2f6d7d; --struct-soft:#e2eef1;
+  --good:#3f7d52; --bad:#a6402c;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#0a111d; --panel:#111b2b; --ink:#dde7f3; --muted:#8ea3c0; --line:#22344e;
+  --accent:#f0ad4e; --accent-soft:#2a2113; --struct:#4fa6bb; --struct-soft:#122630;
+  --good:#66b483; --bad:#d4705a;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);line-height:1.5;
+  padding:clamp(14px,2.5vw,30px)}
+.wrap{max-width:1140px;margin:0 auto}
+h1{font-family:var(--serif);font-weight:400;font-size:clamp(26px,3.6vw,40px);margin:0 0 2px;
+  letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:14px;margin:0 0 20px;max-width:64ch}
+.sub b{color:var(--ink);font-weight:600}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,400px);gap:24px;align-items:start}
+@media(max-width:840px){.cols{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:16px}
+.who{display:flex;gap:10px;align-items:stretch;margin:0 0 16px;flex-wrap:wrap}
+.side{flex:1 1 0;min-width:130px;border:1px solid var(--line);background:var(--panel);padding:9px 12px;
+  border-radius:3px}
+.side.up{border-color:var(--accent);background:var(--accent-soft)}
+.side .m{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.side .n{font-family:var(--serif);font-size:20px;line-height:1.15;margin-top:1px;
+  overflow-wrap:anywhere}
+.side .y{font-size:11px;color:var(--accent);font-weight:600}
+#board{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:var(--line);
+  border:1px solid var(--line);border-radius:3px;aspect-ratio:1;max-width:520px}
+.sq{background:var(--panel);border:0;display:grid;place-items:center;font-family:var(--serif);
+  font-size:clamp(44px,10vw,90px);line-height:1;color:var(--ink);cursor:pointer;padding:0;
+  transition:background .15s}
+.sq:disabled{cursor:default}
+.sq.free:hover{background:var(--struct-soft)}
+.sq:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
+.sq.x{color:var(--struct)} .sq.o{color:var(--accent)}
+.sq .ghost{opacity:.22}
+.state{margin:14px 0 0;font-size:14px;min-height:3.2em}
+.state .big{font-family:var(--serif);font-size:22px;display:block;margin-bottom:2px}
+.tag{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:2px;
+  border:1px solid var(--line);color:var(--muted);margin-right:6px}
+.tag.live{border-color:var(--good);color:var(--good)}
+.tag.err{border-color:var(--bad);color:var(--bad)}
+h2{font-family:var(--sans);font-size:11px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 10px;font-weight:600}
+#log{display:flex;flex-direction:column;gap:8px;max-height:min(66vh,600px);overflow-y:auto}
+.row{border-left:2px solid var(--struct);padding:7px 0 7px 10px;font-size:12.5px}
+.row.mine{border-left-color:var(--accent)}
+.row .h{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.row .w{font-weight:600}
+.row .f{color:var(--muted);font-family:var(--mono);font-size:11px}
+.row a{font-family:var(--mono);font-size:11px;color:var(--struct);word-break:break-all;
+  text-decoration:none;border-bottom:1px solid var(--line)}
+.row a:hover{border-bottom-color:var(--struct)}
+.empty{color:var(--muted);font-size:13px}
+dialog{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:4px;
+  padding:22px;max-width:440px;width:calc(100% - 32px)}
+dialog::backdrop{background:rgba(10,17,29,.6)}
+label{display:block;font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);
+  margin:12px 0 4px;font-weight:600}
+input{width:100%;padding:9px 11px;border:1px solid var(--line);background:var(--ground);
+  color:var(--ink);font-family:var(--sans);font-size:15px;border-radius:3px}
+input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+button.go{margin-top:16px;width:100%;padding:11px;background:var(--accent);color:#12100a;border:0;
+  border-radius:3px;font-family:var(--sans);font-size:15px;font-weight:600;cursor:pointer}
+button.go:hover{filter:brightness(1.06)}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:500}
+.share{margin-top:14px;font-size:12.5px;color:var(--muted)}
+.share input{font-family:var(--mono);font-size:11.5px;margin-top:5px}
+footer{margin-top:26px;border-top:1px solid var(--line);padding-top:14px;color:var(--muted);
+  font-size:12.5px;max-width:78ch}
+footer b{color:var(--ink)}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Noughts and crosses, on chain</h1>
+  <p class="sub">No wallet. No signature. No server. <b>The board holds its own satoshis and pays its
+  own fee</b>, and the rules are enforced by the script itself — so two strangers can play and
+  <b>neither of them can cheat</b>.</p>
+
+  <div class="cols">
+    <div>
+      <div class="who">
+        <div class="side" id="sideX"><div class="m">✕ crosses</div><div class="n" id="nameX">—</div>
+          <div class="y" id="youX"></div></div>
+        <div class="side" id="sideO"><div class="m">◯ noughts</div><div class="n" id="nameO">—</div>
+          <div class="y" id="youO"></div></div>
+      </div>
+      <div id="board"></div>
+      <p class="state" id="state"><span class="tag" id="conn">starting…</span></p>
+    </div>
+
+    <div class="card">
+      <h2>Every move, as it happened</h2>
+      <div id="log"><p class="empty">Nothing yet. Each move below is a real Bitcoin transaction.</p></div>
+    </div>
+  </div>
+
+  <footer>
+    <b>What you are looking at.</b> The board is a covenant — a program locked into a Bitcoin output.
+    A move spends it and creates the next board, and the script refuses anything that breaks the rules:
+    a taken square, a move out of turn, a move after somebody has won. <b>There is no key anywhere in
+    it</b>, so anyone can play and nobody can be locked out. Both browsers are watching the same chain,
+    which is why you both see the same board without a server between you.
+  </footer>
+</div>
+
+<dialog id="setup">
+  <h1 style="font-size:24px;margin-bottom:4px">Start a game</h1>
+  <p class="sub" style="margin-bottom:0">Two names, and the transaction id tosses for who plays ✕.</p>
+  <form method="dialog" id="form">
+    <label for="fa">Player one</label>
+    <input id="fa" required maxlength="18" placeholder="e.g. Dave">
+    <label for="fb">Player two</label>
+    <input id="fb" required maxlength="18" placeholder="e.g. Steve">
+    <label for="fg">Board transaction id</label>
+    <input id="fg" required pattern="[0-9a-fA-F]{64}" placeholder="the txid the board was minted at">
+    <button class="go" type="submit">Begin</button>
+  </form>
+  <div class="share" id="share" hidden></div>
+</dialog>
+
+<script src="vendor/grafoxo.js?v=1"></script>
+<script>
+const WOC = 'https://api.whatsonchain.com/v1/bsv/main'
+const G = GrafOxo
+const $ = id => document.getElementById(id)
+const q = new URLSearchParams(location.hash.slice(1))
+
+let genesis = q.get('g') || '', names = [q.get('a') || '', q.get('b') || '']
+let me = q.get('me') === 'b' ? 1 : 0           // which NAME I am, 0 or 1
+let tip = null, tipRaw = null, state = null, xIsPlayer = 0, busy = false, seen = new Set()
+
+/* ★ THE TOSS IS THE TRANSACTION ID. Both browsers compute the same answer from the chain, so nobody
+   has to trust the other side's coin — and nobody chose it. */
+const whoIsX = () => G.tossFirst(genesis) === 1 ? 0 : 1
+
+const tag = (t, cls = '') => { $('conn').className = 'tag ' + cls; $('conn').textContent = t }
+
+function paint() {
+  const sq = state ? G.squares(state) : new Array(9).fill(0)
+  const myMark = (me === xIsPlayer) ? 1 : 2
+  const myTurn = state && !state.winner && state.turn === myMark
+  $('board').textContent = ''
+  for (let i = 0; i < 9; i++) {
+    const b = document.createElement('button')
+    b.className = 'sq' + (sq[i] === 1 ? ' x' : sq[i] === 2 ? ' o' : '') +
+      (sq[i] === 0 && myTurn && !busy ? ' free' : '')
+    b.textContent = sq[i] === 1 ? '✕' : sq[i] === 2 ? '◯' : ''
+    b.disabled = sq[i] !== 0 || !myTurn || busy
+    b.setAttribute('aria-label', `square ${i + 1}` + (sq[i] ? ', taken' : ''))
+    if (sq[i] === 0 && myTurn && !busy) {
+      b.innerHTML = `<span class="ghost">${myMark === 1 ? '✕' : '◯'}</span>`
+      b.onclick = () => play(i)
+    }
+    $('board').appendChild(b)
+  }
+  $('nameX').textContent = names[xIsPlayer] || '—'
+  $('nameO').textContent = names[1 - xIsPlayer] || '—'
+  $('youX').textContent = me === xIsPlayer ? 'you' : ''
+  $('youO').textContent = me !== xIsPlayer ? 'you' : ''
+  $('sideX').className = 'side' + (state && !state.winner && state.turn === 1 ? ' up' : '')
+  $('sideO').className = 'side' + (state && !state.winner && state.turn === 2 ? ' up' : '')
+
+  const s = $('state'), t = $('conn')
+  s.textContent = ''; s.appendChild(t)
+  const line = document.createElement('span')
+  if (!state) line.textContent = ' waiting for the board…'
+  else if (state.winner === 3) line.innerHTML = '<span class="big">A draw.</span>Nine squares, nine transactions.'
+  else if (state.winner) line.innerHTML =
+    `<span class="big">${names[state.winner === 1 ? xIsPlayer : 1 - xIsPlayer]} wins.</span>` +
+    `The script worked that out, not this page.`
+  else line.innerHTML = myTurn
+    ? `<span class="big">Your move.</span>Click a square — it becomes a transaction.`
+    : `<span class="big">${names[state.turn === 1 ? xIsPlayer : 1 - xIsPlayer]} to play.</span>` +
+      `Watching the chain for their move.`
+  s.appendChild(line)
+}
+
+function logMove(n, sq, mark, txid, fee) {
+  if (seen.has(txid)) return
+  seen.add(txid)
+  const empty = $('log').querySelector('.empty'); if (empty) empty.remove()
+  const who = names[mark === 1 ? xIsPlayer : 1 - xIsPlayer] || (mark === 1 ? 'crosses' : 'noughts')
+  const el = document.createElement('div')
+  el.className = 'row' + (mark === ((me === xIsPlayer) ? 1 : 2) ? ' mine' : '')
+  el.innerHTML =
+    `<div class="h"><span class="w">${n}. ${who} took square ${sq + 1}</span>` +
+    `<span class="f">${fee} sat</span></div>` +
+    `<a href="https://whatsonchain.com/tx/${txid}" target="_blank" rel="noopener">${txid}</a>`
+  $('log').prepend(el)
+}
+
+const api = async p => { const r = await fetch(WOC + p); if (!r.ok) throw new Error('WoC ' + r.status); return r }
+const rawOf = async t => (await (await api(`/tx/${t}/hex`)).text()).trim()
+
+/** ★ Walk to the unspent output — that is the board as it stands. No index, no server. */
+async function sync(fromScratch) {
+  try {
+    if (fromScratch) { tip = genesis; seen.clear(); $('log').textContent = '' }
+    let moved = false
+    for (;;) {
+      const r = await fetch(`${WOC}/tx/${tip}/out/0/spent`)
+      if (r.status === 404) break
+      if (!r.ok) throw new Error('WoC ' + r.status)
+      const next = (await r.json()).txid
+      const raw = await rawOf(next)
+      const tx = G.parse(raw)
+      const st = G.decodeBoard(tx.lockHex)
+      if (st) {
+        const prev = state
+        const sq = prev ? G.squares(st).findIndex((v, i) => v !== G.squares(prev)[i]) : st.moves - 1
+        logMove(st.moves, sq < 0 ? 0 : sq, prev ? prev.turn : (st.turn === 1 ? 2 : 1), next, tx.fee)
+        state = st
+      }
+      tip = next; tipRaw = raw; moved = true
+    }
+    if (!tipRaw) { tipRaw = await rawOf(tip); state = state || G.decodeBoard(G.parse(tipRaw).lockHex) }
+    tag('watching the chain', 'live')
+    if (moved || fromScratch) paint()
+  } catch (e) { tag('chain unreachable — retrying', 'err') }
+}
+
+async function play(sq) {
+  if (busy) return
+  busy = true; paint(); tag('building the transaction…')
+  try {
+    const m = G.buildMove(tipRaw, state, sq)
+    tag('broadcasting…')
+    const r = await fetch(`${WOC}/tx/raw`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txhex: m.rawHex }) })
+    const body = await r.text()
+    if (!r.ok) throw new Error(body.slice(0, 140))
+    logMove(m.state.moves, sq, state.turn, m.txid, m.fee)
+    state = m.state; tip = m.txid; tipRaw = m.rawHex
+    tag('watching the chain', 'live')
+  } catch (e) {
+    tag(String(e.message || e).slice(0, 90), 'err')
+  }
+  busy = false; paint()
+}
+
+/* ── setup ─────────────────────────────────────────────────────────────────────────────────── */
+function begin() {
+  xIsPlayer = whoIsX()
+  history.replaceState(null, '', '#g=' + genesis + '&a=' + encodeURIComponent(names[0]) +
+    '&b=' + encodeURIComponent(names[1]) + '&me=' + (me ? 'b' : 'a'))
+  paint()
+  sync(true)
+  setInterval(() => { if (!busy) sync(false) }, 4000)
+}
+
+if (genesis && names[0] && names[1]) begin()
+else {
+  const d = $('setup'); d.showModal()
+  $('fg').value = genesis
+  $('form').onsubmit = () => {
+    names = [$('fa').value.trim(), $('fb').value.trim()]
+    genesis = $('fg').value.trim().toLowerCase()
+    me = 0
+    const link = location.origin + location.pathname + '#g=' + genesis +
+      '&a=' + encodeURIComponent(names[0]) + '&b=' + encodeURIComponent(names[1]) + '&me=b'
+    $('share').hidden = false
+    $('share').innerHTML = '<b>Send this to ' + names[1] + '</b> — it opens the same game as them.' +
+      '<input readonly value="' + link + '" onclick="this.select()">'
+    setTimeout(begin, 30)
+  }
+}
+</script>
+</body>
+</html>
