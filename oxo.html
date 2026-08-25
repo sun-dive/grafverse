@@ -243,8 +243,12 @@ async function nextHop(tipTxid, tipRawHex) {
   for (const path of ['unconfirmed/history', 'history']) {
     let hist
     try { hist = await (await api(`/script/${sh}/${path}`)).json() } catch { continue }
-    if (!Array.isArray(hist)) continue
-    for (const h of hist) {
+    /* ⚠⚠ WhatsOnChain answers `{ script, result: [...] }`, NOT a bare array — measured against the
+       first real board. Testing Array.isArray(response) skips the reply entirely and shows an empty
+       board while the move is in the mempool. ⇒ Accept both shapes. */
+    const list = Array.isArray(hist) ? hist : (Array.isArray(hist?.result) ? hist.result : null)
+    if (!list) continue
+    for (const h of list) {
       const id = h.tx_hash
       if (!id || id === tipTxid) continue
       let raw

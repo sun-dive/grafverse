@@ -16,7 +16,7 @@
  *
  * ⚠ This is a TOOL. It adds no logic to any page's sources and rebuilds no bundle.
  */
-import { Transaction, P2PKH, PrivateKey, UnlockingScript, SatoshisPerKilobyte, Spend } from '@bsv/sdk'
+import { Transaction, P2PKH, PrivateKey, UnlockingScript, LockingScript, SatoshisPerKilobyte, Spend } from '@bsv/sdk'
 import { buildBasicLock, basicUnlockingOps, frameMaxFee, valueBytes } from '../src/basicCovenant.ts'
 import { pushTxPreimage } from '../src/pushtx.ts'
 /* ★ THE LOOPING BOARD — resets after a win and plays on, so a permanent public page never needs
@@ -41,7 +41,14 @@ const lockFor = (s: OxoState) =>
 const woc = async (p: string) => {
   const r = await fetch(WOC + p); if (!r.ok) throw new Error(`WoC ${r.status} on ${p}`); return r.json()
 }
-const rawTx = async (t: string) => Transaction.fromHex(await (await fetch(`${WOC}/tx/${t}/hex`)).text())
+/** ⚠ TRIM IT. The endpoint returns a trailing newline and `fromHex` refuses the whole string for it. */
+const rawTx = async (t: string) => {
+  const r = await fetch(`${WOC}/tx/${t}/hex`)
+  if (!r.ok) throw new Error(`WoC ${r.status} fetching ${t}`)
+  const h = (await r.text()).trim()
+  if (!/^[0-9a-fA-F]+$/.test(h)) throw new Error(`not hex for ${t}: ${h.slice(0, 40)}`)
+  return Transaction.fromHex(h)
+}
 const broadcast = async (raw: string) => {
   const r = await fetch(`${WOC}/tx/raw`, { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txhex: raw }) })
@@ -49,26 +56,75 @@ const broadcast = async (raw: string) => {
 }
 
 /**
- * ★ WALK TO THE CURRENT BOARD. Every move spends the last one, so the UNSPENT output is the game as
- * it stands. ⇒ No index, no server, no database — the chain is the board.
+ * ★ FIND WHAT SPENT THE TIP — the method `battery.php` arrived at, and the traps it records.
+ *
+ * ⚠⚠ `/out/0/spent` CANNOT SEE AN UNCONFIRMED TRANSACTION. Measured live on 26 Aug: the first real
+ *    move was broadcast and accepted, and this walk still reported an empty board because it was
+ *    asking `/spent`. ⇒ `/script/{h}/unconfirmed/history` carries mempool transactions;
+ *    `/script/{h}/history` does not.
+ * ⚠ The script hash is SHA-256(script) BYTE-REVERSED — the non-reversed form 404s SILENTLY.
+ * ⚠ AND A NON-EMPTY LIST IS NOT AN ANSWER: it contains the transaction that CREATED this tip, so each
+ *   list must be SCANNED for something that actually spends it.
+ */
+async function scriptHashOf(scriptHex: string): Promise<string> {
+  const { createHash } = await import('node:crypto')
+  return createHash('sha256').update(Buffer.from(scriptHex, 'hex')).digest().reverse().toString('hex')
+}
+function spendsTip(tx: Transaction, tipTxid: string, vout: number): boolean {
+  return tx.inputs.some((i: any) =>
+    (i.sourceTXID ?? i.sourceTransaction?.id('hex')) === tipTxid && i.sourceOutputIndex === vout)
+}
+async function spenderOf(tipTxid: string, vout: number): Promise<string | null> {
+  const tip = await rawTx(tipTxid)
+  const sh = await scriptHashOf((tip.outputs[vout] as any).lockingScript.toHex())
+  for (const path of ['unconfirmed/history', 'history']) {
+/* ⚠⚠ WHATSONCHAIN RETURNS `{ script, result: [...] }`, NOT A BARE ARRAY — measured 26 Aug against
+   the first real board. Code that tests `Array.isArray(response)` skips the whole reply and reports
+   an empty board while the move sits in the mempool. ⇒ Accept both shapes; the older one is a bare
+   array and some endpoints still answer that way. */
+    let hist: any
+    try { hist = await woc(`/script/${sh}/${path}`) } catch { continue }
+    const list = Array.isArray(hist) ? hist : (Array.isArray(hist?.result) ? hist.result : null)
+    if (!list) continue
+    for (const h of list) {
+      const id = h.tx_hash
+      if (!id || id === tipTxid) continue
+      try { if (spendsTip(await rawTx(id), tipTxid, vout)) return id } catch { /* skip */ }
+    }
+  }
+  return null
+}
+
+/**
+ * ★ WALK TO THE CURRENT BOARD. Every move spends the last one, so the output nothing has spent is the
+ * game as it stands. ⇒ No index, no server, no database — the chain is the board.
  */
 async function walk(genesis: string) {
   let txid = genesis, hops = 0
   for (;;) {
-    const r = await fetch(`${WOC}/tx/${txid}/out/0/spent`)
-    if (r.status === 404) break
-    if (!r.ok) die(`WhatsOnChain ${r.status} while walking from ${txid}`)
-    txid = (await r.json()).txid; hops++
+    const next = await spenderOf(txid, 0)
+    if (!next) break
+    txid = next; hops++
     if (hops > 200) die('walk did not terminate')
   }
   return { txid, hops }
 }
 
-/** ⚠ Replay the moves to know the state — the same rules the SCRIPT enforced, checked independently. */
-function replay(hops: number, moves: number[]): OxoState {
-  let st = oxoNew()
-  for (const m of moves) st = oxoRef(st, m)
-  return st
+/**
+ * ★★ READ THE BOARD OUT OF ITS OWN LOCKING SCRIPT — and PROVE the reading by rebuilding.
+ *
+ * ⚠ This replaced replaying a move list. A move list is something the CALLER has to remember, and
+ *   anyone arriving at a board they did not play has no such list. ⇒ The board is on the chain; read
+ *   it from there. If the rebuilt script does not match byte for byte, return null rather than a guess.
+ */
+function decodeBoard(lock: LockingScript): OxoState | null {
+  const head: number[][] = []
+  for (const c of lock.chunks as any[]) { if (!c.data?.length) break; head.push([...c.data]) }
+  if (head.length < 5) return null
+  const le = (b: number[]) => b.reduceRight((v, x) => v * 256 + x, 0)
+  const st = { board: le(head[0]), turn: le(head[1]), winner: le(head[2]),
+               moves: le(head[3]), games: le(head[4]) } as OxoState
+  try { return lockFor(st).toHex() === lock.toHex() ? st : null } catch { return null }
 }
 
 if (cmd === 'mint') {
@@ -78,18 +134,34 @@ if (cmd === 'mint') {
   const addr = priv.toPublicKey().toAddress()
   const lock = lockFor(oxoNew())
 
-  let src: Transaction
+  let src: Transaction, vout = 0, sats = 0
   if (LIVE) {
     const u: any[] = await woc(`/address/${addr}/unspent`)
     if (!u.length) die(`no funds at ${addr} — the board needs ${SATS} sat plus a fee`)
-    src = await rawTx(u.sort((a, b) => b.value - a.value)[0].tx_hash)
+    /* ⚠⚠ WHATSONCHAIN'S UNSPENT LIST GOES STALE. Taking the biggest entry on faith is what produced
+       "Missing inputs" — the output had already been spent by an earlier test and the index had not
+       caught up. ⇒ Ask about each one before using it, and say what was found either way. */
+    const need = SATS + 400
+    console.log(`\n  funding address ${addr}`)
+    let chosen: any = null
+    for (const c of u.sort((a, b) => b.value - a.value)) {
+      const r = await fetch(`${WOC}/tx/${c.tx_hash}/out/${c.tx_pos}/spent`)
+      const live = r.status === 404
+      const big = c.value >= need
+      console.log(`    ${c.tx_hash.slice(0, 16)}…:${c.tx_pos}  ${String(c.value).padStart(9)} sat  ` +
+        (!live ? '⚠ ALREADY SPENT — the index is stale' : big ? '★ usable' : '⚠ too small'))
+      if (live && big && !chosen) chosen = c
+    }
+    if (!chosen) die(`nothing usable at ${addr}. The board needs ${need.toLocaleString()} sat in ` +
+      `ONE output — top it up, or lower it with: set -x SATS 5000`)
+    src = await rawTx(chosen.tx_hash); vout = chosen.tx_pos; sats = chosen.value
   } else {
     src = new Transaction()
     src.addOutput({ lockingScript: new P2PKH().lock(priv.toPublicKey().toHash()), satoshis: SATS * 3 })
   }
   const tx = new Transaction()
   tx.version = 2
-  tx.addInput({ sourceTransaction: src, sourceOutputIndex: 0,
+  tx.addInput({ sourceTransaction: src, sourceOutputIndex: vout,
                 unlockingScriptTemplate: new P2PKH().unlock(priv), sequence: 0xffffffff })
   tx.addOutput({ lockingScript: lock, satoshis: SATS })
   tx.addOutput({ lockingScript: new P2PKH().lock(priv.toPublicKey().toHash()), change: true })
@@ -129,14 +201,17 @@ if (process.env.OXO_TIP_HEX) {
   const w = await walk(genesis); txid = w.txid; hops = w.hops
   tip = await rawTx(txid)
 }
-const st = replay(hops, moves)
+const st = decodeBoard((tip.outputs[0] as any).lockingScript) ??
+  die('that output is not an oxo board — is OXO_GENESIS right?')
 const held = (tip.outputs[0] as any).satoshis
 
 if (cmd === 'board') {
   console.log(`\n  ═══ THE BOARD, READ OFF THE CHAIN ═══\n`)
   console.log(oxoShow(st))
-  console.log(`\n  ${hops} move${hops === 1 ? '' : 's'} played · ${held.toLocaleString()} sat left` +
-              ` ⇒ about ${Math.floor((held - 1) / MAX_FEE)} more`)
+  console.log(`\n  ${st.moves} move${st.moves === 1 ? '' : 's'} this game · game ${st.games + 1}` +
+              ` · ${held.toLocaleString()} sat left ⇒ about ${Math.floor((held - 1) / MAX_FEE)} more`)
+  if (st.winner) console.log(`  ★ ${['', 'X WINS', 'O WINS', 'A DRAW'][st.winner]} — the next move ` +
+                             `starts a fresh game`)
   console.log(`  tip  ${txid}\n`)
   process.exit(0)
 }
