@@ -13,7 +13,11 @@
 import { Transaction, UnlockingScript, LockingScript, Script } from '@bsv/sdk'
 import { buildBasicLock, basicUnlockingOps, frameMaxFee, valueBytes } from './basicCovenant.ts'
 import { pushTxPreimage } from './pushtx.ts'
-import { OXO_SRC, OXO_INPUTS, oxoNew, oxoRef, type OxoState } from './oxo.ts'
+/* ★ THE LOOPING BOARD — it resets after a win and plays again, so a permanent public page never has
+   to be re-minted and no satoshis are ever stranded behind a finished game. `oxo.ts` is the monument
+   variant and is left alone; its byte count is published in BRC-Z. */
+import { OXOLOOP_SRC as OXO_SRC, OXOLOOP_INPUTS as OXO_INPUTS, loopNew as oxoNew,
+         loopRef as oxoRef, type LoopState as OxoState } from './oxoLoop.ts'
 
 const rec = (s: OxoState) => ({ ...s }) as unknown as Record<string, number>
 
@@ -43,10 +47,12 @@ export function decodeBoard(lockHex: string): OxoState | null {
   const head: number[][] = []
   for (const c of chunks) { if (!c.data?.length) break; head.push([...c.data]) }
   if (head.length < 4) return null
-  /* DIM board%2 · turn%1 · winner%1 · moves%1 — little-endian, as `fixedField` writes them. */
+  /* DIM board%2 · turn%1 · winner%1 · moves%1 · games%2 — little-endian, as `fixedField` writes. */
+  if (head.length < 5) return null
   const le = (b: number[]) => b.reduceRight((v, x) => v * 256 + x, 0)
   const st: OxoState = {
     board: le(head[0]), turn: le(head[1]), winner: le(head[2]), moves: le(head[3]),
+    games: le(head[4]),
   }
   try {
     if (lockFor(st).toHex() !== lockHex) return null
@@ -61,6 +67,25 @@ export function parse(rawHex: string): { lockHex: string; sats: number; fee: num
   /* ⚠ The fee is not derivable from this transaction alone — it is the parent's value minus this
      one's, and the parent is not here. Every move costs the same bound, so quote that. */
   return { lockHex: o.lockingScript.toHex(), sats: o.satoshis, fee: MAX_FEE }
+}
+
+/**
+ * ⚠⚠ THE WHATSONCHAIN SCRIPT HASH IS SHA-256(script) **BYTE-REVERSED** — the Electrum convention.
+ * ⇒ The non-reversed form 404s SILENTLY, which makes discovery impossible rather than noisy.
+ *   (`battery.php` records that `tip.php` has exactly that bug.)
+ */
+export async function scriptHash(lockHex: string): Promise<string> {
+  const bytes = new Uint8Array((lockHex.match(/../g) ?? []).map(h => parseInt(h, 16)))
+  const d = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
+  return [...d].reverse().map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** Does this transaction spend `tipTxid:vout`? ⚠ A history entry is not an answer until this says so. */
+export function spendsTip(rawHex: string, tipTxid: string, vout = 0): boolean {
+  try {
+    return Transaction.fromHex(rawHex).inputs.some((i: any) =>
+      (i.sourceTXID ?? i.sourceTransaction?.id('hex')) === tipTxid && i.sourceOutputIndex === vout)
+  } catch { return false }
 }
 
 /** The nine squares as X / O / empty, top-left first. Board is packed base 3. */

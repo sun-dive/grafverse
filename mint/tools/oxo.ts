@@ -19,7 +19,11 @@
 import { Transaction, P2PKH, PrivateKey, UnlockingScript, SatoshisPerKilobyte, Spend } from '@bsv/sdk'
 import { buildBasicLock, basicUnlockingOps, frameMaxFee, valueBytes } from '../src/basicCovenant.ts'
 import { pushTxPreimage } from '../src/pushtx.ts'
-import { OXO_SRC, OXO_INPUTS, oxoNew, oxoRef, oxoShow, type OxoState } from '../src/oxo.ts'
+/* ★ THE LOOPING BOARD — resets after a win and plays on, so a permanent public page never needs
+   re-minting and no satoshis are stranded behind a finished game. `oxo.ts` is the monument variant
+   and is left untouched; its byte count is published in BRC-Z. */
+import { OXOLOOP_SRC as OXO_SRC, OXOLOOP_INPUTS as OXO_INPUTS, loopNew as oxoNew,
+         loopRef as oxoRef, loopShow as oxoShow, type LoopState as OxoState } from '../src/oxoLoop.ts'
 
 const WOC = 'https://api.whatsonchain.com/v1/bsv/main'
 const LIVE = process.argv.includes('--broadcast')

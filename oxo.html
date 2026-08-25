@@ -193,16 +193,23 @@ function paint() {
   s.appendChild(line)
 }
 
-function logMove(n, sq, mark, txid, fee) {
+function logMove(st, sq, prev, txid, fee) {
   if (seen.has(txid)) return
   seen.add(txid)
   const empty = $('log').querySelector('.empty'); if (empty) empty.remove()
+  /* the mark that was just played is the one whose turn it ISN'T any more */
+  const mark = st.turn === 1 ? 2 : 1
   const who = names[mark === 1 ? xIsPlayer : 1 - xIsPlayer] || (mark === 1 ? 'crosses' : 'noughts')
+  /* ★ a reset shows as the start of a new game rather than as a mysterious empty board */
+  const fresh = prev && prev.winner > 0
   const el = document.createElement('div')
   el.className = 'row' + (mark === ((me === xIsPlayer) ? 1 : 2) ? ' mine' : '')
   el.innerHTML =
-    `<div class="h"><span class="w">${n}. ${who} took square ${sq + 1}</span>` +
-    `<span class="f">${fee} sat</span></div>` +
+    `<div class="h"><span class="w">${fresh ? `game ${st.games + 1} begins — ` : ''}` +
+    `${who} took square ${sq < 0 ? '?' : sq + 1}</span><span class="f">${fee} sat</span></div>` +
+    (st.winner ? `<div class="f">${st.winner === 3 ? 'a draw' :
+       (names[st.winner === 1 ? xIsPlayer : 1 - xIsPlayer] || 'that side') + ' wins'} — ` +
+       `the board is ready for the next game</div>` : '') +
     `<a href="https://whatsonchain.com/tx/${txid}" target="_blank" rel="noopener">${txid}</a>`
   $('log').prepend(el)
 }
@@ -210,28 +217,69 @@ function logMove(n, sq, mark, txid, fee) {
 const api = async p => { const r = await fetch(WOC + p); if (!r.ok) throw new Error('WoC ' + r.status); return r }
 const rawOf = async t => (await (await api(`/tx/${t}/hex`)).text()).trim()
 
-/** ★ Walk to the unspent output — that is the board as it stands. No index, no server. */
+/**
+ * ★ FIND THE NEXT HOP — the method `battery.php` arrived at the hard way, and three bugs it records.
+ *
+ * ⚠⚠ `/out/0/spent` IS NOT THE WAY. **Measured there: `/script/{h}/history` omits unconfirmed
+ *    transactions entirely**, so a fresh move would not appear until a block — which is the whole of
+ *    "live". `/script/{h}/unconfirmed/history` carries them.
+ * ⚠ The script hash is SHA-256(script) BYTE-REVERSED. The non-reversed form 404s SILENTLY.
+ * ⚠ AND A NON-EMPTY LIST IS NOT AN ANSWER: the list contains the transaction that CREATED this tip.
+ *   Each list must be SCANNED for something that actually spends it.
+ */
+async function nextHop(tipTxid, tipRawHex) {
+  const sh = await G.scriptHash(G.parse(tipRawHex).lockHex)
+  for (const path of ['unconfirmed/history', 'history']) {
+    let hist
+    try { hist = await (await api(`/script/${sh}/${path}`)).json() } catch { continue }
+    if (!Array.isArray(hist)) continue
+    for (const h of hist) {
+      const id = h.tx_hash
+      if (!id || id === tipTxid) continue
+      let raw
+      try { raw = await rawOf(id) } catch { continue }
+      if (G.spendsTip(raw, tipTxid, 0)) return { txid: id, raw }
+    }
+  }
+  return null
+}
+
+/** ★ Walk forward to whatever is unspent — that is the board as it stands. No index, no server. */
 async function sync(fromScratch) {
   try {
-    if (fromScratch) { tip = genesis; seen.clear(); $('log').textContent = '' }
+    if (fromScratch) {
+      /* ★★ START FROM THE LAST TIP THIS BROWSER SAW, not from the genesis.
+         ⚠⚠ Rate limits are per-IP, so each visitor has their own budget — but a board with 500 moves
+         on it would make a FIRST LOAD walk 500 hops, and that single visitor would exhaust their own
+         allowance before the board ever appeared. ⇒ A remembered tip makes a return visit one call.
+         ⚠ It is only a HINT: if it is stale, wrong, or from another board, the walk falls back to the
+         genesis rather than trusting it. Nothing here is taken on faith. */
+      let start = genesis
+      try {
+        const hint = localStorage.getItem('oxo:' + genesis)
+        if (hint && /^[0-9a-f]{64}$/.test(hint)) {
+          const probe = await rawOf(hint)
+          if (G.decodeBoard(G.parse(probe).lockHex)) { start = hint }
+        }
+      } catch (e) { /* no storage, or a bad hint — walk from the genesis */ }
+      tip = start; tipRaw = await rawOf(tip); state = null; seen.clear(); $('log').textContent = ''
+      if (start !== genesis) tag('resuming from the last board this browser saw')
+    }
     let moved = false
-    for (;;) {
-      const r = await fetch(`${WOC}/tx/${tip}/out/0/spent`)
-      if (r.status === 404) break
-      if (!r.ok) throw new Error('WoC ' + r.status)
-      const next = (await r.json()).txid
-      const raw = await rawOf(next)
-      const tx = G.parse(raw)
-      const st = G.decodeBoard(tx.lockHex)
+    for (let guard = 0; guard < 60; guard++) {
+      const hop = await nextHop(tip, tipRaw)
+      if (!hop) break
+      const st = G.decodeBoard(G.parse(hop.raw).lockHex)
       if (st) {
         const prev = state
-        const sq = prev ? G.squares(st).findIndex((v, i) => v !== G.squares(prev)[i]) : st.moves - 1
-        logMove(st.moves, sq < 0 ? 0 : sq, prev ? prev.turn : (st.turn === 1 ? 2 : 1), next, tx.fee)
+        const sq = prev ? G.squares(st).findIndex((v, i) => v !== G.squares(prev)[i]) : -1
+        logMove(st, sq, prev, hop.txid, G.MAX_FEE)
         state = st
       }
-      tip = next; tipRaw = raw; moved = true
+      tip = hop.txid; tipRaw = hop.raw; moved = true
+      try { localStorage.setItem('oxo:' + genesis, tip) } catch (e) {}
     }
-    if (!tipRaw) { tipRaw = await rawOf(tip); state = state || G.decodeBoard(G.parse(tipRaw).lockHex) }
+    if (!state) state = G.decodeBoard(G.parse(tipRaw).lockHex)
     tag('watching the chain', 'live')
     if (moved || fromScratch) paint()
   } catch (e) { tag('chain unreachable — retrying', 'err') }
@@ -247,11 +295,18 @@ async function play(sq) {
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txhex: m.rawHex }) })
     const body = await r.text()
     if (!r.ok) throw new Error(body.slice(0, 140))
-    logMove(m.state.moves, sq, state.turn, m.txid, m.fee)
+    logMove(m.state, sq, state, m.txid, m.fee)
     state = m.state; tip = m.txid; tipRaw = m.rawHex
+    try { localStorage.setItem('oxo:' + genesis, tip) } catch (e) {}
     tag('watching the chain', 'live')
   } catch (e) {
-    tag(String(e.message || e).slice(0, 90), 'err')
+    /* ⚠ ON A PUBLIC BOARD SOMEBODY ELSE MAY GET THERE FIRST. Two people clicking at once both spend
+       the same tip; one transaction wins and the other is refused for missing inputs. That is not an
+       error to apologise for — it is the chain deciding, so say what happened and resync. */
+    const msg = String(e.message || e)
+    tag(/missing inputs|txn-mempool|conflict/i.test(msg)
+      ? 'somebody moved first — catching up' : msg.slice(0, 80), 'err')
+    await sync(false)
   }
   busy = false; paint()
 }
