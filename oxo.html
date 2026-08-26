@@ -28,8 +28,69 @@ h1{font-family:var(--serif);font-weight:400;font-size:clamp(26px,3.6vw,40px);mar
   letter-spacing:-.01em}
 .sub{color:var(--muted);font-size:14px;margin:0 0 20px;max-width:64ch}
 .sub b{color:var(--ink);font-weight:600}
-.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,400px);gap:24px;align-items:start}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,380px) 96px;gap:24px;align-items:start}
 @media(max-width:840px){.cols{grid-template-columns:1fr}}
+
+.col2{display:flex;flex-direction:column;gap:24px;min-width:0}
+/* ── 🔋 RECHARGE ──────────────────────────────────────────────────────────────────────────────────
+   ⚠⚠ The page holds no key. It builds the transaction with the covenant's own input FINISHED — that
+   one needs no key at all — and every funding input left blank, for Phar Lap to sign. */
+#tu .tu-note{font-size:12.5px;color:var(--muted);margin:0 0 12px}
+#tu .tu-note b{color:var(--ink)}
+#tu .f{display:block;margin-bottom:11px}
+#tu .f>span{display:block;font-size:11px;letter-spacing:.05em;color:var(--muted);margin-bottom:4px}
+#tu input{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:5px;
+  background:var(--ground);color:var(--ink);font-family:var(--mono);font-size:13px}
+#tu input:focus-visible{outline:2px solid var(--struct);outline-offset:1px}
+.tu-grid{display:grid;grid-template-columns:repeat(3,34px);gap:3px}
+.tu-grid button{height:34px;border:1px solid var(--line);border-radius:4px;background:var(--ground);
+  color:var(--ink);font-size:15px;cursor:pointer;font-family:var(--sans)}
+.tu-grid button[aria-pressed="true"]{background:var(--struct-soft);border-color:var(--struct);
+  box-shadow:inset 0 0 0 1px var(--struct)}
+.tu-grid button:disabled{opacity:.4;cursor:not-allowed}
+.tu-go,.tu-copy{margin-top:4px;padding:8px 15px;border:1px solid var(--struct);border-radius:5px;
+  background:var(--struct-soft);color:var(--ink);font-family:var(--sans);font-size:13.5px;
+  font-weight:600;cursor:pointer}
+.tu-go:disabled{opacity:.5;cursor:not-allowed}
+.tu-out{font-size:12.5px;margin:10px 0 0;line-height:1.5}
+.tu-out .no{color:var(--bad)} .tu-out .yes{color:var(--good);font-weight:600}
+.tu-hex{width:100%;height:96px;margin-top:9px;padding:7px 9px;border:1px solid var(--line);
+  border-radius:5px;background:var(--ground);color:var(--muted);font-family:var(--mono);
+  font-size:10.5px;resize:vertical;word-break:break-all}
+/* ── 🔋 THE CHARGE ────────────────────────────────────────────────────────────────────────────────
+   ★★ THE BOARD IS A BATTERY. It holds its own satoshis, spends a bounded amount on every move, and
+   carries no key — which is the battery's whole definition, not an analogy. And its value rule is a
+   FLOOR (`out ≥ V − MAX_FEE`), so it can be recharged as well as drained: bounded on the way out,
+   unbounded on the way in.
+   ⚠⚠ FULL = THE MOST IT HAS EVER HELD, never an invented capacity — the same choice the depot and
+   the battery made. Seeded from the MINT (5,000 sat), because a gauge seeded from whatever it first
+   happens to see reads 100% on opening and tells you nothing. */
+.batt{position:sticky;top:22px;display:flex;flex-direction:column;align-items:center;gap:7px}
+.batt .cap{width:26px;height:9px;border-radius:3px 3px 0 0;background:var(--line)}
+.batt .body{position:relative;width:60px;height:clamp(260px,42vh,430px);
+  border:3px solid var(--line);border-radius:10px;overflow:hidden;
+  /* the scale is fixed to the CELL, so a falling level travels down through green into red */
+  background:linear-gradient(to bottom,#22c55e 0%,#65c22e 18%,#c9b118 42%,#e08a25 68%,#d34a34 100%)}
+.batt .drain{position:absolute;left:0;right:0;top:0;height:0;background:var(--panel);
+  border-bottom:2px solid var(--line);transition:height .45s ease}
+.batt .ticks{position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(to bottom,transparent 0 calc(20% - 1px),
+    rgba(0,0,0,.16) calc(20% - 1px),rgba(0,0,0,.16) 20%)}
+.batt .read{text-align:center;font-family:var(--mono);font-size:12px;line-height:1.35;color:var(--ink)}
+.batt .read b{display:block;font-size:14px;font-weight:600}
+.batt .read s{display:block;text-decoration:none;color:var(--muted);font-size:11px}
+.batt .lab{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);font-weight:600}
+@media(max-width:840px){
+  .batt{flex-direction:row;align-items:center;justify-content:center;gap:14px;position:static}
+  .batt .cap{width:9px;height:26px;border-radius:3px 0 0 3px;order:-1}
+  .batt .body{width:min(70vw,340px);height:44px;
+    background:linear-gradient(to right,#d34a34 0%,#e08a25 32%,#c9b118 58%,#65c22e 82%,#22c55e 100%)}
+  /* ⚠ sideways the empty end is on the RIGHT, so the drain has to move too */
+  .batt .drain{left:auto;right:0;top:0;bottom:0;height:auto;width:0;
+    border-bottom:0;border-left:2px solid var(--line)}
+  .batt .ticks{background:repeating-linear-gradient(to right,transparent 0 calc(20% - 1px),
+    rgba(0,0,0,.16) calc(20% - 1px),rgba(0,0,0,.16) 20%)}
+}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:16px}
 .who{display:flex;gap:10px;align-items:stretch;margin:0 0 16px;flex-wrap:wrap}
 .side{flex:1 1 0;min-width:130px;border:1px solid var(--line);background:var(--panel);padding:9px 12px;
@@ -106,9 +167,40 @@ footer b{color:var(--ink)}
       <p class="state" id="state"><span class="tag" id="conn">starting…</span></p>
     </div>
 
-    <div class="card">
-      <h2>Every move, as it happened</h2>
-      <div id="log"><p class="empty">Nothing yet. Each move below is a real Bitcoin transaction.</p></div>
+    <div class="col2">
+      <div class="card">
+        <h2>Every move, as it happened</h2>
+        <div id="log"><p class="empty">Nothing yet. Each move below is a real Bitcoin transaction.</p></div>
+      </div>
+
+      <!-- ⚠⚠ THIS PAGE HOLDS NO KEY. It assembles the whole transaction, leaves your inputs BLANK,
+           and stops. What you copy out is a REQUEST, not a transaction — Phar Lap signs the blanks.
+           Nothing here signs anything or broadcasts anything. -->
+      <div class="card" id="tu">
+        <h2>🔋 Recharge the board</h2>
+        <p class="tu-note">The covenant's value rule is a <b>floor</b>, so it can be handed more than
+        it spends. ⚠ There is no idle move — <b>you put satoshis in while you take your turn</b>.</p>
+        <label class="f"><span>satoshis to add</span>
+          <input id="tuAmt" type="number" min="1" step="1" value="5000" inputmode="numeric"></label>
+        <label class="f"><span>your address — the coins come from here, the change goes back</span>
+          <input id="tuAddr" type="text" spellcheck="false" placeholder="1..."></label>
+        <div class="f"><span>and the square you are taking</span>
+          <div id="tuGrid" class="tu-grid"></div></div>
+        <button id="tuGo" class="tu-go">Build it</button>
+        <p id="tuOut" class="tu-out"></p>
+        <textarea id="tuHex" class="tu-hex" readonly spellcheck="false" hidden></textarea>
+        <button id="tuCopy" class="tu-copy" hidden>Copy the request</button>
+      </div>
+    </div>
+
+    <div class="batt" title="The board holds its own satoshis and spends a bounded amount on every move — and it can be recharged.">
+      <div class="lab">charge</div>
+      <div class="cap"></div>
+      <div class="body">
+        <div class="ticks"></div>
+        <div class="drain" id="battDrain"></div>
+      </div>
+      <div class="read" id="battRead"><b>—</b><s>&nbsp;</s></div>
     </div>
   </div>
 
@@ -136,7 +228,7 @@ footer b{color:var(--ink)}
   <div class="share" id="share" hidden></div>
 </dialog>
 
-<script src="vendor/grafoxo.js?v=1"></script>
+<script src="vendor/grafoxo.js?v=2"></script>
 <script>
 /**
  * ⚠⚠ THIS PAGE TALKS TO THE CHAIN DIRECTLY, AND DELIBERATELY DOES NOT GO THROUGH woc.php.
@@ -164,7 +256,39 @@ const whoIsX = () => G.tossFirst(genesis) === 1 ? 0 : 1
 
 const tag = (t, cls = '') => { $('conn').className = 'tag ' + cls; $('conn').textContent = t }
 
+/**
+ * 🔋 THE CHARGE.
+ *
+ * ⚠⚠ FULL IS THE HIGH-WATER MARK, NOT A CAPACITY. `everHeld` is seeded from what the board was
+ * MINTED with, because a gauge that seeds itself from the first value it happens to see reads 100%
+ * the moment you open it and tells you nothing. ⇒ Same choice the depot's silo made, for the same
+ * reason: the picture must be honest about how much of what was put in is left.
+ *
+ * ★ And a top-up RAISES the mark rather than overflowing the cell — the covenant's value rule is a
+ * floor, so the board can be recharged, and the gauge has to be able to say so.
+ */
+let everHeld = 5000                          // ⚠ the mint. Not a guess — b3bc614b… carried 5,000 sat.
+function paintBattery() {
+  if (!tipRaw) return
+  let held; try { held = G.parse(tipRaw).sats } catch { return }
+  everHeld = Math.max(everHeld, held)
+  const frac = everHeld ? Math.max(0, Math.min(1, held / everHeld)) : 0
+  const moves = Math.floor(held / G.MAX_FEE)
+  const d = $('battDrain')
+  /* the cell turns on its side below 840px, so the empty end moves with it */
+  if (window.matchMedia('(max-width:840px)').matches) {
+    d.style.width = ((1 - frac) * 100).toFixed(1) + '%'; d.style.height = ''
+  } else {
+    d.style.height = ((1 - frac) * 100).toFixed(1) + '%'; d.style.width = ''
+  }
+  $('battRead').innerHTML =
+    `<b>${held.toLocaleString()}</b><s>sat · ${moves} move${moves === 1 ? '' : 's'} left</s>`
+}
+addEventListener('resize', paintBattery)
+
 function paint() {
+  paintBattery()
+  tuPaint()
   const sq = state ? G.squares(state) : new Array(9).fill(0)
   const myMark = (me === xIsPlayer) ? 1 : 2
   const myTurn = state && !state.winner && state.turn === myMark
@@ -204,22 +328,34 @@ function paint() {
   s.appendChild(line)
 }
 
-function logMove(st, sq, prev, txid, fee) {
+/**
+ * @param historic  true when this move was replayed off the chain rather than watched being made.
+ *   ⚠⚠ THE CHAIN RECORDS THE MARK, NEVER THE PERSON. A board can be picked up by anybody, and the
+ *   moves already on it were made before these two players typed their names in. Labelling them
+ *   "Sundive" and "Claude" is a claim the transactions do not support — so a replayed move is
+ *   credited to `crosses` or `noughts`, and only a move made in this session gets a name.
+ */
+function logMove(st, sq, prev, txid, fee, historic) {
   if (seen.has(txid)) return
   seen.add(txid)
   const empty = $('log').querySelector('.empty'); if (empty) empty.remove()
   /* the mark that was just played is the one whose turn it ISN'T any more */
   const mark = st.turn === 1 ? 2 : 1
-  const who = names[mark === 1 ? xIsPlayer : 1 - xIsPlayer] || (mark === 1 ? 'crosses' : 'noughts')
+  const named = m => historic ? (m === 1 ? 'crosses' : 'noughts')
+    : (names[m === 1 ? xIsPlayer : 1 - xIsPlayer] || (m === 1 ? 'crosses' : 'noughts'))
+  const who = named(mark)
   /* ★ a reset shows as the start of a new game rather than as a mysterious empty board */
   const fresh = prev && prev.winner > 0
   const el = document.createElement('div')
   el.className = 'row' + (mark === ((me === xIsPlayer) ? 1 : 2) ? ' mine' : '')
   el.innerHTML =
     `<div class="h"><span class="w">${fresh ? `game ${st.games + 1} begins — ` : ''}` +
-    `${who} took square ${sq < 0 ? '?' : sq + 1}</span><span class="f">${fee} sat</span></div>` +
+    /* ⚠ The covenant numbers the squares 0–8 and that is what the transaction carries. Showing 1–9
+       here made the screen disagree with the chain — you would read one number aloud and a different
+       one would be in the tx. Match the covenant. */
+    `${who} took square ${sq < 0 ? '?' : sq}</span><span class="f">${fee} sat</span></div>` +
     (st.winner ? `<div class="f">${st.winner === 3 ? 'a draw' :
-       (names[st.winner === 1 ? xIsPlayer : 1 - xIsPlayer] || 'that side') + ' wins'} — ` +
+       named(st.winner) + ' wins'} — ` +
        `the board is ready for the next game</div>` : '') +
     `<a href="https://whatsonchain.com/tx/${txid}" target="_blank" rel="noopener">${txid}</a>`
   $('log').prepend(el)
@@ -302,7 +438,12 @@ async function sync(fromScratch) {
           if (G.decodeBoard(G.parse(probe).lockHex)) { start = hint }
         }
       } catch (e) { /* no storage, or a bad hint — walk from the genesis */ }
-      tip = start; tipRaw = await rawOf(tip); state = null; seen.clear(); $('log').textContent = ''
+      /* ⚠ Decode the STARTING board rather than beginning at null. A move is worked out by diffing
+         two boards, so with no `prev` the very first hop of the walk could not say which square was
+         taken and printed "square ?". */
+      tip = start; tipRaw = await rawOf(tip)
+      state = G.decodeBoard(G.parse(tipRaw).lockHex)
+      seen.clear(); $('log').textContent = ''
       if (start !== genesis) tag('resuming from the last board this browser saw')
     }
     let moved = false
@@ -315,7 +456,9 @@ async function sync(fromScratch) {
       if (st) {
         const prev = state
         const sq = prev ? G.squares(st).findIndex((v, i) => v !== G.squares(prev)[i]) : -1
-        logMove(st, sq, prev, hop.txid, G.MAX_FEE)
+        /* ★ `fromScratch` is the initial catch-up — those moves predate this session and get no name.
+           The SAME walk during a game is how an opponent's live move arrives, and that one IS them. */
+        logMove(st, sq, prev, hop.txid, G.MAX_FEE, fromScratch)
         state = st
       }
       tip = hop.txid; tipRaw = hop.raw; moved = true; unconf = true
@@ -337,7 +480,7 @@ async function play(sq) {
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txhex: m.rawHex }) })
     const body = await r.text()
     if (!r.ok) throw new Error(body.slice(0, 140))
-    logMove(m.state, sq, state, m.txid, m.fee)
+    logMove(m.state, sq, state, m.txid, m.fee, false)   // ★ this one we watched being made
     state = m.state; tip = m.txid; tipRaw = m.rawHex
     try { localStorage.setItem('oxo:' + genesis, tip) } catch (e) {}
     tag('watching the chain', 'live')
@@ -379,6 +522,76 @@ else {
     setTimeout(begin, 30)
   }
 }
+
+/* ══ 🔋 RECHARGE — build it here, sign it there ═════════════════════════════════════════════════
+ *
+ * ⚠⚠ THE PAGE HOLDS NO KEY AND NEVER ASKS FOR ONE. It assembles the whole transaction with the
+ * covenant's own input ALREADY FINISHED — OP_PUSH_TX authorises that one with a proof about the
+ * transaction, so no key exists for it anywhere — and leaves your funding inputs BLANK.
+ * ⇒ What you copy out is a REQUEST. Phar Lap signs the blanks and broadcasts. Nothing here signs.
+ *
+ * ★★ AND THAT HAND-OFF IS THE UNUSUAL PART: co-signing a transaction the wallet did not build, and
+ * deriving the fee itself rather than trusting the one it was handed.
+ */
+let tuSq = -1
+function tuPaint() {
+  const g = $('tuGrid'); g.textContent = ''
+  const sq = state ? G.squares(state) : new Array(9).fill(0)
+  /* ⚠ after a win the covenant CLEARS the board first, so every square is free to the next mover */
+  const fresh = state && state.winner > 0
+  for (let i = 0; i < 9; i++) {
+    const b = document.createElement('button')
+    const taken = !fresh && sq[i] !== 0
+    b.textContent = taken ? (sq[i] === 1 ? '✕' : '◯') : ''
+    b.disabled = taken
+    b.setAttribute('aria-pressed', String(tuSq === i))
+    b.setAttribute('aria-label', 'square ' + i)
+    if (!taken) b.onclick = () => { tuSq = i; tuPaint() }
+    g.appendChild(b)
+  }
+}
+
+async function tuBuild() {
+  const out = $('tuOut'), amt = Math.floor(+$('tuAmt').value), addr = $('tuAddr').value.trim()
+  $('tuHex').hidden = true; $('tuCopy').hidden = true
+  if (!/^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(addr)) {
+    out.innerHTML = '<span class="no">that does not look like a BSV address</span>'; return }
+  if (!(amt >= 1)) { out.innerHTML = '<span class="no">one satoshi is the minimum</span>'; return }
+  if (tuSq < 0) { out.innerHTML = '<span class="no">pick the square you are taking</span>'; return }
+  if (!tipRaw) { out.innerHTML = '<span class="no">the board has not loaded yet</span>'; return }
+  $('tuGo').disabled = true
+  try {
+    out.textContent = 'reading your coins…'
+    /* ★ AS MANY COINS AS IT TAKES, largest first. A covenant spend is not limited to one input — the
+       only real constraint is that the input SET is final before the preimage is built. */
+    const us = await (await api('/address/' + addr + '/unspent')).json()
+    const all = (Array.isArray(us) ? us : (us?.result ?? [])).slice().sort((a, b) => b.value - a.value)
+    if (!all.length) { out.innerHTML = '<span class="no">that address has no coins</span>'; return }
+    const picked = []; let have = 0
+    for (const c of all) { if (have >= amt + 600) break; picked.push(c); have += c.value }
+    out.textContent = 'building…'
+    const funders = []
+    for (const c of picked) {
+      const hex = (await (await api('/tx/' + c.tx_hash + '/hex')).text()).trim()
+      funders.push({ sourceTransaction: G.Transaction.fromHex(hex), outputIndex: c.tx_pos })
+    }
+    const r = G.buildTopUpMove({ tipRawHex: tipRaw, square: tuSq, addSats: amt,
+      funders, changeLock: G.p2pkhLock(addr) })
+    $('tuHex').value = r.rawHex; $('tuHex').hidden = false; $('tuCopy').hidden = false
+    const short = r.added !== amt
+      ? `those coins hold ${have.toLocaleString()}, so it contributes <b>${r.added.toLocaleString()}</b> after the fee. `
+      : ''
+    out.innerHTML = `<span class="yes">built.</span> ${short}` +
+      `Board goes to <b>${r.boardValue.toLocaleString()} sat</b> · fee ${r.fee} · change ` +
+      `${r.change.toLocaleString()} · <b>input${r.blanks.length > 1 ? 's' : ''} ` +
+      `${r.blanks.join(', ')} left blank</b> for Phar Lap to sign.`
+  } catch (e) {
+    out.innerHTML = '<span class="no">' + String(e.message || e).slice(0, 120) + '</span>'
+  } finally { $('tuGo').disabled = false }
+}
+$('tuGo').onclick = tuBuild
+$('tuCopy').onclick = () => { $('tuHex').select(); document.execCommand('copy')
+  $('tuCopy').textContent = 'copied'; setTimeout(() => { $('tuCopy').textContent = 'Copy the request' }, 1400) }
 </script>
 </body>
 </html>

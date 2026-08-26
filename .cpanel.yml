@@ -11,7 +11,7 @@ deployment:
     - /bin/cp og.jpg "$DEPLOYPATH"                        # social / link-preview card
     - /bin/cp merch-ad.jpg "$DEPLOYPATH"                  # ⏻ Exit merch-ad artwork (grafverse hero)
     - /bin/cp grafverse-splash.jpg "$DEPLOYPATH"          # entry/splash background (from the #05 hero)
-    - /bin/cp -r vendor "$DEPLOYPATH"                     # vendored three.min.js + grafmint.js + grafbasic.js + grafracers.js (offline, no CDN)
+    - /bin/cp -r vendor "$DEPLOYPATH"                     # vendored three.min.js + grafmint.js + grafbasic.js + grafracers.js + grafoxo.js (offline, no CDN)
     #   ⚠ ONE BUNDLE PER PAGE, deliberately: grafmint.js (game/depot/battery/brc226) · grafbasic.js (basic.html) · grafoxo.js (oxo.html) ·
     #   grafracers.js (bitcoin-racers.html). Working on one page must not rebuild a bundle another page loads.
     # WALLET → its OWN isolated subdomain docroot (served ONLY at wallet.grafverse.com, NEVER grafverse.com/wallet/ — key isolation).

@@ -10,7 +10,7 @@
  * ★ WHAT THIS EXPOSES IS A GAME, NOT A TOOLKIT. Four calls: read a board, build a move, replay the
  *   rules, and toss for who starts. The covenant does the rest, and it needs no key from anybody.
  */
-import { Transaction, UnlockingScript, LockingScript, Script } from '@bsv/sdk'
+import { Transaction, UnlockingScript, LockingScript, Script, P2PKH } from '@bsv/sdk'
 import { buildBasicLock, basicUnlockingOps, frameMaxFee, valueBytes } from './basicCovenant.ts'
 import { pushTxPreimage } from './pushtx.ts'
 /* ★ THE LOOPING BOARD — it resets after a win and plays again, so a permanent public page never has
@@ -130,3 +130,114 @@ export function buildMove(tipRawHex: string, from: OxoState, square: number) {
   }))
   return { rawHex: tx.toHex(), txid: tx.id('hex'), state: to, fee: held - newSats, held: newSats }
 }
+
+/* ══ 🔋 THE RECHARGE ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * ★★★ THE BOARD IS A BATTERY, and this is the half that puts something back. The frame's value rule
+ * is a FLOOR — `out ≥ V − MAX_FEE` — so handing the covenant MORE than was taken was always legal.
+ * **Bounded on the way out, unbounded on the way in.** Proved against the live board before this was
+ * written: a two-input spend raising it from 3,708 to 53,385 sat validates.
+ *
+ * ⚠⚠ A TOP-UP IS A MOVE. This covenant has no idle branch — every spend plays a square. That is not
+ * a limitation to apologise for: **you put money in while you take your turn**, and since the board
+ * cares which MARK is next and never who is playing it, anybody can do both at once.
+ *
+ * ⚠⚠ THE PAGE HOLDS NO KEY. What comes back has the covenant's own input COMPLETE (OP_PUSH_TX needs
+ * no key) and every funding input BLANK. It is a REQUEST, not a transaction — Phar Lap signs the
+ * blanks. Nothing here signs or broadcasts anything.
+ *
+ * ⚠ NO MINIMUM, NO REFUSAL. If the coins cannot cover what was asked, it contributes what they can
+ * rather than blocking. The covenant accepts a single satoshi; every refusal beyond that would be
+ * this file's invention. (Earned on the depot, twice.)
+ */
+
+/** The official rate — 100 sat/KB. ⚠ Never inflated, never ARC's suggestion. */
+const FEE_PER_KB = 100
+const feeFor = (bytes: number) => Math.ceil((bytes * FEE_PER_KB) / 1000)
+/** What a P2PKH input's unlocking script WILL weigh once signed: `<sig ≤72+1> <pubkey 33+1>`. */
+const P2PKH_UNLOCK = 107
+
+export interface Funder { sourceTransaction: Transaction; outputIndex: number }
+
+/** value(8) ‖ varint(len) ‖ script — the serialization every covenant here hashes outputs with. */
+function serializeOut(sats: number, script: number[]): number[] {
+  const v: number[] = []; let n = BigInt(sats)
+  for (let i = 0; i < 8; i++) { v.push(Number(n & 0xffn)); n >>= 8n }
+  const L = script.length
+  const len = L < 0xfd ? [L] : L <= 0xffff ? [0xfd, L & 255, L >> 8]
+    : [0xfe, L & 255, (L >> 8) & 255, (L >> 16) & 255, (L >>> 24) & 255]
+  return [...v, ...len, ...script]
+}
+
+/**
+ * Build a move that also carries satoshis in.
+ * @returns the raw transaction with input 0 finished and the funding inputs blank, plus what it did.
+ */
+export function buildTopUpMove(p: {
+  tipRawHex: string
+  square: number
+  addSats: number
+  funders: Funder[]
+  changeLock: LockingScript
+}) {
+  const tip = Transaction.fromHex(p.tipRawHex)
+  const out0: any = tip.outputs[0]
+  const held: number = out0.satoshis
+  const from = decodeBoard(out0.lockingScript.toHex())
+  if (!from) throw new Error('that board could not be read')
+  if (!p.funders.length) throw new Error('no coins to spend')
+  const to = applyMove(from, p.square)            // ⚠ throws on an illegal square before anything is built
+
+  const funded = p.funders.reduce((n, f) =>
+    n + ((f.sourceTransaction.outputs[f.outputIndex] as any).satoshis as number), 0)
+
+  /* ★ Assemble at a given pair of values. SIZE does not depend on the values, only on the shape —
+     which is what lets one measured pass settle the fee. */
+  const assemble = (boardValue: number, change: number) => {
+    const tx = new Transaction(); tx.version = 2
+    tx.addInput({ sourceTransaction: tip, sourceOutputIndex: 0, sequence: 0xffffffff })
+    for (const f of p.funders)
+      tx.addInput({ sourceTransaction: f.sourceTransaction, sourceOutputIndex: f.outputIndex,
+                    sequence: 0xffffffff, unlockingScript: new UnlockingScript([]) })
+    tx.addOutput({ lockingScript: lockFor(to), satoshis: boardValue })
+    if (change > 0) tx.addOutput({ lockingScript: p.changeLock, satoshis: change })
+    const preimage = pushTxPreimage({
+      sourceTXID: tip.id('hex'), sourceOutputIndex: 0, sourceSatoshis: held,
+      transactionVersion: 2, inputIndex: 0, subscript: out0.lockingScript,
+      outputs: tx.outputs, otherInputs: tx.inputs.slice(1), inputSequence: 0xffffffff, lockTime: 0,
+    })
+    tx.inputs[0].unlockingScript = new UnlockingScript(basicUnlockingOps({
+      inputs: [p.square],
+      spenderOutputs: tx.outputs.slice(1).flatMap((o: any) =>
+        serializeOut(o.satoshis, o.lockingScript.toBinary())),
+      newValue: valueBytes(boardValue), preimage,
+    }))
+    /* ⚠ MEASURED, never hand-counted — plus what the funding signatures will weigh once Phar Lap
+       fills them in. A bound guessed low here is a transaction nobody will relay. */
+    const bytes = tx.toHex().length / 2 + p.funders.length * P2PKH_UNLOCK
+    return { tx, bytes }
+  }
+
+  /* pass 1 — shape it with a placeholder change to learn what it weighs */
+  const fee = feeFor(assemble(held + p.addSats, 1).bytes)
+
+  /* ★★ NO REFUSAL. If the coins fall short, put in what they cover. */
+  let add = p.addSats
+  let change = funded - add - fee
+  if (change < 1) { add = funded - fee - 1; change = 1 }
+  if (add < 1) throw new Error(
+    `those coins hold ${funded} sat and the fee alone is ${fee} — nothing left to contribute`)
+
+  const { tx } = assemble(held + add, change)
+  return {
+    rawHex: tx.toHex(), txid: tx.id('hex'), state: to,
+    boardValue: held + add, added: add, change, fee, funded,
+    blanks: p.funders.map((_, i) => i + 1),          // the inputs Phar Lap must sign
+  }
+}
+
+/* ★ The page needs these two to assemble a top-up: it reads the funder's coins as transactions, and
+   it has to say where the change goes. Neither involves a key. */
+export { Transaction }
+/** Where the change goes back to — the funder's own address, never anything of ours. */
+export const p2pkhLock = (address: string): LockingScript => new P2PKH().lock(address)
