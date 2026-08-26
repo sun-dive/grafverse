@@ -118,7 +118,12 @@ h1{font-family:var(--serif);font-weight:400;font-size:clamp(26px,3.6vw,40px);mar
 .tag.err{border-color:var(--bad);color:var(--bad)}
 h2{font-family:var(--sans);font-size:11px;letter-spacing:.13em;text-transform:uppercase;
   color:var(--muted);margin:0 0 10px;font-weight:600}
-#log{display:flex;flex-direction:column;gap:8px;max-height:min(66vh,600px);overflow-y:auto}
+/* ★ A FULL GAME IS NINE MOVES, and nine moves is the log's natural unit — so a completed game fits
+   without scrolling. ⚠ And `scrollbar-gutter:stable` reserves the bar's width instead of letting it
+   overlay the text: the txids were wrapping correctly and then being CLIPPED by the scrollbar, which
+   looks like a truncated transaction id and is the one thing this log must never appear to do. */
+#log{display:flex;flex-direction:column;gap:8px;max-height:min(80vh,780px);overflow-y:auto;
+  scrollbar-gutter:stable;padding-right:6px}
 .row{border-left:2px solid var(--struct);padding:7px 0 7px 10px;font-size:12.5px}
 .row.mine{border-left-color:var(--accent)}
 .row .h{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
@@ -225,6 +230,7 @@ footer b{color:var(--ink)}
     <input id="fg" required pattern="[0-9a-fA-F]{64}" placeholder="the txid the board was minted at">
     <button class="go" type="submit">Begin</button>
   </form>
+  <p class="sub" id="recall" hidden style="margin:10px 0 0;font-size:12.5px"></p>
   <div class="share" id="share" hidden></div>
 </dialog>
 
@@ -249,6 +255,14 @@ const q = new URLSearchParams(location.hash.slice(1))
 let genesis = q.get('g') || '', names = [q.get('a') || '', q.get('b') || '']
 let me = q.get('me') === 'b' ? 1 : 0           // which NAME I am, 0 or 1
 let tip = null, tipRaw = null, state = null, xIsPlayer = 0, busy = false, seen = new Set()
+/* ⚠⚠ `tuSq` LIVES UP HERE WITH THE OTHER STATE, NOT BESIDE THE CODE THAT USES IT.
+   It was declared at the bottom of the script with the recharge panel — but `paint()` calls
+   `tuPaint()`, and `paint()` runs from `begin()`, which fires long before that line is evaluated.
+   ⇒ A `let` in its temporal dead zone THROWS, and the throw happened inside paint() before the board
+   was drawn: no grid, no square picker, stuck on "starting…", and the charge cell left unpainted —
+   which made an empty gauge look like a FULL one. **One reference error, four symptoms, and the most
+   convincing of them was the one that looked like a feature.** */
+let tuSq = -1
 
 /* ★ THE TOSS IS THE TRANSACTION ID. Both browsers compute the same answer from the chain, so nobody
    has to trust the other side's coin — and nobody chose it. */
@@ -335,9 +349,32 @@ function paint() {
  *   "Sundive" and "Claude" is a claim the transactions do not support — so a replayed move is
  *   credited to `crosses` or `noughts`, and only a move made in this session gets a name.
  */
-function logMove(st, sq, prev, txid, fee, historic) {
+/**
+ * ★★ THE LOG IS KEPT, not rebuilt from whatever the last walk happened to cover.
+ *
+ * ⚠⚠ The remembered tip makes a return visit one hop instead of five hundred — but the log was being
+ * CLEARED and then refilled from that one hop, so a nine-move game showed a single line. **The page
+ * remembered where the game got to and threw away how it got there.**
+ *
+ * ⇒ Every rendered move is appended here and replayed on the next load, so the log is the whole game
+ * even when the walk is one hop. Keyed by genesis, because it is that board's history and no other.
+ */
+const LOG_STORE = g => 'oxo:log:' + g, LOG_CAP = 60
+let logRows = []
+const saveLog = () => {
+  try { localStorage.setItem(LOG_STORE(genesis), JSON.stringify(logRows.slice(-LOG_CAP))) }
+  catch (e) { try { localStorage.removeItem(LOG_STORE(genesis)) } catch (e2) {} }
+}
+
+function logMove(st, sq, prev, txid, fee, historic, replaying) {
   if (seen.has(txid)) return
   seen.add(txid)
+  /* ⚠ Keep the INPUTS, not the rendered HTML — the names and the ✕/◯ labelling are display choices
+     that may change, and a stored row must survive them. */
+  if (!replaying) {
+    logRows.push({ t: txid, s: sq, u: st.turn, w: st.winner, g: st.games, p: prev ? prev.winner : 0, f: fee })
+    saveLog()
+  }
   const empty = $('log').querySelector('.empty'); if (empty) empty.remove()
   /* the mark that was just played is the one whose turn it ISN'T any more */
   const mark = st.turn === 1 ? 2 : 1
@@ -361,8 +398,66 @@ function logMove(st, sq, prev, txid, fee, historic) {
   $('log').prepend(el)
 }
 
-const api = async p => { const r = await fetch(WOC + p); if (!r.ok) throw new Error('WoC ' + r.status); return r }
-const rawOf = async t => (await (await api(`/tx/${t}/hex`)).text()).trim()
+/**
+ * ⏱ 350 ms BETWEEN CALLS — the same floor `woc.php` paces the server side at.
+ *
+ * ⚠ This page spends the VISITOR's own per-IP allowance rather than the site's shared one, which is
+ * why it stays off `woc.php` at all. But a per-IP allowance is still an allowance: one visitor
+ * walking a long board can rate-limit themselves in a second. 250 ms is the real threshold; 350
+ * leaves headroom.
+ */
+const WOC_MIN_INTERVAL = 350
+let wocLast = 0
+const pace = async () => {
+  const wait = wocLast + WOC_MIN_INTERVAL - Date.now()
+  if (wait > 0) await new Promise(r => setTimeout(r, wait))
+  wocLast = Date.now()
+}
+const api = async p => { await pace(); const r = await fetch(WOC + p); if (!r.ok) throw new Error('WoC ' + r.status); return r }
+/**
+ * ★★★ NEVER PULL THE SAME TRANSACTION TWICE.
+ *
+ * **A txid IS the hash of its transaction**, so `txid → hex` is content-addressed: the answer cannot
+ * change, cannot go stale, and needs no expiry. ⇒ Cache it forever, in memory and across reloads.
+ *
+ * ⚠⚠ AND THE OPPOSITE IS TRUE OF HISTORY. `/script/{h}/history` is a question about the PRESENT — it
+ * is the thing polling exists to re-ask — so it is never cached, at any level. Confusing the two is
+ * how a cache starts lying about the chain.
+ *
+ * ⇒ What this actually saves: the four-second poll re-fetched every candidate in the tip's history to
+ * ask "does this spend the tip?" — the same transactions, every four seconds, for the whole game. And
+ * a walk from the genesis re-fetched every move ever played. With 350 ms pacing that was the
+ * difference between a page that loads and one that never settles.
+ */
+const txCache = new Map()
+const TX_STORE = 'oxo:tx', TX_CAP = 60          // ~3.2 KB each as hex ⇒ a few hundred KB at most
+try {
+  const saved = JSON.parse(localStorage.getItem(TX_STORE) || '{}')
+  for (const k of Object.keys(saved)) txCache.set(k, saved[k])
+} catch (e) { /* nothing kept, or storage refused — the cache simply starts empty */ }
+let txWrites = 0
+const saveTxCache = () => {
+  try {
+    /* ⚠ a Map keeps insertion order, so the oldest entries fall off the front */
+    const keys = [...txCache.keys()].slice(-TX_CAP)
+    const out = {}
+    for (const k of keys) out[k] = txCache.get(k)
+    localStorage.setItem(TX_STORE, JSON.stringify(out))
+  } catch (e) {
+    /* ⚠ quota, or private window. Drop the STORED copy and carry on from memory — a cache that
+       cannot be written is an inconvenience; a page that throws over it is a bug. */
+    try { localStorage.removeItem(TX_STORE) } catch (e2) {}
+  }
+}
+const rawOf = async t => {
+  const hit = txCache.get(t)
+  if (hit) return hit
+  const h = (await (await api(`/tx/${t}/hex`)).text()).trim()
+  txCache.set(t, h)
+  if (++txWrites % 4 === 0) saveTxCache()      // ⚠ not on every fetch — JSON.stringify is not free
+  return h
+}
+addEventListener('pagehide', saveTxCache)      // ★ and once on the way out, so nothing is lost
 
 /**
  * ★ FIND THE NEXT HOP — the method `battery.php` arrived at the hard way, and three bugs it records.
@@ -394,15 +489,22 @@ async function nextHop(tipTxid, tipRawHex, tipUnconfirmed) {
      unconfirmed spender. ⇒ Skip the second call entirely while a game is being played, which is
      exactly when polls are most frequent. */
   const paths = tipUnconfirmed ? ['unconfirmed/history'] : ['unconfirmed/history', 'history']
+  /* ⚠⚠ A REFUSED QUESTION POISONS THE WHOLE ANSWER, not just its own path.
+     The old code let one path fail and the other succeed, and if the survivor found no spender it
+     still concluded "current". ⇒ That is how a rate limit becomes a stale board: the walk stops at a
+     SPENT output and reports it as the game. Measured 26 Aug — a seven-move board read as two, with
+     every transaction mined and nothing wrong on chain. */
+  let refused = false
   for (const path of paths) {
     let hist
     try {
+      await pace()
       const r = await fetch(`${WOC}/script/${sh}/${path}`)
       /* ⚠ 404 here means "no history of that kind", which IS an answer. Anything else is a failure. */
       if (r.status === 404) { reached = true; continue }
-      if (!r.ok) continue
+      if (!r.ok) { refused = true; continue }
       hist = await r.json()
-    } catch { continue }
+    } catch { refused = true; continue }
     /* ⚠⚠ WhatsOnChain answers `{ script, result: [...] }`, NOT a bare array — measured against the
        first real board. Testing Array.isArray(response) skips the reply entirely and shows an empty
        board while the move is in the mempool. ⇒ Accept both shapes. */
@@ -412,16 +514,35 @@ async function nextHop(tipTxid, tipRawHex, tipUnconfirmed) {
       const id = h.tx_hash
       if (!id || id === tipTxid) continue
       let raw
-      try { raw = await rawOf(id) } catch { continue }
+      /* ⚠ a transaction we could not FETCH is not a transaction that fails to spend the tip */
+      try { raw = await rawOf(id) } catch { refused = true; continue }
       if (G.spendsTip(raw, tipTxid, 0)) return { txid: id, raw }
     }
     reached = true
   }
+  /* ★ THREE STATES, and 'unknown' is the one that must win. 'current' is a CLAIM about the chain —
+     only make it when every question was actually answered. */
+  if (refused) return 'unknown'
   return reached ? 'current' : 'unknown'
 }
 
 /** ★ Walk forward to whatever is unspent — that is the board as it stands. No index, no server. */
+/**
+ * ⚠⚠ A WALK IN FLIGHT MUST NOT BE RACED BY THE POLL.
+ *
+ * The four-second poll checked `busy`, but `busy` belongs to `play()` — it exists to grey the board
+ * out while a move is being built, and `sync()` never set it. That was harmless while a sync took a
+ * few hundred milliseconds.
+ * ⇒ With 350 ms pacing a first-load walk is ~30 calls, so it takes ten seconds or more, and the poll
+ *   starts a SECOND walk before the first has finished. Both then queue on the same shared pacer,
+ *   each making the other slower, and the board never appears at all. **A pile-up, not a rate limit.**
+ * ⚠ Its own flag, deliberately: this must NOT disable the board the way `busy` does — a player can
+ *   still be thinking about their move while a poll is out.
+ */
+let syncing = false
 async function sync(fromScratch) {
+  if (syncing) return
+  syncing = true
   try {
     if (fromScratch) {
       /* ★★ START FROM THE LAST TIP THIS BROWSER SAW, not from the genesis.
@@ -430,25 +551,50 @@ async function sync(fromScratch) {
          allowance before the board ever appeared. ⇒ A remembered tip makes a return visit one call.
          ⚠ It is only a HINT: if it is stale, wrong, or from another board, the walk falls back to the
          genesis rather than trusting it. Nothing here is taken on faith. */
-      let start = genesis
+      /* ⚠⚠ LOAD THE KEPT LOG FIRST, because it decides whether the tip hint may be used at all.
+         ★ The hint skips the walk — which also skips every move the walk would have LOGGED. That is
+         only an acceptable trade when we already hold the history it is skipping. With no kept log,
+         a one-hop walk showed a nine-move game as a single line. ⇒ No history, no shortcut. */
+      logRows = []
+      let kept = []
       try {
-        const hint = localStorage.getItem('oxo:' + genesis)
-        if (hint && /^[0-9a-f]{64}$/.test(hint)) {
-          const probe = await rawOf(hint)
-          if (G.decodeBoard(G.parse(probe).lockHex)) { start = hint }
-        }
-      } catch (e) { /* no storage, or a bad hint — walk from the genesis */ }
+        const raw = JSON.parse(localStorage.getItem(LOG_STORE(genesis)) || '[]')
+        if (Array.isArray(raw)) kept = raw.filter(r => r && typeof r.t === 'string')
+      } catch (e) { /* nothing kept, or storage refused */ }
+
+      let start = genesis
+      if (kept.length) {
+        try {
+          const hint = localStorage.getItem('oxo:' + genesis)
+          if (hint && /^[0-9a-f]{64}$/.test(hint)) {
+            const probe = await rawOf(hint)
+            if (G.decodeBoard(G.parse(probe).lockHex)) { start = hint }
+          }
+        } catch (e) { /* a bad hint — walk from the genesis */ }
+      }
+
       /* ⚠ Decode the STARTING board rather than beginning at null. A move is worked out by diffing
-         two boards, so with no `prev` the very first hop of the walk could not say which square was
-         taken and printed "square ?". */
+         two boards, so with no `prev` the first hop could not say which square was taken. */
       tip = start; tipRaw = await rawOf(tip)
       state = G.decodeBoard(G.parse(tipRaw).lockHex)
       seen.clear(); $('log').textContent = ''
+
+      /* replay what we already have, as historic — the chain records the mark, never the person */
+      for (const r of kept) {
+        logRows.push(r)
+        logMove({ turn: r.u, winner: r.w, games: r.g }, r.s,
+                { winner: r.p }, r.t, r.f ?? G.MAX_FEE, true, true)
+      }
+
       if (start !== genesis) tag('resuming from the last board this browser saw')
+      else if (kept.length) tag('checking for anything new…')
     }
     let moved = false
     let unconf = false
     for (let guard = 0; guard < 60; guard++) {
+      /* ★ a first load on an old board is a real wait — say so rather than showing nothing */
+      if (fromScratch && guard === 1) tag('catching up with the board…')
+      else if (fromScratch && guard > 1 && guard % 3 === 0) tag(`catching up — ${guard} moves so far…`)
       const hop = await nextHop(tip, tipRaw, unconf)
       if (hop === 'unknown') { tag('could not reach the chain — retrying', 'err'); return }
       if (hop === 'current') break
@@ -468,6 +614,7 @@ async function sync(fromScratch) {
     tag('watching the chain', 'live')
     if (moved || fromScratch) paint()
   } catch (e) { tag('chain unreachable — retrying', 'err') }
+  finally { syncing = false }     /* ⚠ every exit, including the early returns above */
 }
 
 async function play(sq) {
@@ -499,6 +646,12 @@ async function play(sq) {
 /* ── setup ─────────────────────────────────────────────────────────────────────────────────── */
 function begin() {
   xIsPlayer = whoIsX()
+  /* ★ REMEMBER WHICH GAME, not just where it got to. The tip hint below is keyed BY genesis, so it
+     could only ever help once you already knew the txid — which is the one thing you had to type.
+     ⚠ This PRE-FILLS the form and nothing more: a first-time visitor still sees a clean board, and
+     nobody is dropped into a stranger's game by opening a public page. */
+  try { localStorage.setItem('oxo:last', JSON.stringify({ g: genesis, a: names[0], b: names[1] })) }
+  catch (e) { /* private window, or storage refused — the form simply opens empty */ }
   history.replaceState(null, '', '#g=' + genesis + '&a=' + encodeURIComponent(names[0]) +
     '&b=' + encodeURIComponent(names[1]) + '&me=' + (me ? 'b' : 'a'))
   paint()
@@ -510,6 +663,21 @@ if (genesis && names[0] && names[1]) begin()
 else {
   const d = $('setup'); d.showModal()
   $('fg').value = genesis
+  /* ⚠ Only fills BLANK fields — a link that carries some of the details must always win over what
+     this browser happens to remember, or a shared invitation would be quietly overwritten. */
+  try {
+    const last = JSON.parse(localStorage.getItem('oxo:last') || 'null')
+    if (last && /^[0-9a-f]{64}$/.test(last.g || '')) {
+      if (!$('fg').value) $('fg').value = last.g
+      if (!$('fa').value) $('fa').value = last.a || ''
+      if (!$('fb').value) $('fb').value = last.b || ''
+      const who = [last.a, last.b].filter(Boolean).join(' and ')
+      $('recall').hidden = false
+      $('recall').innerHTML = who
+        ? `Filled in from your last game${who ? ' with <b>' + who + '</b>' : ''} — press Begin to carry on, or type over it to start somewhere else.`
+        : 'Filled in from the last board this browser saw.'
+    }
+  } catch (e) { /* nothing remembered, or storage refused */ }
   $('form').onsubmit = () => {
     names = [$('fa').value.trim(), $('fb').value.trim()]
     genesis = $('fg').value.trim().toLowerCase()
@@ -533,7 +701,6 @@ else {
  * ★★ AND THAT HAND-OFF IS THE UNUSUAL PART: co-signing a transaction the wallet did not build, and
  * deriving the fee itself rather than trusting the one it was handed.
  */
-let tuSq = -1
 function tuPaint() {
   const g = $('tuGrid'); g.textContent = ''
   const sq = state ? G.squares(state) : new Array(9).fill(0)
@@ -572,7 +739,7 @@ async function tuBuild() {
     out.textContent = 'building…'
     const funders = []
     for (const c of picked) {
-      const hex = (await (await api('/tx/' + c.tx_hash + '/hex')).text()).trim()
+      const hex = await rawOf(c.tx_hash)     // ★ content-addressed, so the cache serves it too
       funders.push({ sourceTransaction: G.Transaction.fromHex(hex), outputIndex: c.tx_pos })
     }
     const r = G.buildTopUpMove({ tipRawHex: tipRaw, square: tuSq, addSats: amt,

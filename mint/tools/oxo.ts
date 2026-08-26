@@ -38,12 +38,44 @@ const MAX_FEE = frameMaxFee({
 const lockFor = (s: OxoState) =>
   buildBasicLock({ src: OXO_SRC, state: rec(s), maxFee: MAX_FEE, inputs: OXO_INPUTS })
 
+/**
+ * ⏱⚠⚠ 350 ms BETWEEN CALLS, AND NEVER SWALLOW A 429.
+ *
+ * `woc.php` paces every server-side call at `WOC_MIN_INTERVAL = 0.35` — 250 ms is the real threshold
+ * and 350 leaves headroom. **This tool goes nowhere near that queue**, so it had no pacing at all and
+ * burst straight into a rate limit.
+ *
+ * ⇒ AND THE RATE LIMIT WAS NOT THE BUG. The bug was what happened next: `catch { continue }` turned a
+ * 429 into "no history", which the walk read as *"nothing spent this, so it is the tip"* — and it
+ * reported a SEVEN-MOVE GAME AS TWO MOVES, with every transaction mined and nothing wrong on chain.
+ * ⚠⚠ **A failed lookup must never be reported as an answer.** Retry, and then fail out loud.
+ */
+const WOC_MIN_INTERVAL = 350
+let lastCall = 0
+const pace = async () => {
+  const wait = lastCall + WOC_MIN_INTERVAL - Date.now()
+  if (wait > 0) await new Promise(r => setTimeout(r, wait))
+  lastCall = Date.now()
+}
+/** One request, paced, retrying a 429 with backoff. ⚠ Throws rather than returning a plausible lie. */
+const hit = async (url: string, tries = 6): Promise<Response> => {
+  for (let i = 0; i < tries; i++) {
+    await pace()
+    const r = await fetch(url)
+    if (r.status !== 429) return r
+    /* ⚠ a 429 is not an answer about the chain — it is the absence of one */
+    await new Promise(res => setTimeout(res, WOC_MIN_INTERVAL * (i + 2)))
+  }
+  throw new Error(`WoC kept refusing (429 after ${tries} tries): ${url}\n` +
+    `  ⚠ This is a RATE LIMIT, not an empty result — the board was NOT read.`)
+}
+
 const woc = async (p: string) => {
-  const r = await fetch(WOC + p); if (!r.ok) throw new Error(`WoC ${r.status} on ${p}`); return r.json()
+  const r = await hit(WOC + p); if (!r.ok) throw new Error(`WoC ${r.status} on ${p}`); return r.json()
 }
 /** ⚠ TRIM IT. The endpoint returns a trailing newline and `fromHex` refuses the whole string for it. */
 const rawTx = async (t: string) => {
-  const r = await fetch(`${WOC}/tx/${t}/hex`)
+  const r = await hit(`${WOC}/tx/${t}/hex`)
   if (!r.ok) throw new Error(`WoC ${r.status} fetching ${t}`)
   const h = (await r.text()).trim()
   if (!/^[0-9a-fA-F]+$/.test(h)) throw new Error(`not hex for ${t}: ${h.slice(0, 40)}`)
@@ -83,13 +115,29 @@ async function spenderOf(tipTxid: string, vout: number): Promise<string | null> 
    an empty board while the move sits in the mempool. ⇒ Accept both shapes; the older one is a bare
    array and some endpoints still answer that way. */
     let hist: any
-    try { hist = await woc(`/script/${sh}/${path}`) } catch { continue }
+    /* ⚠⚠ NO `catch { continue }` HERE. A 404 means "no history of that kind", which IS an answer.
+       Anything else means the question was not asked, and the walk must not carry on as though it
+       had been — that is how a seven-move game got reported as two. */
+    try { hist = await woc(`/script/${sh}/${path}`) }
+    catch (e) {
+      if (/\b404\b/.test(String((e as Error).message))) continue
+      throw new Error(`could not read the history of ${tipTxid.slice(0, 12)}… — ` +
+        `refusing to guess that nothing spent it.\n  ${(e as Error).message}`)
+    }
     const list = Array.isArray(hist) ? hist : (Array.isArray(hist?.result) ? hist.result : null)
     if (!list) continue
     for (const h of list) {
       const id = h.tx_hash
       if (!id || id === tipTxid) continue
-      try { if (spendsTip(await rawTx(id), tipTxid, vout)) return id } catch { /* skip */ }
+      /* ⚠ same rule one level down: a transaction we could not FETCH is not a transaction that
+         fails to spend the tip. Only a genuine parse failure is safe to skip. */
+      let cand: Transaction
+      try { cand = await rawTx(id) }
+      catch (e) {
+        throw new Error(`could not fetch ${id.slice(0, 12)}… while walking — ` +
+          `refusing to guess.\n  ${(e as Error).message}`)
+      }
+      if (spendsTip(cand, tipTxid, vout)) return id
     }
   }
   return null
