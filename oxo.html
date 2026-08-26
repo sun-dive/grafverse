@@ -57,6 +57,23 @@ h1{font-family:var(--serif);font-weight:400;font-size:clamp(26px,3.6vw,40px);mar
 .tu-hex{width:100%;height:96px;margin-top:9px;padding:7px 9px;border:1px solid var(--line);
   border-radius:5px;background:var(--ground);color:var(--muted);font-family:var(--mono);
   font-size:10.5px;resize:vertical;word-break:break-all}
+
+/* ── 🛍 THE PROMO SLOT ─────────────────────────────────────────────────────────────────────────────
+   ★★ BE THE MERCHANT, NEVER THE AFFILIATE. This is his own shop, so it is styled as part of the page
+   rather than as an injected ad — no border-dance, no "sponsored", nothing that invites an ad-blocker
+   to eat it or a reader to skip it. → memory `user-affiliate-nonpayment-origin`.
+   ⚠ FIRST-PARTY AND LOCAL, never hotlinked from the shop's CDN: a third-party image host is exactly
+   what network-level blockers match on, and it would be an outage we do not control.
+   ★ The SVG under the photo is the FALLBACK, not a leftover — if the image is missing, still loading
+   or cosmetically blocked, the slot is a designed card rather than an empty hole. */
+.shop{display:block;position:relative;width:100%;aspect-ratio:672/900;border-radius:4px;
+  overflow:hidden;border:1px solid var(--line);text-decoration:none}
+.shop svg,.shop img{position:absolute;inset:0;width:100%;height:100%;display:block}
+.shop img{object-fit:cover}
+.shop:hover{border-color:var(--accent)}
+.shop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.shop-note{color:var(--muted);font-size:12.5px;line-height:1.6;margin:11px 2px 0}
+.shop-note b{color:var(--ink)}
 /* ── 🔋 THE CHARGE ────────────────────────────────────────────────────────────────────────────────
    ★★ THE BOARD IS A BATTERY. It holds its own satoshis, spends a bounded amount on every move, and
    carries no key — which is the battery's whole definition, not an analogy. And its value rule is a
@@ -77,8 +94,9 @@ h1{font-family:var(--serif);font-weight:400;font-size:clamp(26px,3.6vw,40px);mar
   background:repeating-linear-gradient(to bottom,transparent 0 calc(20% - 1px),
     rgba(0,0,0,.16) calc(20% - 1px),rgba(0,0,0,.16) 20%)}
 .batt .read{text-align:center;font-family:var(--mono);font-size:12px;line-height:1.35;color:var(--ink)}
-.batt .read b{display:block;font-size:14px;font-weight:600}
-.batt .read s{display:block;text-decoration:none;color:var(--muted);font-size:11px}
+.batt .read b{display:block;font-size:17px;font-weight:600;letter-spacing:-.01em}
+.batt .read s{display:block;text-decoration:none;color:var(--muted);font-size:10.5px;
+  line-height:1.45}
 .batt .lab{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);font-weight:600}
 @media(max-width:840px){
   .batt{flex-direction:row;align-items:center;justify-content:center;gap:14px;position:static}
@@ -176,6 +194,35 @@ footer b{color:var(--ink)}
       <div class="card">
         <h2>Every move, as it happened</h2>
         <div id="log"><p class="empty">Nothing yet. Each move below is a real Bitcoin transaction.</p></div>
+      </div>
+
+
+      <div class="card">
+        <h2>🛍 Wear the board</h2>
+        <a class="shop" href="https://grafverse-shop.fourthwall.com/products/bsv-tik-tac-toe"
+           target="_blank" rel="noopener"
+           aria-label="Noughts and crosses t-shirt — opens the shop in a new tab">
+          <!-- the fallback, sitting UNDER the photograph -->
+          <svg viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice" role="img" aria-hidden="true">
+            <rect width="300" height="400" fill="#0c111a"/>
+            <g stroke="#22344e" stroke-width="2">
+              <line x1="110" y1="120" x2="110" y2="270"/><line x1="190" y1="120" x2="190" y2="270"/>
+              <line x1="30" y1="170" x2="270" y2="170"/><line x1="30" y1="220" x2="270" y2="220"/>
+            </g>
+            <text x="150" y="90" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
+                  font-size="12" letter-spacing="3" fill="#4fa6bb">ON CHAIN</text>
+            <text x="150" y="330" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
+                  font-size="12" fill="#dde7f3">Every square is a transaction</text>
+            <rect x="86" y="352" width="128" height="28" rx="6" fill="#4fa6bb"/>
+            <text x="150" y="371" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
+                  font-size="11" font-weight="700" fill="#06202a">WEAR THE BOARD</text>
+          </svg>
+          <!-- ⚠ 672×900 is 2× the slot's widest display size, and is nobody's ad unit -->
+          <img src="/img/oxo-shirt.webp?v=20260826" width="672" height="900" loading="lazy"
+               decoding="async" alt="Noughts and crosses on chain t-shirt — a battery struck by lightning above the finished board">
+        </a>
+        <p class="shop-note">The board on that shirt is <b>this game</b> — the draw it played on 26 August,
+        and a cell reading <b>88%</b> because somebody put 2,307 satoshis into it. ⚡</p>
       </div>
 
       <!-- ⚠⚠ THIS PAGE HOLDS NO KEY. It assembles the whole transaction, leaves your inputs BLANK,
@@ -295,8 +342,12 @@ function paintBattery() {
   } else {
     d.style.height = ((1 - frac) * 100).toFixed(1) + '%'; d.style.width = ''
   }
+  /* ★ SHOW THE PERCENTAGE. `frac` was computed and then only used to size the drain — so the one
+     number a gauge exists to communicate was the one it never said. ⚠ It is a percentage of the
+     HIGH-WATER MARK, not of an invented capacity, which is why the label says so. */
   $('battRead').innerHTML =
-    `<b>${held.toLocaleString()}</b><s>sat · ${moves} move${moves === 1 ? '' : 's'} left</s>`
+    `<b>${(frac * 100).toFixed(0)}%</b>` +
+    `<s>${held.toLocaleString()} sat · ${moves} move${moves === 1 ? '' : 's'} left</s>`
 }
 addEventListener('resize', paintBattery)
 
