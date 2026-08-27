@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // THE BATTERY — build, sign and broadcast the genesis LOCALLY, then advance it with KEYLESS ticks.
 //
 // ⚠ RUN THE SOURCE, NOT A BUNDLE. There used to be a tools/battery.mjs built by esbuild, and on

@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 //
 // 🛤★★★ ONE SECTION OF A LANE, SPENT THROUGH THE REAL INTERPRETER — and every way of lying about it.
 //

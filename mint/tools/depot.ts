@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // THE FUEL DEPOT — a tank that FUELS cars. It does not make them.
 //
 //   bundle:    node -e "import('esbuild').then(e=>e.build({entryPoints:['tools/depot.ts'],bundle:true,format:'esm',platform:'node',target:'esnext',outfile:'tools/depot.mjs'}))"

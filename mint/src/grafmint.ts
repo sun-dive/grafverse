@@ -1,4 +1,4 @@
-// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
+// © 2026 sun-dive — Apache License 2.0 (see LICENSE).
 // grafmint — grafspace's own BSV wallet + mint core. Bundled by build.mjs into ../vendor/grafmint.js as the
 // global `GrafMint`, which grafverse.html lazy-loads only when the user chooses to mint. Ported from PharLap's
 // tested edition/covenant code (grafspace owns this copy; PharLap is untouched).

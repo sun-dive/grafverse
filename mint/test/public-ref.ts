@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // THE PUBLIC CAR · step 1 — the reference state machine, before a byte of Script exists.
 //
 //   node --experimental-strip-types mint/test/public-ref.ts

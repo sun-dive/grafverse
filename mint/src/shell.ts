@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 /**
  * THE PROGRAMMABLE SHELL — a covenant that is LOADED rather than rebuilt.
  *

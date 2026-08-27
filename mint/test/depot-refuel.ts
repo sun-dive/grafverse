@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // ★★ THE FUEL BUTTON — the depot filling a car that already exists.
 //
 //   node --experimental-strip-types mint/test/depot-refuel.ts

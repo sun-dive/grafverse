@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // FIRST REAL RUN of the pure-SPV layer — against the live battery, on mainnet.
 //
 //   node --experimental-strip-types mint/test/battery-spv.ts

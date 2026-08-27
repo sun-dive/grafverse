@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 /**
  * ★★★ NOUGHTS AND CROSSES — a whole game, in BASIC, enforced by the covenant itself.
  *

@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // DEPOT_MAX_FEE — MEASURED, and asserted against transactions that were actually serialized.
 //
 //   node --experimental-strip-types mint/test/depot-fee.ts

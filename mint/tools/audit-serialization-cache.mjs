@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 /* AUDIT: find every place a parsed transaction is MUTATED, across every app.
  *
  *   node mint/tools/audit-serialization-cache.mjs

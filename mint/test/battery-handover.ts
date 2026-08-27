@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // THE HANDOVER — the page assembles a transaction with ONE BLANK, and a stranger's wallet fills it in.
 //
 //   node --experimental-strip-types mint/test/battery-handover.ts

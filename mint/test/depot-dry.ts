@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // ★★ RUNNING DRY — what actually happens, now that the pump will not come to you.
 //
 //   node --experimental-strip-types mint/test/depot-dry.ts

@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // THE SHELL'S FRAME — can a script read its own twelve fields and write them back unchanged?
 //
 //   node --experimental-strip-types mint/test/shell-frame.ts

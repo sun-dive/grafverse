@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 /**
  * ⚠⚠⚠ THE ISOLATION GUARD. `src/oxoSeatFrame.ts` is a FORK of `src/basicCovenant.ts`, made because the
  * shared frame is imported by `grafbasic.ts` and therefore lives in the bundle `basic.html` loads.

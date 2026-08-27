@@ -1,4 +1,4 @@
-// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
+// © 2026 sun-dive — Apache License 2.0 (see LICENSE).
 /**
  * PHAR LAP edition-token transaction builder (experimental covenant path).
  *

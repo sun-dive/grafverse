@@ -1,4 +1,4 @@
-// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
+// © 2026 sun-dive — Apache License 2.0 (see LICENSE).
 // High-level mint wrapper for grafspace — turns a packed BMF/BMC atom + metadata into an on-chain edition,
 // hiding the covenant/terms plumbing from the wallet UI. The publisher (fee payee) is the minter's own key.
 import { Hash, Utils } from '@bsv/sdk'

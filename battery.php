@@ -1,5 +1,5 @@
 <?php
-// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE). Part of the BRC-226 reference.
+// © 2026 sun-dive — Apache License 2.0 (see LICENSE). Part of the BRC-226 reference.
 // THE BATTERY — the live page's chain-follow cache. Serves { fuel, ticks, state, tip, board[] }.
 //
 //   GET  (no args)   → the cached JSON (fast; no chain calls unless stale)

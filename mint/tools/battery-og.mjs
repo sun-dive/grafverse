@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // Render battery-og.png — the social card for battery.html, showing the REAL picture the chain has paid
 // for, exactly as the page draws it: solid where the covenant has computed, ghosted where it has not.
 //

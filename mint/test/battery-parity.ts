@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // PORT PARITY — prove `src/battery.ts` is byte-for-byte the covenant that was verified in
 // `test/battery-covenant-v3.mjs`, before anything is built on top of it.
 //

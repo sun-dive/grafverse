@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // ★ PUTTING SATS IN — the button the page needs.
 //
 //   node --experimental-strip-types mint/test/depot-topup.ts

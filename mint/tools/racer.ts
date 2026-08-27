@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // BITCOIN RACERS · GO-LIVE — mint a car, load it, drop the flag and run a whole quarter mile on chain.
 //
 //   bundle:     node -e "import('esbuild').then(e=>e.build({entryPoints:['tools/racer.ts'],bundle:true,format:'esm',platform:'node',target:'esnext',outfile:'tools/racer.mjs'}))"

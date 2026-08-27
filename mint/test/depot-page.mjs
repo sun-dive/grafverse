@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // THE LIVE PAGE — depot.html booted in a browser-shaped realm, with the network cut off.
 //
 //   node mint/test/depot-page.mjs

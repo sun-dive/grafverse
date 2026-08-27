@@ -9,7 +9,7 @@
  * Paul Schlyter's planetary-position method (stjarnhimlen.se, accurate to ~1–2 arc-minutes).
  * From Iapetus you sit ~9.5 AU out at Saturn, so the Sun appears ~opposite Saturn's heliocentric longitude.
  *
- * Licence: Open BSV. © sun-dive.
+ * Licence: Apache License 2.0. © sun-dive.
  */
 
 header('Content-Type: application/json');

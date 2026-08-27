@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 /**
  * The browser entry for the BASIC workbench — bundled to ../vendor/grafbasic.js as `GrafBasic`.
  *

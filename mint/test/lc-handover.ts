@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // THE COUNTER'S HANDOVER — brc226.html assembles a tick with ONE BLANK and holds no key.
 //
 //   node --experimental-strip-types mint/test/lc-handover.ts

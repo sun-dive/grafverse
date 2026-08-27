@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // THE PAGE ITSELF — bitcoin-racers.html, driven in node behind a stub DOM.
 //
 //   node mint/test/racers-page.mjs

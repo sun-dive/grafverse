@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // ★★ CAN SOMEBODY DRAIN THE DEPOT? — the question the "no minting" limit raises, answered by doing it.
 //
 //   node --experimental-strip-types mint/test/depot-drain.ts

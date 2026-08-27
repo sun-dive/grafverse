@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // THE DEPOT · the OWNER BURN — clearing a husk, and nothing more.
 //
 //   node --experimental-strip-types mint/test/depot-burn.ts

@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 /**
  * ★★★ THIS TESTS THE BUILT BUNDLE, NOT THE SOURCE.
  *

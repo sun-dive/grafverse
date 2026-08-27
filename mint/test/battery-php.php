@@ -1,5 +1,5 @@
 <?php
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // battery.php parser check — read the battery's state straight from real mainnet script bytes and
 // compare against the TypeScript reference. If these disagree, the board is lying about the picture.
 //

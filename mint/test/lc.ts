@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6. Structural smoke for the LiveCounter covenant (assembles + fixed width).
+// © 2026 sun-dive — Apache License 2.0. Structural smoke for the LiveCounter covenant (assembles + fixed width).
 import { buildLiveCounterLock } from '../src/liveCounter.ts'
 
 const authorHash = new Array(20).fill(0xab)

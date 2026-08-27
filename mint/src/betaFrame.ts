@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 //
 // 🛤 THE BETA'S OWN FRAME — a FORK of `basicCovenant.ts` that lets the sighash SCOPE be chosen.
 //

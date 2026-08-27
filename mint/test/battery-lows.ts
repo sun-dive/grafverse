@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // LOW_S — an OPTIONAL grind, off by default, for one non-conformant transaction processor.
 //
 // The covenant DERIVES its signature, so it cannot negate a high `s` the way a key-holding signer would.

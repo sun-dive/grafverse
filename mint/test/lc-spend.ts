@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // BRC-226 LiveCounter — Spend-interpreter proof: a real tick validates, tampered ticks are rejected.
 import { LockingScript, UnlockingScript, Spend, OP } from '@bsv/sdk'
 import { buildLiveCounterLock, tickUnlockingOps, LIVECOUNTER_SCOPE } from '../src/liveCounter.ts'

@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // Render basic-og.png — the social card for basic.html, drawn from the REAL automaton.
 //
 //   node mint/tools/basic-og.mjs            # writes ../basic-og.png

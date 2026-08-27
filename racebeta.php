@@ -1,5 +1,5 @@
 <?php
-// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE). Part of BRC-226.
+// © 2026 sun-dive — Apache License 2.0 (see LICENSE). Part of BRC-226.
 // Bitcoin Racers — the leaderboard's chain-follow cache. Serves the depot's own history of mints.
 //
 //   GET  (no args)   → the cached board JSON (fast; no chain calls at all unless ?sync)

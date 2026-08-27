@@ -1,5 +1,5 @@
 <?php
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // tip.php · discover_spender regression test.
 //
 //   php mint/test/tip-php.php

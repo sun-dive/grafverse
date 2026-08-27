@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // ★★ THE RESERVE — satoshis that pay the miner, weigh nothing, and let a dry car COAST.
 //
 //   node --experimental-strip-types mint/test/shell-reserve.ts

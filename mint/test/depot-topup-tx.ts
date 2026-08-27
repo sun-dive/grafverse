@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // THE CONTRIBUTE BUTTON'S BUILDER — the page assembles it, the contributor signs one blank.
 import { Transaction, Spend, PrivateKey, P2PKH, Hash, Utils } from '@bsv/sdk'
 import { buildDepotTopUpTx, TOPUP_FEE_PAD, topUpPad } from '../src/depotTx.ts'

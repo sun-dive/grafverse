@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 /**
  * ★★ NOUGHTS AND CROSSES, BASE 4 — the same game with the encoding changed, to find out what it costs.
  *

@@ -1,4 +1,4 @@
-// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
+// © 2026 sun-dive — Apache License 2.0 (see LICENSE).
 /**
  * ★★★ THE ONE-RACE RACERS, ON MAINNET — depot → mint → race → the last satoshi home.
  *

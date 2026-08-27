@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // THE BATTERY — end to end: assemble REAL genesis → tick → tick → top-up → tick transactions and validate
 // every input through the @bsv/sdk `Spend` interpreter. This is the last gate before a mainnet rehearsal.
 //

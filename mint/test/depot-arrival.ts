@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // THE DEPOT · step 3c — WHAT LEAVES THE DEPOT MUST ARRIVE.
 //
 //   node --experimental-strip-types mint/test/depot-arrival.ts

@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // BRC-226 LiveCounter — end-to-end: assemble REAL genesis + tick + tick txs (fee + signing + change)
 // and validate every input through the @bsv/sdk Spend interpreter.
 import { Transaction, P2PKH, PrivateKey, Spend, LockingScript } from '@bsv/sdk'

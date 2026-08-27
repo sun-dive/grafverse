@@ -1,4 +1,4 @@
-// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
+// © 2026 sun-dive — Apache License 2.0 (see LICENSE).
 // Read-only chain import: fetch a minted atom by txid → its embedded payload bytes (gunzipped if gzip).
 // NO wallet/key required — this is the open, unencrypted path (an open-licence atom imports free, per the
 // grafspace design). Encrypted content stays as ciphertext here (no gzip magic, no BMF header) and the caller

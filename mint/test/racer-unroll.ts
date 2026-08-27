@@ -1,4 +1,4 @@
-// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
+// © 2026 sun-dive — Apache License 2.0 (see LICENSE).
 //
 // ★★★ A WHOLE QUARTER MILE IN ONE SCRIPT — and does it agree with forty-five chained spends?
 //

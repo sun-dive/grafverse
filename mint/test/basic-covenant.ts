@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // ★★★ A COVENANT WRITTEN IN BASIC — does it actually spend?
 //
 //   node --experimental-strip-types mint/test/basic-covenant.ts

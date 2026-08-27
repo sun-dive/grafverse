@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 //
 // ★★★ RECOGNISING A CAR THAT HAS NO SHAPE — and the attack the depot's own comment warns about.
 //

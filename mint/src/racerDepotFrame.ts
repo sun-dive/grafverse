@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 /**
  * ★★★ THE FRAME AROUND THE DEPOT'S BASIC — the things a program cannot say about itself.
  *

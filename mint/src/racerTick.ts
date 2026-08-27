@@ -1,4 +1,4 @@
-// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
+// © 2026 sun-dive — Apache License 2.0 (see LICENSE).
 /**
  * ★★★ ONE TICK OF A BITCOIN RACER, WRITTEN IN BITCOIN BASIC.
  *

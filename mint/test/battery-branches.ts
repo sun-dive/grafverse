@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // EVERY ARM OF THE STATE MACHINE, THROUGH THE REAL SCRIPT INTERPRETER.
 //
 //   node --experimental-strip-types mint/test/battery-branches.ts

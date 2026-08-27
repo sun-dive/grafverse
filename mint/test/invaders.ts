@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // ★★★ SPACE INVADERS — and whether the 1978 accident really comes back
 //
 //   node --experimental-strip-types mint/test/invaders.ts

@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 /**
  * ★★★ DOES THE BOARD REALLY PLAY FOREVER? — every move a real spend, judged by `Spend`.
  *

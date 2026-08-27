@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // THE BURN — how a car is finally cleared away, and why nothing is locked forever.
 //
 //   node --experimental-strip-types mint/test/shell-burn.ts

@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // ★★★ SCRIPT → BASIC — does the reading say what the script does?
 //
 //   node --experimental-strip-types mint/test/unbasic.ts

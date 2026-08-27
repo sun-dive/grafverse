@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // ★★ BASE 3 AGAINST BASE 4 — what does wasting a bit per square actually buy?
 //
 //   node --experimental-strip-types mint/test/oxo4.ts

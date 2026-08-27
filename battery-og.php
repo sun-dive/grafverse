@@ -1,5 +1,5 @@
 <?php
-// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
+// © 2026 sun-dive — Apache License 2.0 (see LICENSE).
 // THE BATTERY — regenerate the social card when the board changes.
 //
 // Included by battery.php, which calls battery_render_card($c) ONLY when a new contribution is recorded.

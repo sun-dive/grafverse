@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // Bundle on-chain noughts and crosses into ../vendor/grafoxo.js as the global `GrafOxo`.
 // ⚠⚠ ITS OWN BUNDLE, DELIBERATELY. grafmint.js is loaded by the depot, the battery, brc226,
 //    grafverse and the racers — adding a game to it would push all of those visitors onto a new
@@ -15,6 +15,6 @@ await build({
   outfile: '../vendor/grafoxo.js',
   minify: true,
   legalComments: 'none',
-  banner: { js: '/* grafverse on-chain noughts and crosses — © 2026 sun-dive · Open BSV License v6 (see LICENSE). Bundles @bsv/sdk © BSV Association, Open BSV License — see NOTICE. */' },
+  banner: { js: '/* grafverse on-chain noughts and crosses — © 2026 sun-dive · Apache License 2.0 (see LICENSE). Bundles @bsv/sdk © BSV Association, Open BSV License — see NOTICE. */' },
 })
 console.log('built ../vendor/grafoxo.js')

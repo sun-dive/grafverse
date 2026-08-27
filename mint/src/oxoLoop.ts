@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 /**
  * ★★★ NOUGHTS AND CROSSES THAT NEVER STOPS — a board that resets itself and plays again, forever.
  *

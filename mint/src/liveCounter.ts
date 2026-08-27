@@ -1,4 +1,4 @@
-// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
+// © 2026 sun-dive — Apache License 2.0 (see LICENSE).
 /**
  * BRC-226 — the LiveCounter covenant. A single shared on-chain number that ANYONE can push forward,
  * one transaction per tick, with no operator. Built on the same OP_PUSH_TX machinery as the PHAR LAP

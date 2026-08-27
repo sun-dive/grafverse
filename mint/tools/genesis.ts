@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // BRC-226 GO-LIVE — build + sign the canonical LiveCounter genesis LOCALLY, then broadcast when ready.
 //
 //   bundle:     node -e "import('esbuild').then(e=>e.build({entryPoints:['tools/genesis.ts'],bundle:true,format:'esm',platform:'node',target:'esnext',outfile:'tools/genesis.mjs'}))"

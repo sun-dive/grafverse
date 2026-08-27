@@ -1,5 +1,5 @@
 <?php
-// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE). Part of the BRC-226 reference.
+// © 2026 sun-dive — Apache License 2.0 (see LICENSE). Part of the BRC-226 reference.
 // BRC-226 LiveCounter — the live board's chain-follow cache. Serves { n, tipTxid, last21[] }.
 //
 //   GET  (no args)   → the cached board JSON (fast; no chain calls unless stale)

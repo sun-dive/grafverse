@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 //
 // ★★ THE FORK IS PINNED TO THE ORIGINAL — `betaFrame.ts` against `basicCovenant.ts`.
 //

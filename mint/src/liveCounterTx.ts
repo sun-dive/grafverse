@@ -1,4 +1,4 @@
-// © BSV Association — Licensed under the Open BSV License Version 6 (see LICENSE).
+// © 2026 sun-dive — Apache License 2.0 (see LICENSE).
 /**
  * BRC-226 LiveCounter — transaction builders (genesis deploy + tick), mirroring the edition covenant-spend
  * pattern in `editionBuilder.ts`: the covenant input is spent with an unlocking-script TEMPLATE whose

@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // Bundle the RACERS BETA into ../vendor/grafbeta.js as the global `GrafBeta`.
 //
 // ⚠⚠⚠ THIS EXISTS SO THE LIVE PAGE CANNOT MOVE. racebeta.html is where the depot-anchored design is
@@ -28,7 +28,7 @@ const out = await build({
   minify: true,
   legalComments: 'none',
   metafile: true,
-  banner: { js: '/* Bitcoin Racers BETA — © 2026 sun-dive · Open BSV License v6 (see LICENSE). Bundles @bsv/sdk (BRC-100 wallet SDK) © BSV Association, Open BSV License — see NOTICE. Not our code; bundled + called, not ported. */' },
+  banner: { js: '/* Bitcoin Racers BETA — © 2026 sun-dive · Apache License 2.0 (see LICENSE). Bundles @bsv/sdk (BRC-100 wallet SDK) © BSV Association, Open BSV License — see NOTICE. Not our code; bundled + called, not ported. */' },
 })
 
 /* ★ Say what it cost. The whole point of a per-page bundle is that a browser downloads THIS page's

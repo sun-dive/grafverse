@@ -1,4 +1,4 @@
-// © BSV Association — Open BSV License v6.
+// © 2026 sun-dive — Apache License 2.0.
 // LOADING — a whole race from an EMPTY shell, every move through the real interpreter.
 //
 //   node --experimental-strip-types mint/test/shell-load.ts
