@@ -6,6 +6,14 @@
 deployment:
   tasks:
     - export DEPLOYPATH="$HOME/grafverse.com/"
+    # ⚠⚠ LICENCE FILES FIRST — these are a CONDITION of the licences we ship under, not documentation.
+    #   Every vendor/graf*.js banner says "see NOTICE"; until 27 Aug 2026 that pointed at a 404, because
+    #   a file is invisible on the live site until it is listed HERE. MIT's notice condition binds us as
+    #   a redistributor (bn.js/elliptic/hash.js reach users inside @bsv/sdk, in every bundle we serve),
+    #   and BSL 1.1 requires the licence be displayed on each copy. Both were unmet while these 404'd.
+    #   ⇒ NEVER remove these two lines.
+    - /bin/cp NOTICE "$DEPLOYPATH/NOTICE"                 # third-party attribution — bn.js · elliptic · hash.js (Fedor Indutny, MIT) · qrcode-generator (Kazuhiko Arase, MIT) · three.js · @bsv/sdk
+    - /bin/cp LICENSE "$DEPLOYPATH/LICENSE"               # our own per-part licences: Apache 2.0 (bmf-codec.js, mint/, BRC-226 demos) + BSL 1.1 (game/app) + the MIT Change License text
     - /bin/cp index.html "$DEPLOYPATH/index.html"        # SPLASH / crawlable landing at the root (▶ Enter → /grafverse.html); forwards old ?w=/?buy= deep-links to the game
     - /bin/cp grafverse.html "$DEPLOYPATH/grafverse.html" # the integrated first-person game, now served at /grafverse.html (onboarding → manifest → paint-to-earn)
     - /bin/cp og.jpg "$DEPLOYPATH"                        # social / link-preview card
